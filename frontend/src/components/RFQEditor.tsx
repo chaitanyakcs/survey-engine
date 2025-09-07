@@ -4,6 +4,19 @@ import { useAppStore } from '../store/useAppStore';
 export const RFQEditor: React.FC = () => {
   const { rfqInput, setRFQInput, submitRFQ, workflow } = useAppStore();
 
+  // Set default values when component mounts
+  React.useEffect(() => {
+    if (!rfqInput.title && !rfqInput.description && !rfqInput.product_category && !rfqInput.target_segment && !rfqInput.research_goal) {
+      setRFQInput({
+        title: 'Market Research Study',
+        description: 'We are conducting a comprehensive market research study to understand customer preferences, pricing sensitivity, and feature priorities for our new product. The research should include both quantitative and qualitative methodologies to provide actionable insights for our product development and go-to-market strategy.\n\nKey research objectives:\n- Understand customer willingness to pay and price sensitivity\n- Identify most important product features and their relative importance\n- Assess brand perception and competitive positioning\n- Evaluate market size and target segment characteristics\n\nPlease include methodologies such as Van Westendorp Price Sensitivity Meter, Conjoint Analysis, and MaxDiff for feature prioritization.',
+        product_category: 'electronics',
+        target_segment: 'General consumers',
+        research_goal: 'pricing_research'
+      });
+    }
+  }, [rfqInput, setRFQInput]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (rfqInput.description.trim()) {

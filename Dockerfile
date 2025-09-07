@@ -69,6 +69,12 @@ http {
     sendfile on;
     keepalive_timeout 65;
     
+    # Global timeout settings for ML model loading
+    proxy_connect_timeout       600s;
+    proxy_send_timeout          600s;
+    proxy_read_timeout          600s;
+    send_timeout               600s;
+    
     server {
         listen 80;
         server_name _;
@@ -100,11 +106,15 @@ http {
             proxy_http_version 1.1;
             proxy_buffering off;
             proxy_cache off;
+            # Increase timeouts for ML model loading
+            proxy_connect_timeout       600s;
+            proxy_send_timeout          600s;
+            proxy_read_timeout          600s;
         }
 
         # WebSocket proxy
         location /ws/ {
-            proxy_pass http://127.0.0.1:8001/;
+            proxy_pass http://127.0.0.1:8001/ws/;
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";

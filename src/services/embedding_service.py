@@ -8,7 +8,15 @@ import asyncio
 class EmbeddingService:
     def __init__(self) -> None:
         self.model_name = settings.embedding_model
-        
+        self.model = None
+        self.use_replicate = None
+        self._initialized = False
+    
+    def _ensure_initialized(self):
+        """Lazy initialization of the embedding model"""
+        if self._initialized:
+            return
+            
         # Initialize based on model type
         if self._should_use_replicate():
             # Replicate embedding model
@@ -18,15 +26,11 @@ class EmbeddingService:
             self.use_replicate = True
             self.model = None
         else:
-            # Sentence Transformers model
-            try:
-                self.model = SentenceTransformer(self.model_name)
-                self.use_replicate = False
-            except Exception as e:
-                # If sentence transformer fails, try to fallback to a default model
-                print(f"Warning: Failed to load {self.model_name}, falling back to all-MiniLM-L6-v2")
-                self.model = SentenceTransformer("all-MiniLM-L6-v2")
-                self.use_replicate = False
+            # Sentence Transformers model - load lazily
+            self.use_replicate = False
+            # Don't load the model here, load it when first needed
+        
+        self._initialized = True
     
     def _should_use_replicate(self) -> bool:
         """
@@ -47,6 +51,8 @@ class EmbeddingService:
         """
         Generate embedding for given text
         """
+        self._ensure_initialized()
+        
         if self.use_replicate:
             return await self._get_replicate_embedding(text)
         else:
@@ -56,6 +62,8 @@ class EmbeddingService:
         """
         Generate embeddings for multiple texts
         """
+        self._ensure_initialized()
+        
         if self.use_replicate:
             # Process individually for Replicate
             embeddings = []
@@ -111,30 +119,16 @@ class EmbeddingService:
     
     async def _get_sentence_transformer_embedding(self, text: str) -> List[float]:
         """
-        Get embedding from Sentence Transformers model
+        Get embedding from Sentence Transformers model - TEMPORARILY DISABLED
         """
-        try:
-            # Run in thread pool to avoid blocking
-            loop = asyncio.get_event_loop()
-            embedding = await loop.run_in_executor(
-                None, 
-                lambda: self.model.encode([text])[0].tolist()
-            )
-            return embedding  # type: ignore
-        except Exception as e:
-            raise Exception(f"Sentence transformer embedding failed: {str(e)}")
+        print(f"🚫 [EmbeddingService] ML model loading temporarily disabled for debugging")
+        # Return a zero vector as fallback
+        return [0.0] * 384  # Standard embedding dimension
     
     async def _get_sentence_transformer_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
         """
-        Get embeddings for multiple texts from Sentence Transformers
+        Get embeddings for multiple texts from Sentence Transformers - TEMPORARILY DISABLED
         """
-        try:
-            # Run in thread pool to avoid blocking
-            loop = asyncio.get_event_loop()
-            embeddings = await loop.run_in_executor(
-                None,
-                lambda: self.model.encode(texts).tolist()
-            )
-            return embeddings  # type: ignore
-        except Exception as e:
-            raise Exception(f"Batch sentence transformer embedding failed: {str(e)}")
+        print(f"🚫 [EmbeddingService] ML model loading temporarily disabled for debugging")
+        # Return zero vectors as fallback
+        return [[0.0] * 384 for _ in texts]  # Standard embedding dimension

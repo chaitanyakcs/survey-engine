@@ -121,12 +121,12 @@ start_fastapi() {
     log_info "Starting FastAPI server on port $port..."
     
     if [ "$DEBUG" = "true" ]; then
-        if ! $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --reload; then
+        if ! $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --reload --timeout-keep-alive 600; then
             log_error "Failed to start FastAPI server in debug mode"
             exit 1
         fi
     else
-        if ! $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port; then
+        if ! $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 600; then
             log_error "Failed to start FastAPI server"
             exit 1
         fi
@@ -164,6 +164,12 @@ http {
     sendfile on;
     keepalive_timeout 65;
     
+    # Global timeout settings for ML model loading
+    proxy_connect_timeout       600s;
+    proxy_send_timeout          600s;
+    proxy_read_timeout          600s;
+    send_timeout               600s;
+    
     server {
         listen $nginx_port;
         server_name _;
@@ -184,9 +190,9 @@ http {
             proxy_set_header X-Forwarded-Proto \$scheme;
         }
 
-        # All API routes to WebSocket server (working implementation)
+        # All API routes to FastAPI server
         location /api/ {
-            proxy_pass http://127.0.0.1:8001/api/v1/;
+            proxy_pass http://127.0.0.1:8000/api/v1/;
             proxy_set_header Host \$host;
             proxy_set_header X-Real-IP \$remote_addr;
             proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -195,11 +201,15 @@ http {
             proxy_http_version 1.1;
             proxy_buffering off;
             proxy_cache off;
+            # Increase timeouts for ML model loading
+            proxy_connect_timeout       600s;
+            proxy_send_timeout          600s;
+            proxy_read_timeout          600s;
         }
 
         # WebSocket proxy
         location /ws/ {
-            proxy_pass http://127.0.0.1:8001/;
+            proxy_pass http://127.0.0.1:8001/ws/;
             proxy_http_version 1.1;
             proxy_set_header Upgrade \$http_upgrade;
             proxy_set_header Connection "upgrade";
@@ -261,15 +271,15 @@ start_both() {
     # Start FastAPI in background
     log_info "Starting FastAPI server..."
     local port=8000
-    log_info "FastAPI command: $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port"
+    log_info "FastAPI command: $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 600"
     
     # Start FastAPI and capture output for debugging
-    log_info "Starting FastAPI with command: $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port"
+    log_info "Starting FastAPI with command: $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 600"
     
     if [ "$DEBUG" = "true" ]; then
-        $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --reload 2>&1 | tee /tmp/fastapi.log &
+        $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --reload --timeout-keep-alive 600 2>&1 | tee /tmp/fastapi.log &
     else
-        $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port 2>&1 | tee /tmp/fastapi.log &
+        $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 600 2>&1 | tee /tmp/fastapi.log &
     fi
     FASTAPI_PID=$!
     log_success "FastAPI server started with PID $FASTAPI_PID"
@@ -354,22 +364,23 @@ start_both() {
         exit 1
     fi
     
-    # Wait for WebSocket to be ready (health check)
+    # Wait for WebSocket to be ready (readiness check) - doesn't depend on ML models
     log_info "Waiting for WebSocket to be ready..."
-    local max_attempts=30
+    local max_attempts=20  # Reduced timeout since we don't wait for ML models
     local attempt=1
     while [ $attempt -le $max_attempts ]; do
-        if curl -f http://localhost:8001/health > /dev/null 2>&1; then
+        if curl -f http://localhost:8001/ready > /dev/null 2>&1; then
             log_success "WebSocket server is ready!"
             break
         fi
         log_info "WebSocket not ready yet - attempt $attempt/$max_attempts"
-        sleep 2
+        sleep 2  # Reduced sleep time
         ((attempt++))
     done
     
     if [ $attempt -gt $max_attempts ]; then
         log_error "WebSocket server failed to become ready after $max_attempts attempts"
+        log_error "This might be due to ML model loading taking too long"
         exit 1
     fi
     

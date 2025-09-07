@@ -132,6 +132,10 @@ export interface AppStore {
   // WebSocket
   websocket?: WebSocket;
   
+  // localStorage helpers
+  getStoredSurveyId: () => string | null;
+  clearStoredSurveyId: () => void;
+  
   // Actions
   submitRFQ: (rfq: RFQRequest) => Promise<void>;
   fetchSurvey: (surveyId: string) => Promise<void>;

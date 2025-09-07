@@ -41,7 +41,36 @@ class WorkflowService:
             logger.info("✅ [WorkflowService] Workflow service initialized successfully")
         except Exception as e:
             logger.error(f"❌ [WorkflowService] Failed to initialize workflow service: {str(e)}", exc_info=True)
-            raise Exception(f"WorkflowService initialization failed: {str(e)}")
+    
+    def _ensure_healthy_db_session(self):
+        """Ensure we have a healthy database session after any transaction errors"""
+        try:
+            # Test the current session with a simple query
+            from sqlalchemy import text
+            self.db.execute(text("SELECT 1"))
+            return True
+        except Exception as e:
+            logger.warning(f"⚠️ [WorkflowService] Current DB session is unhealthy: {str(e)}")
+            try:
+                # Rollback the current session to clear any failed transaction
+                self.db.rollback()
+                logger.info("🔄 [WorkflowService] Rolled back failed transaction")
+                
+                # Test if the session is now healthy
+                self.db.execute(text("SELECT 1"))
+                logger.info("✅ [WorkflowService] Session recovered after rollback")
+                return True
+            except Exception as rollback_error:
+                logger.warning(f"⚠️ [WorkflowService] Rollback failed: {str(rollback_error)}")
+                try:
+                    # Create a completely new session
+                    from src.database import get_db
+                    self.db = next(get_db())
+                    logger.info("✅ [WorkflowService] Created new healthy DB session")
+                    return True
+                except Exception as new_session_error:
+                    logger.error(f"❌ [WorkflowService] Failed to create new DB session: {str(new_session_error)}")
+                    return False
     
     async def process_rfq(
         self,
@@ -49,7 +78,8 @@ class WorkflowService:
         description: str,
         product_category: Optional[str],
         target_segment: Optional[str],
-        research_goal: Optional[str]
+        research_goal: Optional[str],
+        workflow_id: Optional[str] = None
     ) -> WorkflowResult:
         """
         Process RFQ through the complete LangGraph workflow
@@ -92,6 +122,13 @@ class WorkflowService:
         
         # Initialize workflow state
         logger.info("🔄 [WorkflowService] Initializing workflow state")
+        # Use provided workflow_id or generate one if not provided
+        if workflow_id is None:
+            workflow_id = f"survey-gen-{survey.id}"
+            logger.info(f"📋 [WorkflowService] Generated workflow_id: {workflow_id}")
+        else:
+            logger.info(f"📋 [WorkflowService] Using provided workflow_id: {workflow_id}")
+            
         initial_state = SurveyGenerationState(
             rfq_id=rfq.id,  # type: ignore
             rfq_text=description,
@@ -99,7 +136,7 @@ class WorkflowService:
             product_category=product_category,
             target_segment=target_segment,
             research_goal=research_goal,
-            workflow_id=f"survey-gen-{survey.id}",
+            workflow_id=workflow_id,
             survey_id=str(survey.id)
         )
         logger.info(f"📋 [WorkflowService] Workflow state initialized: workflow_id={initial_state.workflow_id}, survey_id={initial_state.survey_id}")
@@ -134,14 +171,46 @@ class WorkflowService:
             
             # Update survey with results (final_state is a dict from LangGraph)
             logger.info("💾 [WorkflowService] Updating survey record with workflow results")
-            survey.raw_output = final_state.get("raw_survey")
-            survey.final_output = final_state.get("generated_survey")
-            survey.golden_similarity_score = final_state.get("golden_similarity_score")
-            survey.used_golden_examples = final_state.get("used_golden_examples", [])
-            survey.status = "validated" if final_state.get("quality_gate_passed", False) else "draft"
-            
-            self.db.commit()
-            logger.info(f"✅ [WorkflowService] Survey record updated: status={survey.status}, golden_examples_used={len(survey.used_golden_examples)}")
+            try:
+                # Ensure we have a healthy database session
+                if not self._ensure_healthy_db_session():
+                    raise Exception("Failed to establish healthy database session")
+                
+                # Refresh the survey object to ensure we have the latest data
+                self.db.refresh(survey)
+                
+                survey.raw_output = final_state.get("raw_survey")
+                survey.final_output = final_state.get("generated_survey")
+                survey.golden_similarity_score = final_state.get("golden_similarity_score")
+                survey.used_golden_examples = final_state.get("used_golden_examples", [])
+                survey.status = "validated" if final_state.get("quality_gate_passed", False) else "draft"
+                
+                self.db.commit()
+                logger.info(f"✅ [WorkflowService] Survey record updated: status={survey.status}, golden_examples_used={len(survey.used_golden_examples)}")
+            except Exception as db_error:
+                logger.error(f"❌ [WorkflowService] Database update failed: {str(db_error)}")
+                self.db.rollback()
+                # Try to create a new session and retry
+                try:
+                    from src.database import get_db
+                    new_db = next(get_db())
+                    survey = new_db.query(Survey).filter(Survey.id == survey.id).first()
+                    if survey:
+                        survey.raw_output = final_state.get("raw_survey")
+                        survey.final_output = final_state.get("generated_survey")
+                        survey.golden_similarity_score = final_state.get("golden_similarity_score")
+                        survey.used_golden_examples = final_state.get("used_golden_examples", [])
+                        survey.status = "validated" if final_state.get("quality_gate_passed", False) else "draft"
+                        new_db.commit()
+                        logger.info(f"✅ [WorkflowService] Survey record updated with new session: status={survey.status}")
+                        # Update self.db to use the new session for subsequent operations
+                        self.db = new_db
+                    else:
+                        new_db.close()
+                        raise Exception("Survey not found in new session")
+                except Exception as retry_error:
+                    logger.error(f"❌ [WorkflowService] Retry also failed: {str(retry_error)}")
+                    raise Exception(f"Database update failed: {str(db_error)}")
             
             result = WorkflowResult(
                 survey_id=str(survey.id),

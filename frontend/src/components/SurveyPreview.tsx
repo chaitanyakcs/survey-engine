@@ -247,10 +247,11 @@ const QuestionCard: React.FC<{
 };
 
 export const SurveyPreview: React.FC = () => {
-  const { currentSurvey, setSurvey, rfqInput, createGoldenExample } = useAppStore();
+  const { currentSurvey, setSurvey, rfqInput, createGoldenExample, workflow } = useAppStore();
   const [editedSurvey, setEditedSurvey] = useState<Survey | null>(null);
   const [isEditingSurvey, setIsEditingSurvey] = useState(false);
   const [showGoldenModal, setShowGoldenModal] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [goldenFormData, setGoldenFormData] = useState({
     industry_category: '',
     research_goal: '',
@@ -374,9 +375,29 @@ export const SurveyPreview: React.FC = () => {
   };
 
   if (!currentSurvey) {
+    // Check if we're on preview page with a survey ID
+    const urlParams = new URLSearchParams(window.location.search);
+    const surveyId = urlParams.get('surveyId');
+    
+    if (surveyId) {
+      return (
+        <div className="max-w-4xl mx-auto p-6 text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600 mb-2">Loading survey preview...</p>
+          <p className="text-sm text-gray-500">Survey ID: {surveyId}</p>
+        </div>
+      );
+    }
+    
     return (
       <div className="max-w-4xl mx-auto p-6 text-center">
-        <p className="text-gray-500">No survey to preview yet.</p>
+        <p className="text-gray-500 mb-4">No survey to preview yet.</p>
+        <a
+          href="/"
+          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+        >
+          Go to Survey Generator
+        </a>
       </div>
     );
   }
@@ -420,14 +441,14 @@ export const SurveyPreview: React.FC = () => {
               </>
             )}
             <div className="flex items-center space-x-4 text-sm text-gray-500 mt-4">
-              <span>⏱️ ~{surveyToDisplay?.estimated_time} minutes</span>
-              <span>📊 {surveyToDisplay?.questions.length} questions</span>
+              <span>⏱️ ~{surveyToDisplay?.estimated_time || 0} minutes</span>
+              <span>📊 {surveyToDisplay?.questions?.length || 0} questions</span>
             </div>
           </div>
 
           {/* Questions */}
           <div className="space-y-4">
-            {surveyToDisplay?.questions.map((question, index) => (
+            {(surveyToDisplay?.questions || []).map((question, index) => (
               <QuestionCard
                 key={question.id}
                 question={question}
@@ -437,7 +458,7 @@ export const SurveyPreview: React.FC = () => {
                 onRegenerate={handleQuestionRegenerate}
                 onMove={handleMoveQuestion}
                 canMoveUp={index > 0}
-                canMoveDown={index < (surveyToDisplay?.questions.length || 0) - 1}
+                canMoveDown={index < (surveyToDisplay?.questions?.length || 0) - 1}
               />
             ))}
           </div>
@@ -461,6 +482,12 @@ export const SurveyPreview: React.FC = () => {
               </>
             ) : (
               <>
+                <a
+                  href={`/?surveyId=${currentSurvey.survey_id}`}
+                  className="px-6 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+                >
+                  ← Back to Generator
+                </a>
                 <button 
                   onClick={handleStartEditing}
                   className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
@@ -487,6 +514,12 @@ export const SurveyPreview: React.FC = () => {
                   className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
                 >
                   Export
+                </button>
+                <button 
+                  onClick={() => window.location.href = '/'}
+                  className="px-6 py-2 bg-black text-white rounded-md hover:bg-gray-800"
+                >
+                  Start New Survey
                 </button>
               </>
             )}
@@ -662,8 +695,8 @@ export const SurveyPreview: React.FC = () => {
                       {surveyToDisplay.questions.slice(0, 5).map((q, idx) => (
                         <li key={idx} className="truncate">• {q.text}</li>
                       ))}
-                      {surveyToDisplay.questions.length > 5 && (
-                        <li className="text-gray-500">... and {surveyToDisplay.questions.length - 5} more questions</li>
+                      {(surveyToDisplay.questions?.length || 0) > 5 && (
+                        <li className="text-gray-500">... and {(surveyToDisplay.questions?.length || 0) - 5} more questions</li>
                       )}
                     </ul>
                   </div>

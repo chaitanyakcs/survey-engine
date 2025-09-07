@@ -9,6 +9,8 @@ from typing import Optional, Dict, List
 from sqlalchemy import create_engine, Column, Integer, String, JSON, Float, DateTime, Text, UUID as SQLAlchemyUUID, ARRAY
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
+from src.database import get_db
+from src.config import settings
 from pgvector.sqlalchemy import Vector
 import replicate
 import json
@@ -31,67 +33,23 @@ replicate_token = os.getenv("REPLICATE_API_TOKEN", "")
 if replicate_token:
     replicate.api_token = replicate_token
 
-# Database setup
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://chaitanya@localhost:5432/survey_engine_db")
-engine = create_engine(DATABASE_URL, echo=False)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+# Use shared database configuration from src.database
+from src.database import engine, SessionLocal, Base
 
-# Database Models
-class GoldenRFQSurveyPair(Base):
-    __tablename__ = "golden_rfq_survey_pairs"
-    
-    id = Column(SQLAlchemyUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    rfq_text = Column(Text, nullable=False)
-    rfq_embedding = Column(Vector(384), nullable=False)
-    survey_json = Column(JSON, nullable=False)
-    methodology_tags = Column(ARRAY(String), nullable=True)
-    industry_category = Column(String(100), nullable=False)
-    research_goal = Column(String(100), nullable=False)
-    quality_score = Column(Float, default=0.8)
-    usage_count = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+# Use shared database models from src.database
+from src.database import GoldenRFQSurveyPair, RFQ, Survey
 
-class RFQ(Base):
-    __tablename__ = "rfqs"
-    
-    id = Column(SQLAlchemyUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    title = Column(String(200))
-    description = Column(Text, nullable=False)
-    product_category = Column(String(100))
-    target_segment = Column(String(100))
-    research_goal = Column(String(100))
-    embedding = Column(Vector(384))
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-class Survey(Base):
-    __tablename__ = "surveys"
-    
-    id = Column(SQLAlchemyUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    rfq_id = Column(SQLAlchemyUUID(as_uuid=True), nullable=False)
-    status = Column(String(20), default="draft")
-    raw_output = Column(JSON)
-    final_output = Column(JSON)
-    model_version = Column(String(50))
-    golden_similarity_score = Column(Float)
-    used_golden_examples = Column(ARRAY(SQLAlchemyUUID(as_uuid=True)))
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-# Initialize embedding model
+# Initialize embedding model lazily
 embedding_model = None
-try:
-    embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-    print("Embedding model loaded successfully")
-except Exception as e:
-    print(f"Failed to load embedding model: {e}")
+embedding_model_loading = False
+embedding_model_task = None
 
-# Database dependency
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+async def get_embedding_model():
+    """Lazy load the embedding model only when needed - TEMPORARILY DISABLED"""
+    logger.info("🚫 [Model] ML model loading temporarily disabled for debugging")
+    return None  # Return None to indicate no model available
+
+# Use shared database dependency from src.database
 
 app = FastAPI(
     title="Survey Generation Engine - WebSocket Edition",
@@ -102,7 +60,7 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=["*"],  # Allow all origins for production
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -189,9 +147,8 @@ golden_examples: Dict[str, dict] = {}
 
 # RAG Retrieval Functions
 async def get_embedding(text: str, workflow_id: str = None, manager = None) -> List[float]:
-    """Generate embedding for text using SentenceTransformer"""
-    if embedding_model is None:
-        raise ValueError("Embedding model not initialized")
+    """Generate embedding for text using SentenceTransformer - TEMPORARILY DISABLED"""
+    logger.info("🚫 [Embedding] ML model loading temporarily disabled for debugging")
     
     try:
         if workflow_id and manager:
@@ -199,20 +156,17 @@ async def get_embedding(text: str, workflow_id: str = None, manager = None) -> L
                 "type": "progress",
                 "step": "generating_embeddings",
                 "percent": 15,
-                "message": "Generating semantic embeddings for RFQ text..."
+                "message": "Generating semantic embeddings for RFQ text... (using fallback)"
             })
             
         # Add a small delay to make the progress visible
-        await asyncio.sleep(0.8)
+        await asyncio.sleep(0.5)
         
-        # Clean and prepare text
-        cleaned_text = re.sub(r'\s+', ' ', text.strip())
-        
-        # Generate embedding
-        embedding = embedding_model.encode(cleaned_text, normalize_embeddings=True)
-        return embedding.tolist()
+        # Return zero vector as fallback (no ML model loading)
+        logger.info("🔄 [Embedding] Using zero vector fallback instead of ML model")
+        return [0.0] * 384
     except Exception as e:
-        print(f"Embedding generation failed: {e}")
+        logger.error(f"❌ [Embedding] Fallback embedding generation failed: {e}")
         # Return zero vector as fallback
         return [0.0] * 384
 
@@ -296,179 +250,9 @@ async def retrieve_golden_examples(rfq_embedding: List[float], db: Session, max_
         print(f"Golden retrieval failed: {e}")
         return []
 
-async def generate_survey_with_rag(request: RFQSubmissionRequest, db: Session, workflow_id: str = None, manager = None) -> Dict:
-    """Generate survey using RAG with golden examples"""
-    try:
-        # Generate embedding for RFQ
-        rfq_embedding = await get_embedding(request.description, workflow_id, manager)
-        
-        # Retrieve golden examples
-        golden_examples = await retrieve_golden_examples(rfq_embedding, db, 3, workflow_id, manager)
-        
-        # Build context with golden examples
-        if workflow_id and manager:
-            await manager.send_progress(workflow_id, {
-                "type": "progress",
-                "step": "building_context",
-                "percent": 50,
-                "message": "Building RAG context with retrieved golden examples..."
-            })
-            
-        await asyncio.sleep(0.5)  # Simulate context building time
-        
-        context = {
-            "rfq": {
-                "description": request.description,
-                "product_category": request.product_category,
-                "target_segment": request.target_segment,
-                "research_goal": request.research_goal
-            },
-            "golden_examples": golden_examples,
-            "retrieved_methodologies": list(set([
-                tag for example in golden_examples 
-                for tag in example.get("methodology_tags", [])
-            ]))
-        }
-        
-        # Generate survey with enhanced prompt
-        if workflow_id and manager:
-            if replicate_token and golden_examples:
-                await manager.send_progress(workflow_id, {
-                    "type": "progress",
-                    "step": "generating_with_ai",
-                    "percent": 65,
-                    "message": "Generating survey with AI using golden examples context..."
-                })
-                survey = await generate_survey_with_golden_context(context, workflow_id, manager)
-            elif replicate_token:
-                await manager.send_progress(workflow_id, {
-                    "type": "progress", 
-                    "step": "generating_with_ai",
-                    "percent": 65,
-                    "message": "Generating survey with AI (no golden examples found)..."
-                })
-                survey = await generate_survey_with_gpt5(request)
-            else:
-                await manager.send_progress(workflow_id, {
-                    "type": "progress",
-                    "step": "generating_fallback",
-                    "percent": 65,
-                    "message": "Generating survey using fallback templates..."
-                })
-                survey = generate_fallback_survey(request)
-        else:
-            # Original logic without progress updates
-            if replicate_token and golden_examples:
-                survey = await generate_survey_with_golden_context(context)
-            elif replicate_token:
-                survey = await generate_survey_with_gpt5(request)
-            else:
-                survey = generate_fallback_survey(request)
-        
-        return {
-            "survey": survey,
-            "golden_examples_used": golden_examples,
-            "similarity_scores": [ex.get("similarity_score", 0) for ex in golden_examples]
-        }
-        
-    except Exception as e:
-        print(f"RAG generation failed: {e}")
-        # Fallback to original generation
-        return {
-            "survey": generate_fallback_survey(request),
-            "golden_examples_used": [],
-            "similarity_scores": []
-        }
+# Removed: generate_survey_with_rag - now handled by LangGraph workflow
 
-async def generate_survey_with_golden_context(context: Dict, workflow_id: str = None, manager = None) -> Dict:
-    """Generate survey using GPT-5 with golden examples context"""
-    rfq = context["rfq"]
-    golden_examples = context["golden_examples"]
-    methodologies = context["retrieved_methodologies"]
-    
-    # Build enhanced prompt with golden examples
-    golden_context = ""
-    for i, example in enumerate(golden_examples[:2], 1):  # Use top 2 examples
-        golden_context += f"\nGOLDEN EXAMPLE {i} (similarity: {example.get('similarity_score', 0):.3f}):\n"
-        golden_context += f"RFQ: {example['rfq_text'][:200]}...\n"
-        golden_context += f"Survey Questions: {len(example['survey_json'].get('questions', []))} questions\n"
-        golden_context += f"Methodologies: {', '.join(example['methodology_tags'])}\n"
-    
-    prompt = f"""You are an expert survey designer with access to high-quality examples. Create a comprehensive market research survey based on this RFQ, leveraging insights from similar successful surveys.
-
-RFQ DETAILS:
-Description: {rfq['description']}
-Product Category: {rfq.get('product_category', 'General')}
-Target Segment: {rfq.get('target_segment', 'General consumers')}
-Research Goal: {rfq.get('research_goal', 'Market insights')}
-
-RELEVANT GOLDEN EXAMPLES:
-{golden_context}
-
-SUGGESTED METHODOLOGIES: {', '.join(methodologies)}
-
-REQUIREMENTS:
-1. Create 8-15 questions covering key research areas
-2. Use methodologies from golden examples where appropriate
-3. Include screening, core research, and demographic questions
-4. Adapt question types and structures from successful examples
-5. Return valid JSON with this exact structure:
-
-{{
-    "title": "Survey Title",
-    "description": "Brief survey description", 
-    "estimated_time": 12,
-    "questions": [
-        {{
-            "id": "q1",
-            "text": "Question text here",
-            "type": "multiple_choice",
-            "options": ["Option 1", "Option 2", "Option 3"],
-            "required": true,
-            "category": "screening"
-        }}
-    ],
-    "metadata": {{
-        "target_responses": 200,
-        "methodology": ["methodology_tags"]
-    }}
-}}
-
-Generate the survey JSON now:
-"""
-    
-    output = await replicate.async_run(
-        "openai/gpt-5",
-        input={
-            "prompt": prompt,
-            "temperature": 0.7,
-            "max_tokens": 3000,
-            "top_p": 0.9
-        }
-    )
-    
-    # Handle output format
-    if isinstance(output, list):
-        response_text = "".join(output)
-    else:
-        response_text = str(output)
-    
-    # Extract JSON with balanced bracket parsing
-    start_idx = response_text.find('{')
-    if start_idx == -1:
-        raise ValueError("No JSON found in response")
-    
-    bracket_count = 0
-    for i, char in enumerate(response_text[start_idx:], start_idx):
-        if char == '{':
-            bracket_count += 1
-        elif char == '}':
-            bracket_count -= 1
-            if bracket_count == 0:
-                json_text = response_text[start_idx:i+1]
-                return json.loads(json_text)
-    
-    raise ValueError("Invalid JSON structure")
+# Removed: generate_survey_with_golden_context - now handled by LangGraph workflow
 
 def initialize_sample_golden_examples():
     """Initialize some sample golden examples"""
@@ -593,9 +377,83 @@ def initialize_sample_golden_examples():
 # Initialize sample data
 initialize_sample_golden_examples()
 
-async def generate_survey_async(workflow_id: str, survey_id: str, request: RFQSubmissionRequest):
+async def send_progress_with_retry(workflow_id: str, message: dict, max_retries: int = 3):
     """
-    Generate survey with real-time progress updates and RAG integration
+    Send progress message with retry logic to handle connection issues
+    """
+    for attempt in range(max_retries):
+        try:
+            await manager.send_progress(workflow_id, message)
+            logger.debug(f"✅ [WebSocket] Progress sent successfully for workflow_id={workflow_id}, attempt={attempt + 1}")
+            return
+        except Exception as e:
+            logger.warning(f"⚠️ [WebSocket] Failed to send progress for workflow_id={workflow_id}, attempt={attempt + 1}/{max_retries}: {str(e)}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(1)  # Wait 1 second before retry
+            else:
+                logger.error(f"❌ [WebSocket] Failed to send progress after {max_retries} attempts for workflow_id={workflow_id}")
+                # Don't raise exception, just log the failure
+
+async def execute_workflow_async(workflow_id: str, workflow_data: dict):
+    """
+    Execute workflow within WebSocket context to maintain connection
+    """
+    db = next(get_db())
+    try:
+        request = workflow_data.get('request', {})
+        survey_id = workflow_data.get('survey_id')
+        
+        # Step 1: Initialize workflow
+        await send_progress_with_retry(workflow_id, {
+            "type": "progress",
+            "step": "initializing_workflow",
+            "percent": 5,
+            "message": "Initializing LangGraph survey generation workflow..."
+        })
+        
+        # Import and use the proper LangGraph workflow
+        from src.services.workflow_service import WorkflowService
+        
+        # Create workflow service instance
+        workflow_service = WorkflowService(db)
+        
+        # Execute the LangGraph workflow
+        logger.info(f"🚀 [WebSocket] Starting LangGraph workflow execution for workflow_id={workflow_id}")
+        result = await workflow_service.process_rfq(
+            title=request.get('title'),
+            description=request.get('description', ''),
+            product_category=request.get('product_category'),
+            target_segment=request.get('target_segment'),
+            research_goal=request.get('research_goal'),
+            workflow_id=workflow_id  # Pass the workflow_id to ensure consistency
+        )
+        
+        logger.info(f"✅ [WebSocket] LangGraph workflow completed: survey_id={result.survey_id}, status={result.status}")
+        
+        # Send completion message with retry logic
+        await send_progress_with_retry(workflow_id, {
+            "type": "completed",
+            "survey_id": result.survey_id,
+            "status": result.status,
+            "message": "Survey generation completed successfully!"
+        })
+        
+        # Don't clean up workflow data immediately - let the client disconnect gracefully
+        # The client should disconnect after receiving the completion message
+        logger.info(f"✅ [WebSocket] Workflow completed for workflow_id={workflow_id}, waiting for client to disconnect gracefully")
+            
+    except Exception as e:
+        logger.error(f"❌ [WebSocket] Workflow execution failed for workflow_id={workflow_id}: {str(e)}", exc_info=True)
+        await send_progress_with_retry(workflow_id, {
+            "type": "error",
+            "message": f"Workflow execution failed: {str(e)}"
+        })
+    finally:
+        db.close()
+
+async def generate_survey_async(workflow_id: str, survey_id: str, request: dict):
+    """
+    Generate survey using LangGraph workflow with real-time progress updates
     """
     db = next(get_db())
     try:
@@ -604,14 +462,32 @@ async def generate_survey_async(workflow_id: str, survey_id: str, request: RFQSu
             "type": "progress",
             "step": "initializing_workflow",
             "percent": 5,
-            "message": "Initializing survey generation workflow..."
+            "message": "Initializing LangGraph survey generation workflow..."
         })
         
-        # Call RAG-enhanced generation (handles all RAG phases internally)
-        rag_result = await generate_survey_with_rag(request, db, workflow_id, manager)
-        survey = rag_result["survey"]
-        used_golden_examples = rag_result["golden_examples_used"]
-        similarity_scores = rag_result["similarity_scores"]
+        # Import and use the proper LangGraph workflow
+        from src.services.workflow_service import WorkflowService
+        
+        # Create workflow service instance
+        workflow_service = WorkflowService(db)
+        
+        # Execute the LangGraph workflow
+        logger.info(f"🚀 [WebSocket] Starting LangGraph workflow execution for workflow_id={workflow_id}")
+        result = await workflow_service.process_rfq(
+            title=request.get('title'),
+            description=request.get('description', ''),
+            product_category=request.get('product_category'),
+            target_segment=request.get('target_segment'),
+            research_goal=request.get('research_goal'),
+            workflow_id=workflow_id  # Pass the workflow_id to ensure consistency
+        )
+        
+        logger.info(f"✅ [WebSocket] LangGraph workflow completed: survey_id={result.survey_id}, status={result.status}")
+        
+        # Extract results from workflow
+        survey_id = result.survey_id
+        used_golden_examples = result.golden_examples_used
+        similarity_scores = []  # Will be populated by workflow nodes
         
         # Step 2: Post-processing and validation
         await manager.send_progress(workflow_id, {
@@ -621,82 +497,54 @@ async def generate_survey_async(workflow_id: str, survey_id: str, request: RFQSu
             "message": "Processing survey results and calculating quality scores..."
         })
         
-        # Store RFQ in database
-        rfq_embedding = await get_embedding(request.description)  # Generate again for DB storage
-        rfq_record = RFQ(
-            title=request.title,
-            description=request.description,
-            product_category=request.product_category,
-            target_segment=request.target_segment,
-            research_goal=request.research_goal,
-            embedding=rfq_embedding
-        )
-        db.add(rfq_record)
-        db.commit()
-        db.refresh(rfq_record)
+        # Get the completed survey from database
+        survey_record = db.query(Survey).filter(Survey.id == survey_id).first()
+        if not survey_record:
+            logger.error(f"❌ [WebSocket] Survey record not found: {survey_id}")
+            raise Exception(f"Survey record not found: {survey_id}")
         
-        # Calculate confidence score based on similarity
-        if similarity_scores:
-            avg_similarity = sum(similarity_scores) / len(similarity_scores)
-            confidence_score = min(0.95, 0.70 + (avg_similarity * 0.25))
-        else:
-            confidence_score = 0.70
+        # Extract survey data from the workflow result
+        survey_data = survey_record.final_output or survey_record.raw_output
+        if not survey_data:
+            logger.error(f"❌ [WebSocket] No survey data found in record: {survey_id}")
+            raise Exception(f"No survey data found in record: {survey_id}")
+        
+        # Calculate confidence score based on golden examples used
+        confidence_score = 0.70  # Base confidence
+        if used_golden_examples > 0:
+            confidence_score = min(0.95, 0.70 + (used_golden_examples * 0.05))
             
-        # Step 5: Validation & Scoring
-        await manager.send_progress(workflow_id, {
-            "type": "progress",
-            "step": "validation_scoring",
-            "percent": 80,
-            "message": "Validating and scoring survey quality..."
-        })
-        
-        # Create survey record in database
-        # Convert string IDs to UUIDs for the array field
-        used_example_uuids = []
-        for ex in used_golden_examples:
-            try:
-                used_example_uuids.append(uuid.UUID(ex["id"]))
-            except (ValueError, KeyError):
-                pass  # Skip invalid UUIDs
-        
-        survey_record = Survey(
-            rfq_id=rfq_record.id,
-            status="generated",
-            raw_output=survey,
-            final_output=survey,
-            model_version="gpt-5-rag" if replicate_token else "fallback-rag",
-            golden_similarity_score=float(similarity_scores[0]) if similarity_scores else None,
-            used_golden_examples=used_example_uuids
-        )
-        db.add(survey_record)
-        db.commit()
-        
-        # Step 6: Finalizing
+        # Step 3: Finalization
         await manager.send_progress(workflow_id, {
             "type": "progress",
             "step": "finalizing",
             "percent": 95,
-            "message": "Persisting and finalizing..."
+            "message": "Finalizing survey generation..."
         })
         
-        # Store completed survey
-        survey_data = {
+        # Update survey status to completed
+        survey_record.status = "completed"
+        db.commit()
+        logger.info(f"✅ [WebSocket] Updated survey record status to completed: {survey_id}")
+        
+        # Store completed survey in memory for WebSocket responses
+        survey_response_data = {
             "survey_id": survey_id,
-            "title": survey.get("title", request.title or "Generated Survey"),
-            "description": survey.get("description", "AI-generated market research survey"),
-            "estimated_time": survey.get("estimated_time", 10),
+            "title": survey_data.get("title", request.get('title') or "Generated Survey"),
+            "description": survey_data.get("description", "AI-generated market research survey"),
+            "estimated_time": survey_data.get("estimated_time", 10),
             "confidence_score": confidence_score,
-            "methodologies": survey.get("metadata", {}).get("methodology", ["general_survey"]),
-            "golden_examples": [{"id": ex["id"], "title": ex.get("rfq_text", "")[:50] + "...", "category": ex.get("industry_category", "General")} for ex in used_golden_examples[:3]],
-            "questions": survey.get("questions", []),
+            "methodologies": survey_data.get("metadata", {}).get("methodology", ["general_survey"]),
+            "golden_examples": [],  # Will be populated by workflow nodes
+            "questions": survey_data.get("questions", []),
             "metadata": {
-                **survey.get("metadata", {}),
-                "rag_similarity_scores": similarity_scores,
-                "golden_examples_count": len(used_golden_examples)
+                **survey_data.get("metadata", {}),
+                "golden_examples_count": used_golden_examples,
+                "workflow_status": result.status
             },
             "created_at": datetime.now().isoformat()
         }
-        surveys[survey_id] = survey_data
+        surveys[survey_id] = survey_response_data
         
         # Update workflow status
         workflows[workflow_id]["status"] = "completed"
@@ -721,80 +569,7 @@ async def generate_survey_async(workflow_id: str, survey_id: str, request: RFQSu
     finally:
         db.close()
 
-async def generate_survey_with_gpt5(request: RFQSubmissionRequest) -> dict:
-    """Generate survey using GPT-5 via Replicate"""
-    prompt = f"""
-You are an expert survey designer. Create a comprehensive market research survey based on this RFQ.
-
-RFQ DETAILS:
-Title: {request.title or 'Market Research Survey'}
-Description: {request.description}
-Product Category: {request.product_category or 'General'}
-Target Segment: {request.target_segment or 'General consumers'}
-Research Goal: {request.research_goal or 'Market insights'}
-
-REQUIREMENTS:
-1. Create 8-15 questions covering key research areas
-2. Include screening, core research, and demographic questions
-3. Use appropriate question types (multiple choice, scale, text)
-4. Focus on the research goals mentioned
-5. Return valid JSON with this exact structure:
-
-{{
-    "title": "Survey Title",
-    "description": "Brief survey description", 
-    "estimated_time": 12,
-    "questions": [
-        {{
-            "id": "q1",
-            "text": "Question text here",
-            "type": "multiple_choice",
-            "options": ["Option 1", "Option 2", "Option 3"],
-            "required": true,
-            "category": "screening"
-        }}
-    ],
-    "metadata": {{
-        "target_responses": 200,
-        "methodology": ["methodology_tags"]
-    }}
-}}
-
-Generate the survey JSON now:
-"""
-    
-    output = await replicate.async_run(
-        "openai/gpt-5",
-        input={
-            "prompt": prompt,
-            "temperature": 0.7,
-            "max_tokens": 3000,
-            "top_p": 0.9
-        }
-    )
-    
-    # Handle output format
-    if isinstance(output, list):
-        response_text = "".join(output)
-    else:
-        response_text = str(output)
-    
-    # Extract JSON with balanced bracket parsing
-    start_idx = response_text.find('{')
-    if start_idx == -1:
-        raise ValueError("No JSON found in response")
-    
-    bracket_count = 0
-    for i, char in enumerate(response_text[start_idx:], start_idx):
-        if char == '{':
-            bracket_count += 1
-        elif char == '}':
-            bracket_count -= 1
-            if bracket_count == 0:
-                json_text = response_text[start_idx:i+1]
-                return json.loads(json_text)
-    
-    raise ValueError("Invalid JSON structure")
+# Removed: generate_survey_with_gpt5 - now handled by LangGraph workflow
 
 def generate_fallback_survey(request: RFQSubmissionRequest) -> dict:
     """Generate fallback survey using templates"""
@@ -844,33 +619,57 @@ async def root():
 async def health_check():
     return {"status": "healthy", "version": "0.2.0"}
 
+@app.get("/ready")
+async def readiness_check():
+    """Readiness check that doesn't depend on ML models"""
+    return {"status": "ready", "message": "WebSocket server ready to accept connections"}
+
+@app.post("/internal/broadcast/{workflow_id}")
+async def broadcast_progress(workflow_id: str, message: dict):
+    """
+    Internal endpoint for WorkflowService to send progress updates
+    """
+    logger.info(f"📡 [WebSocket Broadcast] Received progress update for workflow_id={workflow_id}: {message.get('type', 'unknown')}")
+    
+    try:
+        # Send progress update to connected WebSocket clients
+        await manager.send_progress(workflow_id, message)
+        logger.info(f"✅ [WebSocket Broadcast] Progress update sent to clients for workflow_id={workflow_id}")
+        return {"status": "success", "message": "Progress update sent"}
+    except Exception as e:
+        logger.error(f"❌ [WebSocket Broadcast] Failed to send progress update for workflow_id={workflow_id}: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
 @app.post("/api/v1/rfq/", response_model=RFQSubmissionResponse)
-async def submit_rfq(request: RFQSubmissionRequest):
+async def submit_rfq(request: dict):
     """
-    Start RFQ processing workflow
+    Start RFQ processing workflow (called from FastAPI)
     """
-    logger.info(f"🚀 [RFQ API] Received RFQ submission: title='{request.title}', description_length={len(request.description)}")
+    logger.info(f"🚀 [WebSocket RFQ] Received RFQ from FastAPI: title='{request.get('title')}', description_length={len(request.get('description', ''))}")
     
-    workflow_id = f"survey-gen-{str(uuid.uuid4())}"
-    survey_id = f"survey-{str(uuid.uuid4())}"
+    # Extract IDs from FastAPI request
+    workflow_id = request.get('workflow_id', f"survey-gen-{str(uuid.uuid4())}")
+    survey_id = request.get('survey_id', f"survey-{str(uuid.uuid4())}")
+    rfq_id = request.get('rfq_id')
     
-    logger.info(f"📋 [RFQ API] Generated workflow_id={workflow_id}, survey_id={survey_id}")
+    logger.info(f"📋 [WebSocket RFQ] Using workflow_id={workflow_id}, survey_id={survey_id}, rfq_id={rfq_id}")
     
     # Store workflow state
     workflows[workflow_id] = {
         "survey_id": survey_id,
-        "request": request.dict(),
+        "rfq_id": rfq_id,
+        "request": request,
         "status": "started",
         "created_at": datetime.now().isoformat()
     }
     
-    logger.info(f"💾 [RFQ API] Stored workflow state for workflow_id={workflow_id}")
+    logger.info(f"💾 [WebSocket RFQ] Stored workflow state for workflow_id={workflow_id}")
     
-    # Start async generation
-    logger.info(f"🔄 [RFQ API] Starting async survey generation task for workflow_id={workflow_id}")
-    asyncio.create_task(generate_survey_async(workflow_id, survey_id, request))
+    # Store workflow data for WebSocket execution
+    logger.info(f"🔄 [WebSocket RFQ] Stored workflow data for WebSocket execution: workflow_id={workflow_id}")
+    # Workflow will be executed when WebSocket connects
     
-    logger.info(f"✅ [RFQ API] RFQ submission completed successfully: workflow_id={workflow_id}, survey_id={survey_id}")
+    logger.info(f"✅ [WebSocket RFQ] RFQ submission completed successfully: workflow_id={workflow_id}, survey_id={survey_id}")
     
     return RFQSubmissionResponse(
         workflow_id=workflow_id,
@@ -886,9 +685,30 @@ async def websocket_endpoint(websocket: WebSocket, workflow_id: str):
     
     try:
         logger.info(f"🔄 [WebSocket Endpoint] Starting message loop for workflow_id={workflow_id}")
+        
+        # Check if this workflow_id has pending work and start it asynchronously
+        if workflow_id in workflows:
+            workflow_data = workflows[workflow_id]
+            logger.info(f"🚀 [WebSocket] Found pending workflow for workflow_id={workflow_id}, starting async execution")
+            
+            # Start workflow asynchronously (non-blocking)
+            asyncio.create_task(execute_workflow_async(workflow_id, workflow_data))
+        
         while True:
             message = await websocket.receive_text()  # Keep connection alive
             logger.debug(f"📨 [WebSocket Endpoint] Received message from workflow_id={workflow_id}: {message}")
+            
+            # Handle keep-alive ping messages
+            try:
+                import json
+                data = json.loads(message)
+                if data.get('type') == 'ping':
+                    logger.debug(f"🏓 [WebSocket] Received ping from workflow_id={workflow_id}")
+                    await websocket.send_text(json.dumps({'type': 'pong'}))
+                    continue
+            except (json.JSONDecodeError, KeyError):
+                # Not a JSON message or not a ping, ignore
+                pass
     except WebSocketDisconnect as e:
         logger.warning(f"🔌❌ [WebSocket Endpoint] Client disconnected workflow_id={workflow_id}: {str(e)}")
         manager.disconnect(workflow_id)
@@ -1122,4 +942,26 @@ async def delete_golden_example(example_id: str, db: Session = Depends(get_db)):
     return {"message": "Golden example deleted successfully"}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    # Start the server with multiple workers to handle concurrent connections
+    logger.info("🚀 [WebSocket] Starting WebSocket server on 0.0.0.0:8001")
+    logger.info("🔧 [WebSocket] Server configuration: host=0.0.0.0, port=8001, workers=1")
+    logger.info("🔧 [WebSocket] Database URL: " + str(settings.database_url))
+    logger.info("🔧 [WebSocket] Debug mode: " + str(settings.debug))
+    
+    # Test database connection
+    try:
+        logger.info("🔧 [WebSocket] Testing database connection...")
+        from sqlalchemy import text
+        db = next(get_db())
+        db.execute(text("SELECT 1"))
+        db.close()
+        logger.info("✅ [WebSocket] Database connection successful")
+    except Exception as e:
+        logger.error(f"❌ [WebSocket] Database connection failed: {str(e)}", exc_info=True)
+        raise
+    
+    try:
+        uvicorn.run(app, host="0.0.0.0", port=8001, workers=1, loop="asyncio")
+    except Exception as e:
+        logger.error(f"❌ [WebSocket] Failed to start server: {str(e)}", exc_info=True)
+        raise

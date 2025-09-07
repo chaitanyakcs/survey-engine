@@ -25,18 +25,18 @@ class WebSocketNotificationService:
                 response = await client.post(
                     f"{self.websocket_server_url}/internal/broadcast/{workflow_id}",
                     json=message,
-                    timeout=5.0
+                    timeout=2.0  # Reduced timeout
                 )
                 
                 if response.status_code == 200:
                     logger.debug(f"✅ [WebSocket Client] Progress update sent successfully for workflow_id={workflow_id}")
                     return True
                 else:
-                    logger.error(f"❌ [WebSocket Client] Failed to send progress update. Status: {response.status_code}")
+                    logger.warning(f"⚠️ [WebSocket Client] WebSocket server not available. Status: {response.status_code} - continuing without real-time updates")
                     return False
                     
         except Exception as e:
-            logger.error(f"❌ [WebSocket Client] Error sending progress update for workflow_id={workflow_id}: {str(e)}")
+            logger.warning(f"⚠️ [WebSocket Client] WebSocket server not available for workflow_id={workflow_id}: {str(e)} - continuing without real-time updates")
             return False
     
     async def notify_workflow_completion(self, workflow_id: str, survey_id: str, status: str) -> bool:

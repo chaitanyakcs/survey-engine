@@ -1,6 +1,6 @@
 from langgraph.graph import StateGraph
 from sqlalchemy.orm import Session
-from typing import Any
+from typing import Any, Dict
 from .state import SurveyGenerationState
 from .nodes import (
     RFQNode,
@@ -10,6 +10,10 @@ from .nodes import (
     GoldenValidatorNode,
     ResearcherNode
 )
+from src.services.websocket_client import WebSocketNotificationService
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def create_workflow(db: Session) -> Any:
@@ -26,13 +30,113 @@ def create_workflow(db: Session) -> Any:
     validator = GoldenValidatorNode(db)
     researcher = ResearcherNode(db)
     
+    # Initialize WebSocket client for progress updates
+    ws_client = WebSocketNotificationService()
+    
+    # Create wrapper functions that send progress updates
+    async def parse_rfq_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
+        """Parse RFQ with progress update"""
+        try:
+            logger.info(f"📡 [Workflow] Sending progress update: parsing_rfq for workflow_id={state.workflow_id}")
+            await ws_client.send_progress_update(state.workflow_id, {
+                "type": "progress",
+                "step": "parsing_rfq",
+                "percent": 10,
+                "message": "Parsing RFQ and analyzing requirements..."
+            })
+            logger.info(f"✅ [Workflow] Progress update sent successfully: parsing_rfq")
+        except Exception as e:
+            logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
+        
+        return await rfq_node(state)
+    
+    async def retrieve_golden_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
+        """Retrieve golden examples with progress update"""
+        try:
+            logger.info(f"📡 [Workflow] Sending progress update: matching_golden_examples for workflow_id={state.workflow_id}")
+            await ws_client.send_progress_update(state.workflow_id, {
+                "type": "progress",
+                "step": "matching_golden_examples",
+                "percent": 25,
+                "message": "Finding templates and matching relevant examples..."
+            })
+            logger.info(f"✅ [Workflow] Progress update sent successfully: matching_golden_examples")
+        except Exception as e:
+            logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
+        
+        return await golden_retriever(state)
+    
+    async def build_context_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
+        """Build context with progress update"""
+        try:
+            logger.info(f"📡 [Workflow] Sending progress update: planning_methodologies for workflow_id={state.workflow_id}")
+            await ws_client.send_progress_update(state.workflow_id, {
+                "type": "progress",
+                "step": "planning_methodologies",
+                "percent": 40,
+                "message": "Planning methods and selecting research approaches..."
+            })
+            logger.info(f"✅ [Workflow] Progress update sent successfully: planning_methodologies")
+        except Exception as e:
+            logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
+        
+        return await context_builder(state)
+    
+    async def generate_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
+        """Generate survey with progress update"""
+        try:
+            logger.info(f"📡 [Workflow] Sending progress update: generating_questions for workflow_id={state.workflow_id}")
+            await ws_client.send_progress_update(state.workflow_id, {
+                "type": "progress",
+                "step": "generating_questions",
+                "percent": 60,
+                "message": "Creating questions and generating survey content..."
+            })
+            logger.info(f"✅ [Workflow] Progress update sent successfully: generating_questions")
+        except Exception as e:
+            logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
+        
+        return await generator(state)
+    
+    async def validate_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
+        """Validate survey with progress update"""
+        try:
+            logger.info(f"📡 [Workflow] Sending progress update: validation_scoring for workflow_id={state.workflow_id}")
+            await ws_client.send_progress_update(state.workflow_id, {
+                "type": "progress",
+                "step": "validation_scoring",
+                "percent": 80,
+                "message": "Validation and quality checking..."
+            })
+            logger.info(f"✅ [Workflow] Progress update sent successfully: validation_scoring")
+        except Exception as e:
+            logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
+        
+        return await validator(state)
+    
+    async def human_review_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
+        """Human review with progress update"""
+        try:
+            logger.info(f"📡 [Workflow] Sending progress update: finalizing for workflow_id={state.workflow_id}")
+            await ws_client.send_progress_update(state.workflow_id, {
+                "type": "progress",
+                "step": "finalizing",
+                "percent": 95,
+                "message": "Finalizing and preparing survey..."
+            })
+            logger.info(f"✅ [Workflow] Progress update sent successfully: finalizing")
+        except Exception as e:
+            logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
+        
+        return await researcher(state)
+    
     # Add nodes to workflow
-    workflow.add_node("parse_rfq", rfq_node)
-    workflow.add_node("retrieve_golden", golden_retriever)
-    workflow.add_node("build_context", context_builder)
-    workflow.add_node("generate", generator)
-    workflow.add_node("validate", validator)
-    workflow.add_node("human_review", researcher)
+    workflow.add_node("parse_rfq", parse_rfq_with_progress)
+    workflow.add_node("retrieve_golden", retrieve_golden_with_progress)
+    workflow.add_node("build_context", build_context_with_progress)
+    workflow.add_node("generate", generate_with_progress)
+    workflow.add_node("validate", validate_with_progress)
+    workflow.add_node("human_review", human_review_with_progress)
     
     # Set entry point
     workflow.set_entry_point("parse_rfq")
