@@ -37,11 +37,7 @@ export interface Question {
   ai_rationale?: string;
 }
 
-export interface GoldenExample {
-  id: string;
-  title: string;
-  category: string;
-}
+// Removed duplicate interface - using the full definition below
 
 export interface SurveyMetadata {
   target_responses: number;

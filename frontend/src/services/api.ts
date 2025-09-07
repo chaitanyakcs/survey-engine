@@ -1,6 +1,8 @@
 import { RFQRequest, RFQSubmissionResponse, Survey } from '../types';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8001/api/v1';
+// For Railway, we need to modify the start script to run only FastAPI on port 8000
+// and expose it directly instead of running both services
+const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
 
 class APIService {
   async submitRFQ(rfq: RFQRequest): Promise<RFQSubmissionResponse> {
@@ -30,7 +32,7 @@ class APIService {
   }
 
   async getWorkflowStatus(workflowId: string): Promise<any> {
-    const response = await fetch(`${API_BASE_URL.replace('/api/v1', '')}/workflow/${workflowId}`);
+    const response = await fetch(`${API_BASE_URL}/workflow/${workflowId}`);
     
     if (!response.ok) {
       throw new Error(`Failed to get workflow status: ${response.statusText}`);

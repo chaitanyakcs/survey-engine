@@ -50,8 +50,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     volumes:
       - ./src:/app/src:ro  # Mount source for development
       - ./websocket_server.py:/app/websocket_server.py:ro

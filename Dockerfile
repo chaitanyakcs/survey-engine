@@ -1,3 +1,14 @@
+# Multi-stage build for full-stack application
+FROM node:18-alpine as frontend-build
+
+# Build React frontend
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+# Python backend stage
 FROM python:3.11-slim
 
 # Set environment variables
@@ -7,31 +18,115 @@ ENV PATH="/root/.local/bin:$PATH"
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies including nginx
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
     libpq-dev \
     gcc \
+    nginx \
     && rm -rf /var/lib/apt/lists/*
 
 # Install UV for fast Python package management
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Copy dependency files
-COPY pyproject.toml uv.lock ./
+COPY requirements-docker.txt ./
 
-# Install dependencies using uv
-RUN uv sync --frozen
+# Install PyTorch CPU version first
+RUN pip install --no-cache-dir torch==2.0.1+cpu torchvision==0.15.2+cpu torchaudio==2.0.2+cpu --index-url https://download.pytorch.org/whl/cpu
 
-# Copy all application code (including websocket_server.py)
+# Install other dependencies
+RUN pip install --no-cache-dir -r requirements-docker.txt
+
+# Pre-download ML models to avoid startup delays
+RUN python3 -c "from sentence_transformers import SentenceTransformer; print('Pre-downloading sentence-transformers model...'); model = SentenceTransformer('all-MiniLM-L6-v2'); print('Model downloaded successfully!'); print('Pre-downloading all model variants...'); model.encode('test text'); print('All model variants downloaded successfully!')"
+
+# Copy all application code
 COPY src/ ./src/
 COPY alembic/ ./alembic/
 COPY alembic.ini ./
 COPY websocket_server.py ./
 COPY start.sh ./
 
-# Make startup script executable and fix permissions
+# Copy built frontend from previous stage
+COPY --from=frontend-build /app/frontend/build /app/frontend/build
+
+# Create nginx configuration
+RUN cat > /etc/nginx/nginx.conf << 'EOF'
+user app;
+worker_processes auto;
+pid /app/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    
+    sendfile on;
+    keepalive_timeout 65;
+    
+    server {
+        listen 80;
+        server_name _;
+        root /app/frontend/build;
+        index index.html;
+
+        # Serve React app
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        # API health check - direct proxy to FastAPI
+        location = /api/health {
+            proxy_pass http://127.0.0.1:8000/health;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # API proxy to FastAPI backend
+        location /api/ {
+            proxy_pass http://127.0.0.1:8000/api/v1/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Connection "";
+            proxy_http_version 1.1;
+            proxy_buffering off;
+            proxy_cache off;
+        }
+
+        # WebSocket proxy
+        location /ws/ {
+            proxy_pass http://127.0.0.1:8001/;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # Health check endpoint - proxy to FastAPI (exact match)
+        location = /health {
+            proxy_pass http://127.0.0.1:8000/health;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
+}
+EOF
+
+# Make startup script executable
 RUN chmod +x /app/start.sh && \
     chmod +x /app/websocket_server.py
 
@@ -45,16 +140,21 @@ RUN useradd --create-home --shell /bin/bash app
 RUN cp /root/.local/bin/uv /usr/local/bin/uv && \
     chmod +x /usr/local/bin/uv
 
+# Make nginx runnable by app user and set up directories
+RUN chmod +x /usr/sbin/nginx && \
+    mkdir -p /var/log/nginx /var/lib/nginx /var/cache/nginx && \
+    chown -R app:app /var/log/nginx /var/lib/nginx /var/cache/nginx /etc/nginx
+
 RUN chown -R app:app /app
 
 USER app
 
-# Expose port (will be overridden by Railway)
-EXPOSE 8000
+# Expose port (Railway will assign PORT environment variable)
+EXPOSE ${PORT:-80}
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
+    CMD curl -f http://localhost:${PORT:-80}/health || exit 1
 
 # Start the application
 CMD ["/app/start.sh"]

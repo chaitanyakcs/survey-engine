@@ -533,8 +533,8 @@ export const SurveyPreview: React.FC = () => {
               <div className="space-y-2">
                 {surveyToDisplay.golden_examples.map((example) => (
                   <div key={example.id} className="p-2 bg-gray-50 rounded">
-                    <p className="text-sm font-medium text-gray-700">{example.title}</p>
-                    <p className="text-xs text-gray-500">{example.category}</p>
+                    <p className="text-sm font-medium text-gray-700">{example.industry_category}</p>
+                    <p className="text-xs text-gray-500">{example.research_goal}</p>
                   </div>
                 ))}
               </div>

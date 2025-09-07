@@ -109,10 +109,9 @@ test_startup() {
     fi
     
     if docker-compose ps redis | grep -q "Up"; then
-        log_success "Redis is running"
+        log_success "Redis is running (optional)"
     else
-        log_error "Redis failed to start"
-        exit 1
+        log_warning "Redis is not running (optional - app will work without it)"
     fi
     
     # Clean up

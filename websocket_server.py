@@ -20,6 +20,11 @@ import os
 import re
 import numpy as np
 from sentence_transformers import SentenceTransformer
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Initialize Replicate
 replicate_token = os.getenv("REPLICATE_API_TOKEN", "")
@@ -151,19 +156,29 @@ class ConnectionManager:
         self.active_connections: Dict[str, WebSocket] = {}
 
     async def connect(self, websocket: WebSocket, workflow_id: str):
+        logger.info(f"🔌 [WebSocket] Accepting connection for workflow_id={workflow_id}")
         await websocket.accept()
         self.active_connections[workflow_id] = websocket
+        logger.info(f"✅ [WebSocket] Connection established for workflow_id={workflow_id}. Total active: {len(self.active_connections)}")
 
     def disconnect(self, workflow_id: str):
         if workflow_id in self.active_connections:
+            logger.info(f"🔌❌ [WebSocket] Disconnecting workflow_id={workflow_id}")
             del self.active_connections[workflow_id]
+            logger.info(f"🔌❌ [WebSocket] Connection closed for workflow_id={workflow_id}. Total active: {len(self.active_connections)}")
+        else:
+            logger.warning(f"⚠️ [WebSocket] Attempted to disconnect non-existent workflow_id={workflow_id}")
 
     async def send_progress(self, workflow_id: str, message: dict):
         if workflow_id in self.active_connections:
             try:
+                logger.debug(f"📨 [WebSocket] Sending message to workflow_id={workflow_id}: {message.get('type', 'unknown')}")
                 await self.active_connections[workflow_id].send_json(message)
-            except Exception:
+            except Exception as e:
+                logger.error(f"❌ [WebSocket] Failed to send message to workflow_id={workflow_id}: {str(e)}")
                 self.disconnect(workflow_id)
+        else:
+            logger.warning(f"⚠️ [WebSocket] Attempted to send to non-existent workflow_id={workflow_id}")
 
 manager = ConnectionManager()
 
@@ -834,8 +849,12 @@ async def submit_rfq(request: RFQSubmissionRequest):
     """
     Start RFQ processing workflow
     """
+    logger.info(f"🚀 [RFQ API] Received RFQ submission: title='{request.title}', description_length={len(request.description)}")
+    
     workflow_id = f"survey-gen-{str(uuid.uuid4())}"
     survey_id = f"survey-{str(uuid.uuid4())}"
+    
+    logger.info(f"📋 [RFQ API] Generated workflow_id={workflow_id}, survey_id={survey_id}")
     
     # Store workflow state
     workflows[workflow_id] = {
@@ -845,8 +864,13 @@ async def submit_rfq(request: RFQSubmissionRequest):
         "created_at": datetime.now().isoformat()
     }
     
+    logger.info(f"💾 [RFQ API] Stored workflow state for workflow_id={workflow_id}")
+    
     # Start async generation
+    logger.info(f"🔄 [RFQ API] Starting async survey generation task for workflow_id={workflow_id}")
     asyncio.create_task(generate_survey_async(workflow_id, survey_id, request))
+    
+    logger.info(f"✅ [RFQ API] RFQ submission completed successfully: workflow_id={workflow_id}, survey_id={survey_id}")
     
     return RFQSubmissionResponse(
         workflow_id=workflow_id,
@@ -856,11 +880,20 @@ async def submit_rfq(request: RFQSubmissionRequest):
 
 @app.websocket("/ws/survey/{workflow_id}")
 async def websocket_endpoint(websocket: WebSocket, workflow_id: str):
+    logger.info(f"🌐 [WebSocket Endpoint] New WebSocket connection request for workflow_id={workflow_id}")
+    
     await manager.connect(websocket, workflow_id)
+    
     try:
+        logger.info(f"🔄 [WebSocket Endpoint] Starting message loop for workflow_id={workflow_id}")
         while True:
-            await websocket.receive_text()  # Keep connection alive
-    except WebSocketDisconnect:
+            message = await websocket.receive_text()  # Keep connection alive
+            logger.debug(f"📨 [WebSocket Endpoint] Received message from workflow_id={workflow_id}: {message}")
+    except WebSocketDisconnect as e:
+        logger.warning(f"🔌❌ [WebSocket Endpoint] Client disconnected workflow_id={workflow_id}: {str(e)}")
+        manager.disconnect(workflow_id)
+    except Exception as e:
+        logger.error(f"❌ [WebSocket Endpoint] Unexpected error for workflow_id={workflow_id}: {str(e)}", exc_info=True)
         manager.disconnect(workflow_id)
 
 @app.get("/api/v1/survey/{survey_id}", response_model=SurveyResponse)
@@ -872,6 +905,19 @@ async def get_survey(survey_id: str):
         raise HTTPException(status_code=404, detail="Survey not found")
     
     return SurveyResponse(**surveys[survey_id])
+
+
+@app.post("/internal/broadcast/{workflow_id}")
+async def internal_broadcast_progress(workflow_id: str, message: dict):
+    """
+    Internal endpoint for FastAPI to broadcast progress updates via WebSocket
+    """
+    logger.info(f"🔄 [Internal Broadcast] Received broadcast request for workflow_id={workflow_id}: {message.get('type', 'unknown')}")
+    
+    await manager.send_progress(workflow_id, message)
+    
+    logger.debug(f"📤 [Internal Broadcast] Message broadcasted for workflow_id={workflow_id}")
+    return {"status": "broadcasted"}
 
 @app.get("/api/v1/workflow/{workflow_id}")
 async def get_workflow_status(workflow_id: str):

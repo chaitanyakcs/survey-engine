@@ -5,6 +5,8 @@ from uuid import UUID
 
 class SurveyGenerationState(BaseModel):
     rfq_id: Optional[UUID] = None
+    survey_id: Optional[str] = None
+    workflow_id: Optional[str] = None
     rfq_text: str
     rfq_title: Optional[str] = None
     product_category: Optional[str] = None

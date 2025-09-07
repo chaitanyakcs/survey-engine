@@ -4,6 +4,9 @@ from src.database import get_db
 from src.services.workflow_service import WorkflowService
 from pydantic import BaseModel
 from typing import Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rfq", tags=["RFQ"])
 
@@ -32,8 +35,13 @@ async def submit_rfq(
     Submit new RFQ for survey generation
     Returns: survey_id, estimated_completion_time, golden_examples_used
     """
+    logger.info(f"🚀 [RFQ API] Received RFQ submission: title='{request.title}', description_length={len(request.description)}, product_category='{request.product_category}'")
+    
     try:
+        logger.info("📋 [RFQ API] Creating WorkflowService instance")
         workflow_service = WorkflowService(db)
+        
+        logger.info("⚙️ [RFQ API] Starting workflow processing...")
         result = await workflow_service.process_rfq(
             title=request.title,
             description=request.description,
@@ -42,12 +50,18 @@ async def submit_rfq(
             research_goal=request.research_goal
         )
         
-        return RFQSubmissionResponse(
+        logger.info(f"✅ [RFQ API] Workflow completed successfully: survey_id={result.survey_id}, status={result.status}, golden_examples_used={result.golden_examples_used}")
+        
+        response = RFQSubmissionResponse(
             survey_id=str(result.survey_id),
             estimated_completion_time=result.estimated_completion_time,
             golden_examples_used=result.golden_examples_used,
             status=result.status
         )
         
+        logger.info(f"🎉 [RFQ API] Returning response: {response.model_dump()}")
+        return response
+        
     except Exception as e:
+        logger.error(f"❌ [RFQ API] Failed to process RFQ: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to process RFQ: {str(e)}")

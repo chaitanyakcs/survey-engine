@@ -6,6 +6,9 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from uuid import UUID
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/survey", tags=["Survey"])
 
@@ -42,24 +45,41 @@ async def get_survey(
     Retrieve generated survey
     Include: golden_similarity_score, validation_results, edit_suggestions
     """
-    survey_service = SurveyService(db)
-    survey = survey_service.get_survey(survey_id)
+    logger.info(f"🔍 [Survey API] Retrieving survey: survey_id={survey_id}")
     
-    if not survey:
-        raise HTTPException(status_code=404, detail="Survey not found")
-    
-    validation_results = survey_service.get_validation_results(survey_id)
-    edit_suggestions = survey_service.get_edit_suggestions(survey_id)
-    
-    return SurveyResponse(
-        id=str(survey.id),
-        status=survey.status,  # type: ignore
-        raw_output=survey.raw_output,  # type: ignore
-        final_output=survey.final_output,  # type: ignore
-        golden_similarity_score=float(survey.golden_similarity_score) if survey.golden_similarity_score else None,  # type: ignore
-        validation_results=validation_results,
-        edit_suggestions=edit_suggestions
-    )
+    try:
+        survey_service = SurveyService(db)
+        logger.info("📋 [Survey API] Created SurveyService, querying database")
+        
+        survey = survey_service.get_survey(survey_id)
+        
+        if not survey:
+            logger.warning(f"❌ [Survey API] Survey not found in database: survey_id={survey_id}")
+            raise HTTPException(status_code=404, detail="Survey not found")
+        
+        logger.info(f"✅ [Survey API] Survey found: id={survey.id}, status={survey.status}")
+        
+        validation_results = survey_service.get_validation_results(survey_id)
+        edit_suggestions = survey_service.get_edit_suggestions(survey_id)
+        
+        response = SurveyResponse(
+            id=str(survey.id),
+            status=survey.status,  # type: ignore
+            raw_output=survey.raw_output,  # type: ignore
+            final_output=survey.final_output,  # type: ignore
+            golden_similarity_score=float(survey.golden_similarity_score) if survey.golden_similarity_score else None,  # type: ignore
+            validation_results=validation_results,
+            edit_suggestions=edit_suggestions
+        )
+        
+        logger.info(f"🎉 [Survey API] Returning survey response: status={response.status}")
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [Survey API] Unexpected error retrieving survey {survey_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @router.put("/{survey_id}/edit")
