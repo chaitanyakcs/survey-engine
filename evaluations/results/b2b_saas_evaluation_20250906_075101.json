@@ -1,0 +1,333 @@
+{
+  "test_case_id": "b2b_saas_evaluation",
+  "timestamp": "2025-09-06T07:51:01.355170",
+  "processing_time_seconds": 22.32,
+  "rfq_input": "\n        We need comprehensive research for B2B SaaS platform evaluation targeting mid-market companies (500-2000 employees).\n        Key research areas: decision-making process mapping, stakeholder influence analysis, feature importance across different user roles,\n        implementation timeline expectations, budget approval workflows, competitive landscape analysis (Salesforce, HubSpot, Microsoft),\n        TCO considerations, security compliance requirements, and integration complexity concerns.\n        Use conjoint analysis for feature trade-offs, MaxDiff for priority ranking, Van Westendorp for pricing sensitivity across user tiers,\n        and brand perception mapping. Need to segment by company size, industry vertical, and current tech stack maturity.\n        Target: IT directors, business users, procurement teams, and C-level executives. Minimum 200 qualified responses.\n        ",
+  "generated_survey": {
+    "title": "B2B SaaS Evaluation: Decision Process, Feature Trade-offs, and Pricing Sensitivity",
+    "description": "This survey evaluates how mid-market companies (500\u20132,000 employees) assess B2B SaaS platforms, including stakeholders, decision workflows, feature priorities, pricing sensitivity, competitive perceptions, compliance, integrations, and total cost of ownership.",
+    "estimated_time": 12,
+    "questions": [
+      {
+        "id": "q1",
+        "text": "Which of the following best describes your role in purchasing or renewing B2B SaaS platforms for your organization?",
+        "type": "multiple_choice",
+        "options": [
+          "C-level executive (e.g., CIO, CTO, CFO)",
+          "IT Director/Manager",
+          "Procurement/Sourcing",
+          "Business stakeholder/user lead (e.g., Sales Ops, Marketing Ops, RevOps)",
+          "Security/Compliance lead",
+          "No involvement"
+        ],
+        "required": true,
+        "category": "screening"
+      },
+      {
+        "id": "q2",
+        "text": "How many full-time employees does your organization have?",
+        "type": "multiple_choice",
+        "options": [
+          "Fewer than 500",
+          "500\u2013999",
+          "1,000\u20131,499",
+          "1,500\u20132,000",
+          "More than 2,000"
+        ],
+        "required": true,
+        "category": "screening"
+      },
+      {
+        "id": "q3",
+        "text": "Which vendors are currently in use or under active consideration for your CRM/RevOps stack? Select all that apply.",
+        "type": "multiple_select",
+        "options": [
+          "Salesforce",
+          "HubSpot",
+          "Microsoft (Dynamics 365, Azure ecosystem)",
+          "Other (e.g., Zoho, Freshworks)",
+          "Custom/Internally built",
+          "None/Not applicable"
+        ],
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q4",
+        "text": "Map the typical decision-making process for selecting a new B2B SaaS platform in your organization. Select all stakeholders who have meaningful influence.",
+        "type": "multiple_select",
+        "options": [
+          "Executive sponsor (CIO/CTO/CFO)",
+          "IT leadership (Director/Manager)",
+          "Business owner (Sales/Marketing/CS/Operations lead)",
+          "End users/power users",
+          "Procurement/Sourcing",
+          "Security/Compliance",
+          "Data/Analytics team",
+          "Legal",
+          "Finance/FP&A"
+        ],
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q5",
+        "text": "Please allocate 100 points across the following decision factors to reflect their relative influence in your organization\u2019s final selection (must total 100).",
+        "type": "allocation",
+        "options": [
+          "Core feature fit",
+          "Integration effort/compatibility",
+          "Security/compliance certifications",
+          "Total cost of ownership (incl. implementation, training, support)",
+          "Usability/adoption",
+          "Vendor reputation/roadmap",
+          "Implementation timeline to go-live"
+        ],
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q6",
+        "text": "MaxDiff: From the following list of potential platform capabilities, indicate the MOST important and LEAST important for your organization.",
+        "type": "maxdiff",
+        "options": [
+          "Role-based access control and SSO (SAML/SCIM)",
+          "Advanced reporting and customizable dashboards",
+          "Open APIs and pre-built connectors (Salesforce, HubSpot, Microsoft, data warehouses)",
+          "Workflow automation and approvals",
+          "Data governance and audit logs",
+          "Scalability/performance SLAs",
+          "In-app collaboration/notes",
+          "Low-code/no-code configuration",
+          "Customer support quality (SLA, tiers)",
+          "Mobile access and offline capabilities"
+        ],
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q7",
+        "text": "Conjoint choice task: Please select the option you would most likely choose if these were your only choices.",
+        "type": "conjoint",
+        "options": [
+          {
+            "profile": {
+              "Feature tier": "Standard",
+              "Security": "SOC 2 Type II",
+              "Integrations": "Salesforce + HubSpot",
+              "Implementation": "8 weeks",
+              "Price per user/month": "$45"
+            }
+          },
+          {
+            "profile": {
+              "Feature tier": "Professional",
+              "Security": "SOC 2 Type II + SSO/SCIM",
+              "Integrations": "Salesforce + HubSpot + Microsoft",
+              "Implementation": "12 weeks",
+              "Price per user/month": "$75"
+            }
+          },
+          {
+            "profile": {
+              "Feature tier": "Enterprise",
+              "Security": "SOC 2 Type II + ISO 27001 + SSO/SCIM + DLP",
+              "Integrations": "All major + Custom API",
+              "Implementation": "16 weeks with dedicated PM",
+              "Price per user/month": "$105"
+            }
+          }
+        ],
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q8",
+        "text": "Van Westendorp Price Sensitivity Meter: For a typical user license of a B2B SaaS platform in this category, at what price per user per month would you consider it...",
+        "type": "matrix_text",
+        "options": [
+          "Too cheap (quality concerns)",
+          "Cheap (good value)",
+          "Expensive (still consider)",
+          "Too expensive (would not consider)"
+        ],
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q9",
+        "text": "How would you rate each vendor on overall brand perception for mid-market needs?",
+        "type": "matrix_scale",
+        "options": [
+          "Salesforce",
+          "HubSpot",
+          "Microsoft (Dynamics/Azure)"
+        ],
+        "scale": {
+          "min_label": "Very unfavorable",
+          "max_label": "Very favorable",
+          "min": 1,
+          "max": 7
+        },
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q10",
+        "text": "Please indicate your organization\u2019s typical budget approval workflow for new SaaS over $100k annual contract value.",
+        "type": "multiple_choice",
+        "options": [
+          "Single approver (department head)",
+          "Multi-step (department head -> procurement -> finance)",
+          "Executive committee/steering approval",
+          "Board-level or CFO sign-off required",
+          "Not sure/varies"
+        ],
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q11",
+        "text": "Rate your expectations and current state for implementation timeline and integration complexity.",
+        "type": "matrix_scale",
+        "options": [
+          "Expected time-to-go-live for a new platform",
+          "Perceived integration complexity with current stack",
+          "Acceptable internal resource commitment (FTEs)"
+        ],
+        "scale": {
+          "min_label": "Very low/short",
+          "max_label": "Very high/long",
+          "min": 1,
+          "max": 7
+        },
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q12",
+        "text": "Which security and compliance requirements are mandatory for vendors to pass in your organization? Select all that apply.",
+        "type": "multiple_select",
+        "options": [
+          "SOC 2 Type II",
+          "ISO 27001",
+          "HIPAA",
+          "GDPR readiness (DPA, SCCs)",
+          "SSO/SCIM, MFA",
+          "Penetration test reports",
+          "Data residency options",
+          "None of the above"
+        ],
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q13",
+        "text": "How do you estimate Total Cost of Ownership (TCO) when evaluating platforms? Select all that apply.",
+        "type": "multiple_select",
+        "options": [
+          "Licenses/subscriptions",
+          "Implementation partner costs",
+          "Internal staffing/training time",
+          "Data migration and integration development",
+          "Ongoing admin/maintenance",
+          "Support/premium success plans",
+          "Change management/user adoption programs"
+        ],
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q14",
+        "text": "Industry vertical",
+        "type": "multiple_choice",
+        "options": [
+          "Technology/SaaS",
+          "Manufacturing",
+          "Financial Services",
+          "Healthcare/Life Sciences",
+          "Retail/E-commerce",
+          "Professional Services",
+          "Telecom/Media",
+          "Education/Non-profit",
+          "Other"
+        ],
+        "required": true,
+        "category": "demographic"
+      },
+      {
+        "id": "q15",
+        "text": "How would you describe your current go-to-market tech stack maturity?",
+        "type": "multiple_choice",
+        "options": [
+          "Foundational (basic CRM + limited automation)",
+          "Developing (CRM + marketing/sales automation + BI pilots)",
+          "Advanced (integrated CRM, MAP, CPQ, CS platform, data warehouse)",
+          "Leading (real-time CDP, advanced analytics/ML, extensive automation)"
+        ],
+        "required": true,
+        "category": "demographic"
+      }
+    ],
+    "metadata": {
+      "target_responses": 200,
+      "methodology": [
+        "screening",
+        "maxdiff",
+        "conjoint",
+        "van_westendorp",
+        "brand_perception",
+        "segmentation"
+      ]
+    }
+  },
+  "model_used": "gpt-5-via-replicate",
+  "used_ai_generation": true,
+  "golden_examples_used": [],
+  "similarity_score": null,
+  "analysis": {
+    "title_generated": true,
+    "description_generated": true,
+    "questions_count": 15,
+    "estimated_time": 12,
+    "methodologies_detected": [
+      "screening",
+      "maxdiff",
+      "conjoint",
+      "van_westendorp",
+      "brand_perception",
+      "segmentation"
+    ],
+    "meets_min_questions": true,
+    "has_advanced_methodologies": true,
+    "quality_indicators": {
+      "has_screening_questions": true,
+      "has_scale_questions": false,
+      "has_multiple_choice": true,
+      "has_methodology_tags": false,
+      "has_categories": true
+    },
+    "methodology_match": {
+      "expected": [
+        "brand_perception",
+        "conjoint_analysis",
+        "maxdiff",
+        "van_westendorp"
+      ],
+      "detected": [
+        "segmentation",
+        "maxdiff",
+        "van_westendorp",
+        "brand_perception",
+        "conjoint",
+        "screening"
+      ],
+      "intersection": [
+        "van_westendorp",
+        "maxdiff",
+        "brand_perception"
+      ],
+      "coverage_percentage": 75.0
+    }
+  }
+}

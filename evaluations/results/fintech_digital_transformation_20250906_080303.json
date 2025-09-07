@@ -1,0 +1,313 @@
+{
+  "test_case_id": "fintech_digital_transformation",
+  "timestamp": "2025-09-06T08:03:03.525780",
+  "processing_time_seconds": 18.29,
+  "rfq_input": "\n        Multi-phase study on digital banking transformation for regional banks competing with fintech disruptors. \n        Research objectives: customer journey mapping across digital touchpoints, security vs convenience trade-offs, \n        generational differences in banking preferences, willingness to switch banks for better digital experience,\n        feature importance using MaxDiff methodology, price sensitivity for premium digital services using PSM,\n        competitive benchmarking against Chase, Bank of America, and fintech players like Chime and SoFi.\n        Include implicit testing for trust and security perceptions. Need segmentation analysis by age, income, and tech adoption.\n        Target: 18-65 banking customers, mix of current digital users and traditional branch users. 400+ responses required.\n        ",
+  "generated_survey": {
+    "title": "Evaluation Test: Fintech Digital Transformation Survey",
+    "description": "Multi-phase study on digital banking transformation for regional banks competing with fintech disruptors. Covers customer journey mapping, security vs convenience trade-offs, generational differences, switching intent, MaxDiff feature importance, PSM for premium services, competitive benchmarking, and implicit trust/security testing.",
+    "estimated_time": 8,
+    "questions": [
+      {
+        "id": "q1",
+        "text": "Which of the following best describes your primary banking status?",
+        "type": "multiple_choice",
+        "options": [
+          "I have an active checking or savings account with a bank or credit union",
+          "I only use fintech apps (e.g., Chime, SoFi) without a traditional bank",
+          "I am unbanked (no bank or fintech account)"
+        ],
+        "required": true,
+        "category": "screening",
+        "logic": {
+          "terminate_if": [
+            "I am unbanked (no bank or fintech account)"
+          ]
+        }
+      },
+      {
+        "id": "q2",
+        "text": "How do you primarily access your banking services?",
+        "type": "multiple_choice",
+        "options": [
+          "Mostly mobile app",
+          "Mostly desktop/online banking",
+          "Even mix of digital and branch/phone",
+          "Mostly in-branch or phone (limited digital use)"
+        ],
+        "required": true,
+        "category": "screening"
+      },
+      {
+        "id": "q3",
+        "text": "Which providers do you currently use? Select all that apply.",
+        "type": "multiple_select",
+        "options": [
+          "Chase",
+          "Bank of America",
+          "Wells Fargo",
+          "Regional/community bank or credit union",
+          "Chime",
+          "SoFi",
+          "Other fintech (e.g., Cash App, Varo)",
+          "Other traditional bank (not listed)"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q4",
+        "text": "Thinking about your digital banking experience over the past 3 months, how satisfied are you with each touchpoint?",
+        "type": "matrix_scale",
+        "scale": {
+          "labels": [
+            "Very dissatisfied",
+            "Dissatisfied",
+            "Neutral",
+            "Satisfied",
+            "Very satisfied"
+          ],
+          "values": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ]
+        },
+        "rows": [
+          "Account opening/onboarding",
+          "Mobile app usability/navigation",
+          "Money movement (P2P, transfers, bill pay)",
+          "Customer support (chat/call-back/messages)",
+          "Security features (2FA, biometrics, alerts)",
+          "Issue resolution speed",
+          "Personalization (offers, insights, budgeting)"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q5",
+        "text": "When banking digitally, how do you personally balance security and convenience?",
+        "type": "multiple_choice",
+        "options": [
+          "Strongly prefer security even if less convenient",
+          "Slightly prefer security over convenience",
+          "Balanced equally",
+          "Slightly prefer convenience over security",
+          "Strongly prefer convenience even if less secure"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q6",
+        "text": "Implicit trust and security perceptions task: For each brand, select the first word you associate with it as quickly as possible.",
+        "type": "implicit_association",
+        "brands": [
+          "Your Regional Bank",
+          "Chase",
+          "Bank of America",
+          "Chime",
+          "SoFi"
+        ],
+        "associations": [
+          "Trustworthy",
+          "Secure",
+          "Innovative",
+          "Convenient",
+          "Complicated",
+          "Risky"
+        ],
+        "measure_rt_ms": true,
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q7",
+        "text": "MaxDiff: Which mobile/digital banking features are MOST and LEAST important to you?",
+        "type": "maxdiff",
+        "items": [
+          "Real-time fraud alerts and card controls",
+          "Biometric login and step-up authentication",
+          "Instant P2P payments (e.g., Zelle) and external transfers",
+          "Early paycheck access",
+          "High-yield savings and automated round-ups",
+          "Fee transparency and low/no monthly fees",
+          "Smart budgeting and spending insights",
+          "24/7 human support (chat/voice)",
+          "Seamless account opening in minutes",
+          "Integrated credit score monitoring",
+          "ATM fee reimbursements",
+          "Cash-back or rewards on debit spend"
+        ],
+        "design": {
+          "blocks": 6,
+          "items_per_task": 4
+        },
+        "required": true,
+        "category": "core",
+        "methodology": "maxdiff"
+      },
+      {
+        "id": "q8",
+        "text": "Price Sensitivity Meter (PSM) for a premium digital bundle (priority support, enhanced security, advanced insights). At what monthly price would you consider this...",
+        "type": "psm",
+        "questions": [
+          "Too cheap (quality would be questionable)",
+          "A bargain (great value)",
+          "Getting expensive (but still consider)",
+          "Too expensive (would not consider)"
+        ],
+        "currency": "USD",
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q9",
+        "text": "How likely are you to switch your primary bank in the next 12 months to get a better digital experience?",
+        "type": "scale",
+        "scale": {
+          "labels": [
+            "Not at all likely",
+            "Extremely likely"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q10",
+        "text": "Which competitor currently offers the best overall digital experience in your view?",
+        "type": "multiple_choice",
+        "options": [
+          "Chase",
+          "Bank of America",
+          "Chime",
+          "SoFi",
+          "A regional/community bank",
+          "None stand out",
+          "Not sure"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q11",
+        "text": "Age",
+        "type": "multiple_choice",
+        "options": [
+          "18-24",
+          "25-34",
+          "35-44",
+          "45-54",
+          "55-65"
+        ],
+        "required": true,
+        "category": "demographic"
+      },
+      {
+        "id": "q12",
+        "text": "Household income (annual, before taxes)",
+        "type": "multiple_choice",
+        "options": [
+          "Under $25,000",
+          "$25,000-$49,999",
+          "$50,000-$74,999",
+          "$75,000-$99,999",
+          "$100,000-$149,999",
+          "$150,000+",
+          "Prefer not to say"
+        ],
+        "required": true,
+        "category": "demographic"
+      },
+      {
+        "id": "q13",
+        "text": "How would you describe your level of technology adoption?",
+        "type": "multiple_choice",
+        "options": [
+          "Early adopter (try new tech first)",
+          "Early majority",
+          "Late majority",
+          "Laggard (adopt only when necessary)"
+        ],
+        "required": true,
+        "category": "demographic"
+      }
+    ],
+    "metadata": {
+      "target_responses": 400,
+      "methodology": [
+        "conjoint_analysis",
+        "psm",
+        "maxdiff",
+        "implicit_association",
+        "journey_mapping",
+        "van_westendorp",
+        "competitive_benchmarking",
+        "segmentation_by_age_income_tech_adoption",
+        "implicit_testing"
+      ]
+    }
+  },
+  "model_used": "gpt-5-via-replicate",
+  "used_ai_generation": true,
+  "golden_examples_used": [],
+  "similarity_score": null,
+  "analysis": {
+    "title_generated": true,
+    "description_generated": true,
+    "questions_count": 13,
+    "estimated_time": 8,
+    "methodologies_detected": [
+      "conjoint_analysis",
+      "psm",
+      "maxdiff",
+      "implicit_association",
+      "journey_mapping",
+      "van_westendorp",
+      "competitive_benchmarking",
+      "segmentation_by_age_income_tech_adoption",
+      "implicit_testing"
+    ],
+    "meets_min_questions": false,
+    "has_advanced_methodologies": true,
+    "quality_indicators": {
+      "has_screening_questions": true,
+      "has_scale_questions": true,
+      "has_multiple_choice": true,
+      "has_methodology_tags": true,
+      "has_categories": true
+    },
+    "methodology_match": {
+      "expected": [
+        "journey_mapping",
+        "implicit_testing",
+        "psm",
+        "maxdiff"
+      ],
+      "detected": [
+        "conjoint_analysis",
+        "psm",
+        "maxdiff",
+        "implicit_association",
+        "journey_mapping",
+        "van_westendorp",
+        "competitive_benchmarking",
+        "segmentation_by_age_income_tech_adoption",
+        "implicit_testing"
+      ],
+      "intersection": [
+        "maxdiff",
+        "journey_mapping",
+        "implicit_testing",
+        "psm"
+      ],
+      "coverage_percentage": 100.0
+    }
+  }
+}

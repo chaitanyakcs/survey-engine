@@ -1,0 +1,407 @@
+{
+  "test_case_id": "luxury_ev_journey",
+  "timestamp": "2025-09-06T08:02:25.413203",
+  "processing_time_seconds": 20.87,
+  "rfq_input": "\n        Luxury electric vehicle consumer journey study for $80k+ EV segment. Research focus: consideration set evolution,\n        charging infrastructure concerns, brand prestige perception, range anxiety vs performance trade-offs,\n        dealer experience expectations, financing vs leasing preferences, sustainability motivations vs luxury appeal,\n        and competitive analysis against Tesla Model S, BMW iX, Mercedes EQS, Audi e-tron GT.\n        Include ethnographic pre-study insights, choice-based conjoint with 8 attributes, Gabor-Granger pricing methodology,\n        TURF analysis for feature combinations, implicit association testing for brand perceptions,\n        and longitudinal tracking of consideration changes. Segment by income, lifestyle, and current vehicle ownership.\n        Target: HHI $150k+, considering luxury EV purchase in next 18 months. 250 responses minimum.\n        ",
+  "generated_survey": {
+    "title": "Luxury EV Consumer Journey Study",
+    "description": "Survey on consideration, perceptions, pricing, features, and ownership journey in the $80k+ luxury EV segment.",
+    "estimated_time": 10,
+    "questions": [
+      {
+        "id": "q1",
+        "text": "Are you considering purchasing or leasing a new luxury electric vehicle (MSRP $80,000+) in the next 18 months?",
+        "type": "multiple_choice",
+        "options": [
+          "Yes, definitely",
+          "Yes, probably",
+          "Not sure",
+          "No"
+        ],
+        "required": true,
+        "category": "screening"
+      },
+      {
+        "id": "q2",
+        "text": "What is your total household income before taxes?",
+        "type": "multiple_choice",
+        "options": [
+          "Less than $150,000",
+          "$150,000 - $199,999",
+          "$200,000 - $299,999",
+          "$300,000 - $499,999",
+          "$500,000 or more",
+          "Prefer not to say"
+        ],
+        "required": true,
+        "category": "screening"
+      },
+      {
+        "id": "q3",
+        "text": "Which of the following vehicles do you currently own or lease? Select all that apply.",
+        "type": "multiple_select",
+        "options": [
+          "Tesla (any model)",
+          "BMW (gas/hybrid)",
+          "BMW i (electric)",
+          "Mercedes-Benz (gas/hybrid)",
+          "Mercedes EQ (electric)",
+          "Audi (gas/hybrid)",
+          "Audi e-tron/e-tron GT (electric)",
+          "Porsche (any)",
+          "Other luxury brand",
+          "Non-luxury brand",
+          "No vehicle currently"
+        ],
+        "required": true,
+        "category": "screening"
+      },
+      {
+        "id": "q4",
+        "text": "Which models are currently in your top consideration set? Select all that apply.",
+        "type": "multiple_select",
+        "options": [
+          "Tesla Model S",
+          "BMW iX",
+          "Mercedes EQS",
+          "Audi e-tron GT",
+          "Porsche Taycan",
+          "Lucid Air",
+          "Other luxury EV (specify)",
+          "Undecided"
+        ],
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q4a",
+        "text": "Please specify the other luxury EV model(s) you are considering.",
+        "type": "text",
+        "options": [],
+        "required": false,
+        "category": "core_research"
+      },
+      {
+        "id": "q5",
+        "text": "For each factor below, rate its importance in your luxury EV decision.",
+        "type": "matrix_rating",
+        "options": [
+          "Brand prestige",
+          "Performance (acceleration/handling)",
+          "Driving range",
+          "Charging speed and network access",
+          "Interior luxury/comfort",
+          "Advanced driver assistance/tech",
+          "Dealer/sales experience",
+          "Total cost of ownership",
+          "Sustainability/eco impact"
+        ],
+        "scale": {
+          "min_label": "Not important",
+          "max_label": "Extremely important",
+          "min": 1,
+          "max": 7
+        },
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q6",
+        "text": "Choice-Based Conjoint: Please choose the vehicle you would most likely buy from each set. You will see multiple sets.",
+        "type": "conjoint_task",
+        "options": [
+          "Attribute set (8): Brand, Base price, Powertrain performance (0-60 mph), EPA range, DC fast-charging speed, Interior finish level, Driver-assist suite, Warranty/maintenance"
+        ],
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q7",
+        "text": "Gabor-Granger Pricing: Assuming the vehicle meets your needs, how likely would you be to purchase at the following price points (MSRP, before incentives)?",
+        "type": "price_sensitivity",
+        "options": [
+          "$79,999",
+          "$89,999",
+          "$99,999",
+          "$109,999",
+          "$119,999",
+          "$129,999",
+          "$139,999+"
+        ],
+        "scale": {
+          "labels": [
+            "Definitely would not buy",
+            "Probably would not",
+            "Might or might not",
+            "Probably would",
+            "Definitely would"
+          ]
+        },
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q8",
+        "text": "Which charging solutions would you use if you bought a luxury EV? Select all that apply.",
+        "type": "multiple_select",
+        "options": [
+          "Home Level 2 charger",
+          "Workplace charging",
+          "Public DC fast charging (e.g., Tesla Supercharger/NACS)",
+          "Public Level 2",
+          "I\u2019m unsure/need installer guidance"
+        ],
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q9",
+        "text": "How concerned are you about each of the following?",
+        "type": "matrix_rating",
+        "options": [
+          "Range anxiety on road trips",
+          "Urban charging availability",
+          "Home installation complexity/cost",
+          "Battery longevity/resale value",
+          "Service/repair convenience",
+          "Software reliability/updates"
+        ],
+        "scale": {
+          "min_label": "Not concerned",
+          "max_label": "Extremely concerned",
+          "min": 1,
+          "max": 7
+        },
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q10",
+        "text": "TURF Feature Selection: Which features would meaningfully increase your likelihood to choose a luxury EV? Select up to 5.",
+        "type": "multiple_select",
+        "options": [
+          "Complimentary home charger + installation credit",
+          "3 years free DC fast charging",
+          "Performance package (enhanced acceleration/handling)",
+          "Extended range battery",
+          "Luxury interior upgrade (leather, massage seats)",
+          "Advanced driver-assist (hands-free highway)",
+          "Over-the-air performance/software upgrades",
+          "Concierge service + pick-up/drop-off",
+          "Comprehensive maintenance for 4 years",
+          "Premium audio + infotainment suite",
+          "Sustainability package (recycled/vegan materials, carbon offset)",
+          "Exclusive ownership perks (lounge access/events)"
+        ],
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q11",
+        "text": "Financing approach preference for your next luxury EV?",
+        "type": "multiple_choice",
+        "options": [
+          "Cash",
+          "Finance (loan)",
+          "Lease",
+          "Subscription/Flex lease",
+          "Undecided"
+        ],
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q12",
+        "text": "Implicit Association: For each brand, quickly indicate which word you more strongly associate with it. Respond intuitively.",
+        "type": "iat_pairing",
+        "options": [
+          "Tesla: Innovative vs. Overhyped",
+          "BMW i: Performance vs. Practical",
+          "Mercedes EQ: Prestigious vs. Conservative",
+          "Audi e-tron: Refined vs. Generic",
+          "Lucid: Cutting-edge vs. Unproven"
+        ],
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q13",
+        "text": "Dealer/Store Experience Expectations: Which elements are most important during the purchase journey? Select up to 3.",
+        "type": "multiple_select",
+        "options": [
+          "Product expert consultation",
+          "Transparent online pricing",
+          "Test drive convenience (home/extended)",
+          "Trade-in valuation speed/fairness",
+          "Delivery experience (white-glove)",
+          "Service loaner/valet",
+          "Digital paperwork/e-sign",
+          "No-haggle experience"
+        ],
+        "required": true,
+        "category": "core_research",
+        "methodology": "maxdiff"
+      },
+      {
+        "id": "q14",
+        "text": "In your own words: What would most increase your confidence to switch to a luxury EV in the next 18 months?",
+        "type": "text",
+        "options": [],
+        "required": false,
+        "category": "core_research"
+      },
+      {
+        "id": "q15",
+        "text": "Lifestyle: Which best describes you? Select all that apply.",
+        "type": "multiple_select",
+        "options": [
+          "Frequent road-tripper",
+          "Urban commuter",
+          "Family with children at home",
+          "Outdoor/active lifestyle",
+          "Tech enthusiast/early adopter",
+          "Luxury seeker/experience focused",
+          "Eco-conscious/sustainability focused"
+        ],
+        "required": true,
+        "category": "demographic"
+      },
+      {
+        "id": "q16",
+        "text": "Primary residence type and parking situation",
+        "type": "multiple_choice",
+        "options": [
+          "Single-family home with private garage/driveway",
+          "Apartment/condo with assigned parking",
+          "Apartment/condo with street parking",
+          "Townhome with private parking",
+          "Other"
+        ],
+        "required": true,
+        "category": "demographic"
+      },
+      {
+        "id": "q17",
+        "text": "Age",
+        "type": "multiple_choice",
+        "options": [
+          "18-24",
+          "25-34",
+          "35-44",
+          "45-54",
+          "55-64",
+          "65+"
+        ],
+        "required": true,
+        "category": "demographic"
+      },
+      {
+        "id": "q18",
+        "text": "Longitudinal tracking consent: May we contact you for 2 brief follow-ups over the next 6 months to track changes in your consideration set?",
+        "type": "multiple_choice",
+        "options": [
+          "Yes",
+          "No"
+        ],
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q19",
+        "text": "Ethnographic pre-study: Are you willing to complete a short diary (photos/notes) of your vehicle research and charging experiences over 1 week?",
+        "type": "multiple_choice",
+        "options": [
+          "Yes",
+          "No",
+          "Maybe\u2014want more details"
+        ],
+        "required": true,
+        "category": "core_research"
+      }
+    ],
+    "metadata": {
+      "target_responses": 250,
+      "methodology": [
+        "conjoint_analysis",
+        "screening",
+        "ethnographic_prestudy_opt-in",
+        "segmentation_by_income_lifestyle_ownership",
+        "turf_analysis",
+        "maxdiff",
+        "implicit_association_testing",
+        "longitudinal_tracking_opt-in",
+        "brand_perception",
+        "turf_feature_analysis",
+        "gabor_granger_pricing",
+        "choice_based_conjoint (8 attributes)",
+        "implicit_testing",
+        "choice_conjoint"
+      ]
+    }
+  },
+  "model_used": "gpt-5-via-replicate",
+  "used_ai_generation": true,
+  "golden_examples_used": [],
+  "similarity_score": null,
+  "analysis": {
+    "title_generated": true,
+    "description_generated": true,
+    "questions_count": 20,
+    "estimated_time": 10,
+    "methodologies_detected": [
+      "conjoint_analysis",
+      "screening",
+      "ethnographic_prestudy_opt-in",
+      "segmentation_by_income_lifestyle_ownership",
+      "turf_analysis",
+      "maxdiff",
+      "implicit_association_testing",
+      "longitudinal_tracking_opt-in",
+      "brand_perception",
+      "turf_feature_analysis",
+      "gabor_granger_pricing",
+      "choice_based_conjoint (8 attributes)",
+      "implicit_testing",
+      "choice_conjoint"
+    ],
+    "meets_min_questions": true,
+    "has_advanced_methodologies": true,
+    "quality_indicators": {
+      "has_screening_questions": true,
+      "has_scale_questions": false,
+      "has_multiple_choice": true,
+      "has_methodology_tags": true,
+      "has_categories": true
+    },
+    "methodology_match": {
+      "expected": [
+        "turf_analysis",
+        "gabor_granger",
+        "implicit_testing",
+        "choice_conjoint"
+      ],
+      "detected": [
+        "conjoint_analysis",
+        "screening",
+        "ethnographic_prestudy_opt-in",
+        "segmentation_by_income_lifestyle_ownership",
+        "turf_analysis",
+        "maxdiff",
+        "implicit_association_testing",
+        "longitudinal_tracking_opt-in",
+        "brand_perception",
+        "turf_feature_analysis",
+        "gabor_granger_pricing",
+        "choice_based_conjoint (8 attributes)",
+        "implicit_testing",
+        "choice_conjoint"
+      ],
+      "intersection": [
+        "turf_analysis",
+        "implicit_testing",
+        "choice_conjoint"
+      ],
+      "coverage_percentage": 75.0
+    }
+  }
+}

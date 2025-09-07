@@ -1,0 +1,116 @@
+{
+  "test_case_id": "fintech_digital_transformation",
+  "timestamp": "2025-09-06T07:51:58.673034",
+  "processing_time_seconds": 26.08,
+  "rfq_input": "\n        Multi-phase study on digital banking transformation for regional banks competing with fintech disruptors. \n        Research objectives: customer journey mapping across digital touchpoints, security vs convenience trade-offs, \n        generational differences in banking preferences, willingness to switch banks for better digital experience,\n        feature importance using MaxDiff methodology, price sensitivity for premium digital services using PSM,\n        competitive benchmarking against Chase, Bank of America, and fintech players like Chime and SoFi.\n        Include implicit testing for trust and security perceptions. Need segmentation analysis by age, income, and tech adoption.\n        Target: 18-65 banking customers, mix of current digital users and traditional branch users. 400+ responses required.\n        ",
+  "generated_survey": {
+    "title": "Evaluation Test: fintech_digital_transformation Survey",
+    "description": "Survey based on: \n        Multi-phase study on digital banking transformation for regional banks competing with finte...",
+    "estimated_time": 8,
+    "questions": [
+      {
+        "id": "q1",
+        "text": "How familiar are you with this product category?",
+        "type": "multiple_choice",
+        "options": [
+          "Very familiar",
+          "Somewhat familiar",
+          "Not familiar",
+          "Never heard of it"
+        ],
+        "required": true,
+        "category": "screening"
+      },
+      {
+        "id": "q2",
+        "text": "What is your primary reason for considering this type of product?",
+        "type": "multiple_choice",
+        "options": [
+          "Quality",
+          "Price",
+          "Brand reputation",
+          "Features",
+          "Convenience"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q3",
+        "text": "How important is price when making your decision?",
+        "type": "scale",
+        "options": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "scale_labels": {
+          "1": "Not important",
+          "5": "Very important"
+        },
+        "required": true,
+        "category": "pricing"
+      },
+      {
+        "id": "q4",
+        "text": "What is your age range?",
+        "type": "multiple_choice",
+        "options": [
+          "18-24",
+          "25-34",
+          "35-44",
+          "45-54",
+          "55-64",
+          "65+"
+        ],
+        "required": true,
+        "category": "demographic"
+      }
+    ],
+    "metadata": {
+      "target_responses": 200,
+      "methodology": [
+        "general_survey"
+      ],
+      "generation_method": "template_based",
+      "note": "Generated using fallback templates - add Replicate token for AI generation"
+    }
+  },
+  "model_used": "gpt-5-via-replicate",
+  "used_ai_generation": true,
+  "golden_examples_used": [],
+  "similarity_score": null,
+  "analysis": {
+    "title_generated": true,
+    "description_generated": true,
+    "questions_count": 4,
+    "estimated_time": 8,
+    "methodologies_detected": [
+      "general_survey"
+    ],
+    "meets_min_questions": false,
+    "has_advanced_methodologies": true,
+    "quality_indicators": {
+      "has_screening_questions": true,
+      "has_scale_questions": true,
+      "has_multiple_choice": true,
+      "has_methodology_tags": false,
+      "has_categories": true
+    },
+    "methodology_match": {
+      "expected": [
+        "psm",
+        "maxdiff",
+        "implicit_testing",
+        "journey_mapping"
+      ],
+      "detected": [
+        "general_survey"
+      ],
+      "intersection": [],
+      "coverage_percentage": 0.0
+    }
+  }
+}

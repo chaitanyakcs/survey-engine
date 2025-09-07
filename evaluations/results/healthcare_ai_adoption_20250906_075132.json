@@ -1,0 +1,259 @@
+{
+  "test_case_id": "healthcare_ai_adoption",
+  "timestamp": "2025-09-06T07:51:32.587027",
+  "processing_time_seconds": 17.51,
+  "rfq_input": "\n        We need comprehensive research on AI-powered diagnostic tools adoption in mid-sized hospitals (100-500 beds). \n        Key focus areas: decision-making hierarchy, budget approval processes, clinical staff acceptance, patient privacy concerns, \n        ROI expectations, integration challenges with existing HIS/EMR systems, regulatory compliance barriers, \n        and competitive landscape analysis for vendors like GE Healthcare, Philips, and Siemens Healthineers.\n        Include KANO model analysis for feature prioritization and discrete choice modeling for pricing sensitivity.\n        Target: C-suite executives, CIOs, Chief Medical Officers, and department heads. Need 150+ qualified responses.\n        ",
+  "generated_survey": {
+    "title": "AI-Powered Diagnostic Tools Adoption in Mid-Sized Hospitals",
+    "description": "This survey gathers insights from hospital leaders on adoption drivers, barriers, and preferences for AI diagnostic tools, including budget processes, clinical acceptance, integration, compliance, feature prioritization (KANO), and pricing sensitivity (DCE).",
+    "estimated_time": 10,
+    "questions": [
+      {
+        "id": "q1",
+        "text": "Which best describes your role?",
+        "type": "multiple_choice",
+        "options": [
+          "C-suite executive (CEO/COO/CFO)",
+          "Chief Information Officer (CIO) / IT Director",
+          "Chief Medical Officer (CMO) / Clinical Director",
+          "Department head (e.g., Radiology, Cardiology, Pathology)",
+          "Procurement/Supply Chain leader",
+          "Other"
+        ],
+        "required": true,
+        "category": "screening"
+      },
+      {
+        "id": "q2",
+        "text": "How many licensed beds does your primary hospital have?",
+        "type": "multiple_choice",
+        "options": [
+          "Fewer than 100",
+          "100\u2013199",
+          "200\u2013349",
+          "350\u2013500",
+          "More than 500"
+        ],
+        "required": true,
+        "category": "screening"
+      },
+      {
+        "id": "q3",
+        "text": "Where is your hospital in adopting AI-powered diagnostic tools (e.g., radiology decision support, pathology image analysis, triage)?",
+        "type": "multiple_choice",
+        "options": [
+          "No plans",
+          "Exploring/assessing vendors",
+          "Pilot/limited deployment",
+          "Scaling across departments",
+          "Fully deployed in routine care"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q4",
+        "text": "Who are the primary decision-makers and approvers for AI diagnostic tool purchases at your hospital? (Select all that apply)",
+        "type": "multiple_choice",
+        "options": [
+          "CIO/IT leadership",
+          "CMO/Clinical leadership",
+          "Department heads (e.g., Radiology)",
+          "CFO/Finance",
+          "Procurement",
+          "Data governance/Privacy/Compliance",
+          "Institutional Review Board (IRB)/Clinical governance committee",
+          "Other"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q5",
+        "text": "What is the typical budget approval threshold and process for AI diagnostic tools?",
+        "type": "multiple_choice",
+        "options": [
+          "Under $100k, department-level approval",
+          "$100k\u2013$499k, executive committee approval",
+          "$500k\u2013$1M, board or C-suite approval",
+          "Over $1M, board approval",
+          "Case-by-case/unclear"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q6",
+        "text": "Please rate the importance of the following factors in your adoption decision (1 = Not important, 5 = Extremely important): clinical accuracy/validity; clinician workflow fit; integration with HIS/EMR; data privacy/security; regulatory clearance (e.g., FDA/CE); total cost of ownership; vendor reputation/support.",
+        "type": "scale",
+        "options": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q7",
+        "text": "Which integration challenges have you faced or anticipate with HIS/EMR and imaging systems? (Select up to 3)",
+        "type": "multiple_choice",
+        "options": [
+          "Standards compliance (HL7/FHIR/DICOM)",
+          "Data quality/labeling for model performance",
+          "Single sign-on/user provisioning",
+          "Result/write-back to EMR/PACS",
+          "Latency/performance in clinical workflow",
+          "IT security/network constraints",
+          "Vendor interoperability/contracting",
+          "Change management/training"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q8",
+        "text": "KANO feature assessment: For each feature, select how you would feel if it is present or absent. Features: A) Real-time PACS integration; B) Explainable AI (case-level rationale); C) Automated QA/alerting for model drift; D) On-premise deployment option; E) HIPAA/GDPR compliance reporting; F) 24/7 clinical-grade support.",
+        "type": "multiple_choice",
+        "options": [
+          "Must-be",
+          "One-dimensional (more is better)",
+          "Attractive (delighters)",
+          "Indifferent",
+          "Reverse (prefer not)"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q9",
+        "text": "Discrete choice: Which option would you most likely select today?",
+        "type": "multiple_choice",
+        "options": [
+          "Vendor X: $250k/yr subscription, FDA-cleared, cloud-hosted, basic EMR write-back",
+          "Vendor Y: $400k/yr subscription, FDA-cleared, on-prem or hybrid, advanced EMR/PACS integration and XAI",
+          "Vendor Z: $150k/yr subscription, CE-mark only, cloud-only, limited integration",
+          "Do not adopt any option"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q10",
+        "text": "Which vendors are you actively considering or using? (Select all that apply)",
+        "type": "multiple_choice",
+        "options": [
+          "GE Healthcare",
+          "Philips",
+          "Siemens Healthineers",
+          "Other large OEM (e.g., Canon, Fujifilm)",
+          "Specialist AI vendor (e.g., Aidoc, Viz.ai, HeartFlow, Paige)",
+          "In-house/academic collaboration",
+          "None currently"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q11",
+        "text": "What payback/ROI timeline would your organization require for AI diagnostic tools?",
+        "type": "multiple_choice",
+        "options": [
+          "Under 12 months",
+          "12\u201324 months",
+          "24\u201336 months",
+          "36+ months",
+          "No formal requirement"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q12",
+        "text": "What are your top regulatory and privacy concerns? Please specify any barriers (e.g., FDA pathway, HIPAA, GDPR, clinical risk, liability).",
+        "type": "text",
+        "options": [],
+        "required": false,
+        "category": "core"
+      },
+      {
+        "id": "q13",
+        "text": "Region of your primary hospital",
+        "type": "multiple_choice",
+        "options": [
+          "North America",
+          "Europe",
+          "Asia-Pacific",
+          "Latin America",
+          "Middle East & Africa"
+        ],
+        "required": true,
+        "category": "demographic"
+      },
+      {
+        "id": "q14",
+        "text": "Years in current role",
+        "type": "multiple_choice",
+        "options": [
+          "Less than 1 year",
+          "1\u20133 years",
+          "4\u20137 years",
+          "8\u201315 years",
+          "16+ years"
+        ],
+        "required": true,
+        "category": "demographic"
+      }
+    ],
+    "metadata": {
+      "target_responses": 200,
+      "methodology": [
+        "general_survey",
+        "kano_model",
+        "discrete_choice_experiment"
+      ]
+    }
+  },
+  "model_used": "gpt-5-via-replicate",
+  "used_ai_generation": true,
+  "golden_examples_used": [],
+  "similarity_score": null,
+  "analysis": {
+    "title_generated": true,
+    "description_generated": true,
+    "questions_count": 14,
+    "estimated_time": 10,
+    "methodologies_detected": [
+      "general_survey",
+      "kano_model",
+      "discrete_choice_experiment"
+    ],
+    "meets_min_questions": true,
+    "has_advanced_methodologies": true,
+    "quality_indicators": {
+      "has_screening_questions": true,
+      "has_scale_questions": true,
+      "has_multiple_choice": true,
+      "has_methodology_tags": false,
+      "has_categories": true
+    },
+    "methodology_match": {
+      "expected": [
+        "stakeholder_mapping",
+        "discrete_choice",
+        "kano_model"
+      ],
+      "detected": [
+        "general_survey",
+        "discrete_choice_experiment",
+        "kano_model"
+      ],
+      "intersection": [
+        "kano_model"
+      ],
+      "coverage_percentage": 33.33333333333333
+    }
+  }
+}

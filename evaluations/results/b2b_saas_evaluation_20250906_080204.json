@@ -1,0 +1,374 @@
+{
+  "test_case_id": "b2b_saas_evaluation",
+  "timestamp": "2025-09-06T08:02:04.541202",
+  "processing_time_seconds": 43.75,
+  "rfq_input": "\n        We need comprehensive research for B2B SaaS platform evaluation targeting mid-market companies (500-2000 employees).\n        Key research areas: decision-making process mapping, stakeholder influence analysis, feature importance across different user roles,\n        implementation timeline expectations, budget approval workflows, competitive landscape analysis (Salesforce, HubSpot, Microsoft),\n        TCO considerations, security compliance requirements, and integration complexity concerns.\n        Use conjoint analysis for feature trade-offs, MaxDiff for priority ranking, Van Westendorp for pricing sensitivity across user tiers,\n        and brand perception mapping. Need to segment by company size, industry vertical, and current tech stack maturity.\n        Target: IT directors, business users, procurement teams, and C-level executives. Minimum 200 qualified responses.\n        ",
+  "generated_survey": {
+    "title": "B2B SaaS Evaluation Survey \u2013 Mid-Market (500\u20132000 Employees)",
+    "description": "Survey to understand decision-making, stakeholder roles, feature priorities, pricing sensitivity, security/compliance needs, integrations, and competitive perceptions for B2B SaaS platforms among mid-market organizations.",
+    "estimated_time": 12,
+    "questions": [
+      {
+        "id": "q1",
+        "text": "Which of the following best describes your role in purchasing or evaluating B2B SaaS platforms?",
+        "type": "multiple_choice",
+        "options": [
+          "C-level executive (e.g., CIO, CTO, COO, CFO)",
+          "IT Director/Manager",
+          "Procurement/Purchasing",
+          "Business Function Leader/User (e.g., Sales, Marketing, Operations)",
+          "Security/Compliance",
+          "No involvement in evaluation or purchasing"
+        ],
+        "required": true,
+        "category": "screening"
+      },
+      {
+        "id": "q2",
+        "text": "How many employees does your organization have?",
+        "type": "multiple_choice",
+        "options": [
+          "Under 500",
+          "500\u2013999",
+          "1,000\u20131,499",
+          "1,500\u20132,000",
+          "Over 2,000"
+        ],
+        "required": true,
+        "category": "screening"
+      },
+      {
+        "id": "q3",
+        "text": "In the past 12 months, have you participated in evaluating or purchasing a B2B SaaS platform (e.g., CRM, marketing automation, collaboration, data/analytics, or similar)?",
+        "type": "multiple_choice",
+        "options": [
+          "Yes, led the evaluation/purchase",
+          "Yes, contributed to the evaluation",
+          "No"
+        ],
+        "required": true,
+        "category": "screening"
+      },
+      {
+        "id": "q4",
+        "text": "Who are the primary stakeholders involved in your organization\u2019s SaaS purchase decisions, and how influential are they?",
+        "type": "matrix_scale",
+        "scale": [
+          "No influence",
+          "Low",
+          "Medium",
+          "High",
+          "Final decision"
+        ],
+        "rows": [
+          "C-level (CIO/CTO/CFO/COO)",
+          "IT leadership (Director/Manager)",
+          "Security/Compliance",
+          "Procurement",
+          "Business function leaders (Sales/Marketing/Operations)",
+          "End users/Power users"
+        ],
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q5",
+        "text": "Please indicate the expected implementation timeline for a new B2B SaaS platform in your organization (from selection to go-live).",
+        "type": "multiple_choice",
+        "options": [
+          "Less than 1 month",
+          "1\u20133 months",
+          "4\u20136 months",
+          "7\u20139 months",
+          "10\u201312 months",
+          "More than 12 months"
+        ],
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q6",
+        "text": "MaxDiff: Which of the following aspects are MOST and LEAST important when selecting a B2B SaaS platform?",
+        "type": "maxdiff",
+        "options": [
+          "Ease of integration with existing systems",
+          "Security and compliance certifications",
+          "Total cost of ownership (TCO)",
+          "User experience and adoption",
+          "Scalability and performance",
+          "Vendor support and onboarding",
+          "Analytics and reporting capabilities",
+          "Customization and configurability",
+          "Roadmap/innovation velocity",
+          "Contract flexibility"
+        ],
+        "required": true,
+        "category": "core_research",
+        "methodology": "maxdiff"
+      },
+      {
+        "id": "q7",
+        "text": "Conjoint: Choose the most preferred option among the following feature bundles for a B2B SaaS platform.",
+        "type": "conjoint_choice",
+        "profiles": [
+          {
+            "name": "Option A",
+            "attributes": {
+              "Integrations": "Native Salesforce + HubSpot",
+              "Security": "SOC 2 Type II, SSO/SAML",
+              "Support": "24/7 chat + dedicated CSM",
+              "Analytics": "Standard dashboards",
+              "Price per user/month": "$45"
+            }
+          },
+          {
+            "name": "Option B",
+            "attributes": {
+              "Integrations": "Salesforce + Microsoft Dynamics via API",
+              "Security": "SOC 2 Type II, SSO/SAML, DLP",
+              "Support": "Business hours support",
+              "Analytics": "Advanced analytics + custom reports",
+              "Price per user/month": "$60"
+            }
+          },
+          {
+            "name": "Option C",
+            "attributes": {
+              "Integrations": "Salesforce, HubSpot, Microsoft (native)",
+              "Security": "SOC 2 Type II, ISO 27001, SSO/SAML, SCIM",
+              "Support": "24/7 priority + onboarding services",
+              "Analytics": "Advanced + AI insights",
+              "Price per user/month": "$75"
+            }
+          }
+        ],
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q8",
+        "text": "Van Westendorp Price Sensitivity: For a platform serving your primary user tier, at what monthly price per user would you consider the product...",
+        "type": "van_westendorp",
+        "fields": [
+          "Too cheap (suspiciously low)",
+          "Cheap (good value)",
+          "Expensive (starting to stretch budget)",
+          "Too expensive (would not consider)"
+        ],
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q9",
+        "text": "Which competitors are you currently using or evaluating? Select all that apply.",
+        "type": "multiple_select",
+        "options": [
+          "Salesforce",
+          "HubSpot",
+          "Microsoft (e.g., Dynamics, Power Platform)",
+          "Other major vendor",
+          "In-house solution",
+          "Not currently using/evaluating any"
+        ],
+        "required": true,
+        "category": "core_research"
+      },
+      {
+        "id": "q10",
+        "text": "Brand Perception Mapping: Please rate your perception of each brand on the following attributes.",
+        "type": "matrix_scale",
+        "scale": [
+          "Very low",
+          "Low",
+          "Neutral",
+          "High",
+          "Very high"
+        ],
+        "rows": [
+          "Salesforce \u2013 Enterprise readiness",
+          "Salesforce \u2013 Ease of integration",
+          "HubSpot \u2013 Ease of use",
+          "HubSpot \u2013 Time to value",
+          "Microsoft \u2013 Security/compliance strength",
+          "Microsoft \u2013 Ecosystem fit"
+        ],
+        "required": false,
+        "category": "core_research"
+      },
+      {
+        "id": "q11",
+        "text": "Please describe your budget approval workflow for new SaaS purchases (e.g., initiators, approvers, committees, thresholds).",
+        "type": "text",
+        "required": false,
+        "category": "core_research"
+      },
+      {
+        "id": "q12",
+        "text": "How would you rate your organization\u2019s current tech stack maturity?",
+        "type": "multiple_choice",
+        "options": [
+          "Early stage: fragmented tools, limited integrations",
+          "Developing: some integrations, emerging governance",
+          "Mature: standardized platforms, strong integration layer",
+          "Advanced: automation-first, enterprise data architecture"
+        ],
+        "required": true,
+        "category": "demographic"
+      },
+      {
+        "id": "q13",
+        "text": "Which industry best describes your organization?",
+        "type": "multiple_choice",
+        "options": [
+          "Technology/Software",
+          "Financial Services",
+          "Manufacturing",
+          "Healthcare/Life Sciences",
+          "Retail/E-commerce",
+          "Professional Services",
+          "Education",
+          "Public Sector",
+          "Other"
+        ],
+        "required": true,
+        "category": "demographic"
+      },
+      {
+        "id": "q14",
+        "text": "Please indicate your company size in revenue (annual).",
+        "type": "multiple_choice",
+        "options": [
+          "Under $50M",
+          "$50M\u2013$199M",
+          "$200M\u2013$499M",
+          "$500M\u2013$999M",
+          "$1B+",
+          "Prefer not to say"
+        ],
+        "required": false,
+        "category": "demographic"
+      },
+      {
+        "id": "q15",
+        "text": "Which integration endpoints are most critical for you? Select all that apply.",
+        "type": "multiple_select",
+        "options": [
+          "CRM (Salesforce, HubSpot, Microsoft Dynamics)",
+          "ERP (SAP, Oracle, NetSuite)",
+          "Marketing automation (Marketo, Pardot, HubSpot)",
+          "Collaboration (Microsoft 365, Google Workspace, Slack)",
+          "Data/BI (Snowflake, Databricks, Power BI, Tableau)",
+          "Identity/SSO (Okta, Azure AD)",
+          "Other"
+        ],
+        "required": false,
+        "category": "core_research"
+      },
+      {
+        "id": "q16",
+        "text": "Security and compliance requirements (select all that apply).",
+        "type": "multiple_select",
+        "options": [
+          "SOC 2 Type II",
+          "ISO 27001",
+          "HIPAA",
+          "GDPR",
+          "FedRAMP",
+          "SSO/SAML/SCIM",
+          "Data residency controls",
+          "Encryption at rest/in transit",
+          "Audit logging and SIEM integration"
+        ],
+        "required": false,
+        "category": "core_research"
+      },
+      {
+        "id": "q17",
+        "text": "Total Cost of Ownership (TCO): Which components most influence your TCO evaluation? Select up to three.",
+        "type": "multiple_select",
+        "options": [
+          "License/subscription fees",
+          "Implementation and onboarding services",
+          "Integration and customization",
+          "User training and change management",
+          "Ongoing support and premium SLAs",
+          "Data migration",
+          "Administration and maintenance",
+          "Opportunity cost/time to value"
+        ],
+        "required": true,
+        "category": "core_research",
+        "constraints": {
+          "max_select": 3
+        }
+      }
+    ],
+    "metadata": {
+      "target_responses": 200,
+      "methodology": [
+        "conjoint_analysis",
+        "segmentation_by_company_size_industry_tech_maturity",
+        "conjoint",
+        "decision_mapping",
+        "maxdiff",
+        "brand_perception",
+        "van_westendorp",
+        "tco_analysis"
+      ]
+    }
+  },
+  "model_used": "gpt-5-via-replicate",
+  "used_ai_generation": true,
+  "golden_examples_used": [],
+  "similarity_score": null,
+  "analysis": {
+    "title_generated": true,
+    "description_generated": true,
+    "questions_count": 17,
+    "estimated_time": 12,
+    "methodologies_detected": [
+      "conjoint_analysis",
+      "segmentation_by_company_size_industry_tech_maturity",
+      "conjoint",
+      "decision_mapping",
+      "maxdiff",
+      "brand_perception",
+      "van_westendorp",
+      "tco_analysis"
+    ],
+    "meets_min_questions": true,
+    "has_advanced_methodologies": true,
+    "quality_indicators": {
+      "has_screening_questions": true,
+      "has_scale_questions": false,
+      "has_multiple_choice": true,
+      "has_methodology_tags": true,
+      "has_categories": true
+    },
+    "methodology_match": {
+      "expected": [
+        "conjoint_analysis",
+        "brand_perception",
+        "van_westendorp",
+        "maxdiff"
+      ],
+      "detected": [
+        "conjoint_analysis",
+        "segmentation_by_company_size_industry_tech_maturity",
+        "conjoint",
+        "decision_mapping",
+        "maxdiff",
+        "brand_perception",
+        "van_westendorp",
+        "tco_analysis"
+      ],
+      "intersection": [
+        "conjoint_analysis",
+        "brand_perception",
+        "van_westendorp",
+        "maxdiff"
+      ],
+      "coverage_percentage": 100.0
+    }
+  }
+}

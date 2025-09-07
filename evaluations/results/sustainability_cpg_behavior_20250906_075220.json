@@ -1,0 +1,283 @@
+{
+  "test_case_id": "sustainability_cpg_behavior",
+  "timestamp": "2025-09-06T07:52:20.699685",
+  "processing_time_seconds": 22.03,
+  "rfq_input": "\n        Comprehensive sustainability research for CPG brands exploring eco-friendly product lines. \n        Focus: purchase intent drivers for sustainable products, willingness to pay premium for eco-certifications,\n        greenwashing sensitivity, brand authenticity perceptions, influence of sustainability on brand loyalty,\n        environmental claim believability testing, packaging preferences (minimal vs informative),\n        certification recognition (Fair Trade, Organic, Carbon Neutral, B-Corp), and behavioral economics\n        nudging effectiveness for sustainable choices. Use choice-based conjoint with sustainability attributes,\n        Van Westendorp for price premium tolerance, and social desirability bias correction techniques.\n        Target: eco-conscious millennials and Gen Z, household decision makers, income $40k+. 300 responses needed.\n        ",
+  "generated_survey": {
+    "title": "Sustainability in CPG: Purchase Drivers, Pricing, and Trust",
+    "description": "A research survey to understand purchase intent, willingness to pay for eco-certifications, perceptions of greenwashing and brand authenticity, packaging preferences, certification recognition, and the effectiveness of behavioral nudges among eco-conscious Millennials and Gen Z household shoppers.",
+    "estimated_time": 10,
+    "questions": [
+      {
+        "id": "q1",
+        "text": "Which of the following best describes your role in household purchasing for everyday consumer packaged goods (e.g., food, personal care, cleaning)?",
+        "type": "multiple_choice",
+        "options": [
+          "I am the primary decision maker",
+          "I share decision making equally",
+          "I influence but rarely decide",
+          "I am not involved in these decisions"
+        ],
+        "required": true,
+        "category": "screening"
+      },
+      {
+        "id": "q2",
+        "text": "What is your age?",
+        "type": "multiple_choice",
+        "options": [
+          "18-22",
+          "23-27",
+          "28-34",
+          "35-40",
+          "41-54",
+          "55+"
+        ],
+        "required": true,
+        "category": "screening"
+      },
+      {
+        "id": "q3",
+        "text": "Which of the following best describes your total annual household income before taxes?",
+        "type": "multiple_choice",
+        "options": [
+          "Under $40,000",
+          "$40,000 - $59,999",
+          "$60,000 - $79,999",
+          "$80,000 - $99,999",
+          "$100,000 - $149,999",
+          "$150,000+",
+          "Prefer not to say"
+        ],
+        "required": true,
+        "category": "screening"
+      },
+      {
+        "id": "q4",
+        "text": "In the past 3 months, how often have you purchased consumer packaged goods labeled with eco-friendly or sustainability claims (e.g., recyclable packaging, organic, carbon neutral)?",
+        "type": "multiple_choice",
+        "options": [
+          "Never",
+          "Once",
+          "2-3 times",
+          "Monthly",
+          "2-3 times per month",
+          "Weekly or more"
+        ],
+        "required": true,
+        "category": "screening"
+      },
+      {
+        "id": "q5",
+        "text": "Please rate how each factor influences your likelihood to purchase a sustainable CPG product (1 = Not at all influential, 7 = Extremely influential).",
+        "type": "matrix_scale",
+        "options": [
+          "Third-party certifications (e.g., Fair Trade, USDA Organic, Carbon Neutral, B Corp)",
+          "Clear environmental impact claims (e.g., % recycled content, emissions savings)",
+          "Brand\u2019s overall sustainability reputation",
+          "Price compared to conventional alternatives",
+          "Packaging type (minimalist vs. detailed information)",
+          "Product performance vs. conventional options",
+          "In-store or online nudges (badges, default options, shelf placement)"
+        ],
+        "scale": {
+          "min_label": "1",
+          "max_label": "7"
+        },
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q6",
+        "text": "Which certifications or labels do you recognize and trust? Select all that apply.",
+        "type": "multiple_select",
+        "options": [
+          "Fair Trade",
+          "USDA Organic",
+          "Carbon Neutral/Carbon Trust",
+          "B Corp",
+          "Rainforest Alliance",
+          "Energy Star",
+          "I recognize them but do not trust",
+          "I do not recognize any"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q7",
+        "text": "Please indicate your agreement with the following statements (1 = Strongly disagree, 7 = Strongly agree).",
+        "type": "matrix_scale",
+        "options": [
+          "I am willing to pay more for products with credible eco-certifications.",
+          "I can usually tell when brands are greenwashing.",
+          "I trust brands more when they show detailed, verifiable sustainability data.",
+          "Sustainability influences my loyalty to a brand over time.",
+          "Minimal packaging is better, even if it shares less information.",
+          "I sometimes feel pressure to appear more eco-friendly than I actually am."
+        ],
+        "scale": {
+          "min_label": "1",
+          "max_label": "7"
+        },
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q8",
+        "text": "Choice-Based Conjoint: Which product would you most likely buy today? Assume all other attributes are equal.",
+        "type": "conjoint_choice",
+        "profiles": [
+          {
+            "price": "$4.49",
+            "certification": "USDA Organic",
+            "packaging": "Minimal (plain, low-ink, recyclable)",
+            "claim": "Made with 50% recycled materials"
+          },
+          {
+            "price": "$3.99",
+            "certification": "None",
+            "packaging": "Informative (detailed sustainability info, recyclable)",
+            "claim": "Carbon footprint reduced by 20%"
+          },
+          {
+            "price": "$4.29",
+            "certification": "B Corp + Carbon Neutral",
+            "packaging": "Informative (QR code to audit)",
+            "claim": "Third-party verified supply chain"
+          }
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q9",
+        "text": "Van Westendorp Price Sensitivity for a sustainable version of a product you buy regularly: At what price would you consider it...",
+        "type": "van_westendorp",
+        "options": [
+          "Too cheap (quality would be questionable)",
+          "Cheap (a bargain but acceptable quality)",
+          "Expensive (getting high but still consider buying)",
+          "Too expensive (would not buy)"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q10",
+        "text": "Nudge Effectiveness: Which of the following would most increase your likelihood to choose a sustainable option?",
+        "type": "multiple_choice",
+        "options": [
+          "Defaulting to the sustainable option (opt-out to switch)",
+          "Prominent eco-badge and shelf placement",
+          "Small price incentive (e.g., 5% discount)",
+          "Social proof (e.g., \u201cMost customers choose this\u201d)",
+          "Detailed impact metrics (e.g., CO2 saved, water saved)",
+          "None of these"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q11",
+        "text": "When you see environmental claims on packaging, how believable do you find each type of claim? (1 = Not believable, 7 = Highly believable)",
+        "type": "matrix_scale",
+        "options": [
+          "General claims (e.g., \u201ceco-friendly\u201d, \u201cnatural\u201d)",
+          "Quantified claims (e.g., \u201c70% recycled content\u201d)",
+          "Third-party verified claims (with certification logo)",
+          "Claims with QR code linking to audit/report",
+          "Brand self-declared commitments (e.g., \u201cnet zero by 2030\u201d)"
+        ],
+        "scale": {
+          "min_label": "1",
+          "max_label": "7"
+        },
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q12",
+        "text": "Which best describes your gender?",
+        "type": "multiple_choice",
+        "options": [
+          "Woman",
+          "Man",
+          "Non-binary",
+          "Prefer to self-describe",
+          "Prefer not to say"
+        ],
+        "required": false,
+        "category": "demographic"
+      },
+      {
+        "id": "q13",
+        "text": "ZIP/Postal code (optional):",
+        "type": "text",
+        "options": [],
+        "required": false,
+        "category": "demographic"
+      }
+    ],
+    "metadata": {
+      "target_responses": 300,
+      "methodology": [
+        "choice_based_conjoint",
+        "van_westendorp_price_sensitivity",
+        "social_desirability_bias_check",
+        "general_survey"
+      ],
+      "screening_logic_notes": [
+        "Include: Age 18-40 for core target (Millennials/Gen Z); allow broader ages for calibration if desired.",
+        "Include: Household decision makers (primary or shared).",
+        "Include: Income $40k+ (allow Prefer not to say as soft quota).",
+        "Behavioral recency: Prefer respondents with at least one eco-labeled CPG purchase in past 3 months."
+      ],
+      "bias_correction_notes": [
+        "Use indirect wording in Q7 to detect social desirability (pressure to appear eco-friendly).",
+        "Randomize attribute orders in Q8 and item orders in matrix questions.",
+        "Include attention checks as needed (not shown) and apply post-stratification weighting."
+      ]
+    }
+  },
+  "model_used": "gpt-5-via-replicate",
+  "used_ai_generation": true,
+  "golden_examples_used": [],
+  "similarity_score": null,
+  "analysis": {
+    "title_generated": true,
+    "description_generated": true,
+    "questions_count": 13,
+    "estimated_time": 10,
+    "methodologies_detected": [
+      "choice_based_conjoint",
+      "van_westendorp_price_sensitivity",
+      "social_desirability_bias_check",
+      "general_survey"
+    ],
+    "meets_min_questions": false,
+    "has_advanced_methodologies": true,
+    "quality_indicators": {
+      "has_screening_questions": true,
+      "has_scale_questions": false,
+      "has_multiple_choice": true,
+      "has_methodology_tags": false,
+      "has_categories": true
+    },
+    "methodology_match": {
+      "expected": [
+        "behavioral_economics",
+        "choice_conjoint",
+        "van_westendorp"
+      ],
+      "detected": [
+        "choice_based_conjoint",
+        "general_survey",
+        "van_westendorp_price_sensitivity",
+        "social_desirability_bias_check"
+      ],
+      "intersection": [],
+      "coverage_percentage": 0.0
+    }
+  }
+}

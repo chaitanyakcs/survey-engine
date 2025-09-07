@@ -1,0 +1,1317 @@
+{
+  "evaluation_timestamp": "2025-09-06T07:52:20.701425",
+  "total_tests": 5,
+  "successful_tests": 5,
+  "failed_tests": 0,
+  "average_processing_time": 20.332,
+  "ai_generation_rate": 100.0,
+  "average_questions_per_survey": 12.0,
+  "methodology_coverage_avg": 26.666666666666664,
+  "detailed_results": [
+    {
+      "test_case_id": "b2b_saas_evaluation",
+      "timestamp": "2025-09-06T07:51:01.355170",
+      "processing_time_seconds": 22.32,
+      "rfq_input": "\n        We need comprehensive research for B2B SaaS platform evaluation targeting mid-market companies (500-2000 employees).\n        Key research areas: decision-making process mapping, stakeholder influence analysis, feature importance across different user roles,\n        implementation timeline expectations, budget approval workflows, competitive landscape analysis (Salesforce, HubSpot, Microsoft),\n        TCO considerations, security compliance requirements, and integration complexity concerns.\n        Use conjoint analysis for feature trade-offs, MaxDiff for priority ranking, Van Westendorp for pricing sensitivity across user tiers,\n        and brand perception mapping. Need to segment by company size, industry vertical, and current tech stack maturity.\n        Target: IT directors, business users, procurement teams, and C-level executives. Minimum 200 qualified responses.\n        ",
+      "generated_survey": {
+        "title": "B2B SaaS Evaluation: Decision Process, Feature Trade-offs, and Pricing Sensitivity",
+        "description": "This survey evaluates how mid-market companies (500\u20132,000 employees) assess B2B SaaS platforms, including stakeholders, decision workflows, feature priorities, pricing sensitivity, competitive perceptions, compliance, integrations, and total cost of ownership.",
+        "estimated_time": 12,
+        "questions": [
+          {
+            "id": "q1",
+            "text": "Which of the following best describes your role in purchasing or renewing B2B SaaS platforms for your organization?",
+            "type": "multiple_choice",
+            "options": [
+              "C-level executive (e.g., CIO, CTO, CFO)",
+              "IT Director/Manager",
+              "Procurement/Sourcing",
+              "Business stakeholder/user lead (e.g., Sales Ops, Marketing Ops, RevOps)",
+              "Security/Compliance lead",
+              "No involvement"
+            ],
+            "required": true,
+            "category": "screening"
+          },
+          {
+            "id": "q2",
+            "text": "How many full-time employees does your organization have?",
+            "type": "multiple_choice",
+            "options": [
+              "Fewer than 500",
+              "500\u2013999",
+              "1,000\u20131,499",
+              "1,500\u20132,000",
+              "More than 2,000"
+            ],
+            "required": true,
+            "category": "screening"
+          },
+          {
+            "id": "q3",
+            "text": "Which vendors are currently in use or under active consideration for your CRM/RevOps stack? Select all that apply.",
+            "type": "multiple_select",
+            "options": [
+              "Salesforce",
+              "HubSpot",
+              "Microsoft (Dynamics 365, Azure ecosystem)",
+              "Other (e.g., Zoho, Freshworks)",
+              "Custom/Internally built",
+              "None/Not applicable"
+            ],
+            "required": true,
+            "category": "core_research"
+          },
+          {
+            "id": "q4",
+            "text": "Map the typical decision-making process for selecting a new B2B SaaS platform in your organization. Select all stakeholders who have meaningful influence.",
+            "type": "multiple_select",
+            "options": [
+              "Executive sponsor (CIO/CTO/CFO)",
+              "IT leadership (Director/Manager)",
+              "Business owner (Sales/Marketing/CS/Operations lead)",
+              "End users/power users",
+              "Procurement/Sourcing",
+              "Security/Compliance",
+              "Data/Analytics team",
+              "Legal",
+              "Finance/FP&A"
+            ],
+            "required": true,
+            "category": "core_research"
+          },
+          {
+            "id": "q5",
+            "text": "Please allocate 100 points across the following decision factors to reflect their relative influence in your organization\u2019s final selection (must total 100).",
+            "type": "allocation",
+            "options": [
+              "Core feature fit",
+              "Integration effort/compatibility",
+              "Security/compliance certifications",
+              "Total cost of ownership (incl. implementation, training, support)",
+              "Usability/adoption",
+              "Vendor reputation/roadmap",
+              "Implementation timeline to go-live"
+            ],
+            "required": true,
+            "category": "core_research"
+          },
+          {
+            "id": "q6",
+            "text": "MaxDiff: From the following list of potential platform capabilities, indicate the MOST important and LEAST important for your organization.",
+            "type": "maxdiff",
+            "options": [
+              "Role-based access control and SSO (SAML/SCIM)",
+              "Advanced reporting and customizable dashboards",
+              "Open APIs and pre-built connectors (Salesforce, HubSpot, Microsoft, data warehouses)",
+              "Workflow automation and approvals",
+              "Data governance and audit logs",
+              "Scalability/performance SLAs",
+              "In-app collaboration/notes",
+              "Low-code/no-code configuration",
+              "Customer support quality (SLA, tiers)",
+              "Mobile access and offline capabilities"
+            ],
+            "required": true,
+            "category": "core_research"
+          },
+          {
+            "id": "q7",
+            "text": "Conjoint choice task: Please select the option you would most likely choose if these were your only choices.",
+            "type": "conjoint",
+            "options": [
+              {
+                "profile": {
+                  "Feature tier": "Standard",
+                  "Security": "SOC 2 Type II",
+                  "Integrations": "Salesforce + HubSpot",
+                  "Implementation": "8 weeks",
+                  "Price per user/month": "$45"
+                }
+              },
+              {
+                "profile": {
+                  "Feature tier": "Professional",
+                  "Security": "SOC 2 Type II + SSO/SCIM",
+                  "Integrations": "Salesforce + HubSpot + Microsoft",
+                  "Implementation": "12 weeks",
+                  "Price per user/month": "$75"
+                }
+              },
+              {
+                "profile": {
+                  "Feature tier": "Enterprise",
+                  "Security": "SOC 2 Type II + ISO 27001 + SSO/SCIM + DLP",
+                  "Integrations": "All major + Custom API",
+                  "Implementation": "16 weeks with dedicated PM",
+                  "Price per user/month": "$105"
+                }
+              }
+            ],
+            "required": true,
+            "category": "core_research"
+          },
+          {
+            "id": "q8",
+            "text": "Van Westendorp Price Sensitivity Meter: For a typical user license of a B2B SaaS platform in this category, at what price per user per month would you consider it...",
+            "type": "matrix_text",
+            "options": [
+              "Too cheap (quality concerns)",
+              "Cheap (good value)",
+              "Expensive (still consider)",
+              "Too expensive (would not consider)"
+            ],
+            "required": true,
+            "category": "core_research"
+          },
+          {
+            "id": "q9",
+            "text": "How would you rate each vendor on overall brand perception for mid-market needs?",
+            "type": "matrix_scale",
+            "options": [
+              "Salesforce",
+              "HubSpot",
+              "Microsoft (Dynamics/Azure)"
+            ],
+            "scale": {
+              "min_label": "Very unfavorable",
+              "max_label": "Very favorable",
+              "min": 1,
+              "max": 7
+            },
+            "required": true,
+            "category": "core_research"
+          },
+          {
+            "id": "q10",
+            "text": "Please indicate your organization\u2019s typical budget approval workflow for new SaaS over $100k annual contract value.",
+            "type": "multiple_choice",
+            "options": [
+              "Single approver (department head)",
+              "Multi-step (department head -> procurement -> finance)",
+              "Executive committee/steering approval",
+              "Board-level or CFO sign-off required",
+              "Not sure/varies"
+            ],
+            "required": true,
+            "category": "core_research"
+          },
+          {
+            "id": "q11",
+            "text": "Rate your expectations and current state for implementation timeline and integration complexity.",
+            "type": "matrix_scale",
+            "options": [
+              "Expected time-to-go-live for a new platform",
+              "Perceived integration complexity with current stack",
+              "Acceptable internal resource commitment (FTEs)"
+            ],
+            "scale": {
+              "min_label": "Very low/short",
+              "max_label": "Very high/long",
+              "min": 1,
+              "max": 7
+            },
+            "required": true,
+            "category": "core_research"
+          },
+          {
+            "id": "q12",
+            "text": "Which security and compliance requirements are mandatory for vendors to pass in your organization? Select all that apply.",
+            "type": "multiple_select",
+            "options": [
+              "SOC 2 Type II",
+              "ISO 27001",
+              "HIPAA",
+              "GDPR readiness (DPA, SCCs)",
+              "SSO/SCIM, MFA",
+              "Penetration test reports",
+              "Data residency options",
+              "None of the above"
+            ],
+            "required": true,
+            "category": "core_research"
+          },
+          {
+            "id": "q13",
+            "text": "How do you estimate Total Cost of Ownership (TCO) when evaluating platforms? Select all that apply.",
+            "type": "multiple_select",
+            "options": [
+              "Licenses/subscriptions",
+              "Implementation partner costs",
+              "Internal staffing/training time",
+              "Data migration and integration development",
+              "Ongoing admin/maintenance",
+              "Support/premium success plans",
+              "Change management/user adoption programs"
+            ],
+            "required": true,
+            "category": "core_research"
+          },
+          {
+            "id": "q14",
+            "text": "Industry vertical",
+            "type": "multiple_choice",
+            "options": [
+              "Technology/SaaS",
+              "Manufacturing",
+              "Financial Services",
+              "Healthcare/Life Sciences",
+              "Retail/E-commerce",
+              "Professional Services",
+              "Telecom/Media",
+              "Education/Non-profit",
+              "Other"
+            ],
+            "required": true,
+            "category": "demographic"
+          },
+          {
+            "id": "q15",
+            "text": "How would you describe your current go-to-market tech stack maturity?",
+            "type": "multiple_choice",
+            "options": [
+              "Foundational (basic CRM + limited automation)",
+              "Developing (CRM + marketing/sales automation + BI pilots)",
+              "Advanced (integrated CRM, MAP, CPQ, CS platform, data warehouse)",
+              "Leading (real-time CDP, advanced analytics/ML, extensive automation)"
+            ],
+            "required": true,
+            "category": "demographic"
+          }
+        ],
+        "metadata": {
+          "target_responses": 200,
+          "methodology": [
+            "screening",
+            "maxdiff",
+            "conjoint",
+            "van_westendorp",
+            "brand_perception",
+            "segmentation"
+          ]
+        }
+      },
+      "model_used": "gpt-5-via-replicate",
+      "used_ai_generation": true,
+      "golden_examples_used": [],
+      "similarity_score": null,
+      "analysis": {
+        "title_generated": true,
+        "description_generated": true,
+        "questions_count": 15,
+        "estimated_time": 12,
+        "methodologies_detected": [
+          "screening",
+          "maxdiff",
+          "conjoint",
+          "van_westendorp",
+          "brand_perception",
+          "segmentation"
+        ],
+        "meets_min_questions": true,
+        "has_advanced_methodologies": true,
+        "quality_indicators": {
+          "has_screening_questions": true,
+          "has_scale_questions": false,
+          "has_multiple_choice": true,
+          "has_methodology_tags": false,
+          "has_categories": true
+        },
+        "methodology_match": {
+          "expected": [
+            "brand_perception",
+            "conjoint_analysis",
+            "maxdiff",
+            "van_westendorp"
+          ],
+          "detected": [
+            "segmentation",
+            "maxdiff",
+            "van_westendorp",
+            "brand_perception",
+            "conjoint",
+            "screening"
+          ],
+          "intersection": [
+            "van_westendorp",
+            "maxdiff",
+            "brand_perception"
+          ],
+          "coverage_percentage": 75.0
+        }
+      }
+    },
+    {
+      "test_case_id": "luxury_ev_journey",
+      "timestamp": "2025-09-06T07:51:15.076451",
+      "processing_time_seconds": 13.72,
+      "rfq_input": "\n        Luxury electric vehicle consumer journey study for $80k+ EV segment. Research focus: consideration set evolution,\n        charging infrastructure concerns, brand prestige perception, range anxiety vs performance trade-offs,\n        dealer experience expectations, financing vs leasing preferences, sustainability motivations vs luxury appeal,\n        and competitive analysis against Tesla Model S, BMW iX, Mercedes EQS, Audi e-tron GT.\n        Include ethnographic pre-study insights, choice-based conjoint with 8 attributes, Gabor-Granger pricing methodology,\n        TURF analysis for feature combinations, implicit association testing for brand perceptions,\n        and longitudinal tracking of consideration changes. Segment by income, lifestyle, and current vehicle ownership.\n        Target: HHI $150k+, considering luxury EV purchase in next 18 months. 250 responses minimum.\n        ",
+      "generated_survey": {
+        "title": "Luxury EV Consumer Journey Study",
+        "description": "Survey to understand the consideration journey, charging concerns, brand perceptions, pricing, and feature preferences for $80k+ luxury EVs.",
+        "estimated_time": 12,
+        "questions": [
+          {
+            "id": "q1",
+            "text": "Which of the following best describes your household income before taxes?",
+            "type": "multiple_choice",
+            "options": [
+              "Under $150,000",
+              "$150,000\u2013$199,999",
+              "$200,000\u2013$249,999",
+              "$250,000\u2013$349,999",
+              "$350,000\u2013$499,999",
+              "$500,000+"
+            ],
+            "required": true,
+            "category": "screening"
+          },
+          {
+            "id": "q2",
+            "text": "How likely are you to purchase or lease a new luxury electric vehicle (typical MSRP $80,000+) in the next 18 months?",
+            "type": "multiple_choice",
+            "options": [
+              "Definitely will",
+              "Very likely",
+              "Somewhat likely",
+              "Not very likely",
+              "Definitely not"
+            ],
+            "required": true,
+            "category": "screening"
+          },
+          {
+            "id": "q3",
+            "text": "Which of the following luxury EVs are you currently considering? Select all that apply.",
+            "type": "multiple_select",
+            "options": [
+              "Tesla Model S",
+              "BMW iX",
+              "Mercedes EQS",
+              "Audi e-tron GT",
+              "Porsche Taycan",
+              "Lucid Air",
+              "Genesis Electrified G80",
+              "None of the above"
+            ],
+            "required": true,
+            "category": "core"
+          },
+          {
+            "id": "q4",
+            "text": "Please indicate how important each factor is in your luxury EV decision.",
+            "type": "matrix",
+            "options": [
+              "Not important",
+              "Slightly important",
+              "Moderately important",
+              "Very important",
+              "Extremely important"
+            ],
+            "required": true,
+            "category": "core",
+            "rows": [
+              "Brand prestige",
+              "Real-world driving range",
+              "Charging network availability/reliability",
+              "Acceleration/performance",
+              "Interior craftsmanship/materials",
+              "Advanced driver assistance/technology",
+              "Total cost of ownership (incl. incentives)",
+              "Sustainability/low environmental impact",
+              "Dealer/service experience"
+            ]
+          },
+          {
+            "id": "q5",
+            "text": "Trade-off exercise: When range and performance conflict, which do you prioritize?",
+            "type": "multiple_choice",
+            "options": [
+              "Prefer more range even if 0\u201360 mph is slower",
+              "Balanced range and performance",
+              "Prefer stronger performance even with less range",
+              "Unsure/depends on other factors"
+            ],
+            "required": true,
+            "category": "core"
+          },
+          {
+            "id": "q6",
+            "text": "Choice-Based Conjoint: Which configuration would you choose? Assume identical price and delivery time.",
+            "type": "discrete_choice",
+            "options": [
+              "Option A: Range 400 mi; 0\u201360 in 3.0s; DC fast charge 250 kW; AWD; Interior Nappa leather; Brand A; ADAS Level 2+; Dealer-based service",
+              "Option B: Range 360 mi; 0\u201360 in 2.7s; DC fast charge 350 kW; AWD; Interior sustainable premium; Brand B; ADAS Level 3-ready; Mobile service + boutique studio",
+              "Option C: Range 320 mi; 0\u201360 in 3.4s; DC fast charge 200 kW; RWD; Interior performance-focused; Brand C; ADAS Level 2; Traditional dealership"
+            ],
+            "required": true,
+            "category": "core",
+            "attributes": [
+              "Range",
+              "0\u201360 Acceleration",
+              "DC Fast Charge Rate",
+              "Drivetrain",
+              "Interior Theme/Materials",
+              "Brand",
+              "ADAS Capability",
+              "Sales/Service Model"
+            ]
+          },
+          {
+            "id": "q7",
+            "text": "Gabor-Granger Pricing: At which price would you consider this luxury EV to be a good value? Select the highest price at which you would still seriously consider purchasing.",
+            "type": "multiple_choice",
+            "options": [
+              "$79,999",
+              "$84,999",
+              "$89,999",
+              "$94,999",
+              "$99,999",
+              "$109,999",
+              "$119,999",
+              "$129,999+"
+            ],
+            "required": true,
+            "category": "core"
+          },
+          {
+            "id": "q8",
+            "text": "Which charging-related features would increase your likelihood to choose a brand? Select all that apply.",
+            "type": "multiple_select",
+            "options": [
+              "Access to nationwide high-speed network (NACS/CCS)",
+              "Home charger installation included",
+              "Guaranteed loaner during charging downtime",
+              "Real-time charger occupancy in app",
+              "Trip planner with auto-route charging",
+              "Free public fast charging for 2 years",
+              "On-site charging concierge at dealer",
+              "Battery preconditioning for fast charge"
+            ],
+            "required": true,
+            "category": "core",
+            "turf": true
+          },
+          {
+            "id": "q9",
+            "text": "Implicit Association: Please select the brand you most strongly associate with each attribute.",
+            "type": "matrix_single_punch",
+            "options": [
+              "Tesla",
+              "BMW",
+              "Mercedes-Benz",
+              "Audi",
+              "Other luxury EV brand",
+              "None"
+            ],
+            "required": true,
+            "category": "core",
+            "rows": [
+              "Cutting-edge technology",
+              "Prestige/luxury status",
+              "Driving performance",
+              "Reliable charging ecosystem",
+              "Sustainability leadership"
+            ]
+          },
+          {
+            "id": "q10",
+            "text": "Financing preference for your next luxury EV:",
+            "type": "multiple_choice",
+            "options": [
+              "Lease",
+              "Finance (loan)",
+              "Cash purchase",
+              "Undecided"
+            ],
+            "required": true,
+            "category": "core"
+          },
+          {
+            "id": "q11",
+            "text": "Describe your ideal dealer or retail experience for a luxury EV (e.g., appointment, delivery, service).",
+            "type": "text",
+            "options": [],
+            "required": false,
+            "category": "core"
+          },
+          {
+            "id": "q12",
+            "text": "Current primary vehicle ownership:",
+            "type": "multiple_choice",
+            "options": [
+              "Gasoline ICE",
+              "Hybrid (HEV)",
+              "Plug-in hybrid (PHEV)",
+              "Battery electric (BEV)",
+              "No vehicle currently"
+            ],
+            "required": true,
+            "category": "demographic"
+          },
+          {
+            "id": "q13",
+            "text": "Lifestyle descriptors that best fit you. Select up to 3.",
+            "type": "multiple_select",
+            "options": [
+              "Urban professional",
+              "Suburban family",
+              "Frequent road-tripper",
+              "Luxury enthusiast",
+              "Tech early adopter",
+              "Environmentally conscious",
+              "Performance driver",
+              "Value optimizer"
+            ],
+            "required": true,
+            "category": "demographic",
+            "max_select": 3
+          },
+          {
+            "id": "q14",
+            "text": "How has your consideration set changed in the past 3 months? Select all that apply.",
+            "type": "multiple_select",
+            "options": [
+              "Added Tesla Model S",
+              "Added BMW iX",
+              "Added Mercedes EQS",
+              "Added Audi e-tron GT",
+              "Removed Tesla Model S",
+              "Removed BMW iX",
+              "Removed Mercedes EQS",
+              "Removed Audi e-tron GT",
+              "No change",
+              "Added/removed other luxury EV"
+            ],
+            "required": true,
+            "category": "core"
+          }
+        ],
+        "metadata": {
+          "target_responses": 250,
+          "methodology": [
+            "screening",
+            "choice_based_conjoint_8_attributes",
+            "gabor_granger_pricing",
+            "turf_analysis",
+            "implicit_association",
+            "longitudinal_tracking_prompt",
+            "ethnographic_prestudy_reference"
+          ],
+          "segments": [
+            "Income (HHI $150k+)",
+            "Lifestyle",
+            "Current vehicle ownership"
+          ]
+        }
+      },
+      "model_used": "gpt-5-via-replicate",
+      "used_ai_generation": true,
+      "golden_examples_used": [],
+      "similarity_score": null,
+      "analysis": {
+        "title_generated": true,
+        "description_generated": true,
+        "questions_count": 14,
+        "estimated_time": 12,
+        "methodologies_detected": [
+          "screening",
+          "choice_based_conjoint_8_attributes",
+          "gabor_granger_pricing",
+          "turf_analysis",
+          "implicit_association",
+          "longitudinal_tracking_prompt",
+          "ethnographic_prestudy_reference"
+        ],
+        "meets_min_questions": false,
+        "has_advanced_methodologies": true,
+        "quality_indicators": {
+          "has_screening_questions": true,
+          "has_scale_questions": false,
+          "has_multiple_choice": true,
+          "has_methodology_tags": false,
+          "has_categories": true
+        },
+        "methodology_match": {
+          "expected": [
+            "gabor_granger",
+            "turf_analysis",
+            "choice_conjoint",
+            "implicit_testing"
+          ],
+          "detected": [
+            "implicit_association",
+            "choice_based_conjoint_8_attributes",
+            "longitudinal_tracking_prompt",
+            "turf_analysis",
+            "ethnographic_prestudy_reference",
+            "screening",
+            "gabor_granger_pricing"
+          ],
+          "intersection": [
+            "turf_analysis"
+          ],
+          "coverage_percentage": 25.0
+        }
+      }
+    },
+    {
+      "test_case_id": "healthcare_ai_adoption",
+      "timestamp": "2025-09-06T07:51:32.587027",
+      "processing_time_seconds": 17.51,
+      "rfq_input": "\n        We need comprehensive research on AI-powered diagnostic tools adoption in mid-sized hospitals (100-500 beds). \n        Key focus areas: decision-making hierarchy, budget approval processes, clinical staff acceptance, patient privacy concerns, \n        ROI expectations, integration challenges with existing HIS/EMR systems, regulatory compliance barriers, \n        and competitive landscape analysis for vendors like GE Healthcare, Philips, and Siemens Healthineers.\n        Include KANO model analysis for feature prioritization and discrete choice modeling for pricing sensitivity.\n        Target: C-suite executives, CIOs, Chief Medical Officers, and department heads. Need 150+ qualified responses.\n        ",
+      "generated_survey": {
+        "title": "AI-Powered Diagnostic Tools Adoption in Mid-Sized Hospitals",
+        "description": "This survey gathers insights from hospital leaders on adoption drivers, barriers, and preferences for AI diagnostic tools, including budget processes, clinical acceptance, integration, compliance, feature prioritization (KANO), and pricing sensitivity (DCE).",
+        "estimated_time": 10,
+        "questions": [
+          {
+            "id": "q1",
+            "text": "Which best describes your role?",
+            "type": "multiple_choice",
+            "options": [
+              "C-suite executive (CEO/COO/CFO)",
+              "Chief Information Officer (CIO) / IT Director",
+              "Chief Medical Officer (CMO) / Clinical Director",
+              "Department head (e.g., Radiology, Cardiology, Pathology)",
+              "Procurement/Supply Chain leader",
+              "Other"
+            ],
+            "required": true,
+            "category": "screening"
+          },
+          {
+            "id": "q2",
+            "text": "How many licensed beds does your primary hospital have?",
+            "type": "multiple_choice",
+            "options": [
+              "Fewer than 100",
+              "100\u2013199",
+              "200\u2013349",
+              "350\u2013500",
+              "More than 500"
+            ],
+            "required": true,
+            "category": "screening"
+          },
+          {
+            "id": "q3",
+            "text": "Where is your hospital in adopting AI-powered diagnostic tools (e.g., radiology decision support, pathology image analysis, triage)?",
+            "type": "multiple_choice",
+            "options": [
+              "No plans",
+              "Exploring/assessing vendors",
+              "Pilot/limited deployment",
+              "Scaling across departments",
+              "Fully deployed in routine care"
+            ],
+            "required": true,
+            "category": "core"
+          },
+          {
+            "id": "q4",
+            "text": "Who are the primary decision-makers and approvers for AI diagnostic tool purchases at your hospital? (Select all that apply)",
+            "type": "multiple_choice",
+            "options": [
+              "CIO/IT leadership",
+              "CMO/Clinical leadership",
+              "Department heads (e.g., Radiology)",
+              "CFO/Finance",
+              "Procurement",
+              "Data governance/Privacy/Compliance",
+              "Institutional Review Board (IRB)/Clinical governance committee",
+              "Other"
+            ],
+            "required": true,
+            "category": "core"
+          },
+          {
+            "id": "q5",
+            "text": "What is the typical budget approval threshold and process for AI diagnostic tools?",
+            "type": "multiple_choice",
+            "options": [
+              "Under $100k, department-level approval",
+              "$100k\u2013$499k, executive committee approval",
+              "$500k\u2013$1M, board or C-suite approval",
+              "Over $1M, board approval",
+              "Case-by-case/unclear"
+            ],
+            "required": true,
+            "category": "core"
+          },
+          {
+            "id": "q6",
+            "text": "Please rate the importance of the following factors in your adoption decision (1 = Not important, 5 = Extremely important): clinical accuracy/validity; clinician workflow fit; integration with HIS/EMR; data privacy/security; regulatory clearance (e.g., FDA/CE); total cost of ownership; vendor reputation/support.",
+            "type": "scale",
+            "options": [
+              "1",
+              "2",
+              "3",
+              "4",
+              "5"
+            ],
+            "required": true,
+            "category": "core"
+          },
+          {
+            "id": "q7",
+            "text": "Which integration challenges have you faced or anticipate with HIS/EMR and imaging systems? (Select up to 3)",
+            "type": "multiple_choice",
+            "options": [
+              "Standards compliance (HL7/FHIR/DICOM)",
+              "Data quality/labeling for model performance",
+              "Single sign-on/user provisioning",
+              "Result/write-back to EMR/PACS",
+              "Latency/performance in clinical workflow",
+              "IT security/network constraints",
+              "Vendor interoperability/contracting",
+              "Change management/training"
+            ],
+            "required": true,
+            "category": "core"
+          },
+          {
+            "id": "q8",
+            "text": "KANO feature assessment: For each feature, select how you would feel if it is present or absent. Features: A) Real-time PACS integration; B) Explainable AI (case-level rationale); C) Automated QA/alerting for model drift; D) On-premise deployment option; E) HIPAA/GDPR compliance reporting; F) 24/7 clinical-grade support.",
+            "type": "multiple_choice",
+            "options": [
+              "Must-be",
+              "One-dimensional (more is better)",
+              "Attractive (delighters)",
+              "Indifferent",
+              "Reverse (prefer not)"
+            ],
+            "required": true,
+            "category": "core"
+          },
+          {
+            "id": "q9",
+            "text": "Discrete choice: Which option would you most likely select today?",
+            "type": "multiple_choice",
+            "options": [
+              "Vendor X: $250k/yr subscription, FDA-cleared, cloud-hosted, basic EMR write-back",
+              "Vendor Y: $400k/yr subscription, FDA-cleared, on-prem or hybrid, advanced EMR/PACS integration and XAI",
+              "Vendor Z: $150k/yr subscription, CE-mark only, cloud-only, limited integration",
+              "Do not adopt any option"
+            ],
+            "required": true,
+            "category": "core"
+          },
+          {
+            "id": "q10",
+            "text": "Which vendors are you actively considering or using? (Select all that apply)",
+            "type": "multiple_choice",
+            "options": [
+              "GE Healthcare",
+              "Philips",
+              "Siemens Healthineers",
+              "Other large OEM (e.g., Canon, Fujifilm)",
+              "Specialist AI vendor (e.g., Aidoc, Viz.ai, HeartFlow, Paige)",
+              "In-house/academic collaboration",
+              "None currently"
+            ],
+            "required": true,
+            "category": "core"
+          },
+          {
+            "id": "q11",
+            "text": "What payback/ROI timeline would your organization require for AI diagnostic tools?",
+            "type": "multiple_choice",
+            "options": [
+              "Under 12 months",
+              "12\u201324 months",
+              "24\u201336 months",
+              "36+ months",
+              "No formal requirement"
+            ],
+            "required": true,
+            "category": "core"
+          },
+          {
+            "id": "q12",
+            "text": "What are your top regulatory and privacy concerns? Please specify any barriers (e.g., FDA pathway, HIPAA, GDPR, clinical risk, liability).",
+            "type": "text",
+            "options": [],
+            "required": false,
+            "category": "core"
+          },
+          {
+            "id": "q13",
+            "text": "Region of your primary hospital",
+            "type": "multiple_choice",
+            "options": [
+              "North America",
+              "Europe",
+              "Asia-Pacific",
+              "Latin America",
+              "Middle East & Africa"
+            ],
+            "required": true,
+            "category": "demographic"
+          },
+          {
+            "id": "q14",
+            "text": "Years in current role",
+            "type": "multiple_choice",
+            "options": [
+              "Less than 1 year",
+              "1\u20133 years",
+              "4\u20137 years",
+              "8\u201315 years",
+              "16+ years"
+            ],
+            "required": true,
+            "category": "demographic"
+          }
+        ],
+        "metadata": {
+          "target_responses": 200,
+          "methodology": [
+            "general_survey",
+            "kano_model",
+            "discrete_choice_experiment"
+          ]
+        }
+      },
+      "model_used": "gpt-5-via-replicate",
+      "used_ai_generation": true,
+      "golden_examples_used": [],
+      "similarity_score": null,
+      "analysis": {
+        "title_generated": true,
+        "description_generated": true,
+        "questions_count": 14,
+        "estimated_time": 10,
+        "methodologies_detected": [
+          "general_survey",
+          "kano_model",
+          "discrete_choice_experiment"
+        ],
+        "meets_min_questions": true,
+        "has_advanced_methodologies": true,
+        "quality_indicators": {
+          "has_screening_questions": true,
+          "has_scale_questions": true,
+          "has_multiple_choice": true,
+          "has_methodology_tags": false,
+          "has_categories": true
+        },
+        "methodology_match": {
+          "expected": [
+            "stakeholder_mapping",
+            "discrete_choice",
+            "kano_model"
+          ],
+          "detected": [
+            "general_survey",
+            "discrete_choice_experiment",
+            "kano_model"
+          ],
+          "intersection": [
+            "kano_model"
+          ],
+          "coverage_percentage": 33.33333333333333
+        }
+      }
+    },
+    {
+      "test_case_id": "fintech_digital_transformation",
+      "timestamp": "2025-09-06T07:51:58.673034",
+      "processing_time_seconds": 26.08,
+      "rfq_input": "\n        Multi-phase study on digital banking transformation for regional banks competing with fintech disruptors. \n        Research objectives: customer journey mapping across digital touchpoints, security vs convenience trade-offs, \n        generational differences in banking preferences, willingness to switch banks for better digital experience,\n        feature importance using MaxDiff methodology, price sensitivity for premium digital services using PSM,\n        competitive benchmarking against Chase, Bank of America, and fintech players like Chime and SoFi.\n        Include implicit testing for trust and security perceptions. Need segmentation analysis by age, income, and tech adoption.\n        Target: 18-65 banking customers, mix of current digital users and traditional branch users. 400+ responses required.\n        ",
+      "generated_survey": {
+        "title": "Evaluation Test: fintech_digital_transformation Survey",
+        "description": "Survey based on: \n        Multi-phase study on digital banking transformation for regional banks competing with finte...",
+        "estimated_time": 8,
+        "questions": [
+          {
+            "id": "q1",
+            "text": "How familiar are you with this product category?",
+            "type": "multiple_choice",
+            "options": [
+              "Very familiar",
+              "Somewhat familiar",
+              "Not familiar",
+              "Never heard of it"
+            ],
+            "required": true,
+            "category": "screening"
+          },
+          {
+            "id": "q2",
+            "text": "What is your primary reason for considering this type of product?",
+            "type": "multiple_choice",
+            "options": [
+              "Quality",
+              "Price",
+              "Brand reputation",
+              "Features",
+              "Convenience"
+            ],
+            "required": true,
+            "category": "core"
+          },
+          {
+            "id": "q3",
+            "text": "How important is price when making your decision?",
+            "type": "scale",
+            "options": [
+              "1",
+              "2",
+              "3",
+              "4",
+              "5"
+            ],
+            "scale_labels": {
+              "1": "Not important",
+              "5": "Very important"
+            },
+            "required": true,
+            "category": "pricing"
+          },
+          {
+            "id": "q4",
+            "text": "What is your age range?",
+            "type": "multiple_choice",
+            "options": [
+              "18-24",
+              "25-34",
+              "35-44",
+              "45-54",
+              "55-64",
+              "65+"
+            ],
+            "required": true,
+            "category": "demographic"
+          }
+        ],
+        "metadata": {
+          "target_responses": 200,
+          "methodology": [
+            "general_survey"
+          ],
+          "generation_method": "template_based",
+          "note": "Generated using fallback templates - add Replicate token for AI generation"
+        }
+      },
+      "model_used": "gpt-5-via-replicate",
+      "used_ai_generation": true,
+      "golden_examples_used": [],
+      "similarity_score": null,
+      "analysis": {
+        "title_generated": true,
+        "description_generated": true,
+        "questions_count": 4,
+        "estimated_time": 8,
+        "methodologies_detected": [
+          "general_survey"
+        ],
+        "meets_min_questions": false,
+        "has_advanced_methodologies": true,
+        "quality_indicators": {
+          "has_screening_questions": true,
+          "has_scale_questions": true,
+          "has_multiple_choice": true,
+          "has_methodology_tags": false,
+          "has_categories": true
+        },
+        "methodology_match": {
+          "expected": [
+            "psm",
+            "maxdiff",
+            "implicit_testing",
+            "journey_mapping"
+          ],
+          "detected": [
+            "general_survey"
+          ],
+          "intersection": [],
+          "coverage_percentage": 0.0
+        }
+      }
+    },
+    {
+      "test_case_id": "sustainability_cpg_behavior",
+      "timestamp": "2025-09-06T07:52:20.699685",
+      "processing_time_seconds": 22.03,
+      "rfq_input": "\n        Comprehensive sustainability research for CPG brands exploring eco-friendly product lines. \n        Focus: purchase intent drivers for sustainable products, willingness to pay premium for eco-certifications,\n        greenwashing sensitivity, brand authenticity perceptions, influence of sustainability on brand loyalty,\n        environmental claim believability testing, packaging preferences (minimal vs informative),\n        certification recognition (Fair Trade, Organic, Carbon Neutral, B-Corp), and behavioral economics\n        nudging effectiveness for sustainable choices. Use choice-based conjoint with sustainability attributes,\n        Van Westendorp for price premium tolerance, and social desirability bias correction techniques.\n        Target: eco-conscious millennials and Gen Z, household decision makers, income $40k+. 300 responses needed.\n        ",
+      "generated_survey": {
+        "title": "Sustainability in CPG: Purchase Drivers, Pricing, and Trust",
+        "description": "A research survey to understand purchase intent, willingness to pay for eco-certifications, perceptions of greenwashing and brand authenticity, packaging preferences, certification recognition, and the effectiveness of behavioral nudges among eco-conscious Millennials and Gen Z household shoppers.",
+        "estimated_time": 10,
+        "questions": [
+          {
+            "id": "q1",
+            "text": "Which of the following best describes your role in household purchasing for everyday consumer packaged goods (e.g., food, personal care, cleaning)?",
+            "type": "multiple_choice",
+            "options": [
+              "I am the primary decision maker",
+              "I share decision making equally",
+              "I influence but rarely decide",
+              "I am not involved in these decisions"
+            ],
+            "required": true,
+            "category": "screening"
+          },
+          {
+            "id": "q2",
+            "text": "What is your age?",
+            "type": "multiple_choice",
+            "options": [
+              "18-22",
+              "23-27",
+              "28-34",
+              "35-40",
+              "41-54",
+              "55+"
+            ],
+            "required": true,
+            "category": "screening"
+          },
+          {
+            "id": "q3",
+            "text": "Which of the following best describes your total annual household income before taxes?",
+            "type": "multiple_choice",
+            "options": [
+              "Under $40,000",
+              "$40,000 - $59,999",
+              "$60,000 - $79,999",
+              "$80,000 - $99,999",
+              "$100,000 - $149,999",
+              "$150,000+",
+              "Prefer not to say"
+            ],
+            "required": true,
+            "category": "screening"
+          },
+          {
+            "id": "q4",
+            "text": "In the past 3 months, how often have you purchased consumer packaged goods labeled with eco-friendly or sustainability claims (e.g., recyclable packaging, organic, carbon neutral)?",
+            "type": "multiple_choice",
+            "options": [
+              "Never",
+              "Once",
+              "2-3 times",
+              "Monthly",
+              "2-3 times per month",
+              "Weekly or more"
+            ],
+            "required": true,
+            "category": "screening"
+          },
+          {
+            "id": "q5",
+            "text": "Please rate how each factor influences your likelihood to purchase a sustainable CPG product (1 = Not at all influential, 7 = Extremely influential).",
+            "type": "matrix_scale",
+            "options": [
+              "Third-party certifications (e.g., Fair Trade, USDA Organic, Carbon Neutral, B Corp)",
+              "Clear environmental impact claims (e.g., % recycled content, emissions savings)",
+              "Brand\u2019s overall sustainability reputation",
+              "Price compared to conventional alternatives",
+              "Packaging type (minimalist vs. detailed information)",
+              "Product performance vs. conventional options",
+              "In-store or online nudges (badges, default options, shelf placement)"
+            ],
+            "scale": {
+              "min_label": "1",
+              "max_label": "7"
+            },
+            "required": true,
+            "category": "core"
+          },
+          {
+            "id": "q6",
+            "text": "Which certifications or labels do you recognize and trust? Select all that apply.",
+            "type": "multiple_select",
+            "options": [
+              "Fair Trade",
+              "USDA Organic",
+              "Carbon Neutral/Carbon Trust",
+              "B Corp",
+              "Rainforest Alliance",
+              "Energy Star",
+              "I recognize them but do not trust",
+              "I do not recognize any"
+            ],
+            "required": true,
+            "category": "core"
+          },
+          {
+            "id": "q7",
+            "text": "Please indicate your agreement with the following statements (1 = Strongly disagree, 7 = Strongly agree).",
+            "type": "matrix_scale",
+            "options": [
+              "I am willing to pay more for products with credible eco-certifications.",
+              "I can usually tell when brands are greenwashing.",
+              "I trust brands more when they show detailed, verifiable sustainability data.",
+              "Sustainability influences my loyalty to a brand over time.",
+              "Minimal packaging is better, even if it shares less information.",
+              "I sometimes feel pressure to appear more eco-friendly than I actually am."
+            ],
+            "scale": {
+              "min_label": "1",
+              "max_label": "7"
+            },
+            "required": true,
+            "category": "core"
+          },
+          {
+            "id": "q8",
+            "text": "Choice-Based Conjoint: Which product would you most likely buy today? Assume all other attributes are equal.",
+            "type": "conjoint_choice",
+            "profiles": [
+              {
+                "price": "$4.49",
+                "certification": "USDA Organic",
+                "packaging": "Minimal (plain, low-ink, recyclable)",
+                "claim": "Made with 50% recycled materials"
+              },
+              {
+                "price": "$3.99",
+                "certification": "None",
+                "packaging": "Informative (detailed sustainability info, recyclable)",
+                "claim": "Carbon footprint reduced by 20%"
+              },
+              {
+                "price": "$4.29",
+                "certification": "B Corp + Carbon Neutral",
+                "packaging": "Informative (QR code to audit)",
+                "claim": "Third-party verified supply chain"
+              }
+            ],
+            "required": true,
+            "category": "core"
+          },
+          {
+            "id": "q9",
+            "text": "Van Westendorp Price Sensitivity for a sustainable version of a product you buy regularly: At what price would you consider it...",
+            "type": "van_westendorp",
+            "options": [
+              "Too cheap (quality would be questionable)",
+              "Cheap (a bargain but acceptable quality)",
+              "Expensive (getting high but still consider buying)",
+              "Too expensive (would not buy)"
+            ],
+            "required": true,
+            "category": "core"
+          },
+          {
+            "id": "q10",
+            "text": "Nudge Effectiveness: Which of the following would most increase your likelihood to choose a sustainable option?",
+            "type": "multiple_choice",
+            "options": [
+              "Defaulting to the sustainable option (opt-out to switch)",
+              "Prominent eco-badge and shelf placement",
+              "Small price incentive (e.g., 5% discount)",
+              "Social proof (e.g., \u201cMost customers choose this\u201d)",
+              "Detailed impact metrics (e.g., CO2 saved, water saved)",
+              "None of these"
+            ],
+            "required": true,
+            "category": "core"
+          },
+          {
+            "id": "q11",
+            "text": "When you see environmental claims on packaging, how believable do you find each type of claim? (1 = Not believable, 7 = Highly believable)",
+            "type": "matrix_scale",
+            "options": [
+              "General claims (e.g., \u201ceco-friendly\u201d, \u201cnatural\u201d)",
+              "Quantified claims (e.g., \u201c70% recycled content\u201d)",
+              "Third-party verified claims (with certification logo)",
+              "Claims with QR code linking to audit/report",
+              "Brand self-declared commitments (e.g., \u201cnet zero by 2030\u201d)"
+            ],
+            "scale": {
+              "min_label": "1",
+              "max_label": "7"
+            },
+            "required": true,
+            "category": "core"
+          },
+          {
+            "id": "q12",
+            "text": "Which best describes your gender?",
+            "type": "multiple_choice",
+            "options": [
+              "Woman",
+              "Man",
+              "Non-binary",
+              "Prefer to self-describe",
+              "Prefer not to say"
+            ],
+            "required": false,
+            "category": "demographic"
+          },
+          {
+            "id": "q13",
+            "text": "ZIP/Postal code (optional):",
+            "type": "text",
+            "options": [],
+            "required": false,
+            "category": "demographic"
+          }
+        ],
+        "metadata": {
+          "target_responses": 300,
+          "methodology": [
+            "choice_based_conjoint",
+            "van_westendorp_price_sensitivity",
+            "social_desirability_bias_check",
+            "general_survey"
+          ],
+          "screening_logic_notes": [
+            "Include: Age 18-40 for core target (Millennials/Gen Z); allow broader ages for calibration if desired.",
+            "Include: Household decision makers (primary or shared).",
+            "Include: Income $40k+ (allow Prefer not to say as soft quota).",
+            "Behavioral recency: Prefer respondents with at least one eco-labeled CPG purchase in past 3 months."
+          ],
+          "bias_correction_notes": [
+            "Use indirect wording in Q7 to detect social desirability (pressure to appear eco-friendly).",
+            "Randomize attribute orders in Q8 and item orders in matrix questions.",
+            "Include attention checks as needed (not shown) and apply post-stratification weighting."
+          ]
+        }
+      },
+      "model_used": "gpt-5-via-replicate",
+      "used_ai_generation": true,
+      "golden_examples_used": [],
+      "similarity_score": null,
+      "analysis": {
+        "title_generated": true,
+        "description_generated": true,
+        "questions_count": 13,
+        "estimated_time": 10,
+        "methodologies_detected": [
+          "choice_based_conjoint",
+          "van_westendorp_price_sensitivity",
+          "social_desirability_bias_check",
+          "general_survey"
+        ],
+        "meets_min_questions": false,
+        "has_advanced_methodologies": true,
+        "quality_indicators": {
+          "has_screening_questions": true,
+          "has_scale_questions": false,
+          "has_multiple_choice": true,
+          "has_methodology_tags": false,
+          "has_categories": true
+        },
+        "methodology_match": {
+          "expected": [
+            "behavioral_economics",
+            "choice_conjoint",
+            "van_westendorp"
+          ],
+          "detected": [
+            "choice_based_conjoint",
+            "general_survey",
+            "van_westendorp_price_sensitivity",
+            "social_desirability_bias_check"
+          ],
+          "intersection": [],
+          "coverage_percentage": 0.0
+        }
+      }
+    }
+  ]
+}

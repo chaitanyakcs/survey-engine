@@ -1,0 +1,259 @@
+{
+  "test_case_id": "healthcare_ai_adoption",
+  "timestamp": "2025-09-06T08:02:45.236431",
+  "processing_time_seconds": 19.82,
+  "rfq_input": "\n        We need comprehensive research on AI-powered diagnostic tools adoption in mid-sized hospitals (100-500 beds). \n        Key focus areas: decision-making hierarchy, budget approval processes, clinical staff acceptance, patient privacy concerns, \n        ROI expectations, integration challenges with existing HIS/EMR systems, regulatory compliance barriers, \n        and competitive landscape analysis for vendors like GE Healthcare, Philips, and Siemens Healthineers.\n        Include KANO model analysis for feature prioritization and discrete choice modeling for pricing sensitivity.\n        Target: C-suite executives, CIOs, Chief Medical Officers, and department heads. Need 150+ qualified responses.\n        ",
+  "generated_survey": {
+    "title": "AI-Powered Diagnostic Tools Adoption in Mid-Sized Hospitals",
+    "description": "Survey to assess adoption drivers, barriers, pricing sensitivity, and feature priorities for AI diagnostic tools in 100\u2013500 bed hospitals.",
+    "estimated_time": 10,
+    "questions": [
+      {
+        "id": "q1",
+        "text": "Which best describes your organization?",
+        "type": "multiple_choice",
+        "options": [
+          "Hospital (100\u2013500 beds)",
+          "Hospital (<100 beds)",
+          "Hospital (>500 beds)",
+          "Other healthcare facility",
+          "Non-healthcare organization"
+        ],
+        "required": true,
+        "category": "screening"
+      },
+      {
+        "id": "q2",
+        "text": "What is your role in technology/clinical solution decisions?",
+        "type": "multiple_choice",
+        "options": [
+          "C-suite (CEO, COO, CFO)",
+          "CIO/CTO/IT Director",
+          "Chief Medical Officer/Clinical Leadership",
+          "Department Head (e.g., Radiology, Pathology)",
+          "Procurement/Supply Chain",
+          "Clinician without purchasing influence",
+          "No involvement in these decisions"
+        ],
+        "required": true,
+        "category": "screening"
+      },
+      {
+        "id": "q3",
+        "text": "Which statement best describes your hospital\u2019s current status with AI-powered diagnostic tools (e.g., radiology AI, pathology AI)?",
+        "type": "multiple_choice",
+        "options": [
+          "Live and scaled across departments",
+          "Live in limited departments/pilots",
+          "Budgeted for near-term purchase (6\u201312 months)",
+          "Evaluating vendors/solutions (0\u20136 months)",
+          "No current plans"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q4",
+        "text": "Who are the key decision-makers and approvers for AI diagnostic tool purchases in your hospital? Select all that apply.",
+        "type": "multiple_select",
+        "options": [
+          "CIO/IT leadership",
+          "CMO/Clinical leadership",
+          "Department Head (e.g., Radiology)",
+          "CFO/Finance",
+          "Procurement/Supply Chain",
+          "Data Privacy/Compliance Officer",
+          "Board/Executive Committee",
+          "Other (please specify)"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q5",
+        "text": "What is the typical budget approval process length for AI diagnostic tools from business case to final sign-off?",
+        "type": "multiple_choice",
+        "options": [
+          "<3 months",
+          "3\u20136 months",
+          "7\u201312 months",
+          "13\u201318 months",
+          ">18 months",
+          "Not sure"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q6",
+        "text": "Please rate your agreement with the following regarding adoption barriers. (1=Strongly Disagree, 5=Strongly Agree)",
+        "type": "matrix_scale",
+        "options": [
+          "Integration with HIS/EMR is a major challenge",
+          "Regulatory compliance (e.g., FDA/CE/MDR/HIPAA) is a major barrier",
+          "Clinician acceptance and workflow fit are concerns",
+          "Patient privacy and data security concerns are significant",
+          "Unclear ROI/business case hinders approval",
+          "Lack of high-quality data/IT resources limits deployment"
+        ],
+        "scale": {
+          "min": 1,
+          "max": 5,
+          "labels": [
+            "Strongly Disagree",
+            "Strongly Agree"
+          ]
+        },
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q7",
+        "text": "For each feature, indicate how you would feel if the product had it and if it did NOT have it (KANO pairs).",
+        "type": "kano_pairs",
+        "options": [
+          {
+            "feature": "Seamless integration with leading HIS/EMR (HL7/FHIR/DICOM)"
+          },
+          {
+            "feature": "Explainable AI outputs with confidence scores"
+          },
+          {
+            "feature": "Automated QA and bias monitoring dashboards"
+          },
+          {
+            "feature": "On-premise and cloud deployment options"
+          },
+          {
+            "feature": "De-identification and robust PHI protection"
+          },
+          {
+            "feature": "24/7 clinical-grade support and uptime SLA"
+          }
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q8",
+        "text": "Assuming a mid-sized hospital deployment, what 1-year ROI threshold would justify adoption?",
+        "type": "multiple_choice",
+        "options": [
+          "<10%",
+          "10\u201324%",
+          "25\u201349%",
+          "50\u201399%",
+          "\u2265100%",
+          "ROI not primary; focus on clinical outcomes/safety"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q9",
+        "text": "Discrete Choice: Please choose the option you would most likely purchase.",
+        "type": "discrete_choice",
+        "options": [
+          "Option A: $250k/yr subscription; top-3 EMR certified integration; basic explainability; 99.5% uptime; vendor: Established (GE/Philips/Siemens).",
+          "Option B: $150k/yr; API integration only; advanced explainability; 99.0% uptime; vendor: Emerging.",
+          "Option C: $350k/yr; turnkey integration + workflow tools; bias monitoring; 99.9% uptime; vendor: Established.",
+          "Option D: $200k/yr; turnkey integration; limited explainability; 99.5% uptime; vendor: Established."
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q10",
+        "text": "Which vendors are you actively considering or have deployed? Select all that apply.",
+        "type": "multiple_select",
+        "options": [
+          "GE Healthcare",
+          "Philips",
+          "Siemens Healthineers",
+          "Other established vendor(s)",
+          "Emerging startup(s)",
+          "In-house/health system-built",
+          "None currently"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q11",
+        "text": "Please describe any specific integration challenges with your current HIS/EMR (vendor names, interfaces, data standards).",
+        "type": "text",
+        "options": [],
+        "required": false,
+        "category": "core"
+      },
+      {
+        "id": "q12",
+        "text": "Demographics: Region, bed count, and annual IT budget range.",
+        "type": "multiple_choice",
+        "options": [
+          "North America; 100\u2013249 beds; IT budget <$5M",
+          "North America; 250\u2013500 beds; IT budget $5\u201310M",
+          "Europe; 100\u2013249 beds; IT budget <$5M",
+          "Europe; 250\u2013500 beds; IT budget $5\u201310M",
+          "APAC; 100\u2013249 beds; IT budget <$5M",
+          "APAC; 250\u2013500 beds; IT budget $5\u201310M",
+          "LATAM/MEA; 100\u2013249 beds; IT budget <$5M",
+          "LATAM/MEA; 250\u2013500 beds; IT budget $5\u201310M",
+          "Any region; 100\u2013500 beds; IT budget >$10M",
+          "Prefer not to say"
+        ],
+        "required": true,
+        "category": "demographic"
+      }
+    ],
+    "metadata": {
+      "target_responses": 200,
+      "methodology": [
+        "discrete_choice",
+        "discrete_choice_experiment",
+        "kano_model"
+      ]
+    }
+  },
+  "model_used": "gpt-5-via-replicate",
+  "used_ai_generation": true,
+  "golden_examples_used": [],
+  "similarity_score": null,
+  "analysis": {
+    "title_generated": true,
+    "description_generated": true,
+    "questions_count": 12,
+    "estimated_time": 10,
+    "methodologies_detected": [
+      "discrete_choice",
+      "discrete_choice_experiment",
+      "kano_model"
+    ],
+    "meets_min_questions": true,
+    "has_advanced_methodologies": true,
+    "quality_indicators": {
+      "has_screening_questions": true,
+      "has_scale_questions": false,
+      "has_multiple_choice": true,
+      "has_methodology_tags": false,
+      "has_categories": true
+    },
+    "methodology_match": {
+      "expected": [
+        "discrete_choice",
+        "stakeholder_mapping",
+        "kano_model"
+      ],
+      "detected": [
+        "discrete_choice_experiment",
+        "discrete_choice",
+        "kano_model"
+      ],
+      "intersection": [
+        "discrete_choice",
+        "kano_model"
+      ],
+      "coverage_percentage": 66.66666666666666
+    }
+  }
+}
