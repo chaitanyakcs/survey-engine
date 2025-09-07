@@ -51,6 +51,10 @@ coverage.xml
 .env.development
 .env.test
 .env.production
+.env.backup
+
+# Claude settings
+.claude/settings.local.json
 
 # IDE
 .vscode/
