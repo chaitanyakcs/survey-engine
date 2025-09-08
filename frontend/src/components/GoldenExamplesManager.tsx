@@ -15,6 +15,13 @@ export const GoldenExamplesManager: React.FC = () => {
     research_goal: '',
     quality_score: 0.8
   });
+  
+  // Document parsing states
+  const [isParsingDocument, setIsParsingDocument] = useState(false);
+  const [parseError, setParseError] = useState<string>('');
+  const [showJsonPreview, setShowJsonPreview] = useState(false);
+  const [extractedText, setExtractedText] = useState<string>('');
+  const [inputMode, setInputMode] = useState<'upload' | 'manual'>('upload');
 
   const loadGoldenExamples = useCallback(async () => {
     setIsLoading(true);
@@ -82,6 +89,52 @@ export const GoldenExamplesManager: React.FC = () => {
       research_goal: '',
       quality_score: 0.8
     });
+    setParseError('');
+    setShowJsonPreview(false);
+    setExtractedText('');
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.docx')) {
+      setParseError('Please select a DOCX file');
+      return;
+    }
+
+    setIsParsingDocument(true);
+    setParseError('');
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/golden-pairs/parse-document', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to parse document');
+      }
+
+      const result = await response.json();
+      
+      setExtractedText(result.extracted_text);
+      setFormData(prev => ({
+        ...prev,
+        survey_json: result.survey_json,
+        quality_score: result.confidence_score || 0.8
+      }));
+      setShowJsonPreview(true);
+
+    } catch (error) {
+      setParseError(error instanceof Error ? error.message : 'Failed to parse document');
+    } finally {
+      setIsParsingDocument(false);
+    }
   };
 
   const editExample = (example: GoldenExample) => {
@@ -205,23 +258,110 @@ export const GoldenExamplesManager: React.FC = () => {
               
               <div>
                 <label className="block text-sm font-medium text-gray-800 mb-1">Survey JSON Template</label>
-                <textarea
-                  value={JSON.stringify(formData.survey_json, null, 2)}
-                  onChange={(e) => {
-                    try {
-                      const parsed = JSON.parse(e.target.value);
-                      setFormData({ ...formData, survey_json: parsed });
-                    } catch (error) {
-                      // Invalid JSON, keep the text but don't update the object
-                    }
-                  }}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-mono focus:border-gray-500 focus:ring-1 focus:ring-gray-500"
-                  rows={12}
-                  placeholder="Enter the survey JSON structure..."
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  This should be a valid JSON object representing the survey structure that will be used as a template.
-                </p>
+                
+                <div className="mb-3">
+                  <div className="flex space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => setInputMode('upload')}
+                      className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${
+                        inputMode === 'upload' 
+                          ? 'bg-black text-white' 
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      Upload DOCX
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setInputMode('manual')}
+                      className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${
+                        inputMode === 'manual' 
+                          ? 'bg-black text-white' 
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      Manual Entry
+                    </button>
+                  </div>
+                </div>
+
+                {inputMode === 'upload' ? (
+                  <div className="space-y-3">
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
+                      <input
+                        type="file"
+                        accept=".docx"
+                        onChange={handleFileUpload}
+                        className="hidden"
+                        id="docx-upload"
+                        disabled={isParsingDocument}
+                      />
+                      <label htmlFor="docx-upload" className="cursor-pointer">
+                        {isParsingDocument ? (
+                          <div className="flex flex-col items-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-600 mb-2"></div>
+                            <p className="text-sm text-gray-600">Parsing document...</p>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center">
+                            <svg className="w-8 h-8 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                            </svg>
+                            <p className="text-sm text-gray-600 mb-1">Drop a DOCX file here or click to browse</p>
+                            <p className="text-xs text-gray-500">Survey documents will be converted to JSON automatically</p>
+                          </div>
+                        )}
+                      </label>
+                    </div>
+                    
+                    {parseError && (
+                      <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+                        <p className="text-sm text-red-600">{parseError}</p>
+                      </div>
+                    )}
+                    
+                    {extractedText && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-gray-700">Document Preview:</p>
+                        <div className="p-3 bg-gray-50 border border-gray-200 rounded-md max-h-32 overflow-y-auto">
+                          <p className="text-xs text-gray-600 whitespace-pre-wrap">{extractedText}</p>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {showJsonPreview && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-gray-700">Generated JSON Preview:</p>
+                        <div className="p-3 bg-green-50 border border-green-200 rounded-md">
+                          <pre className="text-xs text-gray-700 whitespace-pre-wrap overflow-x-auto">
+                            {JSON.stringify(formData.survey_json, null, 2)}
+                          </pre>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <textarea
+                      value={JSON.stringify(formData.survey_json, null, 2)}
+                      onChange={(e) => {
+                        try {
+                          const parsed = JSON.parse(e.target.value);
+                          setFormData({ ...formData, survey_json: parsed });
+                        } catch (error) {
+                          // Invalid JSON, keep the text but don't update the object
+                        }
+                      }}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-mono focus:border-gray-500 focus:ring-1 focus:ring-gray-500"
+                      rows={12}
+                      placeholder="Enter the survey JSON structure..."
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      This should be a valid JSON object representing the survey structure that will be used as a template.
+                    </p>
+                  </div>
+                )}
               </div>
               
               <div className="grid grid-cols-2 gap-4">

@@ -1,15 +1,16 @@
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from src.config import settings
 from src.services.prompt_service import PromptService
+from sqlalchemy.orm import Session
 import replicate
 import json
 
 
 class GenerationService:
-    def __init__(self) -> None:
+    def __init__(self, db_session: Optional[Session] = None) -> None:
         replicate.api_token = settings.replicate_api_token  # type: ignore
         self.model = settings.generation_model
-        self.prompt_service = PromptService()
+        self.prompt_service = PromptService(db_session=db_session)
     
     async def generate_survey(
         self,

@@ -118,7 +118,7 @@ class ContextBuilderNode:
 class GeneratorAgent:
     def __init__(self, db: Session):
         self.db = db
-        self.generation_service = GenerationService()
+        self.generation_service = GenerationService(db_session=db)
     
     async def __call__(self, state: SurveyGenerationState) -> Dict[str, Any]:
         """

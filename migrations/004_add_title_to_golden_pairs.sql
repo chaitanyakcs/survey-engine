@@ -12,3 +12,4 @@ SET title = COALESCE(
     'Untitled Golden Example'
 )
 WHERE title IS NULL;
+

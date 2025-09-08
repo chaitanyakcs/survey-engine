@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from sqlalchemy.orm import Session
 from src.database import get_db
 from src.services.golden_service import GoldenService
+from src.services.document_parser import document_parser, DocumentParsingError
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from uuid import UUID
@@ -180,3 +181,46 @@ async def validate_golden_pair(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to validate golden pair: {str(e)}")
+
+
+class DocumentParseResponse(BaseModel):
+    survey_json: Dict[Any, Any]
+    confidence_score: Optional[float]
+    extracted_text: str
+
+
+@router.post("/parse-document", response_model=DocumentParseResponse)
+async def parse_document(
+    file: UploadFile = File(...),
+):
+    """
+    Parse a DOCX document and convert it to survey JSON using LLM.
+    Returns the parsed JSON and metadata for review before creating a golden pair.
+    """
+    # Validate file type
+    if not file.filename or not file.filename.lower().endswith('.docx'):
+        raise HTTPException(
+            status_code=400, 
+            detail="Only DOCX files are supported"
+        )
+    
+    try:
+        # Read file content
+        file_content = await file.read()
+        
+        # Parse document using LLM
+        survey_data = await document_parser.parse_document(file_content)
+        
+        # Extract text for preview
+        extracted_text = document_parser.extract_text_from_docx(file_content)
+        
+        return DocumentParseResponse(
+            survey_json=survey_data,
+            confidence_score=survey_data.get('confidence_score'),
+            extracted_text=extracted_text[:1000] + "..." if len(extracted_text) > 1000 else extracted_text
+        )
+        
+    except DocumentParsingError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to parse document: {str(e)}")

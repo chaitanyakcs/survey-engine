@@ -1,5 +1,7 @@
 from typing import Dict, List, Any, Optional
 from src.config import settings
+from src.database import get_db
+from src.database.models import SurveyRule
 import json
 import logging
 
@@ -11,10 +13,12 @@ class PromptService:
     Service for managing system prompts and rules for survey generation
     """
     
-    def __init__(self):
+    def __init__(self, db_session=None):
+        self.db_session = db_session
         self.base_rules = self._load_base_rules()
-        self.methodology_rules = self._load_methodology_rules()
-        self.quality_rules = self._load_quality_rules()
+        self.methodology_rules = {}
+        self.quality_rules = {}
+        self._load_database_rules()
     
     def _load_base_rules(self) -> Dict[str, Any]:
         """Load base system rules for survey generation"""
@@ -41,18 +45,50 @@ class PromptService:
             ]
         }
     
-    def _load_methodology_rules(self) -> Dict[str, Dict[str, Any]]:
-        """Load methodology-specific rules and guidelines"""
-        return {
+    def _load_database_rules(self):
+        """Load rules from database instead of hardcoded ones"""
+        try:
+            if self.db_session:
+                # Load methodology rules
+                methodology_rules = self.db_session.query(SurveyRule).filter(
+                    SurveyRule.rule_type == 'methodology',
+                    SurveyRule.is_active == True
+                ).all()
+                
+                for rule in methodology_rules:
+                    self.methodology_rules[rule.category] = {
+                        "description": rule.description,
+                        "required_questions": rule.required_questions or 0,
+                        "validation_rules": rule.validation_rules or []
+                    }
+                
+                # Load quality rules
+                quality_rules = self.db_session.query(SurveyRule).filter(
+                    SurveyRule.rule_type == 'quality',
+                    SurveyRule.is_active == True
+                ).all()
+                
+                for rule in quality_rules:
+                    if rule.category not in self.quality_rules:
+                        self.quality_rules[rule.category] = []
+                    if rule.rule_text:
+                        self.quality_rules[rule.category].append(rule.rule_text)
+                
+                logger.info(f"Loaded {len(methodology_rules)} methodology rules and {len(quality_rules)} quality rules from database")
+            else:
+                # Fallback to hardcoded rules if no database session
+                self._load_fallback_rules()
+                logger.warning("No database session available, using fallback rules")
+        except Exception as e:
+            logger.error(f"Failed to load database rules: {e}")
+            self._load_fallback_rules()
+    
+    def _load_fallback_rules(self):
+        """Load fallback hardcoded rules if database is unavailable"""
+        self.methodology_rules = {
             "van_westendorp": {
                 "description": "Van Westendorp Price Sensitivity Meter",
                 "required_questions": 4,
-                "question_flow": [
-                    "At what price would you consider this product to be so expensive that you would not consider buying it?",
-                    "At what price would you consider this product to be priced so low that you would feel the quality couldn't be very good?",
-                    "At what price would you consider this product starting to get expensive, so that it is not out of the question, but you would have to give some thought to buying it?",
-                    "At what price would you consider this product to be a bargain - a great buy for the money?"
-                ],
                 "validation_rules": [
                     "Must have exactly 4 price questions",
                     "Questions must follow the exact Van Westendorp format",
@@ -61,14 +97,7 @@ class PromptService:
             },
             "conjoint": {
                 "description": "Conjoint Analysis / Choice Modeling",
-                "required_attributes": 3,
-                "max_attributes": 6,
-                "question_flow": [
-                    "Screening questions for product familiarity",
-                    "Attribute importance ranking",
-                    "Choice sets with different combinations",
-                    "Demographic and behavioral questions"
-                ],
+                "required_questions": 6,
                 "validation_rules": [
                     "Must have balanced choice sets",
                     "Attributes must be orthogonal",
@@ -77,14 +106,7 @@ class PromptService:
             },
             "maxdiff": {
                 "description": "MaxDiff (Maximum Difference Scaling)",
-                "required_items": 8,
-                "max_items": 20,
-                "question_flow": [
-                    "Item familiarity screening",
-                    "Multiple choice sets showing 3-5 items",
-                    "Best/worst selection within each set",
-                    "Demographic questions"
-                ],
+                "required_questions": 8,
                 "validation_rules": [
                     "Items must be balanced across choice sets",
                     "Include appropriate number of choice tasks",
@@ -94,10 +116,6 @@ class PromptService:
             "nps": {
                 "description": "Net Promoter Score",
                 "required_questions": 2,
-                "question_flow": [
-                    "How likely are you to recommend [product/service] to a friend or colleague? (0-10 scale)",
-                    "What is the primary reason for your score? (open text)"
-                ],
                 "validation_rules": [
                     "Must use 0-10 scale",
                     "Include follow-up question for reasoning",
@@ -105,10 +123,8 @@ class PromptService:
                 ]
             }
         }
-    
-    def _load_quality_rules(self) -> Dict[str, Any]:
-        """Load quality assurance rules and validation criteria"""
-        return {
+        
+        self.quality_rules = {
             "question_quality": [
                 "Questions must be clear, concise, and unambiguous",
                 "Avoid leading, loaded, or double-barreled questions",
@@ -315,9 +331,13 @@ class PromptService:
             self.quality_rules[rule_type] = []
         self.quality_rules[rule_type].append(rule)
         logger.info(f"Added custom rule to {rule_type}: {rule}")
-        
-        # Note: In a production system, you would also persist this to the database
-        # For now, we're keeping it in memory for the session
+    
+    def refresh_rules_from_database(self):
+        """Refresh rules from database (useful when rules are updated)"""
+        self.methodology_rules = {}
+        self.quality_rules = {}
+        self._load_database_rules()
+        logger.info("Rules refreshed from database")
     
     def get_methodology_guidelines(self, methodology: str) -> Optional[Dict[str, Any]]:
         """Get specific guidelines for a methodology"""

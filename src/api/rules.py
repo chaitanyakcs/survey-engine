@@ -30,9 +30,9 @@ class RuleValidationResponse(BaseModel):
 
 
 @router.get("/methodologies")
-async def get_available_methodologies():
+async def get_available_methodologies(db: Session = Depends(get_db)):
     """Get list of available methodologies and their rules"""
-    prompt_service = PromptService()
+    prompt_service = PromptService(db_session=db)
     return {
         "methodologies": list(prompt_service.methodology_rules.keys()),
         "rules": prompt_service.methodology_rules
@@ -45,24 +45,9 @@ async def get_quality_rules(db: Session = Depends(get_db)):
     try:
         from src.database.models import SurveyRule
         
-        # Get base quality rules from service
-        prompt_service = PromptService()
-        quality_rules = prompt_service.quality_rules.copy()
-        
-        # Fetch custom rules from database
-        custom_rules = db.query(SurveyRule).filter(
-            SurveyRule.rule_type == "custom",
-            SurveyRule.is_active == True
-        ).all()
-        
-        # Add custom rules to quality_rules
-        for rule in custom_rules:
-            category = rule.category
-            if category not in quality_rules:
-                quality_rules[category] = []
-            quality_rules[category].append(rule.rule_description)
-        
-        return quality_rules
+        # Get quality rules from service (includes database rules)
+        prompt_service = PromptService(db_session=db)
+        return prompt_service.quality_rules
         
     except Exception as e:
         logger.error(f"Failed to fetch quality rules: {str(e)}")

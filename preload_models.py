@@ -44,3 +44,4 @@ if __name__ == "__main__":
     import asyncio
     success = asyncio.run(preload_models())
     sys.exit(0 if success else 1)
+

@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useAppStore } from './store/useAppStore';
 import { SurveyGeneratorPage, SurveyPreviewPage } from './pages';
 import { RulesPage } from './pages/RulesPage';
+import { SurveysPage } from './pages/SurveysPage';
 import { ToastContainer } from './components/Toast';
 
 function App() {
@@ -15,6 +16,9 @@ function App() {
     }
     if (path === '/rules') {
       return 'rules';
+    }
+    if (path === '/surveys') {
+      return 'surveys';
     }
     return 'generator';
   };
@@ -51,6 +55,8 @@ function App() {
         <SurveyPreviewPage />
       ) : currentPage === 'rules' ? (
         <RulesPage />
+      ) : currentPage === 'surveys' ? (
+        <SurveysPage />
       ) : (
         <SurveyGeneratorPage />
       )}

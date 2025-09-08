@@ -28,6 +28,18 @@ class EditRequest(BaseModel):
     edit_reason: str
     before_text: str
     after_text: str
+
+
+class SurveyListItem(BaseModel):
+    id: str
+    title: str
+    description: str
+    status: str
+    created_at: str
+    methodology_tags: list
+    quality_score: Optional[float]
+    estimated_time: Optional[int]
+    question_count: int
     annotation: Optional[Dict[str, Any]] = None
 
 
@@ -132,3 +144,59 @@ async def revalidate_survey(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to revalidate: {str(e)}")
+
+
+@router.get("/list", response_model=list[SurveyListItem])
+async def list_surveys(
+    skip: int = 0,
+    limit: int = 50,
+    db: Session = Depends(get_db)
+):
+    """Get list of all generated surveys"""
+    try:
+        surveys = db.query(Survey).order_by(Survey.created_at.desc()).offset(skip).limit(limit).all()
+        
+        survey_list = []
+        for survey in surveys:
+            # Extract survey data
+            survey_data = survey.final_output or survey.raw_output or {}
+            metadata = survey_data.get('metadata', {})
+            
+            survey_list.append(SurveyListItem(
+                id=str(survey.id),
+                title=survey_data.get('title', 'Untitled Survey'),
+                description=survey_data.get('description', 'No description available'),
+                status=survey.status,
+                created_at=survey.created_at.isoformat() if survey.created_at else '',
+                methodology_tags=metadata.get('methodology_tags', []),
+                quality_score=metadata.get('quality_score'),
+                estimated_time=metadata.get('estimated_time'),
+                question_count=len(survey_data.get('questions', [])),
+                annotation=survey.annotation
+            ))
+        
+        return survey_list
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list surveys: {str(e)}")
+
+
+@router.delete("/{survey_id}")
+async def delete_survey(
+    survey_id: str,
+    db: Session = Depends(get_db)
+):
+    """Delete a survey"""
+    try:
+        survey = db.query(Survey).filter(Survey.id == survey_id).first()
+        if not survey:
+            raise HTTPException(status_code=404, detail="Survey not found")
+        
+        db.delete(survey)
+        db.commit()
+        
+        return {"status": "success", "message": "Survey deleted successfully"}
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete survey: {str(e)}")
