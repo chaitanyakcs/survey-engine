@@ -624,6 +624,40 @@ async def readiness_check():
     """Readiness check that doesn't depend on ML models"""
     return {"status": "ready", "message": "WebSocket server ready to accept connections"}
 
+@app.post("/api/v1/rfq/")
+async def process_rfq(request: dict):
+    """
+    Process RFQ through the complete LangGraph workflow
+    """
+    logger.info(f"📝 [WebSocket RFQ] Starting RFQ processing: title='{request.get('title', 'Unknown')}'")
+    
+    try:
+        from src.services.workflow_service import WorkflowService
+        from src.database import get_db
+        
+        # Get database session
+        db = next(get_db())
+        
+        # Initialize workflow service
+        workflow_service = WorkflowService(db)
+        
+        # Process RFQ through workflow
+        result = await workflow_service.process_rfq_workflow(
+            title=request.get('title'),
+            description=request.get('description'),
+            product_category=request.get('product_category'),
+            target_segment=request.get('target_segment'),
+            research_goal=request.get('research_goal'),
+            workflow_id=request.get('workflow_id')
+        )
+        
+        logger.info(f"✅ [WebSocket RFQ] Workflow completed: {result.status}")
+        return {"status": "success", "result": result}
+        
+    except Exception as e:
+        logger.error(f"❌ [WebSocket RFQ] Workflow failed: {str(e)}", exc_info=True)
+        return {"status": "error", "message": str(e)}
+
 @app.post("/internal/broadcast/{workflow_id}")
 async def broadcast_progress(workflow_id: str, message: dict):
     """
@@ -640,42 +674,6 @@ async def broadcast_progress(workflow_id: str, message: dict):
         logger.error(f"❌ [WebSocket Broadcast] Failed to send progress update for workflow_id={workflow_id}: {str(e)}")
         return {"status": "error", "message": str(e)}
 
-@app.post("/api/v1/rfq/", response_model=RFQSubmissionResponse)
-async def submit_rfq(request: dict):
-    """
-    Start RFQ processing workflow (called from FastAPI)
-    """
-    logger.info(f"🚀 [WebSocket RFQ] Received RFQ from FastAPI: title='{request.get('title')}', description_length={len(request.get('description', ''))}")
-    
-    # Extract IDs from FastAPI request
-    workflow_id = request.get('workflow_id', f"survey-gen-{str(uuid.uuid4())}")
-    survey_id = request.get('survey_id', f"survey-{str(uuid.uuid4())}")
-    rfq_id = request.get('rfq_id')
-    
-    logger.info(f"📋 [WebSocket RFQ] Using workflow_id={workflow_id}, survey_id={survey_id}, rfq_id={rfq_id}")
-    
-    # Store workflow state
-    workflows[workflow_id] = {
-        "survey_id": survey_id,
-        "rfq_id": rfq_id,
-        "request": request,
-        "status": "started",
-        "created_at": datetime.now().isoformat()
-    }
-    
-    logger.info(f"💾 [WebSocket RFQ] Stored workflow state for workflow_id={workflow_id}")
-    
-    # Store workflow data for WebSocket execution
-    logger.info(f"🔄 [WebSocket RFQ] Stored workflow data for WebSocket execution: workflow_id={workflow_id}")
-    # Workflow will be executed when WebSocket connects
-    
-    logger.info(f"✅ [WebSocket RFQ] RFQ submission completed successfully: workflow_id={workflow_id}, survey_id={survey_id}")
-    
-    return RFQSubmissionResponse(
-        workflow_id=workflow_id,
-        survey_id=survey_id,
-        status="started"
-    )
 
 @app.websocket("/ws/survey/{workflow_id}")
 async def websocket_endpoint(websocket: WebSocket, workflow_id: str):
@@ -716,15 +714,6 @@ async def websocket_endpoint(websocket: WebSocket, workflow_id: str):
         logger.error(f"❌ [WebSocket Endpoint] Unexpected error for workflow_id={workflow_id}: {str(e)}", exc_info=True)
         manager.disconnect(workflow_id)
 
-@app.get("/api/v1/survey/{survey_id}", response_model=SurveyResponse)
-async def get_survey(survey_id: str):
-    """
-    Fetch completed survey with rich metadata
-    """
-    if survey_id not in surveys:
-        raise HTTPException(status_code=404, detail="Survey not found")
-    
-    return SurveyResponse(**surveys[survey_id])
 
 
 @app.post("/internal/broadcast/{workflow_id}")
@@ -739,212 +728,14 @@ async def internal_broadcast_progress(workflow_id: str, message: dict):
     logger.debug(f"📤 [Internal Broadcast] Message broadcasted for workflow_id={workflow_id}")
     return {"status": "broadcasted"}
 
-@app.get("/api/v1/workflow/{workflow_id}")
-async def get_workflow_status(workflow_id: str):
-    """
-    Get workflow status
-    """
-    if workflow_id not in workflows:
-        raise HTTPException(status_code=404, detail="Workflow not found")
-    
-    return workflows[workflow_id]
 
-# Golden Examples Management API Endpoints
-@app.get("/api/v1/golden-examples/search")
-async def search_golden_examples(
-    industry: Optional[str] = None,
-    methodology: Optional[str] = None,
-    research_goal: Optional[str] = None,
-    db: Session = Depends(get_db)
-):
-    """
-    Search golden examples by criteria
-    """
-    query = db.query(GoldenRFQSurveyPair)
-    
-    if industry:
-        query = query.filter(GoldenRFQSurveyPair.industry_category.ilike(f"%{industry}%"))
-    if research_goal:
-        query = query.filter(GoldenRFQSurveyPair.research_goal.ilike(f"%{research_goal}%"))
-    
-    examples = query.all()
-    
-    # Filter by methodology if specified
-    if methodology:
-        examples = [ex for ex in examples if any(methodology.lower() in tag.lower() for tag in ex.methodology_tags)]
-    
-    result_examples = []
-    for example in examples:
-        result_examples.append({
-            "id": str(example.id),
-            "rfq_text": example.rfq_text,
-            "survey_json": example.survey_json,
-            "methodology_tags": example.methodology_tags,
-            "industry_category": example.industry_category,
-            "research_goal": example.research_goal,
-            "quality_score": example.quality_score,
-            "usage_count": example.usage_count,
-            "created_at": example.created_at.isoformat()
-        })
-    
-    return {
-        "examples": result_examples,
-        "count": len(result_examples)
-    }
 
-@app.get("/api/v1/golden-examples")
-async def get_golden_examples(db: Session = Depends(get_db)):
-    """
-    Get all golden examples
-    """
-    examples = db.query(GoldenRFQSurveyPair).all()
-    
-    result_examples = []
-    for example in examples:
-        result_examples.append({
-            "id": str(example.id),
-            "rfq_text": example.rfq_text,
-            "survey_json": example.survey_json,
-            "methodology_tags": example.methodology_tags,
-            "industry_category": example.industry_category,
-            "research_goal": example.research_goal,
-            "quality_score": example.quality_score,
-            "usage_count": example.usage_count,
-            "created_at": example.created_at.isoformat()
-        })
-    
-    return {
-        "examples": result_examples,
-        "count": len(result_examples)
-    }
 
-@app.post("/api/v1/golden-examples", response_model=GoldenExampleResponse)
-async def create_golden_example(request: GoldenExampleRequest, db: Session = Depends(get_db)):
-    """
-    Create a new golden example
-    """
-    # Generate embedding for the RFQ text
-    rfq_embedding = await get_embedding(request.rfq_text)
-    
-    # Create new golden example
-    new_example = GoldenRFQSurveyPair(
-        rfq_text=request.rfq_text,
-        rfq_embedding=rfq_embedding,
-        survey_json=request.survey_json,
-        methodology_tags=list(request.methodology_tags),  # Ensure it's a Python list
-        industry_category=request.industry_category,
-        research_goal=request.research_goal,
-        quality_score=request.quality_score or 0.8,
-        usage_count=0
-    )
-    
-    db.add(new_example)
-    db.commit()
-    db.refresh(new_example)
-    
-    return GoldenExampleResponse(
-        id=str(new_example.id),
-        rfq_text=new_example.rfq_text,
-        survey_json=new_example.survey_json,
-        methodology_tags=new_example.methodology_tags,
-        industry_category=new_example.industry_category,
-        research_goal=new_example.research_goal,
-        quality_score=new_example.quality_score,
-        usage_count=new_example.usage_count,
-        created_at=new_example.created_at.isoformat()
-    )
-
-@app.get("/api/v1/golden-examples/{example_id}", response_model=GoldenExampleResponse)
-async def get_golden_example(example_id: str, db: Session = Depends(get_db)):
-    """
-    Get a specific golden example
-    """
-    try:
-        example_uuid = uuid.UUID(example_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid example ID format")
-    
-    example = db.query(GoldenRFQSurveyPair).filter(GoldenRFQSurveyPair.id == example_uuid).first()
-    if not example:
-        raise HTTPException(status_code=404, detail="Golden example not found")
-    
-    return GoldenExampleResponse(
-        id=str(example.id),
-        rfq_text=example.rfq_text,
-        survey_json=example.survey_json,
-        methodology_tags=example.methodology_tags,
-        industry_category=example.industry_category,
-        research_goal=example.research_goal,
-        quality_score=example.quality_score,
-        usage_count=example.usage_count,
-        created_at=example.created_at.isoformat()
-    )
-
-@app.put("/api/v1/golden-examples/{example_id}", response_model=GoldenExampleResponse)
-async def update_golden_example(example_id: str, request: GoldenExampleRequest, db: Session = Depends(get_db)):
-    """
-    Update a golden example
-    """
-    try:
-        example_uuid = uuid.UUID(example_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid example ID format")
-    
-    example = db.query(GoldenRFQSurveyPair).filter(GoldenRFQSurveyPair.id == example_uuid).first()
-    if not example:
-        raise HTTPException(status_code=404, detail="Golden example not found")
-    
-    # Update fields
-    example.rfq_text = request.rfq_text
-    example.survey_json = request.survey_json
-    example.methodology_tags = request.methodology_tags
-    example.industry_category = request.industry_category
-    example.research_goal = request.research_goal
-    if request.quality_score is not None:
-        example.quality_score = request.quality_score
-    
-    # Regenerate embedding if RFQ text changed
-    rfq_embedding = await get_embedding(request.rfq_text)
-    example.rfq_embedding = rfq_embedding
-    
-    db.commit()
-    db.refresh(example)
-    
-    return GoldenExampleResponse(
-        id=str(example.id),
-        rfq_text=example.rfq_text,
-        survey_json=example.survey_json,
-        methodology_tags=example.methodology_tags,
-        industry_category=example.industry_category,
-        research_goal=example.research_goal,
-        quality_score=example.quality_score,
-        usage_count=example.usage_count,
-        created_at=example.created_at.isoformat()
-    )
-
-@app.delete("/api/v1/golden-examples/{example_id}")
-async def delete_golden_example(example_id: str, db: Session = Depends(get_db)):
-    """
-    Delete a golden example
-    """
-    try:
-        example_uuid = uuid.UUID(example_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid example ID format")
-    
-    example = db.query(GoldenRFQSurveyPair).filter(GoldenRFQSurveyPair.id == example_uuid).first()
-    if not example:
-        raise HTTPException(status_code=404, detail="Golden example not found")
-    
-    db.delete(example)
-    db.commit()
-    
-    return {"message": "Golden example deleted successfully"}
 
 if __name__ == "__main__":
     # Start the server with multiple workers to handle concurrent connections
-    logger.info("🚀 [WebSocket] Starting WebSocket server on 0.0.0.0:8001")
-    logger.info("🔧 [WebSocket] Server configuration: host=0.0.0.0, port=8001, workers=1")
+    logger.info("🚀 [WebSocket] Starting WebSocket server on 0.0.0.0:8000")
+    logger.info("🔧 [WebSocket] Server configuration: host=0.0.0.0, port=8000, workers=1")
     logger.info("🔧 [WebSocket] Database URL: " + str(settings.database_url))
     logger.info("🔧 [WebSocket] Debug mode: " + str(settings.debug))
     
@@ -961,7 +752,7 @@ if __name__ == "__main__":
         raise
     
     try:
-        uvicorn.run(app, host="0.0.0.0", port=8001, workers=1, loop="asyncio")
+        uvicorn.run(app, host="0.0.0.0", port=8000, workers=1, loop="asyncio")
     except Exception as e:
         logger.error(f"❌ [WebSocket] Failed to start server: {str(e)}", exc_info=True)
         raise

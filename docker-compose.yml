@@ -64,7 +64,7 @@ services:
   websocket:
     build: .
     ports:
-      - "8001:8001"
+      - "8000:8000"
     environment:
       DATABASE_URL: postgresql://survey_engine:development_password@postgres:5432/survey_engine_db
       DATABASE_HOST: postgres
@@ -74,7 +74,7 @@ services:
       REPLICATE_API_TOKEN: ${REPLICATE_API_TOKEN:-}
       DEBUG: "true"
       SERVICE: "websocket"
-      PORT: 8001
+      PORT: 8000
       SKIP_MIGRATIONS: "true"  # Let backend handle migrations
     depends_on:
       backend:
@@ -85,7 +85,7 @@ services:
       - ./websocket_server.py:/app/websocket_server.py:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3

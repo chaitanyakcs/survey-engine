@@ -16,7 +16,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def create_workflow(db: Session) -> Any:
+def create_workflow(db: Session, connection_manager=None) -> Any:
     """
     Create the LangGraph workflow for survey generation
     """
@@ -31,7 +31,7 @@ def create_workflow(db: Session) -> Any:
     researcher = ResearcherNode(db)
     
     # Initialize WebSocket client for progress updates
-    ws_client = WebSocketNotificationService()
+    ws_client = WebSocketNotificationService(connection_manager)
     
     # Create wrapper functions that send progress updates
     async def parse_rfq_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
@@ -64,7 +64,20 @@ def create_workflow(db: Session) -> Any:
         except Exception as e:
             logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
         
-        return await golden_retriever(state)
+        # Add detailed logging for golden pairs retrieval
+        logger.info(f"🔍 [Workflow] Starting golden pairs retrieval for RFQ: '{state.rfq_text[:100]}...'")
+        logger.info(f"🔍 [Workflow] RFQ details - Category: {state.product_category}, Segment: {state.target_segment}, Goal: {state.research_goal}")
+        
+        try:
+            result = await golden_retriever(state)
+            logger.info(f"✅ [Workflow] Golden pairs retrieval completed. Found {len(result.get('golden_examples', []))} examples")
+            if result.get('golden_examples'):
+                for i, example in enumerate(result['golden_examples'][:3]):  # Log first 3 examples
+                    logger.info(f"📋 [Workflow] Example {i+1}: {example.get('rfq_text', 'No text')[:50]}... (Score: {example.get('similarity_score', 'N/A')})")
+            return result
+        except Exception as e:
+            logger.error(f"❌ [Workflow] Golden pairs retrieval failed: {str(e)}", exc_info=True)
+            raise
     
     async def build_context_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
         """Build context with progress update"""

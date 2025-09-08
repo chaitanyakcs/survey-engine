@@ -1,4 +1,3 @@
-import httpx
 import logging
 from typing import Dict, Any, Optional
 from src.config import settings
@@ -10,33 +9,27 @@ class WebSocketNotificationService:
     Service to communicate with the WebSocket server for real-time updates
     """
     
-    def __init__(self, websocket_server_url: str = "http://127.0.0.1:8001"):
-        self.websocket_server_url = websocket_server_url
-        logger.info(f"🔗 [WebSocket Client] Initialized with server URL: {websocket_server_url}")
+    def __init__(self, connection_manager=None):
+        self.connection_manager = connection_manager
+        logger.info(f"🔗 [WebSocket Client] Initialized with connection manager: {connection_manager is not None}")
     
     async def send_progress_update(self, workflow_id: str, message: Dict[str, Any]) -> bool:
         """
-        Send progress update to WebSocket server to broadcast to connected clients
+        Send progress update via WebSocket connection manager
         """
         try:
             logger.info(f"📤 [WebSocket Client] Sending progress update for workflow_id={workflow_id}: {message.get('type', 'unknown')}")
             
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{self.websocket_server_url}/internal/broadcast/{workflow_id}",
-                    json=message,
-                    timeout=2.0  # Reduced timeout
-                )
-                
-                if response.status_code == 200:
-                    logger.debug(f"✅ [WebSocket Client] Progress update sent successfully for workflow_id={workflow_id}")
-                    return True
-                else:
-                    logger.warning(f"⚠️ [WebSocket Client] WebSocket server not available. Status: {response.status_code} - continuing without real-time updates")
-                    return False
+            if self.connection_manager:
+                await self.connection_manager.broadcast_to_workflow(workflow_id, message)
+                logger.debug(f"✅ [WebSocket Client] Progress update sent successfully for workflow_id={workflow_id}")
+                return True
+            else:
+                logger.warning(f"⚠️ [WebSocket Client] No connection manager available - continuing without real-time updates")
+                return False
                     
         except Exception as e:
-            logger.warning(f"⚠️ [WebSocket Client] WebSocket server not available for workflow_id={workflow_id}: {str(e)} - continuing without real-time updates")
+            logger.warning(f"⚠️ [WebSocket Client] Failed to send progress update for workflow_id={workflow_id}: {str(e)} - continuing without real-time updates")
             return False
     
     async def notify_workflow_completion(self, workflow_id: str, survey_id: str, status: str) -> bool:

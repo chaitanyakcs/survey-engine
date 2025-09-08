@@ -11,7 +11,8 @@ const QuestionCard: React.FC<{
   onMove: (questionId: string, direction: 'up' | 'down') => void;
   canMoveUp: boolean;
   canMoveDown: boolean;
-}> = ({ question, index, onUpdate, onDelete, onRegenerate, onMove, canMoveUp, canMoveDown }) => {
+  isEditingSurvey: boolean;
+}> = ({ question, index, onUpdate, onDelete, onRegenerate, onMove, canMoveUp, canMoveDown, isEditingSurvey }) => {
   const { selectedQuestionId, setSelectedQuestion } = useAppStore();
   const isSelected = selectedQuestionId === question.id;
   const [isEditing, setIsEditing] = useState(false);
@@ -186,8 +187,8 @@ const QuestionCard: React.FC<{
         </div>
       )}
       
-      {/* Question Controls (when expanded) */}
-      {isSelected && (
+      {/* Question Controls (when expanded and in edit mode) */}
+      {isSelected && isEditingSurvey && (
         <div className="mt-4 flex space-x-2">
           {isEditing ? (
             <>
@@ -247,12 +248,12 @@ const QuestionCard: React.FC<{
 };
 
 export const SurveyPreview: React.FC = () => {
-  const { currentSurvey, setSurvey, rfqInput, createGoldenExample, workflow } = useAppStore();
+  const { currentSurvey, setSurvey, rfqInput, createGoldenExample } = useAppStore();
   const [editedSurvey, setEditedSurvey] = useState<Survey | null>(null);
   const [isEditingSurvey, setIsEditingSurvey] = useState(false);
   const [showGoldenModal, setShowGoldenModal] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [goldenFormData, setGoldenFormData] = useState({
+    title: '',
     industry_category: '',
     research_goal: '',
     methodology_tags: [] as string[],
@@ -265,6 +266,19 @@ export const SurveyPreview: React.FC = () => {
       setEditedSurvey({ ...currentSurvey });
     }
   }, [currentSurvey, isEditingSurvey]);
+
+  // Prepopulate golden form data when modal opens
+  React.useEffect(() => {
+    if (showGoldenModal && currentSurvey && rfqInput) {
+      setGoldenFormData({
+        title: currentSurvey.title || rfqInput.title || '',
+        industry_category: rfqInput.product_category || '',
+        research_goal: rfqInput.research_goal || '',
+        methodology_tags: currentSurvey.methodologies || [],
+        quality_score: currentSurvey.confidence_score || 0.9
+      });
+    }
+  }, [showGoldenModal, currentSurvey, rfqInput]);
 
   const surveyToDisplay = isEditingSurvey ? editedSurvey : currentSurvey;
 
@@ -360,6 +374,7 @@ export const SurveyPreview: React.FC = () => {
 
     try {
       await createGoldenExample({
+        title: goldenFormData.title,
         rfq_text: rfqInput.description,
         survey_json: surveyToDisplay,
         methodology_tags: goldenFormData.methodology_tags,
@@ -375,29 +390,9 @@ export const SurveyPreview: React.FC = () => {
   };
 
   if (!currentSurvey) {
-    // Check if we're on preview page with a survey ID
-    const urlParams = new URLSearchParams(window.location.search);
-    const surveyId = urlParams.get('surveyId');
-    
-    if (surveyId) {
-      return (
-        <div className="max-w-4xl mx-auto p-6 text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 mb-2">Loading survey preview...</p>
-          <p className="text-sm text-gray-500">Survey ID: {surveyId}</p>
-        </div>
-      );
-    }
-    
     return (
       <div className="max-w-4xl mx-auto p-6 text-center">
-        <p className="text-gray-500 mb-4">No survey to preview yet.</p>
-        <a
-          href="/"
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-        >
-          Go to Survey Generator
-        </a>
+        <p className="text-gray-500">No survey to preview yet.</p>
       </div>
     );
   }
@@ -441,14 +436,14 @@ export const SurveyPreview: React.FC = () => {
               </>
             )}
             <div className="flex items-center space-x-4 text-sm text-gray-500 mt-4">
-              <span>⏱️ ~{surveyToDisplay?.estimated_time || 0} minutes</span>
-              <span>📊 {surveyToDisplay?.questions?.length || 0} questions</span>
+              <span>⏱️ ~{surveyToDisplay?.estimated_time} minutes</span>
+              <span>📊 {surveyToDisplay?.questions.length} questions</span>
             </div>
           </div>
 
           {/* Questions */}
           <div className="space-y-4">
-            {(surveyToDisplay?.questions || []).map((question, index) => (
+            {surveyToDisplay?.questions.map((question, index) => (
               <QuestionCard
                 key={question.id}
                 question={question}
@@ -458,7 +453,8 @@ export const SurveyPreview: React.FC = () => {
                 onRegenerate={handleQuestionRegenerate}
                 onMove={handleMoveQuestion}
                 canMoveUp={index > 0}
-                canMoveDown={index < (surveyToDisplay?.questions?.length || 0) - 1}
+                canMoveDown={index < (surveyToDisplay?.questions.length || 0) - 1}
+                isEditingSurvey={isEditingSurvey}
               />
             ))}
           </div>
@@ -482,12 +478,6 @@ export const SurveyPreview: React.FC = () => {
               </>
             ) : (
               <>
-                <a
-                  href={`/?surveyId=${currentSurvey.survey_id}`}
-                  className="px-6 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
-                >
-                  ← Back to Generator
-                </a>
                 <button 
                   onClick={handleStartEditing}
                   className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
@@ -514,12 +504,6 @@ export const SurveyPreview: React.FC = () => {
                   className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
                 >
                   Export
-                </button>
-                <button 
-                  onClick={() => window.location.href = '/'}
-                  className="px-6 py-2 bg-black text-white rounded-md hover:bg-gray-800"
-                >
-                  Start New Survey
                 </button>
               </>
             )}
@@ -609,6 +593,17 @@ export const SurveyPreview: React.FC = () => {
             
             <div className="space-y-4">
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                <input
+                  type="text"
+                  value={goldenFormData.title}
+                  onChange={(e) => setGoldenFormData(prev => ({ ...prev, title: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                  placeholder="Enter a title for this golden example"
+                />
+              </div>
+              
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Industry Category</label>
                 <select
                   value={goldenFormData.industry_category}
@@ -695,8 +690,8 @@ export const SurveyPreview: React.FC = () => {
                       {surveyToDisplay.questions.slice(0, 5).map((q, idx) => (
                         <li key={idx} className="truncate">• {q.text}</li>
                       ))}
-                      {(surveyToDisplay.questions?.length || 0) > 5 && (
-                        <li className="text-gray-500">... and {(surveyToDisplay.questions?.length || 0) - 5} more questions</li>
+                      {surveyToDisplay.questions.length > 5 && (
+                        <li className="text-gray-500">... and {surveyToDisplay.questions.length - 5} more questions</li>
                       )}
                     </ul>
                   </div>

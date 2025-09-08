@@ -20,7 +20,7 @@ class WorkflowResult(BaseModel):
 
 
 class WorkflowService:
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, connection_manager=None):
         logger.info("🔧 [WorkflowService] Initializing workflow service")
         try:
             self.db = db
@@ -31,11 +31,11 @@ class WorkflowService:
             logger.info("✅ [WorkflowService] EmbeddingService created successfully")
             
             logger.info("🔧 [WorkflowService] Creating WebSocket notification service")
-            self.ws_client = WebSocketNotificationService()
+            self.ws_client = WebSocketNotificationService(connection_manager)
             logger.info("✅ [WorkflowService] WebSocketNotificationService created successfully")
             
             logger.info("🔧 [WorkflowService] Creating LangGraph workflow")
-            self.workflow = create_workflow(db)
+            self.workflow = create_workflow(db, connection_manager)
             logger.info("✅ [WorkflowService] LangGraph workflow created successfully")
             
             logger.info("✅ [WorkflowService] Workflow service initialized successfully")

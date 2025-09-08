@@ -80,6 +80,7 @@ export interface GoldenExample {
 }
 
 export interface GoldenExampleRequest {
+  title?: string;
   rfq_text: string;
   survey_json: Survey;
   methodology_tags: string[];
@@ -132,9 +133,6 @@ export interface AppStore {
   // WebSocket
   websocket?: WebSocket;
   
-  // localStorage helpers
-  getStoredSurveyId: () => string | null;
-  clearStoredSurveyId: () => void;
   
   // Actions
   submitRFQ: (rfq: RFQRequest) => Promise<void>;

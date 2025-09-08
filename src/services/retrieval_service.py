@@ -18,6 +18,13 @@ class RetrievalService:
         """
         Tier 1: Retrieve exact golden RFQ-survey pairs using semantic similarity
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"🔍 [RetrievalService] Starting golden pairs retrieval with embedding dimension: {len(embedding)}")
+        logger.info(f"🔍 [RetrievalService] Methodology tags filter: {methodology_tags}")
+        logger.info(f"🔍 [RetrievalService] Limit: {limit}")
+        
         try:
             # Use ORM query with proper pgvector operations
             from pgvector.sqlalchemy import Vector
@@ -42,9 +49,11 @@ class RetrievalService:
             query = query.order_by('similarity').limit(limit)
             
             rows = query.all()
+            logger.info(f"🔍 [RetrievalService] Database query executed. Found {len(rows)} golden pairs")
             
             golden_examples = []
-            for row in rows:
+            for i, row in enumerate(rows):
+                logger.info(f"📋 [RetrievalService] Golden pair {i+1}: ID={row.id}, Similarity={row.similarity:.4f}, Quality={row.quality_score}")
                 golden_examples.append({
                     "id": str(row.id),
                     "rfq_text": row.rfq_text,

@@ -58,24 +58,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
   // WebSocket connection  
   websocket: undefined as WebSocket | undefined,
 
-  // Helper function to get survey ID from localStorage
-  getStoredSurveyId: () => {
-    const storedId = localStorage.getItem('currentSurveyId');
-    console.log('🔍 [Store] Retrieved survey ID from localStorage:', storedId);
-    return storedId;
-  },
-
-  // Clear stored survey ID (for new surveys)
-  clearStoredSurveyId: () => {
-    localStorage.removeItem('currentSurveyId');
-    console.log('🗑️ [Store] Cleared survey ID from localStorage');
-  },
 
   // Actions
   submitRFQ: async (rfq: RFQRequest) => {
     try {
       // Clear any existing survey data when starting new RFQ
-      get().clearStoredSurveyId();
       set({ currentSurvey: undefined });
       
       set((state) => ({
@@ -123,11 +110,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
         questionsCount: survey.questions?.length || 0
       });
       
-      // Save survey ID to localStorage for persistence
-      if (survey.survey_id) {
-        localStorage.setItem('currentSurveyId', survey.survey_id);
-        console.log('💾 [Store] Survey ID saved to localStorage:', survey.survey_id);
-      }
       
       set({ currentSurvey: survey });
       console.log('✅ [Store] Survey state updated, should trigger re-render and redirect');
@@ -314,10 +296,24 @@ export const useAppStore = create<AppStore>((set, get) => ({
   // Golden Examples Actions
   fetchGoldenExamples: async () => {
     try {
-      const response = await fetch('/api/golden-examples');
+      const response = await fetch('/api/v1/golden-pairs/');
       if (!response.ok) throw new Error('Failed to fetch golden examples');
-      const data = await response.json();
-      get().setGoldenExamples(data.examples);
+      const backendData = await response.json();
+      
+      // Map backend response to frontend format
+      const goldenExamples = backendData.map((item: any) => ({
+        id: item.id,
+        rfq_text: item.rfq_text,
+        survey_json: item.survey_json as any, // Keep as-is for now
+        methodology_tags: item.methodology_tags || [],
+        industry_category: item.industry_category || 'General',
+        research_goal: item.research_goal || 'Market Research',
+        quality_score: item.quality_score || 0.8,
+        usage_count: item.usage_count || 0,
+        created_at: new Date().toISOString() // Backend doesn't provide this
+      }));
+      
+      get().setGoldenExamples(goldenExamples);
     } catch (error) {
       console.error('Failed to fetch golden examples:', error);
     }
@@ -325,7 +321,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   createGoldenExample: async (example: GoldenExampleRequest) => {
     try {
-      const response = await fetch('/api/golden-examples', {
+      const response = await fetch('/api/v1/golden-pairs/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -358,7 +354,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   updateGoldenExample: async (id: string, example: GoldenExampleRequest) => {
     try {
-      const response = await fetch(`/api/golden-examples/${id}`, {
+      const response = await fetch(`/api/v1/golden-pairs/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -391,7 +387,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   deleteGoldenExample: async (id: string) => {
     try {
-      const response = await fetch(`/api/golden-examples/${id}`, {
+      const response = await fetch(`/api/v1/golden-pairs/${id}`, {
         method: 'DELETE',
       });
       if (!response.ok) throw new Error('Failed to delete golden example');

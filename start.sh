@@ -115,6 +115,16 @@ run_migrations() {
     fi
 }
 
+# Function to preload models
+preload_models() {
+    log_info "Preloading ML models to avoid startup delays..."
+    if python3 preload_models.py; then
+        log_success "Model preloading completed successfully"
+    else
+        log_warning "Model preloading failed, but continuing with startup"
+    fi
+}
+
 # Function to start FastAPI server
 start_fastapi() {
     local port=${PORT:-8000}
@@ -133,9 +143,68 @@ start_fastapi() {
     fi
 }
 
+start_nginx() {
+    log_info "Starting nginx server..."
+    
+    # Generate nginx config
+    generate_nginx_config
+    
+    # Start nginx in foreground
+    if ! nginx -g "daemon off;"; then
+        log_error "Failed to start nginx"
+        exit 1
+    fi
+}
+
+start_consolidated() {
+    local fastapi_port=8000
+    local nginx_port=${PORT:-8080}
+    log_info "Starting consolidated FastAPI + nginx server..."
+    
+    # Step 1: Preload models and wait for completion
+    log_info "🔄 Step 1: Preloading ML models..."
+    preload_models
+    log_success "✅ Step 1: Model preloading completed"
+    
+    # Step 2: Start nginx in background
+    log_info "🔄 Step 2: Starting nginx on port $nginx_port..."
+    generate_nginx_config
+    nginx -g "daemon on;" || {
+        log_error "Failed to start nginx"
+        exit 1
+    }
+    
+    # Wait for nginx to be ready (check if nginx process is running)
+    log_info "⏳ Waiting for nginx to be ready..."
+    local max_attempts=5
+    local attempt=1
+    while [ $attempt -le $max_attempts ]; do
+        if pgrep nginx > /dev/null 2>&1; then
+            log_success "✅ Step 2: Nginx is ready and running on port $nginx_port!"
+            break
+        fi
+        log_info "Nginx not ready yet - attempt $attempt/$max_attempts"
+        sleep 1
+        attempt=$((attempt + 1))
+    done
+    
+    if [ $attempt -gt $max_attempts ]; then
+        log_warning "Nginx readiness check timed out, but continuing..."
+    fi
+    
+    # Step 3: Start FastAPI in foreground
+    log_info "🔄 Step 3: Starting FastAPI server on port $fastapi_port..."
+    log_success "🚀 All services ready! Starting FastAPI..."
+    if [ "$DEBUG" = "true" ]; then
+        $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $fastapi_port --reload --timeout-keep-alive 600
+    else
+        $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $fastapi_port --timeout-keep-alive 600
+    fi
+}
+
 # Function to start WebSocket server
 start_websocket() {
-    local port=${PORT:-8001}
+    local port=${PORT:-8000}
     log_info "Starting WebSocket server on port $port..."
     if ! $UV_CMD run python3 websocket_server.py; then
         log_error "Failed to start WebSocket server"
@@ -183,7 +252,7 @@ http {
 
         # API health check - direct proxy to FastAPI
         location = /api/health {
-            proxy_pass http://127.0.0.1:8001/health;
+            proxy_pass http://127.0.0.1:8000/health;
             proxy_set_header Host \$host;
             proxy_set_header X-Real-IP \$remote_addr;
             proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -192,7 +261,7 @@ http {
 
         # All API routes to FastAPI server
         location /api/ {
-            proxy_pass http://127.0.0.1:8000/api/v1/;
+            proxy_pass http://127.0.0.1:8000;
             proxy_set_header Host \$host;
             proxy_set_header X-Real-IP \$remote_addr;
             proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -207,9 +276,9 @@ http {
             proxy_read_timeout          600s;
         }
 
-        # WebSocket proxy
+        # WebSocket proxy to FastAPI server (consolidated)
         location /ws/ {
-            proxy_pass http://127.0.0.1:8001/ws/;
+            proxy_pass http://127.0.0.1:8000/ws/;
             proxy_http_version 1.1;
             proxy_set_header Upgrade \$http_upgrade;
             proxy_set_header Connection "upgrade";
@@ -221,7 +290,7 @@ http {
 
         # Health check endpoint - proxy to FastAPI (exact match)
         location = /health {
-            proxy_pass http://127.0.0.1:8001/health;
+            proxy_pass http://127.0.0.1:8000/health;
             proxy_set_header Host \$host;
             proxy_set_header X-Real-IP \$remote_addr;
             proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -267,6 +336,9 @@ start_nginx() {
 # Function to start both services
 start_both() {
     log_info "Starting FastAPI, WebSocket, and nginx servers..."
+    
+    # Preload models first
+    preload_models
     
     # Start FastAPI in background
     log_info "Starting FastAPI server..."
@@ -349,7 +421,7 @@ start_both() {
     
     # Start WebSocket server in background
     log_info "Starting WebSocket server..."
-    local ws_port=8001
+    local ws_port=8000
     log_info "WebSocket command: $UV_CMD run python3 websocket_server.py"
     
     $UV_CMD run python3 websocket_server.py &
@@ -369,7 +441,7 @@ start_both() {
     local max_attempts=20  # Reduced timeout since we don't wait for ML models
     local attempt=1
     while [ $attempt -le $max_attempts ]; do
-        if curl -f http://localhost:8001/ready > /dev/null 2>&1; then
+        if curl -f http://localhost:8000/ready > /dev/null 2>&1; then
             log_success "WebSocket server is ready!"
             break
         fi
@@ -451,21 +523,37 @@ main() {
     log_info "Step 2: Checking Redis..."
     check_redis || true  # Redis is optional, don't exit if unavailable
     
-    log_info "Step 3: Running migrations..."
-    run_migrations || exit 1
+    log_info "Step 3: Running migrations and seeding..."
+    # Use our comprehensive startup script for database operations
+    if [ -f "start-local.sh" ]; then
+        log_info "Using comprehensive startup script for database operations..."
+        ./start-local.sh migrate
+        ./start-local.sh seed
+    else
+        log_info "Falling back to basic migrations..."
+        run_migrations || exit 1
+    fi
     
     log_info "Step 4: Starting services..."
     
     # Start the appropriate service(s)
-    case "${SERVICE:-both}" in
-        "backend")
+    case "${SERVICE:-consolidated}" in
+        "backend"|"fastapi")
+            preload_models
             start_fastapi
             ;;
-        "websocket")
-            start_websocket
+        "nginx")
+            preload_models
+            start_nginx
             ;;
-        "both"|"")
-            start_both
+        "websocket")
+            log_warning "WebSocket server is now integrated into FastAPI. Starting consolidated server instead."
+            preload_models
+            start_consolidated
+            ;;
+        "both"|"consolidated"|"")
+            log_info "Starting consolidated FastAPI + nginx server (includes WebSocket support)"
+            start_consolidated
             ;;
         *)
             log_error "Unknown service: $SERVICE"

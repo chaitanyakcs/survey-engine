@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from typing import Optional
 from uuid import uuid4
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -69,59 +70,37 @@ async def submit_rfq(
         db.refresh(survey)
         logger.info(f"✅ [RFQ API] Survey record created with ID: {survey.id}")
         
-        # Send to WebSocket server for async processing with retry
-        logger.info(f"🔄 [RFQ API] Sending to WebSocket server for async processing: workflow_id={workflow_id}")
+        # Process RFQ directly through workflow (consolidated approach)
+        logger.info(f"🔄 [RFQ API] Starting direct workflow processing: workflow_id={workflow_id}")
         
-        import httpx
-        import asyncio
+        try:
+            from src.services.workflow_service import WorkflowService
+            from src.main import manager  # Import the connection manager
+            
+            # Initialize workflow service with connection manager
+            workflow_service = WorkflowService(db, manager)
+            
+            # Start workflow processing in background
+            asyncio.create_task(process_rfq_workflow_async(
+                workflow_service=workflow_service,
+                title=request.title,
+                description=request.description,
+                product_category=request.product_category,
+                target_segment=request.target_segment,
+                research_goal=request.research_goal,
+                workflow_id=workflow_id,
+                survey_id=str(survey.id)
+            ))
+            
+            logger.info(f"✅ [RFQ API] Workflow processing started in background: workflow_id={workflow_id}")
+            
+        except Exception as e:
+            logger.error(f"❌ [RFQ API] Failed to start workflow processing: {str(e)}")
+            # Mark survey as pending if workflow fails to start
+            survey.status = "pending"
+            db.commit()
         
-        max_retries = 10  # Increased retries
-        retry_delay = 3.0  # Increased initial delay
-        
-        for attempt in range(max_retries):
-            try:
-                async with httpx.AsyncClient(timeout=15.0) as client:  # Increased timeout
-                    ws_response = await client.post(
-                        "http://localhost:8001/api/v1/rfq/",
-                        json={
-                            "title": request.title,
-                            "description": request.description,
-                            "product_category": request.product_category,
-                            "target_segment": request.target_segment,
-                            "research_goal": request.research_goal,
-                            "workflow_id": workflow_id,
-                            "survey_id": str(survey.id),
-                            "rfq_id": str(rfq.id)
-                        }
-                    )
-                    ws_response.raise_for_status()
-                    logger.info(f"✅ [RFQ API] WebSocket server accepted request: {ws_response.status_code}")
-                    break  # Success, exit retry loop
-                    
-            except Exception as ws_error:
-                logger.warning(f"⚠️ [RFQ API] Attempt {attempt + 1}/{max_retries} failed to connect to WebSocket server: {str(ws_error)}")
-                
-                if attempt == max_retries - 1:
-                    # Final attempt failed - but don't fail the request, just log and continue
-                    logger.error(f"❌ [RFQ API] All {max_retries} attempts failed to connect to WebSocket server")
-                    logger.warning("⚠️ [RFQ API] Continuing without async processing - survey will be marked as pending")
-                    # Don't fail the request, just mark survey as pending
-                    survey.status = "pending"
-                    db.commit()
-                    # Return success but with pending status
-                    response = RFQSubmissionResponse(
-                        workflow_id=workflow_id,
-                        survey_id=str(survey.id),
-                        status="pending"
-                    )
-                    logger.info(f"🎉 [RFQ API] Returning pending response: {response.model_dump()}")
-                    return response
-                else:
-                    # Wait before retry
-                    logger.info(f"⏳ [RFQ API] Waiting {retry_delay}s before retry...")
-                    await asyncio.sleep(retry_delay)
-                    retry_delay = min(retry_delay * 1.2, 10.0)  # Gradual backoff, max 10s
-        
+        # Return immediate response
         response = RFQSubmissionResponse(
             workflow_id=workflow_id,
             survey_id=str(survey.id),
@@ -134,3 +113,38 @@ async def submit_rfq(
     except Exception as e:
         logger.error(f"❌ [RFQ API] Failed to process RFQ: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to process RFQ: {str(e)}")
+
+
+async def process_rfq_workflow_async(
+    workflow_service,
+    title: str,
+    description: str,
+    product_category: str,
+    target_segment: str,
+    research_goal: str,
+    workflow_id: str,
+    survey_id: str
+):
+    """
+    Process RFQ workflow asynchronously with detailed logging
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        logger.info(f"🚀 [Async Workflow] Starting RFQ processing: title='{title}', workflow_id={workflow_id}")
+        
+        # Process through workflow with detailed logging
+        result = await workflow_service.process_rfq(
+            title=title,
+            description=description,
+            product_category=product_category,
+            target_segment=target_segment,
+            research_goal=research_goal,
+            workflow_id=workflow_id
+        )
+        
+        logger.info(f"✅ [Async Workflow] Workflow completed successfully: {result.status}")
+        
+    except Exception as e:
+        logger.error(f"❌ [Async Workflow] Workflow failed: {str(e)}", exc_info=True)

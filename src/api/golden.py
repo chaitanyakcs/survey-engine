@@ -11,6 +11,7 @@ router = APIRouter(prefix="/golden-pairs", tags=["Golden Standards"])
 
 class GoldenPairResponse(BaseModel):
     id: str
+    title: Optional[str]
     rfq_text: str
     survey_json: Dict[Any, Any]
     methodology_tags: Optional[List[str]]
@@ -21,6 +22,7 @@ class GoldenPairResponse(BaseModel):
 
 
 class CreateGoldenPairRequest(BaseModel):
+    title: Optional[str] = None
     rfq_text: str
     survey_json: Dict[Any, Any]
     methodology_tags: Optional[List[str]] = None
@@ -39,7 +41,7 @@ async def list_golden_pairs(
     db: Session = Depends(get_db),
     skip: int = 0,
     limit: int = 100
-) -> List[GoldenPairResponse]:
+):
     """
     List available golden standards with usage stats
     """
@@ -49,13 +51,14 @@ async def list_golden_pairs(
     return [
         GoldenPairResponse(
             id=str(pair.id),
-            rfq_text=pair.rfq_text,  # type: ignore
-            survey_json=pair.survey_json,  # type: ignore
-            methodology_tags=pair.methodology_tags,  # type: ignore
-            industry_category=pair.industry_category,  # type: ignore
-            research_goal=pair.research_goal,  # type: ignore
-            quality_score=float(pair.quality_score) if pair.quality_score else None,  # type: ignore
-            usage_count=pair.usage_count  # type: ignore
+            title=getattr(pair, 'title', None),
+            rfq_text=pair.rfq_text,
+            survey_json=pair.survey_json,
+            methodology_tags=pair.methodology_tags,
+            industry_category=pair.industry_category,
+            research_goal=pair.research_goal,
+            quality_score=float(pair.quality_score) if pair.quality_score else None,
+            usage_count=pair.usage_count
         )
         for pair in golden_pairs
     ]
@@ -65,13 +68,51 @@ async def list_golden_pairs(
 async def create_golden_pair(
     request: CreateGoldenPairRequest,
     db: Session = Depends(get_db)
-) -> GoldenPairResponse:
+):
     """
     Add new golden standard (requires quality_score)
     """
     try:
         golden_service = GoldenService(db)
-        golden_pair = await golden_service.create_golden_pair(
+        golden_pair = golden_service.create_golden_pair(
+            rfq_text=request.rfq_text,
+            survey_json=request.survey_json,
+            title=request.title,
+            methodology_tags=request.methodology_tags,
+            industry_category=request.industry_category,
+            research_goal=request.research_goal,
+            quality_score=request.quality_score
+        )
+        
+        return GoldenPairResponse(
+            id=str(golden_pair.id),
+            title=getattr(golden_pair, 'title', None),
+            rfq_text=golden_pair.rfq_text,
+            survey_json=golden_pair.survey_json,
+            methodology_tags=golden_pair.methodology_tags,
+            industry_category=golden_pair.industry_category,
+            research_goal=golden_pair.research_goal,
+            quality_score=float(golden_pair.quality_score) if golden_pair.quality_score else None,
+            usage_count=golden_pair.usage_count
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create golden pair: {str(e)}")
+
+
+@router.put("/{golden_id}", response_model=GoldenPairResponse)
+async def update_golden_pair(
+    golden_id: UUID,
+    request: CreateGoldenPairRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Update existing golden pair
+    """
+    try:
+        golden_service = GoldenService(db)
+        golden_pair = golden_service.update_golden_pair(
+            golden_id=golden_id,
             rfq_text=request.rfq_text,
             survey_json=request.survey_json,
             methodology_tags=request.methodology_tags,
@@ -82,17 +123,40 @@ async def create_golden_pair(
         
         return GoldenPairResponse(
             id=str(golden_pair.id),
-            rfq_text=golden_pair.rfq_text,  # type: ignore
-            survey_json=golden_pair.survey_json,  # type: ignore
-            methodology_tags=golden_pair.methodology_tags,  # type: ignore
-            industry_category=golden_pair.industry_category,  # type: ignore
-            research_goal=golden_pair.research_goal,  # type: ignore
-            quality_score=float(golden_pair.quality_score) if golden_pair.quality_score else None,  # type: ignore
-            usage_count=golden_pair.usage_count  # type: ignore
+            rfq_text=golden_pair.rfq_text,
+            survey_json=golden_pair.survey_json,
+            methodology_tags=golden_pair.methodology_tags or [],
+            industry_category=golden_pair.industry_category or "General",
+            research_goal=golden_pair.research_goal or "Market Research",
+            quality_score=float(golden_pair.quality_score) if golden_pair.quality_score else None,
+            usage_count=golden_pair.usage_count
         )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create golden pair: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update golden pair: {str(e)}")
+
+
+@router.delete("/{golden_id}")
+async def delete_golden_pair(
+    golden_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Delete a golden pair
+    """
+    try:
+        golden_service = GoldenService(db)
+        success = golden_service.delete_golden_pair(golden_id=golden_id)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Golden pair not found")
+        
+        return {"status": "success", "message": "Golden pair deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete golden pair: {str(e)}")
 
 
 @router.put("/{golden_id}/validate")
@@ -100,7 +164,7 @@ async def validate_golden_pair(
     golden_id: UUID,
     validation: ValidationRequest,
     db: Session = Depends(get_db)
-) -> dict[str, Any]:
+):
     """
     Expert validation of golden pair
     """

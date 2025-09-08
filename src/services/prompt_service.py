@@ -1,0 +1,422 @@
+from typing import Dict, List, Any, Optional
+from src.config import settings
+import json
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class PromptService:
+    """
+    Service for managing system prompts and rules for survey generation
+    """
+    
+    def __init__(self):
+        self.base_rules = self._load_base_rules()
+        self.methodology_rules = self._load_methodology_rules()
+        self.quality_rules = self._load_quality_rules()
+    
+    def _load_base_rules(self) -> Dict[str, Any]:
+        """Load base system rules for survey generation"""
+        return {
+            "role": "You are an expert survey designer and market research specialist with 15+ years of experience.",
+            "expertise": [
+                "Market research methodology design",
+                "Question design and survey optimization", 
+                "Statistical analysis and data quality",
+                "Industry best practices and compliance"
+            ],
+            "core_principles": [
+                "Always prioritize data quality and respondent experience",
+                "Design surveys that are clear, unbiased, and actionable",
+                "Follow established research methodologies rigorously",
+                "Ensure questions are specific, measurable, and relevant",
+                "Maintain logical flow and appropriate question sequencing"
+            ],
+            "output_requirements": [
+                "Generate valid JSON following the specified schema",
+                "Include proper question types and validation rules",
+                "Add appropriate metadata and methodology tags",
+                "Ensure questions are properly categorized and sequenced"
+            ]
+        }
+    
+    def _load_methodology_rules(self) -> Dict[str, Dict[str, Any]]:
+        """Load methodology-specific rules and guidelines"""
+        return {
+            "van_westendorp": {
+                "description": "Van Westendorp Price Sensitivity Meter",
+                "required_questions": 4,
+                "question_flow": [
+                    "At what price would you consider this product to be so expensive that you would not consider buying it?",
+                    "At what price would you consider this product to be priced so low that you would feel the quality couldn't be very good?",
+                    "At what price would you consider this product starting to get expensive, so that it is not out of the question, but you would have to give some thought to buying it?",
+                    "At what price would you consider this product to be a bargain - a great buy for the money?"
+                ],
+                "validation_rules": [
+                    "Must have exactly 4 price questions",
+                    "Questions must follow the exact Van Westendorp format",
+                    "Price ranges should be logical and sequential"
+                ]
+            },
+            "conjoint": {
+                "description": "Conjoint Analysis / Choice Modeling",
+                "required_attributes": 3,
+                "max_attributes": 6,
+                "question_flow": [
+                    "Screening questions for product familiarity",
+                    "Attribute importance ranking",
+                    "Choice sets with different combinations",
+                    "Demographic and behavioral questions"
+                ],
+                "validation_rules": [
+                    "Must have balanced choice sets",
+                    "Attributes must be orthogonal",
+                    "Include appropriate sample size calculations"
+                ]
+            },
+            "maxdiff": {
+                "description": "MaxDiff (Maximum Difference Scaling)",
+                "required_items": 8,
+                "max_items": 20,
+                "question_flow": [
+                    "Item familiarity screening",
+                    "Multiple choice sets showing 3-5 items",
+                    "Best/worst selection within each set",
+                    "Demographic questions"
+                ],
+                "validation_rules": [
+                    "Items must be balanced across choice sets",
+                    "Include appropriate number of choice tasks",
+                    "Ensure statistical power for analysis"
+                ]
+            },
+            "nps": {
+                "description": "Net Promoter Score",
+                "required_questions": 2,
+                "question_flow": [
+                    "How likely are you to recommend [product/service] to a friend or colleague? (0-10 scale)",
+                    "What is the primary reason for your score? (open text)"
+                ],
+                "validation_rules": [
+                    "Must use 0-10 scale",
+                    "Include follow-up question for reasoning",
+                    "Properly categorize promoters, passives, detractors"
+                ]
+            }
+        }
+    
+    def _load_quality_rules(self) -> Dict[str, Any]:
+        """Load quality assurance rules and validation criteria"""
+        return {
+            "question_quality": [
+                "Questions must be clear, concise, and unambiguous",
+                "Avoid leading, loaded, or double-barreled questions",
+                "Use appropriate question types for the data needed",
+                "Include proper validation and skip logic where needed"
+            ],
+            "survey_structure": [
+                "Start with screening questions to qualify respondents",
+                "Group related questions logically",
+                "Place sensitive questions near the end",
+                "Include demographic questions for segmentation"
+            ],
+            "methodology_compliance": [
+                "Follow established research methodology standards",
+                "Include appropriate sample size considerations",
+                "Ensure statistical validity of question design",
+                "Add proper metadata for analysis"
+            ],
+            "respondent_experience": [
+                "Keep survey length appropriate (5-15 minutes)",
+                "Use clear instructions and progress indicators",
+                "Avoid repetitive or redundant questions",
+                "Ensure mobile-friendly question formats"
+            ]
+        }
+    
+    def build_system_prompt(
+        self,
+        context: Dict[str, Any],
+        methodology_tags: Optional[List[str]] = None,
+        custom_rules: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Build comprehensive system prompt with rules and guidelines
+        """
+        prompt_parts = []
+        
+        # Base role and expertise
+        prompt_parts.extend([
+            f"# {self.base_rules['role']}",
+            "",
+            "## Your Expertise:",
+            *[f"- {exp}" for exp in self.base_rules['expertise']],
+            "",
+            "## Core Design Principles:",
+            *[f"- {principle}" for principle in self.base_rules['core_principles']],
+            ""
+        ])
+        
+        # Methodology-specific rules
+        if methodology_tags:
+            prompt_parts.extend([
+                "## Methodology Requirements:",
+                ""
+            ])
+            for tag in methodology_tags:
+                if tag.lower() in self.methodology_rules:
+                    method = self.methodology_rules[tag.lower()]
+                    prompt_parts.extend([
+                        f"### {method['description']}:",
+                        f"- Required Questions: {method['required_questions']}",
+                        f"- Validation Rules: {'; '.join(method['validation_rules'])}",
+                        ""
+                    ])
+        
+        # Quality rules
+        prompt_parts.extend([
+            "## Quality Standards:",
+            ""
+        ])
+        for category, rules in self.quality_rules.items():
+            prompt_parts.extend([
+                f"### {category.replace('_', ' ').title()}:",
+                *[f"- {rule}" for rule in rules],
+                ""
+            ])
+        
+        # Custom rules if provided
+        if custom_rules:
+            prompt_parts.extend([
+                "## Custom Requirements:",
+                *[f"- {rule}" for rule in custom_rules.get('rules', [])],
+                ""
+            ])
+        
+        # Output format requirements
+        prompt_parts.extend([
+            "## Output Requirements:",
+            *[f"- {req}" for req in self.base_rules['output_requirements']],
+            ""
+        ])
+        
+        return "\n".join(prompt_parts)
+    
+    def build_golden_enhanced_prompt(
+        self,
+        context: Dict[str, Any],
+        golden_examples: List[Dict[str, Any]],
+        methodology_blocks: List[Dict[str, Any]],
+        custom_rules: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Build the complete prompt with system rules, golden examples, and context
+        """
+        # Get methodology tags from context or golden examples
+        methodology_tags = []
+        if context.get("rfq_details", {}).get("methodology_tags"):
+            methodology_tags.extend(context["rfq_details"]["methodology_tags"])
+        
+        for example in golden_examples:
+            if example.get("methodology_tags"):
+                methodology_tags.extend(example["methodology_tags"])
+        
+        # Remove duplicates and convert to lowercase
+        methodology_tags = list(set([tag.lower() for tag in methodology_tags]))
+        
+        # Build system prompt with rules
+        system_prompt = self.build_system_prompt(
+            context=context,
+            methodology_tags=methodology_tags,
+            custom_rules=custom_rules
+        )
+        
+        # Build the main prompt with golden examples
+        prompt_parts = [
+            system_prompt,
+            "",
+            "## GOLDEN STANDARD EXAMPLES:",
+            ""
+        ]
+        
+        # Add golden examples as few-shot prompts
+        for i, example in enumerate(golden_examples[:settings.max_golden_examples], 1):
+            prompt_parts.extend([
+                f"### Example {i}:",
+                f"**RFQ:** {example['rfq_text'][:500]}...",
+                f"**Quality Score:** {example.get('quality_score', 'N/A')}",
+                f"**Methodology:** {', '.join(example.get('methodology_tags', []))}",
+                f"**Survey Structure:**",
+                json.dumps(example['survey_json'], indent=2)[:1000] + "...",
+                ""
+            ])
+        
+        # Add methodology guidance
+        if methodology_blocks:
+            prompt_parts.extend([
+                "## METHODOLOGY GUIDANCE:",
+                ""
+            ])
+            for block in methodology_blocks:
+                prompt_parts.extend([
+                    f"### {block['methodology']}:",
+                    f"**Structure:** {json.dumps(block['example_structure'], indent=2)}",
+                    f"**Usage Pattern:** {json.dumps(block['usage_pattern'], indent=2)}",
+                    ""
+                ])
+        
+        # Add current RFQ context
+        rfq_details = context.get("rfq_details", {})
+        prompt_parts.extend([
+            "## CURRENT RFQ:",
+            f"**Title:** {rfq_details.get('title', 'N/A')}",
+            f"**Description:** {rfq_details.get('text', '')}",
+            f"**Category:** {rfq_details.get('category', 'N/A')}",
+            f"**Target Segment:** {rfq_details.get('segment', 'N/A')}",
+            f"**Research Goal:** {rfq_details.get('goal', 'N/A')}",
+            "",
+            "## TASK:",
+            "Generate a complete, high-quality survey following all the rules and guidelines above.",
+            "Use the golden examples as reference for quality and structure.",
+            "Ensure methodology compliance and proper question design.",
+            "",
+            "Return valid JSON with this exact structure:",
+            json.dumps({
+                "title": "Survey Title",
+                "description": "Survey Description",
+                "questions": [
+                    {
+                        "id": "q1",
+                        "text": "Question text",
+                        "type": "multiple_choice|text|scale|ranking",
+                        "options": ["Option 1", "Option 2"],
+                        "required": True,
+                        "methodology": "screening|core|demographic",
+                        "validation": "optional validation rules"
+                    }
+                ],
+                "metadata": {
+                    "estimated_time": 10,
+                    "methodology_tags": ["tag1", "tag2"],
+                    "target_responses": 100,
+                    "quality_score": 0.85
+                }
+            }, indent=2),
+            "",
+            "Generate the survey JSON now:"
+        ])
+        
+        return "\n".join(prompt_parts)
+    
+    def add_custom_rule(self, rule_type: str, rule: str) -> None:
+        """Add a custom rule to the system"""
+        if rule_type not in self.quality_rules:
+            self.quality_rules[rule_type] = []
+        self.quality_rules[rule_type].append(rule)
+        logger.info(f"Added custom rule to {rule_type}: {rule}")
+        
+        # Note: In a production system, you would also persist this to the database
+        # For now, we're keeping it in memory for the session
+    
+    def get_methodology_guidelines(self, methodology: str) -> Optional[Dict[str, Any]]:
+        """Get specific guidelines for a methodology"""
+        return self.methodology_rules.get(methodology.lower())
+    
+    def validate_survey_against_rules(
+        self,
+        survey: Dict[str, Any],
+        methodology_tags: List[str]
+    ) -> Dict[str, Any]:
+        """
+        Validate generated survey against the rules
+        """
+        validation_results = {
+            "passed": True,
+            "errors": [],
+            "warnings": [],
+            "methodology_compliance": {},
+            "quality_score": 0.0
+        }
+        
+        # Check methodology compliance
+        for tag in methodology_tags:
+            if tag.lower() in self.methodology_rules:
+                method_rules = self.methodology_rules[tag.lower()]
+                compliance = self._check_methodology_compliance(survey, method_rules)
+                validation_results["methodology_compliance"][tag] = compliance
+                
+                if not compliance["passed"]:
+                    validation_results["passed"] = False
+                    validation_results["errors"].extend(compliance["errors"])
+        
+        # Check basic quality rules
+        quality_check = self._check_quality_rules(survey)
+        validation_results["quality_score"] = quality_check["score"]
+        
+        if quality_check["errors"]:
+            validation_results["passed"] = False
+            validation_results["errors"].extend(quality_check["errors"])
+        
+        validation_results["warnings"].extend(quality_check["warnings"])
+        
+        return validation_results
+    
+    def _check_methodology_compliance(
+        self,
+        survey: Dict[str, Any],
+        method_rules: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Check if survey complies with specific methodology rules"""
+        compliance = {
+            "passed": True,
+            "errors": [],
+            "details": {}
+        }
+        
+        questions = survey.get("questions", [])
+        
+        # Check required number of questions
+        if "required_questions" in method_rules:
+            required = method_rules["required_questions"]
+            if len(questions) < required:
+                compliance["passed"] = False
+                compliance["errors"].append(f"Methodology requires {required} questions, found {len(questions)}")
+        
+        # Check question flow patterns
+        if "question_flow" in method_rules:
+            # This would be more sophisticated in practice
+            compliance["details"]["flow_check"] = "Basic flow validation"
+        
+        return compliance
+    
+    def _check_quality_rules(self, survey: Dict[str, Any]) -> Dict[str, Any]:
+        """Check survey against quality rules"""
+        quality_check = {
+            "score": 0.8,  # Base score
+            "errors": [],
+            "warnings": []
+        }
+        
+        questions = survey.get("questions", [])
+        
+        # Basic checks
+        if not questions:
+            quality_check["errors"].append("Survey must have questions")
+            quality_check["score"] = 0.0
+            return quality_check
+        
+        # Check question quality
+        for i, question in enumerate(questions):
+            if not question.get("text"):
+                quality_check["errors"].append(f"Question {i+1} missing text")
+                quality_check["score"] -= 0.1
+            
+            if not question.get("type"):
+                quality_check["warnings"].append(f"Question {i+1} missing type")
+                quality_check["score"] -= 0.05
+        
+        # Ensure score is between 0 and 1
+        quality_check["score"] = max(0.0, min(1.0, quality_check["score"]))
+        
+        return quality_check

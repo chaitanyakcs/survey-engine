@@ -26,6 +26,7 @@ class GoldenService:
         self,
         rfq_text: str,
         survey_json: Dict[str, Any],
+        title: Optional[str] = None,
         methodology_tags: Optional[List[str]] = None,
         industry_category: Optional[str] = None,
         research_goal: Optional[str] = None,
@@ -40,6 +41,7 @@ class GoldenService:
             
             # Create golden pair record
             golden_pair = GoldenRFQSurveyPair(
+                title=title,
                 rfq_text=rfq_text,
                 rfq_embedding=rfq_embedding,
                 survey_json=survey_json,
@@ -58,6 +60,87 @@ class GoldenService:
         except Exception as e:
             self.db.rollback()
             raise Exception(f"Failed to create golden pair: {str(e)}")
+    
+    def update_golden_pair(
+        self,
+        golden_id: UUID,
+        rfq_text: str,
+        survey_json: Dict[str, Any],
+        methodology_tags: Optional[List[str]] = None,
+        industry_category: Optional[str] = None,
+        research_goal: Optional[str] = None,
+        quality_score: Optional[float] = None
+    ) -> GoldenRFQSurveyPair:
+        """
+        Update existing golden pair
+        """
+        try:
+            golden_pair = self.db.query(GoldenRFQSurveyPair).filter(
+                GoldenRFQSurveyPair.id == golden_id
+            ).first()
+            
+            if not golden_pair:
+                raise ValueError("Golden pair not found")
+            
+            # Update fields
+            golden_pair.rfq_text = rfq_text
+            golden_pair.survey_json = survey_json
+            golden_pair.methodology_tags = methodology_tags or []
+            golden_pair.industry_category = industry_category or "General"
+            golden_pair.research_goal = research_goal or "Market Research"
+            
+            if quality_score is not None:
+                golden_pair.quality_score = quality_score
+            
+            self.db.commit()
+            self.db.refresh(golden_pair)
+            
+            return golden_pair
+            
+        except Exception as e:
+            self.db.rollback()
+            raise Exception(f"Failed to update golden pair: {str(e)}")
+    
+    def delete_golden_pair(self, golden_id: UUID) -> bool:
+        """
+        Delete a golden pair by ID (including its vector embedding)
+        
+        Note: Since we use pgvector, the vector embedding is stored in the same
+        PostgreSQL table as the metadata, so deleting the record automatically
+        removes the vector from the vector database as well.
+        """
+        try:
+            golden_pair = self.db.query(GoldenRFQSurveyPair).filter(
+                GoldenRFQSurveyPair.id == golden_id
+            ).first()
+            
+            if not golden_pair:
+                return False
+            
+            # Log what we're deleting for debugging
+            try:
+                if golden_pair.rfq_embedding is not None:
+                    # Handle both NumPy arrays and pgvector objects
+                    if hasattr(golden_pair.rfq_embedding, '__len__'):
+                        embedding_dim = len(golden_pair.rfq_embedding)
+                    else:
+                        embedding_dim = 'Unknown'
+                else:
+                    embedding_dim = 'None'
+                print(f"Deleting golden pair {golden_id} with embedding dimension: {embedding_dim}")
+            except Exception as e:
+                print(f"Deleting golden pair {golden_id} with embedding (dimension check failed: {str(e)})")
+            
+            # Delete the record (this also removes the vector from pgvector)
+            self.db.delete(golden_pair)
+            self.db.commit()
+            
+            print(f"Successfully deleted golden pair {golden_id} and its vector embedding")
+            return True
+            
+        except Exception as e:
+            self.db.rollback()
+            raise Exception(f"Failed to delete golden pair: {str(e)}")
     
     def validate_golden_pair(
         self,

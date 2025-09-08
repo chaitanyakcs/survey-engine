@@ -10,7 +10,7 @@ class APIService {
     const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout - models now load lazily
 
     try {
-      const response = await fetch(`${API_BASE_URL}/rfq/`, {
+      const response = await fetch(`${API_BASE_URL}/v1/rfq/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -36,7 +36,7 @@ class APIService {
   }
 
   async fetchSurvey(surveyId: string): Promise<Survey> {
-    const response = await fetch(`${API_BASE_URL}/survey/${surveyId}`);
+    const response = await fetch(`${API_BASE_URL}/v1/survey/${surveyId}`);
     
     if (!response.ok) {
       throw new Error(`Failed to fetch survey: ${response.statusText}`);
@@ -74,15 +74,6 @@ class APIService {
     return survey;
   }
 
-  async getWorkflowStatus(workflowId: string): Promise<any> {
-    const response = await fetch(`${API_BASE_URL}/workflow/${workflowId}`);
-    
-    if (!response.ok) {
-      throw new Error(`Failed to get workflow status: ${response.statusText}`);
-    }
-
-    return response.json();
-  }
 }
 
 export const apiService = new APIService();

@@ -6,15 +6,38 @@ import asyncio
 
 
 class EmbeddingService:
+    # Class-level singleton to avoid multiple model loads
+    _instance = None
+    _model = None
+    _initialized = False
+    _model_loading = False
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(EmbeddingService, cls).__new__(cls)
+        return cls._instance
+    
     def __init__(self) -> None:
+        # Only initialize once
+        if hasattr(self, '_initialized_instance'):
+            return
+            
         self.model_name = settings.embedding_model
-        self.model = None
         self.use_replicate = None
+        self._initialized_instance = True
+        
+        # Always initialize model attribute
+        self.model = None
         self._initialized = False
+        
+        # Use class-level model if available
+        if EmbeddingService._model is not None:
+            self.model = EmbeddingService._model
+            self._initialized = True
     
     def _ensure_initialized(self):
         """Lazy initialization of the embedding model"""
-        if self._initialized:
+        if self._initialized or EmbeddingService._initialized:
             return
             
         # Initialize based on model type
@@ -26,11 +49,63 @@ class EmbeddingService:
             self.use_replicate = True
             self.model = None
         else:
-            # Sentence Transformers model - load lazily
+            # Sentence Transformers model - load if not already loading
             self.use_replicate = False
-            # Don't load the model here, load it when first needed
+            if (self.model is None and EmbeddingService._model is None and 
+                not self._model_loading and not EmbeddingService._model_loading):
+                self._load_sentence_transformer_model()
         
         self._initialized = True
+        EmbeddingService._initialized = True
+    
+    def _load_sentence_transformer_model(self):
+        """Load the Sentence Transformer model"""
+        if (self.model is not None or self._model_loading or 
+            EmbeddingService._model is not None or EmbeddingService._model_loading):
+            return
+            
+        self._model_loading = True
+        EmbeddingService._model_loading = True
+        try:
+            print(f"🔄 [EmbeddingService] Loading SentenceTransformer model: {self.model_name}")
+            model = SentenceTransformer(self.model_name)
+            
+            # Store at class level for sharing
+            EmbeddingService._model = model
+            self.model = model
+            
+            print(f"✅ [EmbeddingService] Model loaded successfully: {self.model_name}")
+        except Exception as e:
+            print(f"❌ [EmbeddingService] Failed to load model {self.model_name}: {str(e)}")
+            # Fallback to a default model
+            try:
+                print(f"🔄 [EmbeddingService] Trying fallback model: all-MiniLM-L6-v2")
+                model = SentenceTransformer('all-MiniLM-L6-v2')
+                
+                # Store at class level for sharing
+                EmbeddingService._model = model
+                self.model = model
+                
+                print(f"✅ [EmbeddingService] Fallback model loaded successfully")
+            except Exception as fallback_e:
+                print(f"❌ [EmbeddingService] Fallback model also failed: {str(fallback_e)}")
+                raise Exception(f"Failed to load any embedding model: {str(e)}")
+        finally:
+            self._model_loading = False
+            EmbeddingService._model_loading = False
+    
+    async def preload_model(self):
+        """Preload the model in background"""
+        if not self._should_use_replicate():
+            if self.model is None and EmbeddingService._model is None:
+                print(f"🔄 [EmbeddingService] Preloading model in background: {self.model_name}")
+                # Run model loading in thread pool to avoid blocking
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(None, self._load_sentence_transformer_model)
+            else:
+                print(f"✅ [EmbeddingService] Model already loaded: {self.model_name}")
+        else:
+            print(f"🌐 [EmbeddingService] Using Replicate API, no local model to preload")
     
     def _should_use_replicate(self) -> bool:
         """
@@ -51,11 +126,19 @@ class EmbeddingService:
         """
         Generate embedding for given text
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"🔄 [EmbeddingService] Generating embedding for text length: {len(text)}")
+        logger.debug(f"🔄 [EmbeddingService] Text preview: '{text[:100]}...'")
+        
         self._ensure_initialized()
         
         if self.use_replicate:
+            logger.info("🌐 [EmbeddingService] Using Replicate API for embedding generation")
             return await self._get_replicate_embedding(text)
         else:
+            logger.info("🤖 [EmbeddingService] Using SentenceTransformer for embedding generation")
             return await self._get_sentence_transformer_embedding(text)
     
     async def get_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
@@ -119,16 +202,40 @@ class EmbeddingService:
     
     async def _get_sentence_transformer_embedding(self, text: str) -> List[float]:
         """
-        Get embedding from Sentence Transformers model - TEMPORARILY DISABLED
+        Get embedding from Sentence Transformers model
         """
-        print(f"🚫 [EmbeddingService] ML model loading temporarily disabled for debugging")
-        # Return a zero vector as fallback
-        return [0.0] * 384  # Standard embedding dimension
+        if self.model is None:
+            # Load model if not already loaded
+            self._load_sentence_transformer_model()
+        
+        if self.model is None:
+            raise Exception("Failed to load SentenceTransformer model")
+        
+        try:
+            # Run encoding in thread pool to avoid blocking
+            loop = asyncio.get_event_loop()
+            embedding = await loop.run_in_executor(None, self.model.encode, text)
+            return embedding.tolist()
+        except Exception as e:
+            print(f"❌ [EmbeddingService] Error generating embedding: {str(e)}")
+            raise Exception(f"Failed to generate embedding: {str(e)}")
     
     async def _get_sentence_transformer_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
         """
-        Get embeddings for multiple texts from Sentence Transformers - TEMPORARILY DISABLED
+        Get embeddings for multiple texts from Sentence Transformers
         """
-        print(f"🚫 [EmbeddingService] ML model loading temporarily disabled for debugging")
-        # Return zero vectors as fallback
-        return [[0.0] * 384 for _ in texts]  # Standard embedding dimension
+        if self.model is None:
+            # Load model if not already loaded
+            self._load_sentence_transformer_model()
+        
+        if self.model is None:
+            raise Exception("Failed to load SentenceTransformer model")
+        
+        try:
+            # Run batch encoding in thread pool to avoid blocking
+            loop = asyncio.get_event_loop()
+            embeddings = await loop.run_in_executor(None, self.model.encode, texts)
+            return [embedding.tolist() for embedding in embeddings]
+        except Exception as e:
+            print(f"❌ [EmbeddingService] Error generating batch embeddings: {str(e)}")
+            raise Exception(f"Failed to generate batch embeddings: {str(e)}")

@@ -40,7 +40,7 @@ RUN pip install --no-cache-dir torch==2.0.1+cpu torchvision==0.15.2+cpu torchaud
 RUN pip install --no-cache-dir -r requirements-docker.txt
 
 # Pre-download ML models to avoid startup delays
-RUN python3 -c "from sentence_transformers import SentenceTransformer; print('Pre-downloading sentence-transformers model...'); model = SentenceTransformer('all-MiniLM-L6-v2'); print('Model downloaded successfully!'); print('Pre-downloading all model variants...'); model.encode('test text'); print('All model variants downloaded successfully!')"
+RUN python3 -c "from sentence_transformers import SentenceTransformer; print('Pre-downloading sentence-transformers model...'); model = SentenceTransformer('all-MiniLM-L6-v2'); print('Model downloaded successfully!'); print('Testing model encoding...'); embedding = model.encode('test text for model validation'); print(f'Model encoding test successful, embedding dimension: {len(embedding)}'); print('All model variants downloaded and tested successfully!')"
 
 # Copy all application code
 COPY src/ ./src/
@@ -48,6 +48,10 @@ COPY alembic/ ./alembic/
 COPY alembic.ini ./
 COPY websocket_server.py ./
 COPY start.sh ./
+COPY start-local.sh ./
+COPY preload_models.py ./
+COPY seed_rules.py ./
+COPY migrations/ ./migrations/
 
 # Copy built frontend from previous stage
 COPY --from=frontend-build /app/frontend/build /app/frontend/build
@@ -97,7 +101,7 @@ http {
 
         # API proxy to FastAPI backend
         location /api/ {
-            proxy_pass http://127.0.0.1:8000/api/v1/;
+            proxy_pass http://127.0.0.1:8000;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -112,9 +116,9 @@ http {
             proxy_read_timeout          600s;
         }
 
-        # WebSocket proxy
+        # WebSocket proxy to FastAPI server (consolidated)
         location /ws/ {
-            proxy_pass http://127.0.0.1:8001/ws/;
+            proxy_pass http://127.0.0.1:8000/ws/;
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";
@@ -136,9 +140,11 @@ http {
 }
 EOF
 
-# Make startup script executable
+# Make startup scripts executable
 RUN chmod +x /app/start.sh && \
-    chmod +x /app/websocket_server.py
+    chmod +x /app/start-local.sh && \
+    chmod +x /app/websocket_server.py && \
+    chmod +x /app/seed_rules.py
 
 # Install pg_isready and redis-cli for health checks
 RUN apt-get update && apt-get install -y postgresql-client redis-tools && rm -rf /var/lib/apt/lists/*
