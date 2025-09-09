@@ -162,13 +162,18 @@ async def list_surveys(
             survey_data = survey.final_output or survey.raw_output or {}
             metadata = survey_data.get('metadata', {})
             
+            # Ensure methodology_tags is always a list
+            methodology_tags = metadata.get('methodology_tags', [])
+            if not isinstance(methodology_tags, list):
+                methodology_tags = []
+            
             survey_list.append(SurveyListItem(
                 id=str(survey.id),
                 title=survey_data.get('title', 'Untitled Survey'),
                 description=survey_data.get('description', 'No description available'),
                 status=survey.status,
                 created_at=survey.created_at.isoformat() if survey.created_at else '',
-                methodology_tags=metadata.get('methodology_tags', []),
+                methodology_tags=methodology_tags,
                 quality_score=metadata.get('quality_score'),
                 estimated_time=metadata.get('estimated_time'),
                 question_count=len(survey_data.get('questions', [])),

@@ -57,9 +57,9 @@ class PromptService:
                 
                 for rule in methodology_rules:
                     self.methodology_rules[rule.category] = {
-                        "description": rule.description,
-                        "required_questions": rule.required_questions or 0,
-                        "validation_rules": rule.validation_rules or []
+                        "description": rule.rule_description,
+                        "required_questions": rule.rule_content.get('required_questions', 0) if rule.rule_content else 0,
+                        "validation_rules": rule.rule_content.get('validation_rules', []) if rule.rule_content else []
                     }
                 
                 # Load quality rules
@@ -71,8 +71,10 @@ class PromptService:
                 for rule in quality_rules:
                     if rule.category not in self.quality_rules:
                         self.quality_rules[rule.category] = []
-                    if rule.rule_text:
-                        self.quality_rules[rule.category].append(rule.rule_text)
+                    if rule.rule_content and isinstance(rule.rule_content, dict):
+                        rule_text = rule.rule_content.get('rule_text', '')
+                        if rule_text:
+                            self.quality_rules[rule.category].append(rule_text)
                 
                 logger.info(f"Loaded {len(methodology_rules)} methodology rules and {len(quality_rules)} quality rules from database")
             else:
