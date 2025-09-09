@@ -22,7 +22,7 @@ class DocumentParser:
     
     def __init__(self):
         replicate.api_token = settings.replicate_api_token  # type: ignore
-        self.model = "meta/llama-2-70b-chat:02e509c789964a7ea8736978a43525956ef40397be9033abf9fd2badfe68c9e3"
+        self.model = settings.generation_model  # Use GPT-5 from settings
     
     def extract_text_from_docx(self, docx_content: bytes) -> str:
         """Extract text content from DOCX file."""
@@ -129,7 +129,7 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                     "prompt": prompt,
                     "temperature": 0.1,
                     "max_tokens": 4000,
-                    "system_prompt": "You are an expert survey methodologist that converts survey documents to structured JSON format. Return only valid JSON with no explanations."
+                    "system_prompt": "You are an expert survey methodologist. Convert the survey document to structured JSON format.\n\nCRITICAL REQUIREMENTS:\n1. Return ONLY valid JSON - no explanations, no markdown, no additional text\n2. Response must start with { and end with }\n3. Use proper JSON syntax with double quotes\n4. Include all required fields: title, questions array\n5. Each question must have: id, text, type, required, category\n6. For multiple_choice questions, include options array\n7. For scale questions, include scale_labels object\n\nExample format:\n{\n  \"title\": \"Survey Title\",\n  \"questions\": [\n    {\n      \"id\": \"q1\",\n      \"text\": \"Question text\",\n      \"type\": \"multiple_choice\",\n      \"options\": [\"Option 1\", \"Option 2\"],\n      \"required\": true,\n      \"category\": \"demographics\"\n    }\n  ]\n}"
                 }
             )
             
@@ -155,22 +155,49 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
             except json.JSONDecodeError as e:
                 logger.warning(f"⚠️ [Document Parser] LLM returned invalid JSON: {str(e)}")
                 logger.info(f"🔧 [Document Parser] Attempting to extract JSON from response")
-                # Try to extract JSON from the response if it contains explanations
-                try:
-                    # Look for JSON between { and }
-                    start = json_content.find('{')
-                    end = json_content.rfind('}') + 1
-                    if start != -1 and end != 0:
-                        json_content = json_content[start:end]
-                        logger.info(f"🔧 [Document Parser] Extracted JSON substring, length: {len(json_content)} chars")
-                        survey_data = json.loads(json_content)
+                logger.debug(f"🔧 [Document Parser] Full LLM response: {json_content}")
+                
+                # Try multiple extraction methods
+                import re
+                
+                # Method 1: Look for JSON between { and }
+                start = json_content.find('{')
+                end = json_content.rfind('}') + 1
+                if start != -1 and end != 0:
+                    extracted_json = json_content[start:end]
+                    logger.info(f"🔧 [Document Parser] Extracted JSON substring, length: {len(extracted_json)} chars")
+                    try:
+                        survey_data = json.loads(extracted_json)
                         logger.info(f"✅ [Document Parser] JSON extraction and parsing successful")
-                    else:
-                        logger.error(f"❌ [Document Parser] No valid JSON found in response")
-                        raise DocumentParsingError(f"No valid JSON found in response")
-                except json.JSONDecodeError as e2:
-                    logger.error(f"❌ [Document Parser] JSON extraction failed: {str(e2)}")
-                    raise DocumentParsingError(f"LLM returned invalid JSON: {str(e)}")
+                        return survey_data
+                    except json.JSONDecodeError as e2:
+                        logger.warning(f"⚠️ [Document Parser] Method 1 failed: {str(e2)}")
+                
+                # Method 2: Look for JSON in markdown code blocks
+                json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', json_content, re.DOTALL)
+                if json_match:
+                    logger.info(f"🔧 [Document Parser] Found JSON in markdown code block")
+                    try:
+                        survey_data = json.loads(json_match.group(1))
+                        logger.info(f"✅ [Document Parser] Markdown JSON extraction successful")
+                        return survey_data
+                    except json.JSONDecodeError as e3:
+                        logger.warning(f"⚠️ [Document Parser] Method 2 failed: {str(e3)}")
+                
+                # Method 3: Look for any JSON object pattern
+                json_match = re.search(r'(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})', json_content, re.DOTALL)
+                if json_match:
+                    logger.info(f"🔧 [Document Parser] Found JSON object pattern")
+                    try:
+                        survey_data = json.loads(json_match.group(1))
+                        logger.info(f"✅ [Document Parser] JSON object pattern extraction successful")
+                        return survey_data
+                    except json.JSONDecodeError as e4:
+                        logger.warning(f"⚠️ [Document Parser] Method 3 failed: {str(e4)}")
+                
+                logger.error(f"❌ [Document Parser] All JSON extraction methods failed")
+                logger.error(f"❌ [Document Parser] Raw response (first 1000 chars): {json_content[:1000]}")
+                raise DocumentParsingError(f"No valid JSON found in response")
             
             logger.info(f"🎉 [Document Parser] LLM conversion completed successfully")
             return survey_data
