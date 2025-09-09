@@ -25,6 +25,19 @@ export interface Survey {
   metadata: SurveyMetadata;
 }
 
+export interface SurveyListItem {
+  id: string;
+  title: string;
+  description: string;
+  status: string;
+  created_at: string;
+  methodology_tags: string[];
+  quality_score?: number;
+  estimated_time?: number;
+  question_count: number;
+  annotation?: Record<string, any>;
+}
+
 export interface Question {
   id: string;
   text: string;

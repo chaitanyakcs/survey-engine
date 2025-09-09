@@ -3,6 +3,7 @@ import { Sidebar } from '../components/Sidebar';
 import { SurveyCard } from '../components/SurveyCard';
 import { SurveyPreview } from '../components/SurveyPreview';
 import { useAppStore } from '../store/useAppStore';
+import { SurveyListItem } from '../types';
 import { 
   PlusIcon, 
   MagnifyingGlassIcon,
@@ -27,8 +28,8 @@ interface Survey {
 
 export const SurveysPage: React.FC = () => {
   const { setSurvey, setRFQInput } = useAppStore();
-  const [surveys, setSurveys] = useState<Survey[]>([]);
-  const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
+  const [surveys, setSurveys] = useState<SurveyListItem[]>([]);
+  const [selectedSurvey, setSelectedSurvey] = useState<SurveyListItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
