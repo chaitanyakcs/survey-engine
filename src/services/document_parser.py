@@ -135,7 +135,15 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
             
             # Replicate returns a generator, join the output
             logger.info(f"📥 [Document Parser] Processing LLM response")
-            json_content = "".join(output).strip()
+            logger.debug(f"📥 [Document Parser] Output type: {type(output)}")
+            logger.debug(f"📥 [Document Parser] Output value: {output}")
+            
+            # Handle different output types from Replicate
+            if hasattr(output, '__iter__') and not isinstance(output, str):
+                json_content = "".join(str(chunk) for chunk in output).strip()
+            else:
+                json_content = str(output).strip()
+                
             logger.info(f"✅ [Document Parser] LLM response received, length: {len(json_content)} chars")
             logger.debug(f"📄 [Document Parser] LLM response preview: {json_content[:200]}...")
             
