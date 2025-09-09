@@ -1,6 +1,7 @@
 # Core FastAPI dependencies
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
 sqlalchemy>=2.0.0
 asyncpg>=0.29.0
 alembic>=1.13.0

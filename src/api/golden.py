@@ -6,6 +6,9 @@ from src.services.document_parser import document_parser, DocumentParsingError
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from uuid import UUID
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/golden-pairs", tags=["Golden Standards"])
 

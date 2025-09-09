@@ -48,6 +48,46 @@ class ValidationRequest(BaseModel):
     golden_similarity_threshold: Optional[float] = None
 
 
+@router.get("/list", response_model=list[SurveyListItem])
+async def list_surveys(
+    skip: int = 0,
+    limit: int = 50,
+    db: Session = Depends(get_db)
+):
+    """Get list of all generated surveys"""
+    try:
+        surveys = db.query(Survey).order_by(Survey.created_at.desc()).offset(skip).limit(limit).all()
+        
+        survey_list = []
+        for survey in surveys:
+            # Extract survey data
+            survey_data = survey.final_output or survey.raw_output or {}
+            metadata = survey_data.get('metadata', {})
+            
+            # Ensure methodology_tags is always a list
+            methodology_tags = metadata.get('methodology_tags', [])
+            if not isinstance(methodology_tags, list):
+                methodology_tags = []
+            
+            survey_list.append(SurveyListItem(
+                id=str(survey.id),
+                title=survey_data.get('title', 'Untitled Survey'),
+                description=survey_data.get('description', 'No description available'),
+                status=survey.status,
+                created_at=survey.created_at.isoformat() if survey.created_at else '',
+                methodology_tags=methodology_tags,
+                quality_score=metadata.get('quality_score'),
+                estimated_time=metadata.get('estimated_time'),
+                question_count=len(survey_data.get('questions', [])),
+                annotation=None  # Survey model doesn't have annotation field
+            ))
+        
+        return survey_list
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list surveys: {str(e)}")
+
+
 @router.get("/{survey_id}", response_model=SurveyResponse)
 async def get_survey(
     survey_id: UUID,
@@ -144,46 +184,6 @@ async def revalidate_survey(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to revalidate: {str(e)}")
-
-
-@router.get("/list", response_model=list[SurveyListItem])
-async def list_surveys(
-    skip: int = 0,
-    limit: int = 50,
-    db: Session = Depends(get_db)
-):
-    """Get list of all generated surveys"""
-    try:
-        surveys = db.query(Survey).order_by(Survey.created_at.desc()).offset(skip).limit(limit).all()
-        
-        survey_list = []
-        for survey in surveys:
-            # Extract survey data
-            survey_data = survey.final_output or survey.raw_output or {}
-            metadata = survey_data.get('metadata', {})
-            
-            # Ensure methodology_tags is always a list
-            methodology_tags = metadata.get('methodology_tags', [])
-            if not isinstance(methodology_tags, list):
-                methodology_tags = []
-            
-            survey_list.append(SurveyListItem(
-                id=str(survey.id),
-                title=survey_data.get('title', 'Untitled Survey'),
-                description=survey_data.get('description', 'No description available'),
-                status=survey.status,
-                created_at=survey.created_at.isoformat() if survey.created_at else '',
-                methodology_tags=methodology_tags,
-                quality_score=metadata.get('quality_score'),
-                estimated_time=metadata.get('estimated_time'),
-                question_count=len(survey_data.get('questions', [])),
-                annotation=survey.annotation
-            ))
-        
-        return survey_list
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to list surveys: {str(e)}")
 
 
 @router.delete("/{survey_id}")
