@@ -149,23 +149,71 @@ const QuestionCard: React.FC<{
         )}
         
         {question.type === 'scale' && (
-          <div className="flex items-center space-x-2">
-            {question.options?.map((option, idx) => (
-              <button
-                key={idx}
-                disabled
-                className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-50"
-              >
-                {option}
-              </button>
-            ))}
+          <div className="space-y-3">
+            {/* Scale options as radio buttons */}
+            <div className="space-y-2">
+              {question.options?.map((option, idx) => (
+                <div key={idx} className="flex items-center">
+                  <input
+                    type="radio"
+                    disabled
+                    className="h-4 w-4 text-blue-600 border-gray-300"
+                  />
+                  <label className="ml-2 text-sm text-gray-700">
+                    {option}
+                  </label>
+                </div>
+              ))}
+            </div>
+            
+            {/* Scale labels if available */}
             {question.scale_labels && (
-              <div className="ml-4 text-xs text-gray-500">
-                {Object.entries(question.scale_labels).map(([key, value]) => (
-                  <span key={key} className="ml-2">{key}: {value}</span>
-                ))}
+              <div className="mt-4 p-3 bg-gray-50 rounded-md">
+                <div className="text-xs font-medium text-gray-600 mb-2">Scale Labels:</div>
+                <div className="flex flex-wrap gap-4 text-xs text-gray-500">
+                  {Object.entries(question.scale_labels).map(([key, value]) => (
+                    <span key={key} className="flex items-center">
+                      <span className="font-medium">{key}:</span>
+                      <span className="ml-1">{value}</span>
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
+          </div>
+        )}
+        
+        {question.type === 'ranking' && (
+          <div className="space-y-3">
+            <div className="text-sm text-gray-600 mb-3">
+              Please rank the following options in order of importance (drag to reorder):
+            </div>
+            <div className="space-y-2">
+              {question.options?.map((option, idx) => (
+                <div key={idx} className="flex items-center p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                  <div className="flex items-center justify-center w-6 h-6 bg-blue-100 text-blue-600 rounded-full text-sm font-medium mr-3">
+                    {idx + 1}
+                  </div>
+                  <span className="text-sm text-gray-700 flex-1">{option}</span>
+                  <div className="flex space-x-1">
+                    <button
+                      disabled
+                      className="p-1 text-gray-400 hover:text-gray-600"
+                      title="Move up"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      disabled
+                      className="p-1 text-gray-400 hover:text-gray-600"
+                      title="Move down"
+                    >
+                      ↓
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
         
@@ -247,10 +295,21 @@ const QuestionCard: React.FC<{
   );
 };
 
-export const SurveyPreview: React.FC = () => {
+interface SurveyPreviewProps {
+  survey?: Survey;
+  isEditable?: boolean;
+  onSurveyChange?: (survey: Survey) => void;
+}
+
+export const SurveyPreview: React.FC<SurveyPreviewProps> = ({ 
+  survey: propSurvey, 
+  isEditable = false, 
+  onSurveyChange 
+}) => {
   const { currentSurvey, setSurvey, rfqInput, createGoldenExample } = useAppStore();
+  const survey = propSurvey || currentSurvey;
   const [editedSurvey, setEditedSurvey] = useState<Survey | null>(null);
-  const [isEditingSurvey, setIsEditingSurvey] = useState(false);
+  const [isEditingSurvey, setIsEditingSurvey] = useState(isEditable);
   const [showGoldenModal, setShowGoldenModal] = useState(false);
   const [goldenFormData, setGoldenFormData] = useState({
     title: '',
@@ -260,60 +319,80 @@ export const SurveyPreview: React.FC = () => {
     quality_score: 0.9
   });
 
-  // Debug logging
+  // Comprehensive debug logging
   React.useEffect(() => {
-    console.log('🔍 [SurveyPreview] currentSurvey changed:', currentSurvey);
-    if (currentSurvey) {
-      console.log('📊 [SurveyPreview] Survey data:', {
-        id: currentSurvey.survey_id,
-        title: currentSurvey.title,
-        questionsCount: currentSurvey.questions?.length || 0,
-        methodologies: currentSurvey.methodologies
-      });
+    console.log('🔍 [SurveyPreview] ===== COMPONENT STATE UPDATE =====');
+    console.log('🔍 [SurveyPreview] currentSurvey from store:', currentSurvey);
+    console.log('🔍 [SurveyPreview] propSurvey from props:', propSurvey);
+    console.log('🔍 [SurveyPreview] survey (propSurvey || currentSurvey):', survey);
+    console.log('🔍 [SurveyPreview] isEditingSurvey:', isEditingSurvey);
+    console.log('🔍 [SurveyPreview] editedSurvey:', editedSurvey);
+    
+    if (survey) {
+      console.log('📊 [SurveyPreview] Survey structure analysis:');
+      console.log('  - survey_id:', survey.survey_id);
+      console.log('  - title:', survey.title);
+      console.log('  - questions type:', typeof survey.questions);
+      console.log('  - questions length:', survey.questions?.length);
+      console.log('  - methodologies:', survey.methodologies);
+      console.log('  - confidence_score:', survey.confidence_score);
+      console.log('  - Has final_output:', !!survey.final_output);
+      console.log('  - Has raw_output:', !!survey.raw_output);
+      
+      // Check if this looks like a valid survey
+      const isValidSurvey = survey.title && survey.questions && Array.isArray(survey.questions);
+      console.log('✅ [SurveyPreview] Is valid survey structure:', isValidSurvey);
+    } else {
+      console.log('❌ [SurveyPreview] No survey data available');
     }
-  }, [currentSurvey]);
+    console.log('🔍 [SurveyPreview] ===== END STATE UPDATE =====');
+  }, [currentSurvey, propSurvey, survey, isEditingSurvey, editedSurvey]);
 
-  // Initialize edited survey when currentSurvey changes
+  // Initialize edited survey when survey changes
   React.useEffect(() => {
-    if (currentSurvey && !isEditingSurvey) {
-      setEditedSurvey({ ...currentSurvey });
+    if (survey && !isEditingSurvey) {
+      setEditedSurvey({ ...survey });
     }
-  }, [currentSurvey, isEditingSurvey]);
+  }, [survey, isEditingSurvey]);
 
   // Prepopulate golden form data when modal opens
   React.useEffect(() => {
-    if (showGoldenModal && currentSurvey && rfqInput) {
+    if (showGoldenModal && survey && rfqInput) {
       setGoldenFormData({
-        title: currentSurvey.title || rfqInput.title || '',
+        title: survey.title || rfqInput.title || '',
         industry_category: rfqInput.product_category || '',
         research_goal: rfqInput.research_goal || '',
-        methodology_tags: currentSurvey.methodologies || [],
-        quality_score: currentSurvey.confidence_score || 0.9
+        methodology_tags: survey.methodologies || [],
+        quality_score: survey.confidence_score || 0.9
       });
     }
-  }, [showGoldenModal, currentSurvey, rfqInput]);
+  }, [showGoldenModal, survey, rfqInput]);
 
-  const surveyToDisplay = isEditingSurvey ? editedSurvey : currentSurvey;
+  const surveyToDisplay = isEditingSurvey ? editedSurvey : survey;
 
   const handleStartEditing = () => {
-    setEditedSurvey({ ...currentSurvey! });
+    setEditedSurvey({ ...survey! });
     setIsEditingSurvey(true);
   };
 
   const handleSaveEdits = () => {
     if (editedSurvey) {
-      setSurvey(editedSurvey);
+      if (onSurveyChange) {
+        onSurveyChange(editedSurvey);
+      } else {
+        setSurvey(editedSurvey);
+      }
       setIsEditingSurvey(false);
     }
   };
 
   const handleCancelEdits = () => {
-    setEditedSurvey({ ...currentSurvey! });
+    setEditedSurvey({ ...survey! });
     setIsEditingSurvey(false);
   };
 
   const handleQuestionUpdate = (updatedQuestion: Question) => {
-    if (!editedSurvey) return;
+    if (!editedSurvey || !editedSurvey.questions) return;
     const updatedQuestions = editedSurvey.questions.map(q =>
       q.id === updatedQuestion.id ? updatedQuestion : q
     );
@@ -321,7 +400,7 @@ export const SurveyPreview: React.FC = () => {
   };
 
   const handleQuestionDelete = (questionId: string) => {
-    if (!editedSurvey) return;
+    if (!editedSurvey || !editedSurvey.questions) return;
     const updatedQuestions = editedSurvey.questions.filter(q => q.id !== questionId);
     setEditedSurvey({ ...editedSurvey, questions: updatedQuestions });
   };
@@ -333,7 +412,7 @@ export const SurveyPreview: React.FC = () => {
   };
 
   const handleMoveQuestion = (questionId: string, direction: 'up' | 'down') => {
-    if (!editedSurvey) return;
+    if (!editedSurvey || !editedSurvey.questions) return;
     const questions = [...editedSurvey.questions];
     const currentIndex = questions.findIndex(q => q.id === questionId);
     
@@ -402,12 +481,39 @@ export const SurveyPreview: React.FC = () => {
     }
   };
 
-  if (!currentSurvey) {
-    console.log('❌ [SurveyPreview] No currentSurvey available');
+  // Validate survey data before rendering
+  const isValidSurvey = survey && 
+                       typeof survey === 'object' && 
+                       survey.title && 
+                       survey.questions && 
+                       Array.isArray(survey.questions);
+
+  if (!survey) {
+    console.log('❌ [SurveyPreview] No survey available');
     return (
       <div className="max-w-4xl mx-auto p-6 text-center">
         <p className="text-gray-500">No survey to preview yet.</p>
-        <p className="text-sm text-gray-400 mt-2">Debug: currentSurvey is {typeof currentSurvey}</p>
+        <p className="text-sm text-gray-400 mt-2">Debug: survey is {typeof survey}</p>
+      </div>
+    );
+  }
+
+  if (!isValidSurvey) {
+    console.log('❌ [SurveyPreview] Survey data is invalid or malformed');
+    console.log('❌ [SurveyPreview] Survey structure:', {
+      hasTitle: !!survey.title,
+      hasQuestions: !!survey.questions,
+      questionsIsArray: Array.isArray(survey.questions),
+      questionsLength: survey.questions?.length,
+      surveyKeys: Object.keys(survey || {})
+    });
+    return (
+      <div className="max-w-4xl mx-auto p-6 text-center">
+        <p className="text-gray-500">Survey data is invalid or malformed.</p>
+        <p className="text-sm text-gray-400 mt-2">Debug: survey structure is invalid</p>
+        <div className="mt-4 p-4 bg-gray-100 rounded text-left text-xs">
+          <pre>{JSON.stringify(survey, null, 2)}</pre>
+        </div>
       </div>
     );
   }
@@ -452,26 +558,32 @@ export const SurveyPreview: React.FC = () => {
             )}
             <div className="flex items-center space-x-4 text-sm text-gray-500 mt-4">
               <span>⏱️ ~{surveyToDisplay?.estimated_time} minutes</span>
-              <span>📊 {surveyToDisplay?.questions.length} questions</span>
+              <span>📊 {surveyToDisplay?.questions?.length || 0} questions</span>
             </div>
           </div>
 
           {/* Questions */}
           <div className="space-y-4">
-            {surveyToDisplay?.questions.map((question, index) => (
-              <QuestionCard
-                key={question.id}
-                question={question}
-                index={index}
-                onUpdate={handleQuestionUpdate}
-                onDelete={() => handleQuestionDelete(question.id)}
-                onRegenerate={handleQuestionRegenerate}
-                onMove={handleMoveQuestion}
-                canMoveUp={index > 0}
-                canMoveDown={index < (surveyToDisplay?.questions.length || 0) - 1}
-                isEditingSurvey={isEditingSurvey}
-              />
-            ))}
+            {surveyToDisplay?.questions && surveyToDisplay.questions.length > 0 ? (
+              surveyToDisplay.questions?.map((question, index) => (
+                <QuestionCard
+                  key={question.id}
+                  question={question}
+                  index={index}
+                  onUpdate={handleQuestionUpdate}
+                  onDelete={() => handleQuestionDelete(question.id)}
+                  onRegenerate={handleQuestionRegenerate}
+                  onMove={handleMoveQuestion}
+                  canMoveUp={index > 0}
+                  canMoveDown={index < (surveyToDisplay?.questions?.length || 0) - 1}
+                  isEditingSurvey={isEditingSurvey}
+                />
+              ))
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <p>No questions available for this survey.</p>
+              </div>
+            )}
           </div>
 
           {/* Action Buttons */}
@@ -547,14 +659,14 @@ export const SurveyPreview: React.FC = () => {
           <div className="bg-white border border-gray-200 rounded-lg p-4">
             <h3 className="font-medium text-gray-900 mb-3">Methodologies</h3>
             <div className="flex flex-wrap gap-2">
-              {surveyToDisplay?.methodologies.map((method) => (
+              {surveyToDisplay?.methodologies?.map((method) => (
                 <span 
                   key={method}
                   className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800"
                 >
                   {method.replace('_', ' ')}
                 </span>
-              ))}
+              )) || []}
             </div>
           </div>
 
@@ -563,12 +675,12 @@ export const SurveyPreview: React.FC = () => {
             <div className="bg-white border border-gray-200 rounded-lg p-4">
               <h3 className="font-medium text-gray-900 mb-3">Reference Examples</h3>
               <div className="space-y-2">
-                {surveyToDisplay.golden_examples.map((example) => (
+                {surveyToDisplay.golden_examples?.map((example) => (
                   <div key={example.id} className="p-2 bg-gray-50 rounded">
                     <p className="text-sm font-medium text-gray-700">{example.industry_category}</p>
                     <p className="text-xs text-gray-500">{example.research_goal}</p>
                   </div>
-                ))}
+                )) || []}
               </div>
             </div>
           )}
@@ -702,10 +814,10 @@ export const SurveyPreview: React.FC = () => {
                   <div className="mt-2">
                     <p className="text-sm font-medium text-gray-700">Sample Questions:</p>
                     <ul className="text-xs text-gray-600 mt-1 space-y-1">
-                      {surveyToDisplay.questions.slice(0, 5).map((q, idx) => (
+                      {surveyToDisplay.questions?.slice(0, 5).map((q, idx) => (
                         <li key={idx} className="truncate">• {q.text}</li>
-                      ))}
-                      {surveyToDisplay.questions.length > 5 && (
+                      )) || []}
+                      {surveyToDisplay.questions && surveyToDisplay.questions.length > 5 && (
                         <li className="text-gray-500">... and {surveyToDisplay.questions.length - 5} more questions</li>
                       )}
                     </ul>

@@ -1,12 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Bars3Icon, 
   XMarkIcon,
   DocumentTextIcon,
   StarIcon,
   Cog6ToothIcon,
-  HomeIcon
+  HomeIcon,
+  InformationCircleIcon
 } from '@heroicons/react/24/outline';
+import AIEngineInfoModal from './AIEngineInfoModal';
+import { useSidebar } from '../contexts/SidebarContext';
 
 interface SidebarProps {
   currentView: 'survey' | 'golden-examples' | 'rules' | 'surveys';
@@ -14,18 +17,8 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) => {
-  const [isCollapsed, setIsCollapsed] = useState(() => {
-    const saved = localStorage.getItem('sidebar-collapsed');
-    return saved ? JSON.parse(saved) : false;
-  });
-
-  useEffect(() => {
-    localStorage.setItem('sidebar-collapsed', JSON.stringify(isCollapsed));
-  }, [isCollapsed]);
-
-  const toggleSidebar = () => {
-    setIsCollapsed(!isCollapsed);
-  };
+  const { isCollapsed, toggleSidebar, setCollapsed } = useSidebar();
+  const [showAIInfoModal, setShowAIInfoModal] = useState(false);
 
   const navigationItems = [
     {
@@ -63,7 +56,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) =
       {!isCollapsed && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-          onClick={() => setIsCollapsed(true)}
+          onClick={() => setCollapsed(true)}
         />
       )}
 
@@ -152,18 +145,47 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) =
         {/* Footer */}
         {!isCollapsed && (
           <div className="p-4 border-t border-gray-200">
-            <div className="flex items-center">
+            <div 
+              className="flex items-center cursor-pointer hover:bg-gray-50 rounded-lg p-2 transition-colors group relative"
+              onClick={() => setShowAIInfoModal(true)}
+            >
               <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
                 <DocumentTextIcon className="h-5 w-5 text-white" />
               </div>
-              <div className="ml-3">
-                <p className="text-xs font-medium text-gray-900">AI Survey Engine</p>
-                <p className="text-xs text-gray-500">v1.0.0</p>
+              <div className="ml-3 flex-1">
+                <div className="flex items-center space-x-2">
+                  <p className="text-xs font-medium text-gray-900">AI Survey Engine</p>
+                  <InformationCircleIcon className="h-4 w-4 text-blue-500 group-hover:text-blue-600 transition-colors" />
+                </div>
+                <p className="text-xs text-gray-500">v1.0.0 - Click to learn more</p>
               </div>
+              {/* Animated indicator */}
+              <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+            </div>
+          </div>
+        )}
+        
+        {/* Collapsed footer */}
+        {isCollapsed && (
+          <div className="p-4 border-t border-gray-200">
+            <div 
+              className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center cursor-pointer hover:bg-gradient-to-r hover:from-blue-600 hover:to-purple-700 transition-colors group relative mx-auto"
+              onClick={() => setShowAIInfoModal(true)}
+              title="AI Survey Engine - Click to learn more"
+            >
+              <DocumentTextIcon className="h-5 w-5 text-white" />
+              {/* Animated indicator */}
+              <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
             </div>
           </div>
         )}
       </div>
+      
+      {/* AI Engine Info Modal */}
+      <AIEngineInfoModal 
+        isOpen={showAIInfoModal} 
+        onClose={() => setShowAIInfoModal(false)} 
+      />
     </>
   );
 };

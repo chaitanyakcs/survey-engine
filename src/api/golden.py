@@ -78,7 +78,7 @@ async def create_golden_pair(
     """
     try:
         golden_service = GoldenService(db)
-        golden_pair = golden_service.create_golden_pair(
+        golden_pair = await golden_service.create_golden_pair(
             rfq_text=request.rfq_text,
             survey_json=request.survey_json,
             title=request.title,

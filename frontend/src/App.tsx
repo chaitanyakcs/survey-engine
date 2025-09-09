@@ -3,7 +3,9 @@ import { useAppStore } from './store/useAppStore';
 import { SurveyGeneratorPage, SurveyPreviewPage } from './pages';
 import { RulesPage } from './pages/RulesPage';
 import { SurveysPage } from './pages/SurveysPage';
+import { GoldenExampleEditPage } from './pages/GoldenExampleEditPage';
 import { ToastContainer } from './components/Toast';
+import { SidebarProvider } from './contexts/SidebarContext';
 
 function App() {
   const { toasts, removeToast, currentSurvey, workflow } = useAppStore();
@@ -19,6 +21,9 @@ function App() {
     }
     if (path === '/surveys') {
       return 'surveys';
+    }
+    if (path.startsWith('/golden-examples/') && path.includes('/edit')) {
+      return 'golden-edit';
     }
     return 'generator';
   };
@@ -46,21 +51,25 @@ function App() {
   }, [currentPage, currentSurvey]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Toast Container */}
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
-      
-      {/* Route to appropriate page */}
-      {currentPage === 'preview' ? (
-        <SurveyPreviewPage />
-      ) : currentPage === 'rules' ? (
-        <RulesPage />
-      ) : currentPage === 'surveys' ? (
-        <SurveysPage />
-      ) : (
-        <SurveyGeneratorPage />
-      )}
-    </div>
+    <SidebarProvider>
+      <div className="min-h-screen bg-gray-50">
+        {/* Toast Container */}
+        <ToastContainer toasts={toasts} onRemove={removeToast} />
+        
+        {/* Route to appropriate page */}
+        {currentPage === 'preview' ? (
+          <SurveyPreviewPage />
+        ) : currentPage === 'rules' ? (
+          <RulesPage />
+        ) : currentPage === 'surveys' ? (
+          <SurveysPage />
+        ) : currentPage === 'golden-edit' ? (
+          <GoldenExampleEditPage />
+        ) : (
+          <SurveyGeneratorPage />
+        )}
+      </div>
+    </SidebarProvider>
   );
 }
 

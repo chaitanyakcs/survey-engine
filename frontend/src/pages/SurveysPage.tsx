@@ -4,6 +4,7 @@ import { SurveyCard } from '../components/SurveyCard';
 import { SurveyPreview } from '../components/SurveyPreview';
 import { useAppStore } from '../store/useAppStore';
 import { SurveyListItem } from '../types';
+import { useSidebarLayout } from '../hooks/useSidebarLayout';
 import { 
   PlusIcon, 
   MagnifyingGlassIcon,
@@ -32,6 +33,7 @@ export const SurveysPage: React.FC = () => {
   const [selectedSurvey, setSelectedSurvey] = useState<SurveyListItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { mainContentClasses } = useSidebarLayout();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
@@ -289,7 +291,7 @@ export const SurveysPage: React.FC = () => {
       <Sidebar currentView="surveys" onViewChange={handleViewChange} />
 
       {/* Main Content */}
-      <div className="flex-1 lg:ml-16 xl:ml-64 transition-all duration-300 ease-in-out">
+      <div className={`flex-1 ${mainContentClasses} transition-all duration-300 ease-in-out`}>
         {selectedSurvey ? (
           <div className="h-full flex flex-col">
             {/* Header with back button */}

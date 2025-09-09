@@ -23,6 +23,15 @@ export interface Survey {
   golden_examples: GoldenExample[];
   questions: Question[];
   metadata: SurveyMetadata;
+  raw_output?: {
+    document_text?: string;
+    extraction_timestamp?: string;
+    source_file?: string;
+    error?: string;
+  };
+  // For golden examples that have nested structure
+  final_output?: Survey;
+  settings?: any;
 }
 
 export interface SurveyListItem {

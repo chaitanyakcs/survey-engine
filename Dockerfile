@@ -57,7 +57,88 @@ COPY migrations/ ./migrations/
 COPY --from=frontend-build /app/frontend/build /app/frontend/build
 
 # Create nginx configuration
-RUN printf 'user app;\nworker_processes auto;\npid /app/nginx.pid;\n\nevents {\n    worker_connections 1024;\n}\n\nhttp {\n    include /etc/nginx/mime.types;\n    default_type application/octet-stream;\n    \n    sendfile on;\n    keepalive_timeout 65;\n    \n    # Global timeout settings for ML model loading\n    proxy_connect_timeout       600s;\n    proxy_send_timeout          600s;\n    proxy_read_timeout          600s;\n    send_timeout               600s;\n    \n    server {\n        listen 80;\n        server_name _;\n        root /app/frontend/build;\n        index index.html;\n\n        # Serve React app\n        location / {\n            try_files $uri $uri/ /index.html;\n        }\n\n        # API health check - direct proxy to FastAPI\n        location = /api/health {\n            proxy_pass http://127.0.0.1:8000/health;\n            proxy_set_header Host $host;\n            proxy_set_header X-Real-IP $remote_addr;\n            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n            proxy_set_header X-Forwarded-Proto $scheme;\n        }\n\n        # API proxy to FastAPI backend\n        location /api/ {\n            proxy_pass http://127.0.0.1:8000;\n            proxy_set_header Host $host;\n            proxy_set_header X-Real-IP $remote_addr;\n            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n            proxy_set_header X-Forwarded-Proto $scheme;\n            proxy_set_header Connection "";\n            proxy_http_version 1.1;\n            proxy_buffering off;\n            proxy_cache off;\n            # Increase timeouts for ML model loading\n            proxy_connect_timeout       600s;\n            proxy_send_timeout          600s;\n            proxy_read_timeout          600s;\n        }\n\n        # WebSocket proxy to FastAPI server (consolidated)\n        location /ws/ {\n            proxy_pass http://127.0.0.1:8000/ws/;\n            proxy_http_version 1.1;\n            proxy_set_header Upgrade $http_upgrade;\n            proxy_set_header Connection "upgrade";\n            proxy_set_header Host $host;\n            proxy_set_header X-Real-IP $remote_addr;\n            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n            proxy_set_header X-Forwarded-Proto $scheme;\n        }\n\n        # Health check endpoint - proxy to FastAPI (exact match)\n        location = /health {\n            proxy_pass http://127.0.0.1:8000/health;\n            proxy_set_header Host $host;\n            proxy_set_header X-Real-IP $remote_addr;\n            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n            proxy_set_header X-Forwarded-Proto $scheme;\n        }\n    }\n}\n' > /etc/nginx/nginx.conf
+RUN cat > /etc/nginx/nginx.conf << 'EOF'
+user app;
+worker_processes auto;
+pid /app/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    
+    sendfile on;
+    keepalive_timeout 65;
+    
+    # Global timeout settings for ML model loading
+    proxy_connect_timeout       600s;
+    proxy_send_timeout          600s;
+    proxy_read_timeout          600s;
+    send_timeout               600s;
+    
+    server {
+        listen 80;
+        server_name _;
+        root /app/frontend/build;
+        index index.html;
+
+        # Serve React app
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        # API health check - direct proxy to FastAPI
+        location = /api/health {
+            proxy_pass http://127.0.0.1:8000/health;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # API proxy to FastAPI backend
+        location /api/ {
+            proxy_pass http://127.0.0.1:8000;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Connection "";
+            proxy_http_version 1.1;
+            proxy_buffering off;
+            proxy_cache off;
+            # Increase timeouts for ML model loading
+            proxy_connect_timeout       600s;
+            proxy_send_timeout          600s;
+            proxy_read_timeout          600s;
+        }
+
+        # WebSocket proxy to FastAPI server (consolidated)
+        location /ws/ {
+            proxy_pass http://127.0.0.1:8000/ws/;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # Health check endpoint - proxy to FastAPI (exact match)
+        location = /health {
+            proxy_pass http://127.0.0.1:8000/health;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
+}
+EOF
 
 # Make startup scripts executable
 RUN chmod +x /app/start.sh && \

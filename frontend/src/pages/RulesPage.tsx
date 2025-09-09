@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Sidebar } from '../components/Sidebar';
 import { PlusIcon, TrashIcon, CheckIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { useSidebarLayout } from '../hooks/useSidebarLayout';
 
 interface MethodologyRule {
   description: string;
@@ -18,6 +19,7 @@ export const RulesPage: React.FC = () => {
   const [customRules, setCustomRules] = useState<Array<{ id: string; type: string; rule: string; rule_id?: string }>>([]);
   const [newRule, setNewRule] = useState({ type: 'question_quality', rule: '' });
   const [loading, setLoading] = useState(true);
+  const { mainContentClasses } = useSidebarLayout();
   const [error, setError] = useState<string | null>(null);
 
   const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys') => {
@@ -38,9 +40,10 @@ export const RulesPage: React.FC = () => {
   const fetchRules = async () => {
     try {
       setLoading(true);
-      const [methodologiesRes, qualityRes] = await Promise.all([
+      const [methodologiesRes, qualityRes, customRulesRes] = await Promise.all([
         fetch('/api/v1/rules/methodologies'),
-        fetch('/api/v1/rules/quality-rules')
+        fetch('/api/v1/rules/quality-rules'),
+        fetch('/api/v1/rules/custom-rules').catch(() => ({ ok: false })) // Handle case where endpoint doesn't exist
       ]);
 
       if (!methodologiesRes.ok || !qualityRes.ok) {
@@ -52,6 +55,15 @@ export const RulesPage: React.FC = () => {
 
       setMethodologies(methodologiesData.rules || {});
       setQualityRules(qualityData);
+
+      // Fetch custom rules if endpoint exists
+      if (customRulesRes.ok) {
+        const customRulesData = await (customRulesRes as Response).json();
+        setCustomRules(customRulesData.rules || []);
+      } else {
+        console.log('Custom rules endpoint not available, using empty array');
+        setCustomRules([]);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch rules');
     } finally {
@@ -103,7 +115,7 @@ export const RulesPage: React.FC = () => {
       <Sidebar currentView="rules" onViewChange={handleViewChange} />
 
       {/* Main Content */}
-      <div className="flex-1 lg:ml-16 xl:ml-64 transition-all duration-300 ease-in-out">
+      <div className={`flex-1 ${mainContentClasses} transition-all duration-300 ease-in-out`}>
         {/* Top Bar */}
         <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200/50 sticky top-0 z-30 shadow-sm">
           <div className="px-6 py-6">
@@ -162,46 +174,173 @@ export const RulesPage: React.FC = () => {
                     </div>
                   </div>
                   <div className="p-6">
-                    <div className="grid gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                       {Object.entries(methodologies).map(([key, rule], index) => (
-                        <div key={key} className="group border border-gray-200 rounded-xl p-6 hover:shadow-lg hover:border-blue-300 transition-all duration-300 bg-gradient-to-r from-white to-blue-50/30">
-                          <div className="flex items-start space-x-4">
-                            <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-blue-200 transition-colors">
-                              <span className="text-blue-600 font-semibold text-sm">{index + 1}</span>
+                        <div key={key} className="group border border-gray-200 rounded-lg p-4 hover:shadow-md hover:border-blue-300 transition-all duration-200 bg-gradient-to-br from-white to-blue-50/20">
+                          <div className="flex items-start space-x-3 mb-3">
+                            <div className="w-6 h-6 bg-blue-100 rounded-md flex items-center justify-center flex-shrink-0 group-hover:bg-blue-200 transition-colors">
+                              <span className="text-blue-600 font-semibold text-xs">{index + 1}</span>
                             </div>
-                            <div className="flex-1">
-                              <h3 className="text-xl font-semibold text-gray-900 mb-2 group-hover:text-blue-900 transition-colors capitalize">{key.replace('_', ' ')}</h3>
-                              <p className="text-gray-600 mb-4 leading-relaxed">{rule.description}</p>
-                              <div className="flex items-center space-x-4 mb-4">
-                                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
-                                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                                  </svg>
-                                  {rule.required_questions} questions required
-                                </span>
-                              </div>
-                              {rule.validation_rules && rule.validation_rules.length > 0 && (
-                                <div>
-                                  <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
-                                    <svg className="w-4 h-4 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    </svg>
-                                    Validation Rules
-                                  </h4>
-                                  <ul className="space-y-2">
-                                    {rule.validation_rules.map((validation, idx) => (
-                                      <li key={idx} className="text-sm text-gray-600 flex items-start group-hover:text-gray-700 transition-colors">
-                                        <span className="w-2 h-2 bg-green-400 rounded-full mt-2 mr-3 flex-shrink-0"></span>
-                                        <span className="leading-relaxed">{validation}</span>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
+                            <div className="flex-1 min-w-0">
+                              <h3 className="text-sm font-semibold text-gray-900 mb-1 group-hover:text-blue-900 transition-colors capitalize truncate">{key.replace('_', ' ')}</h3>
                             </div>
                           </div>
+                          
+                          <p className="text-xs text-gray-600 mb-3 leading-relaxed line-clamp-3">{rule.description}</p>
+                          
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                              <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                              </svg>
+                              {rule.required_questions} questions
+                            </span>
+                          </div>
+                          
+                          {rule.validation_rules && rule.validation_rules.length > 0 && (
+                            <div className="border-t border-gray-100 pt-2">
+                              <h4 className="text-xs font-semibold text-gray-700 mb-2 flex items-center">
+                                <svg className="w-3 h-3 mr-1 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                Rules
+                              </h4>
+                              <ul className="space-y-1">
+                                {rule.validation_rules.slice(0, 2).map((validation, idx) => (
+                                  <li key={idx} className="text-xs text-gray-600 flex items-start group-hover:text-gray-700 transition-colors">
+                                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full mt-1.5 mr-2 flex-shrink-0"></span>
+                                    <span className="leading-relaxed line-clamp-2">{validation}</span>
+                                  </li>
+                                ))}
+                                {rule.validation_rules.length > 2 && (
+                                  <li className="text-xs text-gray-500 italic">
+                                    +{rule.validation_rules.length - 2} more rules
+                                  </li>
+                                )}
+                              </ul>
+                            </div>
+                          )}
                         </div>
                       ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Custom Rules */}
+                <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 overflow-hidden hover:shadow-xl transition-all duration-300">
+                  <div className="bg-gradient-to-r from-purple-500 via-purple-600 to-pink-600 px-6 py-6 text-white">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4" />
+                        </svg>
+                      </div>
+                      <div>
+                        <h2 className="text-2xl font-bold">Custom Rules</h2>
+                        <p className="text-purple-100 mt-1">Add your own rules that will be injected into AI prompts</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-6">
+                    <div className="mb-6">
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                        <div className="flex items-start space-x-3">
+                          <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-semibold text-blue-900 mb-1">How Custom Rules Work</h4>
+                            <p className="text-sm text-blue-800">
+                              Custom rules are automatically injected into every AI prompt, ensuring your specific requirements 
+                              are always followed. They work alongside the built-in quality rules to create surveys tailored to your needs.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center space-x-4 mb-4">
+                        <div className="flex-1">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Rule Type
+                          </label>
+                          <select
+                            value={newRule.type}
+                            onChange={(e) => setNewRule({ ...newRule, type: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                          >
+                            <option value="question_quality">Question Quality</option>
+                            <option value="survey_structure">Survey Structure</option>
+                            <option value="respondent_experience">Respondent Experience</option>
+                            <option value="methodology_compliance">Methodology Compliance</option>
+                            <option value="data_quality">Data Quality</option>
+                            <option value="accessibility">Accessibility</option>
+                            <option value="custom">Custom Category</option>
+                          </select>
+                        </div>
+                        <div className="flex-1">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Rule Description
+                          </label>
+                          <input
+                            type="text"
+                            value={newRule.rule}
+                            onChange={(e) => setNewRule({ ...newRule, rule: e.target.value })}
+                            placeholder="e.g., Always include demographic questions at the beginning"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                          />
+                        </div>
+                        <div className="flex items-end">
+                          <button
+                            onClick={addCustomRule}
+                            disabled={!newRule.rule.trim()}
+                            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+                          >
+                            <PlusIcon className="h-4 w-4" />
+                            <span>Add Rule</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      {customRules.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">
+                          <svg className="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4" />
+                          </svg>
+                          <p className="text-lg font-medium">No custom rules yet</p>
+                          <p className="text-sm">Add your first custom rule to get started</p>
+                        </div>
+                      ) : (
+                        customRules.map((rule, index) => (
+                          <div key={rule.id} className="group border border-gray-200 rounded-xl p-4 hover:shadow-lg hover:border-purple-300 transition-all duration-300 bg-gradient-to-r from-white to-purple-50/30">
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-start space-x-3 flex-1">
+                                <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-purple-200 transition-colors">
+                                  <span className="text-purple-600 font-semibold text-sm">{index + 1}</span>
+                                </div>
+                                <div className="flex-1">
+                                  <div className="flex items-center space-x-2 mb-1">
+                                    <h4 className="text-lg font-semibold text-gray-900 capitalize">{rule.type.replace('_', ' ')}</h4>
+                                    <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded-full">
+                                      Custom
+                                    </span>
+                                  </div>
+                                  <p className="text-gray-600 leading-relaxed">{rule.rule}</p>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => removeCustomRule(rule.rule_id || rule.id)}
+                                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors ml-4"
+                              >
+                                <TrashIcon className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
                 </div>
@@ -249,101 +388,6 @@ export const RulesPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Custom Rules */}
-                <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 overflow-hidden hover:shadow-xl transition-all duration-300">
-                  <div className="bg-gradient-to-r from-purple-500 via-purple-600 to-pink-600 px-6 py-6 text-white">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                        </svg>
-                      </div>
-                      <div>
-                        <h2 className="text-2xl font-bold">Custom Rules</h2>
-                        <p className="text-purple-100 mt-1">Add your own custom rules and guidelines</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="p-6">
-                    <div className="space-y-4 mb-8">
-                      {customRules.map((rule) => (
-                        <div key={rule.id} className="group border border-gray-200 rounded-xl p-6 hover:shadow-lg hover:border-purple-300 transition-all duration-300 bg-gradient-to-r from-purple-50/50 to-pink-50/50">
-                          <div className="flex items-start justify-between">
-                            <div className="flex items-start space-x-4 flex-1">
-                              <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-purple-200 transition-colors">
-                                <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                              </div>
-                              <div className="flex-1">
-                                <h3 className="text-lg font-semibold text-gray-900 mb-1 group-hover:text-purple-900 transition-colors capitalize">{rule.type.replace('_', ' ')}</h3>
-                                <p className="text-gray-600 text-sm mb-3 leading-relaxed">{rule.rule}</p>
-                                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 group-hover:bg-purple-200 transition-colors">
-                                  Custom Rule
-                                </span>
-                              </div>
-                            </div>
-                            <button
-                              onClick={() => removeCustomRule(rule.rule_id || rule.id)}
-                              className="ml-4 p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 group-hover:bg-red-50"
-                            >
-                              <TrashIcon className="w-5 h-5" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                      {customRules.length === 0 && (
-                        <div className="text-center py-12">
-                          <div className="w-20 h-20 bg-gradient-to-br from-purple-100 to-pink-100 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg">
-                            <svg className="w-10 h-10 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                            </svg>
-                          </div>
-                          <p className="text-gray-500 text-lg">No custom rules added yet</p>
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="bg-gradient-to-br from-purple-50 to-pink-50 border-2 border-dashed border-purple-200 rounded-2xl p-6 hover:border-purple-300 transition-colors">
-                      <div className="text-center mb-6">
-                        <div className="w-16 h-16 bg-gradient-to-br from-purple-100 to-pink-100 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-                          <svg className="w-8 h-8 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                          </svg>
-                        </div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Add New Custom Rule</h3>
-                        <p className="text-gray-600">Create your own methodology or quality rules</p>
-                      </div>
-                      
-                      <div className="flex space-x-4">
-                        <select
-                          value={newRule.type}
-                          onChange={(e) => setNewRule({ ...newRule, type: e.target.value })}
-                          className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 bg-white/50 backdrop-blur-sm"
-                        >
-                          <option value="question_quality">Question Quality</option>
-                          <option value="survey_structure">Survey Structure</option>
-                          <option value="methodology_compliance">Methodology Compliance</option>
-                          <option value="respondent_experience">Respondent Experience</option>
-                        </select>
-                        <input
-                          type="text"
-                          value={newRule.rule}
-                          onChange={(e) => setNewRule({ ...newRule, rule: e.target.value })}
-                          placeholder="Enter custom rule..."
-                          className="flex-2 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 bg-white/50 backdrop-blur-sm"
-                        />
-                        <button
-                          onClick={addCustomRule}
-                          className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl hover:from-purple-700 hover:to-pink-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 flex items-center font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200"
-                        >
-                          <PlusIcon className="h-5 w-5 mr-2" />
-                          Add Rule
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
               </div>
             )}
           </div>

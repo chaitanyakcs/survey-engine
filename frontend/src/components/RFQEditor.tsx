@@ -42,18 +42,6 @@ export const RFQEditor: React.FC = () => {
           <div className="xl:col-span-3">
             <div className="bg-white/70 backdrop-blur-lg rounded-3xl shadow-2xl border border-white/20 p-6 lg:p-8">
               <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Survey Configuration Header */}
-                <div className="mb-6">
-                  <h3 className="text-2xl font-bold text-gray-900 mb-2 flex items-center">
-                    <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg mr-3 flex items-center justify-center">
-                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                    </div>
-                    Survey Configuration
-                  </h3>
-                  <p className="text-gray-600">Define your survey parameters and research objectives</p>
-                </div>
 
                 {/* Title & Meta Fields */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
