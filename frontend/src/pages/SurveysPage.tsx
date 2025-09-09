@@ -64,12 +64,17 @@ export const SurveysPage: React.FC = () => {
   const fetchSurveys = async () => {
     try {
       setLoading(true);
+      console.log('📡 [Fetch] Starting to fetch surveys from /api/v1/survey/list');
       const response = await fetch('/api/v1/survey/list');
+      console.log('📡 [Fetch] Response status:', response.status);
       if (!response.ok) throw new Error('Failed to fetch surveys');
       
       const data = await response.json();
+      console.log('📡 [Fetch] Survey list data:', data);
+      console.log('📡 [Fetch] Number of surveys:', data.length);
       setSurveys(data);
     } catch (err) {
+      console.error('❌ [Fetch] Error fetching surveys:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch surveys');
     } finally {
       setLoading(false);
@@ -147,9 +152,11 @@ export const SurveysPage: React.FC = () => {
     }
   };
 
-  const handleViewSurvey = async (survey: Survey) => {
+  const handleViewSurvey = async (survey: SurveyListItem) => {
     try {
       console.log('🔍 [Survey View] Starting to view survey:', survey.id);
+      console.log('🔍 [Survey View] Survey object keys:', Object.keys(survey));
+      console.log('🔍 [Survey View] Survey type:', typeof survey);
       
       // Fetch the full survey data
       const response = await fetch(`/api/v1/survey/${survey.id}`);
@@ -529,6 +536,8 @@ export const SurveysPage: React.FC = () => {
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      console.log('🖱️ [Click] View button clicked for survey:', survey);
+                                      console.log('🖱️ [Click] Survey ID:', survey?.id);
                                       handleViewSurvey(survey);
                                     }}
                                     className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
