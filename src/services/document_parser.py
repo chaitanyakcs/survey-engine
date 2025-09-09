@@ -129,7 +129,7 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                     "prompt": prompt,
                     "temperature": 0.1,
                     "max_tokens": 4000,
-                    "system_prompt": "You are a document parser. Parse the provided document into the exact JSON structure below. Be literal and strict: your output MUST be valid JSON, no prose, no backticks, no explanations, nothing else.\n\nTop-level JSON shape required:\n{\n  \"raw_output\": { ...full extracted content and minimal normalization... },\n  \"final_output\": { ...cleaned, normalized, validated survey schema... }\n}\n\nRules & behavior (do these exactly):\n1. ALWAYS return JSON only. If you encounter any blocking error, still return JSON with error details (see \"Failure handling\" below).\n2. Produce two objects:\n   a) \"raw_output\": a faithful extraction from the document. Keep original sentences/paragraphs intact where possible. Include a field \"document_text\" that contains the full document text you were given (unchanged).\n   b) \"final_output\": a cleaned canonical mapping to the target schema (title, metadata, questions[], description). Normalize types, validations, IDs, and option arrays.\n\n3. Schema for \"final_output\":\n{\n  \"title\": string or null,\n  \"metadata\": {\n    \"quality_score\": number between 0 and 1 or null,\n    \"estimated_time\": integer (minutes) or null,\n    \"methodology_tags\": [strings] (empty array if none),\n    \"target_responses\": integer or null,\n    \"source_file\": string (filename if provided) or null\n  },\n  \"questions\": [\n    {\n      \"id\": \"q1\", \"q2\", ... sequential strings (string),\n      \"text\": string,\n      \"type\": one of [\"multiple_choice\",\"scale\",\"text\",\"ranking\",\"matrix\",\"date\",\"numeric\",\"file_upload\",\"boolean\",\"unknown\"],\n      \"options\": [string,...] (empty array for free text/numeric),\n      \"required\": boolean,\n      \"validation\": string or null (use canonical tokens like single_select, multi_select_min_1_max_3, currency_usd_min_1_max_1000, matrix_per_brand:Brand1|Brand2...),\n      \"methodology\": string or null (e.g., screening, core, demographic, quality_check, conjoint, maxdiff, van_westendorp, gabor_granger),\n      \"routing\": null OR object describing show_if/skip_logic e.g. {\"show_if\":\"q6 == 'I only wear eyeglasses'\"} or {\"randomize\": true}\n    }\n  ],\n  \"description\": string or null,\n  \"parsing_issues\": [string,...] (empty array if none)\n}\n\n4. ID assignment:\n   - Assign question IDs sequentially in the order they appear after cleaning: q1, q2, q3...\n   - If the document already has numbered Qs, preserve order but reassign ids to the canonical qN pattern.\n   - Add any instruction or block labels as metadata only (do not create question entries for headings).\n\n5. Content rules & normalizations:\n   - Trim whitespace; preserve punctuation in \"text\".\n   - Normalize repeated choice separators (commas, bullets) into \"options\" array.\n   - Recognize matrices (brand grids) and represent them as \"type\":\"matrix\" with validation \"matrix_per_brand:BrandA|BrandB|...\".\n   - Map Likert/scale questions to \"type\":\"scale\" and put the textual scale choices in \"options\".\n   - For ranking/MaxDiff style questions set \"type\":\"ranking\" and \"validation\":\"maxdiff_select_most_least\" or similar.\n   - For conjoint or profile descriptions, put the profile text in \"text\" and mark \"methodology\":\"conjoint\" or \"conjoint_cbc\".\n   - Detect Van Westendorp and Gabor-Granger blocks and mark those questions with \"methodology\":\"van_westendorp\" or \"gabor_granger\". Where price ranges/values are requested, set \"validation\" to \"currency_usd_min_1_max_1000\" if USD or normalize currency detection (see edge cases).\n   - If options are written as ranges (e.g., \"$50–$79\"), keep the string exactly as an option.\n\n6. Required/optional:\n   - If wording includes \"required\", \"must\", or there's an attention check, set \"required\": true. Otherwise, default to true for most survey core questions; default to false for optional comments/demographics labeled optional.\n\n7. Validation canonical tokens (use these or null): \n   - single_select, multi_select_min_1_max_3, multi_select_min_0_max_6, maxdiff_select_most_least, matrix_per_brand:..., open_text_max_200, open_text_max_300, currency_usd_min_1_max_1000, numeric_range_min_max, alphanumeric_len_3_10, single_select_attention_check_correct_option_index_X, unknown.\n\n8. Failure handling (MUST ALWAYS produce JSON):\n   - If any question or block cannot be parsed or is ambiguous, include it in \"raw_output\" (verbatim) and in \"final_output.questions\" include a placeholder question with:\n     {\n       \"id\": \"qN\",\n       \"text\": \"<original snippet>\",\n       \"type\": \"unknown\",\n       \"options\": [],\n       \"required\": null,\n       \"validation\": null,\n       \"methodology\": null,\n       \"routing\": null\n     }\n   - Also add a human-readable note to \"final_output.parsing_issues\" listing what couldn't be parsed and why (e.g., \"ambiguous option separators\", \"table with merged cells\", \"image-only content\", \"language not English\").\n   - Include \"raw_output.error\" if there was a blocking issue; otherwise \"raw_output.error\": null.\n\n9. Confidence & quality:\n   - In \"final_output.metadata.quality_score\" add a confidence estimate 0.0–1.0 about how well the doc was parsed. Compute conservatively (for example: 0.95 if no parsing issues; 0.7 if <5 issues; 0.4 if many tables/images).\n   - Add \"final_output.metadata.estimated_time\" in minutes (if a time estimate exists in the doc use it; otherwise infer based on question count: ~ (questions_count * 0.5) rounded).\n\n10. Provenance & preservation:\n    - raw_output must include \"document_text\" (full original text), \"extraction_timestamp\" (ISO 8601), and \"source_file\" if provided.\n    - final_output should include \"metadata.source_file\" as well.\n\n11. Edge cases to detect and handle:\n    - Scanned PDFs/images: if content seems OCRed or contains placeholders like \"[image]\", flag parsing_issues \"image_or_scanned_content_detected\".\n    - Tables with merged cells: if you cannot unambiguously map rows/cols to questions/options, include the verbatim table in raw_output and add a parsing_issues entry.\n    - Nested or compound questions (multiple sub-questions under one number): split into separate question objects qN.a style? — NO. Instead create separate sequential qN entries and include original group label in routing or question text. Note this in parsing_issues.\n    - Multiple languages: if non-English text is detected, include \"parsing_issues\":\"non_English_text_detected\" and still attempt best-effort extraction.\n    - Units and currencies: detect currency symbols ($, £, ₹) and normalize into currency_xxx in validation; if ambiguous, put null and note in parsing_issues.\n    - Randomization or adaptive logic: capture as \"routing\" object (randomize: true, adaptive_series: {start_points:[...]}).\n    - Attention checks: mark methodology \"quality_check\" and validation \"single_select_attention_check_correct_option_index_X\".\n    - Repeated or duplicated questions: dedupe identical question text; keep the first instance and list duplicates in parsing_issues.\n    - Multi-column option lists: correctly flatten into options array preserving order.\n\n12. Output rules (final enforcement):\n    - ONLY JSON. Validate output is parseable JSON.\n    - No extra keys at top level beyond raw_output and final_output.\n    - final_output.questions must be an array (can be empty).\n    - final_output.metadata.methodology_tags should be a deduped array of short strings.\n    - All strings must be UTF-8 safe.\n\n13. Example of a single question normalized:\n{\n  \"id\":\"q7\",\n  \"text\":\"Van Westendorp: At what price would you consider the product to be too expensive - so expensive that you would definitely not consider buying it?\",\n  \"type\":\"text\",\n  \"options\":[],\n  \"required\":true,\n  \"validation\":\"currency_usd_min_1_max_1000\",\n  \"methodology\":\"van_westendorp\",\n  \"routing\":null\n}\n\n14. If you are given a file path /mnt/data/Market Research QNR.docx, prioritize reading that. If the content is provided inline below, parse that.\n\n15. Final step: produce the JSON now. No commentary. If you cannot comply with any rule above, still produce JSON and list the non-compliance in final_output.parsing_issues.\n\nNow parse the document provided to you and output exactly the JSON described above."
+                    "system_prompt": "You are a document parser. Parse the provided document into the exact JSON structure below. Be literal and strict: your output MUST be valid JSON, no prose, no backticks, no explanations, nothing else.\n\nCRITICAL: Your response must be valid JSON that can be parsed by json.loads().\n\nTop-level JSON shape required:\n{\n  \"raw_output\": { ...full extracted content and minimal normalization... },\n  \"final_output\": { ...cleaned, normalized, validated survey schema... }\n}\n\nMANDATORY STRUCTURE:\n1. \"raw_output\" must contain:\n   - \"document_text\": the full original text (unchanged)\n   - \"extraction_timestamp\": ISO 8601 timestamp\n   - \"source_file\": filename if provided, null otherwise\n   - \"error\": null (unless there was a blocking issue)\n\n2. \"final_output\" must contain:\n   - \"title\": string (required, cannot be null)\n   - \"description\": string or null\n   - \"metadata\": object with quality_score, estimated_time, methodology_tags, target_responses, source_file\n   - \"questions\": array (required, cannot be null, can be empty)\n   - \"parsing_issues\": array of strings\n\n3. Each question in \"questions\" must have:\n   - \"id\": string (q1, q2, q3...)\n   - \"text\": string (required)\n   - \"type\": string (one of: multiple_choice, scale, text, ranking, matrix, date, numeric, file_upload, boolean, unknown)\n   - \"options\": array of strings (empty for free text)\n   - \"required\": boolean\n   - \"validation\": string or null\n   - \"methodology\": string or null\n   - \"routing\": object or null\n\nRULES:\n1. ALWAYS return valid JSON - if you cannot parse something, include it as \"unknown\" type question\n2. Assign sequential IDs: q1, q2, q3...\n3. For multiple choice: put options in \"options\" array\n4. For scales: use \"type\":\"scale\" and put scale labels in \"options\"\n5. For matrices: use \"type\":\"matrix\" with validation \"matrix_per_brand:BrandA|BrandB\"\n6. For Van Westendorp: use \"methodology\":\"van_westendorp\"\n7. For MaxDiff: use \"type\":\"ranking\" with \"methodology\":\"maxdiff\"\n8. For Conjoint: use \"methodology\":\"conjoint\"\n9. Set \"required\": true for most questions, false for optional\n10. Use validation tokens: single_select, multi_select_min_1_max_3, currency_usd_min_1_max_1000, etc.\n\nEXAMPLE OUTPUT:\n{\n  \"raw_output\": {\n    \"document_text\": \"[full document text here]\",\n    \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n    \"source_file\": null,\n    \"error\": null\n  },\n  \"final_output\": {\n    \"title\": \"Customer Satisfaction Survey\",\n    \"description\": \"Survey to measure customer satisfaction\",\n    \"metadata\": {\n      \"quality_score\": 0.9,\n      \"estimated_time\": 10,\n      \"methodology_tags\": [\"satisfaction\", \"nps\"],\n      \"target_responses\": 100,\n      \"source_file\": null\n    },\n    \"questions\": [\n      {\n        \"id\": \"q1\",\n        \"text\": \"How satisfied are you with our service?\",\n        \"type\": \"scale\",\n        \"options\": [\"Very Dissatisfied\", \"Dissatisfied\", \"Neutral\", \"Satisfied\", \"Very Satisfied\"],\n        \"required\": true,\n        \"validation\": \"single_select\",\n        \"methodology\": \"satisfaction\",\n        \"routing\": null\n      }\n    ],\n    \"parsing_issues\": []\n  }\n}\n\nNow parse the document and return ONLY the JSON structure above."
                 }
             )
             
@@ -222,17 +222,91 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
             
         except Exception as e:
             logger.error(f"❌ [Document Parser] Failed to convert document to JSON: {str(e)}", exc_info=True)
-            raise DocumentParsingError(f"Failed to convert document: {str(e)}")
+            
+            # Create a fallback response with error details
+            fallback_response = {
+                "raw_output": {
+                    "document_text": document_text,
+                    "extraction_timestamp": "2024-01-01T00:00:00Z",
+                    "source_file": None,
+                    "error": f"LLM conversion failed: {str(e)}"
+                },
+                "final_output": {
+                    "title": "Document Parse Error",
+                    "description": f"Failed to parse document: {str(e)}",
+                    "metadata": {
+                        "quality_score": 0.0,
+                        "estimated_time": 0,
+                        "methodology_tags": [],
+                        "target_responses": None,
+                        "source_file": None
+                    },
+                    "questions": [],
+                    "parsing_issues": [f"LLM conversion failed: {str(e)}"]
+                }
+            }
+            
+            logger.warning(f"⚠️ [Document Parser] Returning fallback response due to error")
+            return fallback_response
     
     def validate_survey_json(self, survey_data: Dict[str, Any]) -> Dict[str, Any]:
         """Validate the generated JSON against our survey schema."""
         try:
-            # Create a SurveyCreate object to validate the structure
-            survey = SurveyCreate(**survey_data)
-            return survey.model_dump()
+            # Extract the final_output for validation
+            if "final_output" in survey_data:
+                final_output = survey_data["final_output"]
+                logger.info(f"🔍 [Document Parser] Validating final_output structure")
+                
+                # Create a SurveyCreate object to validate the structure
+                survey = SurveyCreate(**final_output)
+                validated_data = survey.model_dump()
+                
+                # Return the full structure with validated final_output
+                return {
+                    "raw_output": survey_data.get("raw_output", {}),
+                    "final_output": validated_data
+                }
+            else:
+                # Fallback for legacy format
+                logger.warning(f"⚠️ [Document Parser] Using legacy format validation")
+                survey = SurveyCreate(**survey_data)
+                return survey.model_dump()
+                
         except ValidationError as e:
             logger.error(f"Survey validation failed: {str(e)}")
-            raise DocumentParsingError(f"Generated JSON validation failed: {str(e)}")
+            logger.error(f"Raw data structure: {list(survey_data.keys()) if isinstance(survey_data, dict) else 'Not a dict'}")
+            if "final_output" in survey_data:
+                logger.error(f"Final output structure: {list(survey_data['final_output'].keys()) if isinstance(survey_data.get('final_output'), dict) else 'Not a dict'}")
+            
+            # Try to create a minimal valid response
+            try:
+                logger.warning(f"⚠️ [Document Parser] Attempting to create minimal valid response")
+                minimal_final_output = {
+                    "title": survey_data.get("final_output", {}).get("title", "Untitled Survey"),
+                    "description": survey_data.get("final_output", {}).get("description", "Survey description not available"),
+                    "metadata": {
+                        "quality_score": 0.3,
+                        "estimated_time": 5,
+                        "methodology_tags": [],
+                        "target_responses": None,
+                        "source_file": None
+                    },
+                    "questions": survey_data.get("final_output", {}).get("questions", []),
+                    "parsing_issues": [f"Validation failed: {str(e)}"]
+                }
+                
+                # Validate the minimal response
+                survey = SurveyCreate(**minimal_final_output)
+                validated_data = survey.model_dump()
+                
+                return {
+                    "raw_output": survey_data.get("raw_output", {}),
+                    "final_output": validated_data
+                }
+                
+            except Exception as e2:
+                logger.error(f"❌ [Document Parser] Minimal response creation also failed: {str(e2)}")
+                raise DocumentParsingError(f"Generated JSON validation failed: {str(e)}")
     
     async def parse_document(self, docx_content: bytes) -> Dict[str, Any]:
         """Main method to parse DOCX document and return validated JSON."""
