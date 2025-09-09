@@ -257,6 +257,12 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                 final_output = survey_data["final_output"]
                 logger.info(f"🔍 [Document Parser] Validating final_output structure")
                 
+                # Add order field to questions if missing
+                if "questions" in final_output and isinstance(final_output["questions"], list):
+                    for i, question in enumerate(final_output["questions"]):
+                        if isinstance(question, dict) and "order" not in question:
+                            question["order"] = i + 1
+                
                 # Create a SurveyCreate object to validate the structure
                 survey = SurveyCreate(**final_output)
                 validated_data = survey.model_dump()
