@@ -40,18 +40,29 @@ export const SurveysPage: React.FC = () => {
 
   // Load surveys from URL parameter
   useEffect(() => {
+    fetchSurveys();
+  }, []);
+
+  // Handle URL parameter after surveys are loaded
+  useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const surveyId = urlParams.get('id');
     
-    fetchSurveys().then(() => {
-      if (surveyId) {
-        const survey = surveys.find(s => s.id === surveyId);
-        if (survey) {
-          setSelectedSurvey(survey);
-        }
+    if (surveyId && surveys.length > 0) {
+      console.log('🔍 [URL] Looking for survey with ID:', surveyId);
+      console.log('🔍 [URL] Available surveys:', surveys.length);
+      const survey = surveys.find(s => s.id === surveyId);
+      console.log('🔍 [URL] Found survey:', survey);
+      if (survey) {
+        console.log('🔍 [URL] Setting selected survey:', survey.title);
+        setSelectedSurvey(survey);
+        // Also fetch the full survey data for preview
+        handleViewSurvey(survey);
+      } else {
+        console.log('❌ [URL] Survey not found with ID:', surveyId);
       }
-    });
-  }, []);
+    }
+  }, [surveys]);
 
   // Update URL when survey is selected
   useEffect(() => {
@@ -73,6 +84,7 @@ export const SurveysPage: React.FC = () => {
       const data = await response.json();
       console.log('📡 [Fetch] Survey list data:', data);
       console.log('📡 [Fetch] Number of surveys:', data.length);
+      console.log('📡 [Fetch] First survey (if any):', data[0]);
       setSurveys(data);
     } catch (err) {
       console.error('❌ [Fetch] Error fetching surveys:', err);
@@ -158,11 +170,18 @@ export const SurveysPage: React.FC = () => {
       console.log('🔍 [Survey View] Starting to view survey:', survey.id);
       console.log('🔍 [Survey View] Survey object keys:', Object.keys(survey));
       console.log('🔍 [Survey View] Survey type:', typeof survey);
+      console.log('🔍 [Survey View] Full survey object:', survey);
       
       // Fetch the full survey data
+      console.log('🌐 [Survey View] Making API call to:', `/api/v1/survey/${survey.id}`);
       const response = await fetch(`/api/v1/survey/${survey.id}`);
+      console.log('🌐 [Survey View] API response status:', response.status);
+      console.log('🌐 [Survey View] API response headers:', Object.fromEntries(response.headers.entries()));
+      
       if (!response.ok) {
         console.error('❌ [Survey View] API response not OK:', response.status, response.statusText);
+        const errorText = await response.text();
+        console.error('❌ [Survey View] Error response body:', errorText);
         throw new Error('Failed to fetch survey');
       }
       
@@ -230,6 +249,10 @@ export const SurveysPage: React.FC = () => {
     const matchesStatus = statusFilter === 'all' || survey.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
+  
+  console.log('🔍 [Render] Surveys count:', surveys.length);
+  console.log('🔍 [Render] Filtered surveys count:', filteredSurveys.length);
+  console.log('🔍 [Render] First filtered survey (if any):', filteredSurveys[0]);
 
   const handleViewChange = (view: 'survey' | 'golden-examples' | 'surveys' | 'rules') => {
     if (view === 'survey') {
