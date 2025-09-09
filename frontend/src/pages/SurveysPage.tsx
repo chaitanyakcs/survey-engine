@@ -37,6 +37,7 @@ export const SurveysPage: React.FC = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [selectedSurveys, setSelectedSurveys] = useState<Set<string>>(new Set());
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
+  const [currentUrl, setCurrentUrl] = useState(window.location.search);
 
   // Load surveys from URL parameter
   useEffect(() => {
@@ -45,7 +46,7 @@ export const SurveysPage: React.FC = () => {
 
   // Handle URL parameter after surveys are loaded
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
+    const urlParams = new URLSearchParams(currentUrl);
     const surveyId = urlParams.get('id');
     
     if (surveyId && surveys.length > 0) {
@@ -62,7 +63,22 @@ export const SurveysPage: React.FC = () => {
         console.log('❌ [URL] Survey not found with ID:', surveyId);
       }
     }
-  }, [surveys]);
+  }, [surveys, currentUrl]);
+
+  // Listen for URL changes
+  useEffect(() => {
+    const handleUrlChange = () => {
+      setCurrentUrl(window.location.search);
+    };
+
+    // Listen for URL changes (back/forward navigation)
+    window.addEventListener('popstate', handleUrlChange);
+    
+    // Cleanup
+    return () => {
+      window.removeEventListener('popstate', handleUrlChange);
+    };
+  }, []);
 
   // Update URL when survey is selected
   useEffect(() => {
@@ -70,6 +86,7 @@ export const SurveysPage: React.FC = () => {
       const url = new URL(window.location.href);
       url.searchParams.set('id', selectedSurvey.id);
       window.history.replaceState({}, '', url.toString());
+      setCurrentUrl(url.search);
     }
   }, [selectedSurvey]);
 
