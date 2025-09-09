@@ -160,8 +160,14 @@ export const SurveysPage: React.FC = () => {
       
       const surveyData = await response.json();
       console.log('📊 [Survey View] API response data:', surveyData);
+      console.log('📊 [Survey View] Raw output questions:', surveyData.raw_output?.questions);
+      console.log('📊 [Survey View] Final output questions:', surveyData.final_output?.questions);
       
       // Convert to the format expected by SurveyPreview
+      const extractedQuestions = surveyData.final_output?.questions || surveyData.raw_output?.questions || [];
+      console.log('📋 [Survey View] Extracted questions:', extractedQuestions);
+      console.log('📋 [Survey View] Questions count:', extractedQuestions.length);
+      
       const surveyForPreview = {
         survey_id: survey.id,
         title: survey.title,
@@ -170,7 +176,7 @@ export const SurveysPage: React.FC = () => {
         confidence_score: survey.quality_score || 0.8,
         methodologies: survey.methodology_tags || [],
         golden_examples: [], // Empty for now
-        questions: surveyData.final_output?.questions || surveyData.raw_output?.questions || [],
+        questions: extractedQuestions,
         metadata: {
           target_responses: 100,
           methodology: survey.methodology_tags || [],

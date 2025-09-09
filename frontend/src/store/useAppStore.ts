@@ -30,7 +30,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   // Survey State
   currentSurvey: undefined,
-  setSurvey: (survey) => set({ currentSurvey: survey }),
+  setSurvey: (survey) => {
+    console.log('🔧 [Store] setSurvey called with:', survey);
+    set({ currentSurvey: survey });
+    console.log('🔧 [Store] currentSurvey updated in store');
+  },
 
   // Golden Examples State
   goldenExamples: [],
