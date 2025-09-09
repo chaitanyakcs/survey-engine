@@ -7,7 +7,9 @@ import {
   PlusIcon, 
   MagnifyingGlassIcon,
   FunnelIcon,
-  ArrowPathIcon
+  ArrowPathIcon,
+  TrashIcon,
+  CheckIcon
 } from '@heroicons/react/24/outline';
 
 interface Survey {
@@ -32,6 +34,8 @@ export const SurveysPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const [selectedSurveys, setSelectedSurveys] = useState<Set<string>>(new Set());
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
 
   // Load surveys from URL parameter
   useEffect(() => {
@@ -90,13 +94,72 @@ export const SurveysPage: React.FC = () => {
     }
   };
 
+  const handleMultiSelectToggle = () => {
+    setIsMultiSelectMode(!isMultiSelectMode);
+    setSelectedSurveys(new Set());
+  };
+
+  const handleSurveySelect = (surveyId: string) => {
+    if (isMultiSelectMode) {
+      setSelectedSurveys(prev => {
+        const newSet = new Set(prev);
+        if (newSet.has(surveyId)) {
+          newSet.delete(surveyId);
+        } else {
+          newSet.add(surveyId);
+        }
+        return newSet;
+      });
+    } else {
+      const survey = surveys.find(s => s.id === surveyId);
+      if (survey) {
+        setSelectedSurvey(survey);
+      }
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedSurveys.size === 0) return;
+    
+    try {
+      const deletePromises = Array.from(selectedSurveys).map(surveyId =>
+        fetch(`/api/v1/survey/${surveyId}`, { method: 'DELETE' })
+      );
+      
+      await Promise.all(deletePromises);
+      
+      setSurveys(prev => prev.filter(s => !selectedSurveys.has(s.id)));
+      if (selectedSurvey && selectedSurveys.has(selectedSurvey.id)) {
+        setSelectedSurvey(null);
+      }
+      setSelectedSurveys(new Set());
+      setIsMultiSelectMode(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete surveys');
+    }
+  };
+
+  const handleSelectAll = () => {
+    if (selectedSurveys.size === filteredSurveys.length) {
+      setSelectedSurveys(new Set());
+    } else {
+      setSelectedSurveys(new Set(filteredSurveys.map(s => s.id)));
+    }
+  };
+
   const handleViewSurvey = async (survey: Survey) => {
     try {
+      console.log('🔍 [Survey View] Starting to view survey:', survey.id);
+      
       // Fetch the full survey data
       const response = await fetch(`/api/v1/survey/${survey.id}`);
-      if (!response.ok) throw new Error('Failed to fetch survey');
+      if (!response.ok) {
+        console.error('❌ [Survey View] API response not OK:', response.status, response.statusText);
+        throw new Error('Failed to fetch survey');
+      }
       
       const surveyData = await response.json();
+      console.log('📊 [Survey View] API response data:', surveyData);
       
       // Convert to the format expected by SurveyPreview
       const surveyForPreview = {
@@ -117,8 +180,11 @@ export const SurveysPage: React.FC = () => {
         }
       };
       
+      console.log('🎯 [Survey View] Converted survey for preview:', surveyForPreview);
+      
       // Set the survey in the app store
       setSurvey(surveyForPreview);
+      console.log('✅ [Survey View] Survey set in store');
       
       // Set a mock RFQ input for context
       setRFQInput({
@@ -130,6 +196,7 @@ export const SurveysPage: React.FC = () => {
       });
       
       setSelectedSurvey(survey);
+      console.log('🎉 [Survey View] Survey view setup complete');
     } catch (err) {
       console.error('Failed to load survey:', err);
     }
@@ -255,6 +322,41 @@ export const SurveysPage: React.FC = () => {
                       <ArrowPathIcon className="h-4 w-4" />
                       <span>Refresh</span>
                     </button>
+                    
+                    {isMultiSelectMode && (
+                      <>
+                        <button
+                          onClick={handleSelectAll}
+                          className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-xl transition-all duration-200 font-medium"
+                        >
+                          <CheckIcon className="h-4 w-4" />
+                          <span>{selectedSurveys.size === filteredSurveys.length ? 'Deselect All' : 'Select All'}</span>
+                        </button>
+                        
+                        {selectedSurveys.size > 0 && (
+                          <button
+                            onClick={handleBulkDelete}
+                            className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-xl transition-all duration-200 font-medium"
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                            <span>Delete ({selectedSurveys.size})</span>
+                          </button>
+                        )}
+                      </>
+                    )}
+                    
+                    <button
+                      onClick={handleMultiSelectToggle}
+                      className={`flex items-center space-x-2 px-4 py-2 rounded-xl transition-all duration-200 font-medium ${
+                        isMultiSelectMode 
+                          ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                      }`}
+                    >
+                      <CheckIcon className="h-4 w-4" />
+                      <span>{isMultiSelectMode ? 'Exit Select' : 'Select'}</span>
+                    </button>
+                    
                     <button
                       onClick={() => window.location.href = '/'}
                       className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 rounded-xl transition-all duration-200 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
@@ -345,16 +447,109 @@ export const SurveysPage: React.FC = () => {
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                <div className="space-y-3">
                   {filteredSurveys.map((survey) => (
-                    <SurveyCard
+                    <div
                       key={survey.id}
-                      survey={survey}
-                      isSelected={false}
-                      onSelect={() => setSelectedSurvey(survey)}
-                      onDelete={() => setShowDeleteConfirm(survey.id)}
-                      onView={() => handleViewSurvey(survey)}
-                    />
+                      className={`bg-white rounded-xl border-2 transition-all duration-200 cursor-pointer ${
+                        selectedSurveys.has(survey.id)
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-200 hover:border-gray-300 hover:shadow-md'
+                      }`}
+                      onClick={() => handleSurveySelect(survey.id)}
+                    >
+                      <div className="p-6">
+                        <div className="flex items-center space-x-4">
+                          {/* Checkbox for multi-select */}
+                          {isMultiSelectMode && (
+                            <div className="flex-shrink-0">
+                              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                                selectedSurveys.has(survey.id)
+                                  ? 'bg-blue-600 border-blue-600'
+                                  : 'border-gray-300'
+                              }`}>
+                                {selectedSurveys.has(survey.id) && (
+                                  <CheckIcon className="w-3 h-3 text-white" />
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Survey Icon */}
+                          <div className="flex-shrink-0">
+                            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            </div>
+                          </div>
+                          
+                          {/* Survey Content */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1 min-w-0">
+                                <h3 className="text-lg font-semibold text-gray-900 truncate">
+                                  {survey.title}
+                                </h3>
+                                <p className="text-sm text-gray-600 mt-1 line-clamp-2">
+                                  {survey.description}
+                                </p>
+                                <div className="flex items-center space-x-4 mt-3">
+                                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                    survey.status === 'draft' ? 'bg-yellow-100 text-yellow-800' :
+                                    survey.status === 'validated' ? 'bg-green-100 text-green-800' :
+                                    survey.status === 'edited' ? 'bg-blue-100 text-blue-800' :
+                                    'bg-gray-100 text-gray-800'
+                                  }`}>
+                                    {survey.status}
+                                  </span>
+                                  <span className="text-sm text-gray-500">
+                                    {survey.question_count} questions
+                                  </span>
+                                  {survey.estimated_time && (
+                                    <span className="text-sm text-gray-500">
+                                      ~{survey.estimated_time} min
+                                    </span>
+                                  )}
+                                  <span className="text-sm text-gray-500">
+                                    {new Date(survey.created_at).toLocaleDateString()}
+                                  </span>
+                                </div>
+                              </div>
+                              
+                              {/* Actions */}
+                              {!isMultiSelectMode && (
+                                <div className="flex items-center space-x-2 ml-4">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleViewSurvey(survey);
+                                    }}
+                                    className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                    title="View Survey"
+                                  >
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    </svg>
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setShowDeleteConfirm(survey.id);
+                                    }}
+                                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                    title="Delete Survey"
+                                  >
+                                    <TrashIcon className="w-5 h-5" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   ))}
                 </div>
               )}

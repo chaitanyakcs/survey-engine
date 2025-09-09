@@ -260,6 +260,19 @@ export const SurveyPreview: React.FC = () => {
     quality_score: 0.9
   });
 
+  // Debug logging
+  React.useEffect(() => {
+    console.log('🔍 [SurveyPreview] currentSurvey changed:', currentSurvey);
+    if (currentSurvey) {
+      console.log('📊 [SurveyPreview] Survey data:', {
+        id: currentSurvey.survey_id,
+        title: currentSurvey.title,
+        questionsCount: currentSurvey.questions?.length || 0,
+        methodologies: currentSurvey.methodologies
+      });
+    }
+  }, [currentSurvey]);
+
   // Initialize edited survey when currentSurvey changes
   React.useEffect(() => {
     if (currentSurvey && !isEditingSurvey) {
@@ -390,9 +403,11 @@ export const SurveyPreview: React.FC = () => {
   };
 
   if (!currentSurvey) {
+    console.log('❌ [SurveyPreview] No currentSurvey available');
     return (
       <div className="max-w-4xl mx-auto p-6 text-center">
         <p className="text-gray-500">No survey to preview yet.</p>
+        <p className="text-sm text-gray-400 mt-2">Debug: currentSurvey is {typeof currentSurvey}</p>
       </div>
     );
   }
