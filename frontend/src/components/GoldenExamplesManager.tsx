@@ -110,7 +110,7 @@ export const GoldenExamplesManager: React.FC = () => {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('/api/golden-pairs/parse-document', {
+      const response = await fetch('/api/v1/golden-pairs/parse-document', {
         method: 'POST',
         body: formData
       });

@@ -197,30 +197,51 @@ async def parse_document(
     Parse a DOCX document and convert it to survey JSON using LLM.
     Returns the parsed JSON and metadata for review before creating a golden pair.
     """
+    logger.info(f"📄 [Document Parse] Starting document parsing for file: {file.filename}")
+    
     # Validate file type
     if not file.filename or not file.filename.lower().endswith('.docx'):
+        logger.warning(f"❌ [Document Parse] Invalid file type: {file.filename}")
         raise HTTPException(
             status_code=400, 
             detail="Only DOCX files are supported"
         )
     
     try:
+        logger.info(f"📖 [Document Parse] Reading file content for: {file.filename}")
         # Read file content
         file_content = await file.read()
+        logger.info(f"✅ [Document Parse] File read successfully, size: {len(file_content)} bytes")
         
+        logger.info(f"🤖 [Document Parse] Starting LLM parsing for: {file.filename}")
         # Parse document using LLM
         survey_data = await document_parser.parse_document(file_content)
+        logger.info(f"✅ [Document Parse] LLM parsing completed for: {file.filename}")
         
+        logger.info(f"📝 [Document Parse] Extracting text preview for: {file.filename}")
         # Extract text for preview
         extracted_text = document_parser.extract_text_from_docx(file_content)
+        logger.info(f"✅ [Document Parse] Text extraction completed, length: {len(extracted_text)} chars")
         
-        return DocumentParseResponse(
+        # Log survey data structure for debugging
+        logger.info(f"📊 [Document Parse] Survey data keys: {list(survey_data.keys()) if isinstance(survey_data, dict) else 'Not a dict'}")
+        if isinstance(survey_data, dict):
+            logger.info(f"📊 [Document Parse] Survey title: {survey_data.get('title', 'No title')}")
+            logger.info(f"📊 [Document Parse] Questions count: {len(survey_data.get('questions', []))}")
+            logger.info(f"📊 [Document Parse] Confidence score: {survey_data.get('confidence_score', 'No score')}")
+        
+        response = DocumentParseResponse(
             survey_json=survey_data,
             confidence_score=survey_data.get('confidence_score'),
             extracted_text=extracted_text[:1000] + "..." if len(extracted_text) > 1000 else extracted_text
         )
         
+        logger.info(f"🎉 [Document Parse] Successfully parsed document: {file.filename}")
+        return response
+        
     except DocumentParsingError as e:
+        logger.error(f"❌ [Document Parse] Document parsing error for {file.filename}: {str(e)}")
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
+        logger.error(f"❌ [Document Parse] Unexpected error parsing {file.filename}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to parse document: {str(e)}")

@@ -9,7 +9,7 @@ import replicate
 from pydantic import ValidationError
 
 from ..models.survey import SurveyCreate, Question, QuestionType
-from ..core.config import settings
+from ..config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -26,16 +26,22 @@ class DocumentParser:
     
     def extract_text_from_docx(self, docx_content: bytes) -> str:
         """Extract text content from DOCX file."""
+        logger.info(f"📄 [Document Parser] Starting text extraction from DOCX, size: {len(docx_content)} bytes")
         try:
             doc = Document(BytesIO(docx_content))
             text_content = []
             
-            for paragraph in doc.paragraphs:
+            logger.info(f"📝 [Document Parser] Processing {len(doc.paragraphs)} paragraphs")
+            for i, paragraph in enumerate(doc.paragraphs):
                 if paragraph.text.strip():
                     text_content.append(paragraph.text.strip())
+                    if i < 5:  # Log first 5 paragraphs for debugging
+                        logger.debug(f"📝 [Document Parser] Paragraph {i}: {paragraph.text.strip()[:100]}...")
             
+            logger.info(f"📊 [Document Parser] Processing {len(doc.tables)} tables")
             # Also extract text from tables
-            for table in doc.tables:
+            for table_idx, table in enumerate(doc.tables):
+                logger.debug(f"📊 [Document Parser] Processing table {table_idx} with {len(table.rows)} rows")
                 for row in table.rows:
                     row_text = []
                     for cell in row.cells:
@@ -44,10 +50,12 @@ class DocumentParser:
                     if row_text:
                         text_content.append(" | ".join(row_text))
             
-            return "\n".join(text_content)
+            extracted_text = "\n".join(text_content)
+            logger.info(f"✅ [Document Parser] Text extraction completed, total length: {len(extracted_text)} chars")
+            return extracted_text
             
         except Exception as e:
-            logger.error(f"Failed to extract text from DOCX: {str(e)}")
+            logger.error(f"❌ [Document Parser] Failed to extract text from DOCX: {str(e)}", exc_info=True)
             raise DocumentParsingError(f"Failed to extract text from document: {str(e)}")
     
     def create_conversion_prompt(self, document_text: str) -> str:
@@ -108,9 +116,13 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
     
     async def convert_to_json(self, document_text: str) -> Dict[str, Any]:
         """Convert document text to JSON using LLM."""
+        logger.info(f"🤖 [Document Parser] Starting LLM conversion with model: {self.model}")
         try:
+            logger.info(f"📝 [Document Parser] Creating conversion prompt")
             prompt = self.create_conversion_prompt(document_text)
+            logger.info(f"✅ [Document Parser] Conversion prompt created, length: {len(prompt)} chars")
             
+            logger.info(f"🚀 [Document Parser] Calling Replicate API")
             output = await replicate.async_run(
                 self.model,
                 input={
@@ -122,13 +134,19 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
             )
             
             # Replicate returns a generator, join the output
+            logger.info(f"📥 [Document Parser] Processing LLM response")
             json_content = "".join(output).strip()
+            logger.info(f"✅ [Document Parser] LLM response received, length: {len(json_content)} chars")
+            logger.debug(f"📄 [Document Parser] LLM response preview: {json_content[:200]}...")
             
             # Try to parse the JSON
+            logger.info(f"🔍 [Document Parser] Parsing JSON response")
             try:
                 survey_data = json.loads(json_content)
+                logger.info(f"✅ [Document Parser] JSON parsing successful")
             except json.JSONDecodeError as e:
-                logger.error(f"LLM returned invalid JSON: {str(e)}")
+                logger.warning(f"⚠️ [Document Parser] LLM returned invalid JSON: {str(e)}")
+                logger.info(f"🔧 [Document Parser] Attempting to extract JSON from response")
                 # Try to extract JSON from the response if it contains explanations
                 try:
                     # Look for JSON between { and }
@@ -136,16 +154,21 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                     end = json_content.rfind('}') + 1
                     if start != -1 and end != 0:
                         json_content = json_content[start:end]
+                        logger.info(f"🔧 [Document Parser] Extracted JSON substring, length: {len(json_content)} chars")
                         survey_data = json.loads(json_content)
+                        logger.info(f"✅ [Document Parser] JSON extraction and parsing successful")
                     else:
+                        logger.error(f"❌ [Document Parser] No valid JSON found in response")
                         raise DocumentParsingError(f"No valid JSON found in response")
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as e2:
+                    logger.error(f"❌ [Document Parser] JSON extraction failed: {str(e2)}")
                     raise DocumentParsingError(f"LLM returned invalid JSON: {str(e)}")
             
+            logger.info(f"🎉 [Document Parser] LLM conversion completed successfully")
             return survey_data
             
         except Exception as e:
-            logger.error(f"Failed to convert document to JSON: {str(e)}")
+            logger.error(f"❌ [Document Parser] Failed to convert document to JSON: {str(e)}", exc_info=True)
             raise DocumentParsingError(f"Failed to convert document: {str(e)}")
     
     def validate_survey_json(self, survey_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -160,25 +183,42 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
     
     async def parse_document(self, docx_content: bytes) -> Dict[str, Any]:
         """Main method to parse DOCX document and return validated JSON."""
+        logger.info(f"🤖 [Document Parser] Starting main document parsing process")
         try:
             # Extract text from DOCX
+            logger.info(f"📄 [Document Parser] Extracting text from DOCX")
             document_text = self.extract_text_from_docx(docx_content)
             
             if not document_text.strip():
+                logger.error(f"❌ [Document Parser] No text content found in document")
                 raise DocumentParsingError("No text content found in document")
             
+            logger.info(f"✅ [Document Parser] Text extraction successful, length: {len(document_text)} chars")
+            
             # Convert to JSON using LLM
+            logger.info(f"🤖 [Document Parser] Converting text to JSON using LLM")
             survey_json = await self.convert_to_json(document_text)
+            logger.info(f"✅ [Document Parser] LLM conversion completed")
             
             # Validate the JSON
+            logger.info(f"🔍 [Document Parser] Validating survey JSON structure")
             validated_survey = self.validate_survey_json(survey_json)
+            logger.info(f"✅ [Document Parser] JSON validation successful")
             
+            # Log final survey structure
+            logger.info(f"📊 [Document Parser] Final survey structure: {list(validated_survey.keys()) if isinstance(validated_survey, dict) else 'Not a dict'}")
+            if isinstance(validated_survey, dict):
+                logger.info(f"📊 [Document Parser] Survey title: {validated_survey.get('title', 'No title')}")
+                logger.info(f"📊 [Document Parser] Questions count: {len(validated_survey.get('questions', []))}")
+                logger.info(f"📊 [Document Parser] Confidence score: {validated_survey.get('confidence_score', 'No score')}")
+            
+            logger.info(f"🎉 [Document Parser] Document parsing completed successfully")
             return validated_survey
             
         except DocumentParsingError:
             raise
         except Exception as e:
-            logger.error(f"Unexpected error during document parsing: {str(e)}")
+            logger.error(f"❌ [Document Parser] Unexpected error during document parsing: {str(e)}", exc_info=True)
             raise DocumentParsingError(f"Unexpected error: {str(e)}")
 
 # Global instance
