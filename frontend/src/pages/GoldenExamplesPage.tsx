@@ -1,12 +1,16 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { GoldenExample, GoldenExampleRequest } from '../types';
+import { Sidebar } from '../components/Sidebar';
+import { useSidebarLayout } from '../hooks/useSidebarLayout';
+import { ToastContainer } from '../components/Toast';
 
-export const GoldenExamplesManager: React.FC = () => {
-  const { goldenExamples, fetchGoldenExamples, createGoldenExample, updateGoldenExample, deleteGoldenExample } = useAppStore();
+export const GoldenExamplesPage: React.FC = () => {
+  const { goldenExamples, fetchGoldenExamples, createGoldenExample, updateGoldenExample, deleteGoldenExample, toasts, removeToast, addToast } = useAppStore();
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedExample, setSelectedExample] = useState<GoldenExample | null>(null);
-  const [isEditMode, setIsEditMode] = useState(false);
+  const [isCreateMode, setIsCreateMode] = useState(false);
+  const [currentView, setCurrentView] = useState<'survey' | 'golden-examples' | 'rules' | 'surveys'>('golden-examples');
+  const { mainContentClasses } = useSidebarLayout();
   const [formData, setFormData] = useState<GoldenExampleRequest>({
     rfq_text: '',
     survey_json: { survey_id: '', title: '', description: '', estimated_time: 10, confidence_score: 0.8, methodologies: [], golden_examples: [], questions: [], metadata: { target_responses: 0, methodology: [] } },
@@ -22,6 +26,8 @@ export const GoldenExamplesManager: React.FC = () => {
   const [showJsonPreview, setShowJsonPreview] = useState(false);
   const [extractedText, setExtractedText] = useState<string>('');
   const [inputMode, setInputMode] = useState<'upload' | 'manual'>('upload');
+  const [retryCount, setRetryCount] = useState(0);
+  const [lastUploadedFile, setLastUploadedFile] = useState<File | null>(null);
 
   const loadGoldenExamples = useCallback(async () => {
     setIsLoading(true);
@@ -51,22 +57,6 @@ export const GoldenExamplesManager: React.FC = () => {
     }
   };
 
-  const handleUpdateExample = async () => {
-    if (!selectedExample) return;
-    
-    setIsLoading(true);
-    try {
-      await updateGoldenExample(selectedExample.id, formData);
-      setSelectedExample(null);
-      setIsEditMode(false);
-      resetForm();
-      await loadGoldenExamples();
-    } catch (error) {
-      console.error('Failed to update golden example:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleDeleteExample = async (id: string) => {
     setIsLoading(true);
@@ -103,6 +93,12 @@ export const GoldenExamplesManager: React.FC = () => {
       return;
     }
 
+    setLastUploadedFile(file);
+    setRetryCount(0);
+    await parseDocument(file);
+  };
+
+  const parseDocument = async (file: File) => {
     setIsParsingDocument(true);
     setParseError('');
 
@@ -129,26 +125,48 @@ export const GoldenExamplesManager: React.FC = () => {
         quality_score: result.confidence_score || 0.8
       }));
       setShowJsonPreview(true);
+      setRetryCount(0);
+
+      // Show success toast
+      addToast({
+        type: 'success',
+        title: 'Document Parsed Successfully',
+        message: 'Your document has been processed and converted to survey JSON.',
+        duration: 5000
+      });
 
     } catch (error) {
-      setParseError(error instanceof Error ? error.message : 'Failed to parse document');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to parse document';
+      setParseError(errorMessage);
+      
+      // Show error toast
+      addToast({
+        type: 'error',
+        title: 'Document Parsing Failed',
+        message: errorMessage,
+        duration: 7000
+      });
     } finally {
       setIsParsingDocument(false);
     }
   };
 
-  const editExample = (example: GoldenExample) => {
-    setSelectedExample(example);
-    setFormData({
-      rfq_text: example.rfq_text,
-      survey_json: example.survey_json,
-      methodology_tags: example.methodology_tags,
-      industry_category: example.industry_category,
-      research_goal: example.research_goal,
-      quality_score: example.quality_score
+  const handleRetryParsing = async () => {
+    if (!lastUploadedFile) return;
+    
+    setRetryCount(prev => prev + 1);
+    
+    // Show retry toast
+    addToast({
+      type: 'info',
+      title: 'Retrying Document Parsing',
+      message: `Attempt ${retryCount + 1} - Please wait while we process your document again.`,
+      duration: 3000
     });
-    setIsEditMode(true);
+
+    await parseDocument(lastUploadedFile);
   };
+
 
   const formatQualityScore = (score: number) => {
     return `${(score * 100).toFixed(0)}%`;
@@ -167,43 +185,73 @@ export const GoldenExamplesManager: React.FC = () => {
     return colors[industry as keyof typeof colors] || colors.default;
   };
 
+  const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys') => {
+    if (view === 'rules') {
+      window.location.href = '/rules';
+    } else if (view === 'surveys') {
+      window.location.href = '/surveys';
+    } else if (view === 'survey') {
+      window.location.href = '/';
+    } else {
+      setCurrentView(view);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100">
-      {/* Header */}
-      <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200/50 sticky top-0 z-30 shadow-sm">
-        <div className="px-6 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center shadow-lg">
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
+      {/* Toast Container */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
+      
+      <Sidebar currentView={currentView} onViewChange={handleViewChange} />
+      
+      <div className={`${mainContentClasses} transition-all duration-300 ease-in-out`}>
+        {/* Header */}
+        <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200/50 sticky top-0 z-30 shadow-sm">
+          <div className="px-6 py-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center shadow-lg">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <div>
+                    <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">Reference Examples</h1>
+                    <p className="text-gray-600 mt-1">Manage reference examples for survey generation</p>
+                </div>
               </div>
-              <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">Golden Examples</h1>
+              
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => window.history.back()}
+                  className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all duration-200"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                  </svg>
+                  <span>Back</span>
+                </button>
+                <button
+                  onClick={() => setIsCreateMode(true)}
+                  className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-yellow-600 to-orange-600 text-white hover:from-yellow-700 hover:to-orange-700 rounded-xl transition-all duration-200 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                  <span>Add New Example</span>
+                </button>
               </div>
             </div>
-            
-            <button
-              onClick={() => setIsEditMode(true)}
-              className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-yellow-600 to-orange-600 text-white hover:from-yellow-700 hover:to-orange-700 rounded-xl transition-all duration-200 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-              </svg>
-              <span>Add New Example</span>
-            </button>
           </div>
-        </div>
-      </header>
+        </header>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-6">
+        {/* Main Content */}
+        <main className="p-6">
         {isLoading ? (
           <div className="flex items-center justify-center h-64">
             <div className="flex flex-col items-center space-y-4">
               <div className="animate-spin rounded-full h-12 w-12 border-4 border-yellow-200 border-t-yellow-600"></div>
-              <p className="text-gray-600 text-lg">Loading golden examples...</p>
+              <p className="text-gray-600 text-lg">Loading reference examples...</p>
             </div>
           </div>
         ) : goldenExamples.length === 0 ? (
@@ -214,16 +262,16 @@ export const GoldenExamplesManager: React.FC = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
               </div>
-              <h3 className="text-2xl font-semibold text-gray-900 mb-3">No golden examples yet</h3>
-              <p className="text-gray-600 mb-8 text-lg">Get started by creating your first golden example</p>
+              <h3 className="text-2xl font-semibold text-gray-900 mb-3">No reference examples yet</h3>
+              <p className="text-gray-600 mb-8 text-lg">Get started by creating your first reference example</p>
               <button
-                onClick={() => setIsEditMode(true)}
+                onClick={() => setIsCreateMode(true)}
                 className="px-8 py-4 bg-gradient-to-r from-yellow-600 to-orange-600 text-white rounded-xl hover:from-yellow-700 hover:to-orange-700 transition-all duration-200 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
               >
                 <svg className="w-5 h-5 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                 </svg>
-                Create Golden Example
+                Create Reference Example
               </button>
             </div>
           </div>
@@ -288,10 +336,11 @@ export const GoldenExamplesManager: React.FC = () => {
             ))}
           </div>
         )}
-      </main>
+        </main>
+      </div>
 
-      {/* Create/Edit Modal */}
-      {isEditMode && (
+      {/* Create Form - Now as a full page overlay */}
+      {isCreateMode && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl p-8 w-full max-w-5xl max-h-[90vh] overflow-y-auto border border-gray-200 shadow-2xl">
             <div className="flex items-center justify-between mb-6">
@@ -303,15 +352,14 @@ export const GoldenExamplesManager: React.FC = () => {
                 </div>
                 <div>
                   <h2 className="text-2xl font-bold text-gray-900">
-                    {selectedExample ? 'Edit Golden Example' : 'Create Golden Example'}
+                    Create Reference Example
                   </h2>
                   <p className="text-gray-600">Add a reference example for survey generation</p>
                 </div>
               </div>
               <button
                 onClick={() => {
-                  setIsEditMode(false);
-                  setSelectedExample(null);
+                  setIsCreateMode(false);
                   resetForm();
                 }}
                 className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
@@ -378,8 +426,17 @@ export const GoldenExamplesManager: React.FC = () => {
                       <label htmlFor="docx-upload" className="cursor-pointer">
                         {isParsingDocument ? (
                           <div className="flex flex-col items-center">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-600 mb-2"></div>
-                            <p className="text-sm text-gray-600">Parsing document...</p>
+                            <div className="relative mb-4">
+                              <div className="w-16 h-16 border-4 border-yellow-200 rounded-full"></div>
+                              <div className="absolute top-0 left-0 w-16 h-16 border-4 border-yellow-600 rounded-full border-t-transparent animate-spin"></div>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-sm font-medium text-gray-700 mb-1">Processing Document</p>
+                              <p className="text-xs text-gray-500">Converting your DOCX to survey JSON...</p>
+                              {retryCount > 0 && (
+                                <p className="text-xs text-yellow-600 mt-1">Retry attempt {retryCount + 1}</p>
+                              )}
+                            </div>
                           </div>
                         ) : (
                           <div className="flex flex-col items-center">
@@ -394,8 +451,44 @@ export const GoldenExamplesManager: React.FC = () => {
                     </div>
                     
                     {parseError && (
-                      <div className="p-3 bg-red-50 border border-red-200 rounded-md">
-                        <p className="text-sm text-red-600">{parseError}</p>
+                      <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                        <div className="flex items-start space-x-3">
+                          <div className="flex-shrink-0">
+                            <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="text-sm font-medium text-red-800 mb-1">Document Parsing Failed</h4>
+                            <p className="text-sm text-red-600 mb-3">{parseError}</p>
+                            <div className="flex items-center space-x-3">
+                              <button
+                                onClick={handleRetryParsing}
+                                disabled={isParsingDocument || !lastUploadedFile}
+                                className="inline-flex items-center px-3 py-2 bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                              >
+                                {isParsingDocument ? (
+                                  <>
+                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                    Retrying...
+                                  </>
+                                ) : (
+                                  <>
+                                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                    </svg>
+                                    Try Again
+                                  </>
+                                )}
+                              </button>
+                              {retryCount > 0 && (
+                                <span className="text-xs text-red-500">
+                                  Attempt {retryCount + 1}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     )}
                     
@@ -505,8 +598,7 @@ export const GoldenExamplesManager: React.FC = () => {
             <div className="flex justify-end space-x-4 mt-8 pt-6 border-t border-gray-200">
               <button
                 onClick={() => {
-                  setIsEditMode(false);
-                  setSelectedExample(null);
+                  setIsCreateMode(false);
                   resetForm();
                 }}
                 className="px-6 py-3 border border-gray-300 rounded-xl text-sm hover:bg-gray-50 text-gray-700 transition-all duration-200 font-medium"
@@ -514,11 +606,11 @@ export const GoldenExamplesManager: React.FC = () => {
                 Cancel
               </button>
               <button
-                onClick={selectedExample ? handleUpdateExample : handleCreateExample}
+                onClick={handleCreateExample}
                 disabled={isLoading}
                 className="px-6 py-3 bg-gradient-to-r from-yellow-600 to-orange-600 text-white rounded-xl hover:from-yellow-700 hover:to-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
               >
-                {isLoading ? 'Saving...' : selectedExample ? 'Update Example' : 'Create Example'}
+                {isLoading ? 'Saving...' : 'Create Example'}
               </button>
             </div>
           </div>

@@ -18,6 +18,7 @@ class PromptService:
         self.base_rules = self._load_base_rules()
         self.methodology_rules = {}
         self.quality_rules = {}
+        self.system_prompt = ""
         self._load_database_rules()
     
     def _load_base_rules(self) -> Dict[str, Any]:
@@ -76,7 +77,31 @@ class PromptService:
                         if rule_text:
                             self.quality_rules[rule.category].append(rule_text)
                 
-                logger.info(f"Loaded {len(methodology_rules)} methodology rules and {len(quality_rules)} quality rules from database")
+                # Load custom rules
+                custom_rules = self.db_session.query(SurveyRule).filter(
+                    SurveyRule.rule_type == 'custom',
+                    SurveyRule.is_active == True
+                ).all()
+                
+                for rule in custom_rules:
+                    if rule.category not in self.quality_rules:
+                        self.quality_rules[rule.category] = []
+                    # For custom rules, use rule_description directly
+                    if rule.rule_description:
+                        self.quality_rules[rule.category].append(rule.rule_description)
+                
+                # Load system prompt
+                system_prompt_rule = self.db_session.query(SurveyRule).filter(
+                    SurveyRule.rule_type == 'system_prompt',
+                    SurveyRule.is_active == True
+                ).first()
+                
+                if system_prompt_rule and system_prompt_rule.rule_description:
+                    self.system_prompt = system_prompt_rule.rule_description
+                else:
+                    self.system_prompt = ""
+                
+                logger.info(f"Loaded {len(methodology_rules)} methodology rules, {len(quality_rules)} quality rules, {len(custom_rules)} custom rules, and system prompt from database")
             else:
                 # Fallback to hardcoded rules if no database session
                 self._load_fallback_rules()
@@ -204,6 +229,14 @@ class PromptService:
                 ""
             ])
         
+        # Custom system prompt if available
+        if self.system_prompt:
+            prompt_parts.extend([
+                "## Custom System Instructions:",
+                self.system_prompt,
+                ""
+            ])
+        
         # Custom rules if provided
         if custom_rules:
             prompt_parts.extend([
@@ -249,6 +282,15 @@ class PromptService:
             methodology_tags=methodology_tags,
             custom_rules=custom_rules
         )
+        
+        # Log the final system prompt before RAG kicks in
+        logger.info("=" * 80)
+        logger.info("🎯 FINAL SYSTEM PROMPT GENERATED (Before RAG)")
+        logger.info("=" * 80)
+        logger.info(system_prompt)
+        logger.info("=" * 80)
+        logger.info("🚀 Now proceeding with RAG and golden examples...")
+        logger.info("=" * 80)
         
         # Build the main prompt with golden examples
         prompt_parts = [
@@ -325,7 +367,19 @@ class PromptService:
             "Generate the survey JSON now:"
         ])
         
-        return "\n".join(prompt_parts)
+        # Join all prompt parts into final prompt
+        final_prompt = "\n".join(prompt_parts)
+        
+        # Log the complete final prompt that will be sent to LLM
+        logger.info("=" * 100)
+        logger.info("🤖 COMPLETE FINAL PROMPT SENT TO LLM")
+        logger.info("=" * 100)
+        logger.info(final_prompt)
+        logger.info("=" * 100)
+        logger.info("📤 Prompt length: {} characters".format(len(final_prompt)))
+        logger.info("=" * 100)
+        
+        return final_prompt
     
     def add_custom_rule(self, rule_type: str, rule: str) -> None:
         """Add a custom rule to the system"""

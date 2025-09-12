@@ -42,7 +42,7 @@ const AIEngineInfoModal: React.FC<AIEngineInfoModalProps> = ({ isOpen, onClose }
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">How AI Survey Engine Learns</h3>
                 <p className="text-gray-700 leading-relaxed">
-                  The AI Survey Engine continuously improves through <strong>Golden Examples</strong> and user interactions. 
+                  The AI Survey Engine continuously improves through <strong>Reference Examples</strong> and user interactions. 
                   Every action you take in the dashboard contributes to making the AI smarter and more accurate.
                 </p>
               </div>
@@ -51,13 +51,13 @@ const AIEngineInfoModal: React.FC<AIEngineInfoModalProps> = ({ isOpen, onClose }
 
           {/* Learning Mechanisms */}
           <div className="grid md:grid-cols-2 gap-6">
-            {/* Golden Examples */}
+            {/* Reference Examples */}
             <div className="bg-white border border-gray-200 rounded-lg p-6">
               <div className="flex items-center space-x-3 mb-4">
                 <div className="w-8 h-8 bg-yellow-100 rounded-lg flex items-center justify-center">
                   <DocumentTextIcon className="h-5 w-5 text-yellow-600" />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900">Golden Examples</h3>
+                <h3 className="text-lg font-semibold text-gray-900">Reference Examples</h3>
               </div>
               <div className="space-y-3">
                 <p className="text-sm text-gray-600">
@@ -88,7 +88,7 @@ const AIEngineInfoModal: React.FC<AIEngineInfoModalProps> = ({ isOpen, onClose }
                   <strong>Every interaction teaches the AI:</strong>
                 </p>
                 <ul className="text-sm text-gray-600 space-y-1 ml-4">
-                  <li>• Creating new Golden Examples</li>
+                  <li>• Creating new Reference Examples</li>
                   <li>• Editing and refining AI-generated surveys</li>
                   <li>• Selecting specific methodologies</li>
                   <li>• Adjusting question structures</li>
@@ -119,7 +119,7 @@ const AIEngineInfoModal: React.FC<AIEngineInfoModalProps> = ({ isOpen, onClose }
                   <h4 className="font-semibold text-gray-900">Data Collection</h4>
                 </div>
                 <p className="text-sm text-gray-600">
-                  Your Golden Examples and corrections are stored as high-quality training data with quality scores and methodology tags.
+                  Your Reference Examples and corrections are stored as high-quality training data with quality scores and methodology tags.
                 </p>
               </div>
 
@@ -188,7 +188,7 @@ const AIEngineInfoModal: React.FC<AIEngineInfoModalProps> = ({ isOpen, onClose }
                 Upload DOCX files
               </span>
               <span className="bg-white bg-opacity-20 px-3 py-1 rounded-full text-sm">
-                Create Golden Examples
+                Create Reference Examples
               </span>
               <span className="bg-white bg-opacity-20 px-3 py-1 rounded-full text-sm">
                 Refine AI output

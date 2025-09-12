@@ -69,8 +69,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
       // Clear any existing survey data when starting new RFQ
       set({ currentSurvey: undefined });
       
+      // Set initial progress state
       set((state) => ({
-        workflow: { ...state.workflow, status: 'started' }
+        workflow: { 
+          ...state.workflow, 
+          status: 'started',
+          progress: 0,
+          current_step: 'initializing',
+          message: 'Submitting request and preparing workflow...'
+        }
       }));
 
       const response = await apiService.submitRFQ(rfq);
@@ -80,9 +87,20 @@ export const useAppStore = create<AppStore>((set, get) => ({
           ...state.workflow,
           workflow_id: response.workflow_id,
           survey_id: response.survey_id,
-          status: 'in_progress'
+          status: 'in_progress',
+          progress: 5,
+          current_step: 'initializing_workflow',
+          message: 'Starting survey generation workflow...'
         }
       }));
+
+      // Show info toast that generation has started
+      get().addToast({
+        type: 'info',
+        title: 'Survey Generation Started',
+        message: 'Your survey is being generated. You can step away and we\'ll notify you when it\'s ready!',
+        duration: 5000
+      });
 
       // Connect to WebSocket for progress updates
       get().connectWebSocket(response.workflow_id);
@@ -170,6 +188,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
         } else if (message.type === 'completed') {
           console.log('🎉 [WebSocket] Workflow completed:', message);
           
+          // Show success toast notification
+          get().addToast({
+            type: 'success',
+            title: 'Survey Ready! 🎉',
+            message: 'Your survey has been generated successfully. Click to view it!',
+            duration: 8000
+          });
+          
           // Update workflow status first
           set((state) => ({
             workflow: {
@@ -195,9 +221,23 @@ export const useAppStore = create<AppStore>((set, get) => ({
               });
             }).catch((error) => {
               console.error('❌ [WebSocket] Failed to fetch survey:', error);
+              // Show error toast if survey fetch fails
+              get().addToast({
+                type: 'error',
+                title: 'Survey Error',
+                message: 'Survey was generated but failed to load. Please try refreshing.',
+                duration: 6000
+              });
             });
           } else {
             console.error('❌ [WebSocket] No survey_id in completion message:', message);
+            // Show error toast if no survey ID
+            get().addToast({
+              type: 'error',
+              title: 'Generation Error',
+              message: 'Survey generation completed but no survey ID was provided.',
+              duration: 6000
+            });
           }
           
           // Don't close WebSocket immediately - let it stay open for a bit
@@ -214,6 +254,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
           }, 3000); // 3 second delay
         } else if (message.type === 'error') {
           console.error('Workflow error:', message);
+          
+          // Show error toast notification
+          get().addToast({
+            type: 'error',
+            title: 'Generation Failed',
+            message: message.message || 'Survey generation failed. Please try again.',
+            duration: 6000
+          });
+          
           set((state) => ({
             workflow: {
               ...state.workflow,

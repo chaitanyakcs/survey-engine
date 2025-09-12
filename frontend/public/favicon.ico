@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <defs>
+    <!-- Funky gradient background -->
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F59E0B;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#EA580C;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#DC2626;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Document gradient -->
+    <linearGradient id="docGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#F8FAFC;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Funky shadow -->
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="2" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.3"/>
+    </filter>
+    
+    <!-- Glow effect -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge> 
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Background circle with funky gradient -->
+  <circle cx="16" cy="16" r="16" fill="url(#bgGradient)" filter="url(#shadow)"/>
+  
+  <!-- Document with gradient and shadow -->
+  <path d="M8 6C8 5.44772 8.44772 5 9 5H17L24 12V26C24 26.5523 23.5523 27 23 27H9C8.44772 27 8 26.5523 8 26V6Z" 
+        fill="url(#docGradient)" 
+        stroke="#E5E7EB" 
+        stroke-width="0.5" 
+        filter="url(#shadow)"/>
+  
+  <!-- Funky survey lines with different lengths and colors -->
+  <line x1="11" y1="12" x2="21" y2="12" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" filter="url(#glow)"/>
+  <line x1="11" y1="15" x2="19" y2="15" stroke="#EA580C" stroke-width="2" stroke-linecap="round" filter="url(#glow)"/>
+  <line x1="11" y1="18" x2="21" y2="18" stroke="#DC2626" stroke-width="2" stroke-linecap="round" filter="url(#glow)"/>
+  <line x1="11" y1="21" x2="17" y2="21" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" filter="url(#glow)"/>
+  
+  <!-- Funky edit icon with gradient -->
+  <g transform="translate(18, 4)">
+    <circle cx="3" cy="3" r="4" fill="url(#bgGradient)" filter="url(#shadow)"/>
+    <path d="M1.5 3L2.5 4L4.5 2" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  </g>
+  
+  <!-- Funky sparkle effects -->
+  <circle cx="6" cy="8" r="1" fill="#FFFFFF" opacity="0.8" filter="url(#glow)"/>
+  <circle cx="26" cy="10" r="0.8" fill="#FFFFFF" opacity="0.6" filter="url(#glow)"/>
+  <circle cx="22" cy="24" r="1.2" fill="#FFFFFF" opacity="0.7" filter="url(#glow)"/>
+  
+  <!-- Funky corner accent -->
+  <path d="M24 6L28 2L28 6L24 6Z" fill="#F59E0B" opacity="0.8" filter="url(#glow)"/>
+</svg>

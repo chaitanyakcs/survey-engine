@@ -80,7 +80,7 @@ async def submit_rfq(
             # Initialize workflow service with connection manager
             workflow_service = WorkflowService(db, manager)
             
-            # Start workflow processing in background
+            # Start workflow processing in background with a small delay to ensure WebSocket connection
             asyncio.create_task(process_rfq_workflow_async(
                 workflow_service=workflow_service,
                 title=request.title,
@@ -134,6 +134,10 @@ async def process_rfq_workflow_async(
     try:
         logger.info(f"🚀 [Async Workflow] Starting RFQ processing: title='{title}', workflow_id={workflow_id}")
         
+        # Add a small delay to ensure WebSocket connection is established
+        logger.info("⏳ [Async Workflow] Waiting 2 seconds for WebSocket connection to establish...")
+        await asyncio.sleep(2)
+        
         # Process through workflow with detailed logging
         result = await workflow_service.process_rfq(
             title=title,
@@ -141,7 +145,8 @@ async def process_rfq_workflow_async(
             product_category=product_category,
             target_segment=target_segment,
             research_goal=research_goal,
-            workflow_id=workflow_id
+            workflow_id=workflow_id,
+            survey_id=survey_id
         )
         
         logger.info(f"✅ [Async Workflow] Workflow completed successfully: {result.status}")

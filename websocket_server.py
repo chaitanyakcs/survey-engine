@@ -425,7 +425,8 @@ async def execute_workflow_async(workflow_id: str, workflow_data: dict):
             product_category=request.get('product_category'),
             target_segment=request.get('target_segment'),
             research_goal=request.get('research_goal'),
-            workflow_id=workflow_id  # Pass the workflow_id to ensure consistency
+            workflow_id=workflow_id,  # Pass the workflow_id to ensure consistency
+            survey_id=survey_id  # Pass the survey_id to use existing survey
         )
         
         logger.info(f"✅ [WebSocket] LangGraph workflow completed: survey_id={result.survey_id}, status={result.status}")
@@ -479,7 +480,8 @@ async def generate_survey_async(workflow_id: str, survey_id: str, request: dict)
             product_category=request.get('product_category'),
             target_segment=request.get('target_segment'),
             research_goal=request.get('research_goal'),
-            workflow_id=workflow_id  # Pass the workflow_id to ensure consistency
+            workflow_id=workflow_id,  # Pass the workflow_id to ensure consistency
+            survey_id=survey_id  # Pass the survey_id to use existing survey
         )
         
         logger.info(f"✅ [WebSocket] LangGraph workflow completed: survey_id={result.survey_id}, status={result.status}")

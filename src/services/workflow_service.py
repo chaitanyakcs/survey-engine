@@ -79,46 +79,33 @@ class WorkflowService:
         product_category: Optional[str],
         target_segment: Optional[str],
         research_goal: Optional[str],
-        workflow_id: Optional[str] = None
+        workflow_id: Optional[str] = None,
+        survey_id: Optional[str] = None
     ) -> WorkflowResult:
         """
         Process RFQ through the complete LangGraph workflow
         """
         logger.info(f"📝 [WorkflowService] Starting RFQ processing: title='{title}', description_length={len(description)}")
         
-        # Create RFQ record
-        logger.info("💾 [WorkflowService] Creating RFQ database record")
+        # Get existing survey record (created by RFQ API)
+        if not survey_id:
+            raise Exception("Survey ID is required for workflow processing")
+            
+        logger.info(f"🔍 [WorkflowService] Looking up existing survey: {survey_id}")
         try:
-            rfq = RFQ(
-                title=title,
-                description=description,
-                product_category=product_category,
-                target_segment=target_segment,
-                research_goal=research_goal
-            )
-            self.db.add(rfq)
-            self.db.commit()
-            self.db.refresh(rfq)
-            logger.info(f"✅ [WorkflowService] RFQ record created with ID: {rfq.id}")
+            survey = self.db.query(Survey).filter(Survey.id == survey_id).first()
+            if not survey:
+                raise Exception(f"Survey not found with ID: {survey_id}")
+            
+            # Get the associated RFQ
+            rfq = self.db.query(RFQ).filter(RFQ.id == survey.rfq_id).first()
+            if not rfq:
+                raise Exception(f"RFQ not found for survey: {survey_id}")
+                
+            logger.info(f"✅ [WorkflowService] Found existing survey: {survey.id} and RFQ: {rfq.id}")
         except Exception as e:
-            logger.error(f"❌ [WorkflowService] Failed to create RFQ record: {str(e)}", exc_info=True)
-            raise Exception(f"Database error while creating RFQ: {str(e)}")
-        
-        # Create initial survey record
-        logger.info("💾 [WorkflowService] Creating initial Survey database record")
-        try:
-            survey = Survey(
-                rfq_id=rfq.id,
-                status="started",
-                model_version=settings.generation_model
-            )
-            self.db.add(survey)
-            self.db.commit()
-            self.db.refresh(survey)
-            logger.info(f"✅ [WorkflowService] Survey record created with ID: {survey.id}")
-        except Exception as e:
-            logger.error(f"❌ [WorkflowService] Failed to create Survey record: {str(e)}", exc_info=True)
-            raise Exception(f"Database error while creating Survey: {str(e)}")
+            logger.error(f"❌ [WorkflowService] Failed to find existing survey: {str(e)}", exc_info=True)
+            raise Exception(f"Database error while finding survey: {str(e)}")
         
         # Initialize workflow state
         logger.info("🔄 [WorkflowService] Initializing workflow state")

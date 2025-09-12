@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useAppStore } from './store/useAppStore';
-import { SurveyGeneratorPage, SurveyPreviewPage } from './pages';
+import { SurveyGeneratorPage, SurveyPreviewPage, GoldenExamplesPage } from './pages';
 import { RulesPage } from './pages/RulesPage';
 import { SurveysPage } from './pages/SurveysPage';
 import { GoldenExampleEditPage } from './pages/GoldenExampleEditPage';
@@ -21,6 +21,9 @@ function App() {
     }
     if (path === '/surveys') {
       return 'surveys';
+    }
+    if (path === '/golden-examples') {
+      return 'golden-examples';
     }
     if (path.startsWith('/golden-examples/') && path.includes('/edit')) {
       return 'golden-edit';
@@ -63,6 +66,8 @@ function App() {
           <RulesPage />
         ) : currentPage === 'surveys' ? (
           <SurveysPage />
+        ) : currentPage === 'golden-examples' ? (
+          <GoldenExamplesPage />
         ) : currentPage === 'golden-edit' ? (
           <GoldenExampleEditPage />
         ) : (

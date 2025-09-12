@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { Question, Survey } from '../types';
+import { PencilIcon, BookmarkIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 
 const QuestionCard: React.FC<{ 
   question: Question; 
@@ -311,6 +312,10 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
   const [editedSurvey, setEditedSurvey] = useState<Survey | null>(null);
   const [isEditingSurvey, setIsEditingSurvey] = useState(isEditable);
   const [showGoldenModal, setShowGoldenModal] = useState(false);
+  const [showExportDropdown, setShowExportDropdown] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [uploadMessage, setUploadMessage] = useState('');
   const [goldenFormData, setGoldenFormData] = useState({
     title: '',
     industry_category: '',
@@ -318,6 +323,86 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
     methodology_tags: [] as string[],
     quality_score: 0.9
   });
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.docx')) {
+      setUploadStatus('error');
+      setUploadMessage('Please select a DOCX file');
+      setTimeout(() => setUploadStatus('idle'), 3000);
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadStatus('idle');
+    setUploadMessage('');
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/v1/golden-pairs/parse-document', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to parse document');
+      }
+
+      const result = await response.json();
+      
+      // Update the survey with the LLM-parsed data (same as golden example creation)
+      if (result.survey_json) {
+        setSurvey(result.survey_json);
+        
+        // Call the parent's onSurveyChange if provided (for golden example editing)
+        if (onSurveyChange) {
+          onSurveyChange(result.survey_json);
+        }
+        
+        // Reset the file input
+        event.target.value = '';
+        
+        // Show success message
+        setUploadStatus('success');
+        setUploadMessage('Document successfully parsed and converted to survey!');
+        
+        // Clear success message after 5 seconds
+        setTimeout(() => setUploadStatus('idle'), 5000);
+      }
+
+    } catch (error) {
+      console.error('Document upload failed:', error);
+      setUploadStatus('error');
+      setUploadMessage(`Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      
+      // Clear error message after 5 seconds
+      setTimeout(() => setUploadStatus('idle'), 5000);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // Close export dropdown when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showExportDropdown) {
+        const target = event.target as Element;
+        if (!target.closest('.export-dropdown')) {
+          setShowExportDropdown(false);
+        }
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showExportDropdown]);
 
   // Comprehensive debug logging
   React.useEffect(() => {
@@ -507,13 +592,167 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
       questionsLength: survey.questions?.length,
       surveyKeys: Object.keys(survey || {})
     });
+    
+    // Check if this is an error response from the API
+    const isErrorResponse = survey && (
+      survey.title === "Document Parse Error" || 
+      survey.description?.includes("Failed to parse document") ||
+      survey.raw_output?.error ||
+      survey.final_output?.title === "Document Parse Error"
+    );
+    
     return (
-      <div className="max-w-4xl mx-auto p-6 text-center">
-        <p className="text-gray-500">Survey data is invalid or malformed.</p>
-        <p className="text-sm text-gray-400 mt-2">Debug: survey structure is invalid</p>
-        <div className="mt-4 p-4 bg-gray-100 rounded text-left text-xs">
-          <pre>{JSON.stringify(survey, null, 2)}</pre>
-        </div>
+      <div className="max-w-4xl mx-auto p-6">
+        {isErrorResponse ? (
+          <div className="bg-white rounded-lg shadow-lg border border-red-200">
+            {/* Header */}
+            <div className="bg-red-50 px-6 py-4 border-b border-red-200 rounded-t-lg">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <svg className="h-8 w-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-lg font-medium text-red-800">Document Parsing Failed</h3>
+                  <p className="text-sm text-red-600 mt-1">Unable to process the uploaded document</p>
+                </div>
+              </div>
+            </div>
+            
+            {/* Content */}
+            <div className="px-6 py-4">
+              <div className="mb-4">
+                <p className="text-gray-700 mb-3">
+                  The document could not be converted to a survey. This is usually caused by:
+                </p>
+                <ul className="space-y-2 text-sm text-gray-600">
+                  <li className="flex items-start">
+                    <span className="flex-shrink-0 w-2 h-2 bg-red-400 rounded-full mt-2 mr-3"></span>
+                    <span><strong>Missing API Configuration:</strong> Replicate API token not set or invalid</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="flex-shrink-0 w-2 h-2 bg-red-400 rounded-full mt-2 mr-3"></span>
+                    <span><strong>Document Format:</strong> Unsupported file format or corrupted document</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="flex-shrink-0 w-2 h-2 bg-red-400 rounded-full mt-2 mr-3"></span>
+                    <span><strong>Network Issues:</strong> Connection problems or API rate limiting</span>
+                  </li>
+                </ul>
+              </div>
+              
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <h4 className="text-sm font-medium text-blue-800 mb-2">How to Fix This:</h4>
+                <ol className="text-sm text-blue-700 space-y-1">
+                  <li>1. Check that your Replicate API token is configured</li>
+                  <li>2. Ensure the document is a valid .docx file</li>
+                  <li>3. Try uploading a different document using the "Upload & Parse with AI" button above</li>
+                  <li>4. The AI will parse your document and convert it to a survey</li>
+                  <li>5. Contact support if the issue persists</li>
+                </ol>
+              </div>
+              
+              <div className="flex space-x-3">
+                <label className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 cursor-pointer transition-all duration-200 ${
+                  isUploading 
+                    ? 'text-blue-700 bg-blue-100 cursor-not-allowed' 
+                    : 'text-white bg-blue-600 hover:bg-blue-700'
+                }`}>
+                  {isUploading ? (
+                    <div className="animate-spin rounded-full h-4 w-4 mr-2 border-2 border-blue-600 border-t-transparent"></div>
+                  ) : (
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                  )}
+                  {isUploading ? 'Parsing with AI...' : 'Upload & Parse with AI'}
+                  <input
+                    type="file"
+                    accept=".docx"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    id="retry-document-upload"
+                    disabled={isUploading}
+                  />
+                </label>
+                <button 
+                  onClick={() => window.history.back()} 
+                  className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                  </svg>
+                  Go Back
+                </button>
+              </div>
+
+              {/* Status Notification */}
+              {uploadStatus !== 'idle' && (
+                <div className="mt-4">
+                  {uploadStatus === 'success' && (
+                    <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start space-x-3">
+                      <div className="flex-shrink-0">
+                        <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-sm font-medium text-green-800">Document Parsed Successfully!</h3>
+                        <p className="text-sm text-green-700 mt-1">{uploadMessage}</p>
+                        <p className="text-xs text-green-600 mt-2">The survey preview above has been updated with the new content.</p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {uploadStatus === 'error' && (
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start space-x-3">
+                      <div className="flex-shrink-0">
+                        <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-sm font-medium text-red-800">Upload Failed</h3>
+                        <p className="text-sm text-red-700 mt-1">{uploadMessage}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            {/* Technical Details (Collapsible) */}
+            <details className="border-t border-gray-200">
+              <summary className="px-6 py-3 text-sm text-gray-500 hover:text-gray-700 cursor-pointer bg-gray-50">
+                Show Technical Details
+              </summary>
+              <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
+                <pre className="text-xs text-gray-600 overflow-auto max-h-64 bg-white p-3 rounded border">
+                  {JSON.stringify(survey, null, 2)}
+                </pre>
+              </div>
+            </details>
+          </div>
+        ) : (
+          <div className="text-center py-12">
+            <div className="mx-auto h-12 w-12 text-gray-400">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">Invalid Survey Data</h3>
+            <p className="mt-1 text-sm text-gray-500">The survey data appears to be malformed or incomplete.</p>
+            <div className="mt-6">
+              <button 
+                onClick={() => window.location.reload()} 
+                className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+              >
+                Refresh Page
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -525,40 +764,132 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
         <div className="lg:col-span-3">
           {/* Survey Header */}
           <div className="mb-8 p-6 bg-white border border-gray-200 rounded-lg">
-            {isEditingSurvey ? (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Survey Title</label>
-                  <input
-                    type="text"
-                    value={editedSurvey?.title || ''}
-                    onChange={(e) => setEditedSurvey(prev => prev ? { ...prev, title: e.target.value } : null)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
+            {/* Action Buttons */}
+            <div className="flex justify-end gap-3 mb-6">
+              {isEditingSurvey ? (
+                <>
+                  <button 
+                    onClick={handleSaveEdits}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                  >
+                    <PencilIcon className="w-4 h-4" />
+                    Save Changes
+                  </button>
+                  <button 
+                    onClick={handleCancelEdits}
+                    className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button 
+                    onClick={handleStartEditing}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                  >
+                    <PencilIcon className="w-4 h-4" />
+                    Edit Survey
+                  </button>
+                  <button 
+                    onClick={() => {
+                      // Pre-populate form with survey methodologies
+                      setGoldenFormData(prev => ({
+                        ...prev,
+                        methodology_tags: surveyToDisplay?.methodologies || [],
+                        industry_category: rfqInput.product_category || '',
+                        research_goal: rfqInput.research_goal || ''
+                      }));
+                      setShowGoldenModal(true);
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
+                  >
+                    <BookmarkIcon className="w-4 h-4" />
+                    Save as Golden Example
+                  </button>
+                  <div className="relative export-dropdown">
+                    <button 
+                      onClick={() => setShowExportDropdown(!showExportDropdown)}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                    >
+                      <ArrowDownTrayIcon className="w-4 h-4" />
+                      Export
+                    </button>
+                    {showExportDropdown && (
+                      <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-10">
+                        <div className="py-1">
+                          <button
+                            onClick={() => {
+                              handleExportSurvey('json');
+                              setShowExportDropdown(false);
+                            }}
+                            className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                          >
+                            Export as JSON
+                          </button>
+                          <button
+                            onClick={() => {
+                              handleExportSurvey('clipboard');
+                              setShowExportDropdown(false);
+                            }}
+                            className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                          >
+                            Copy to Clipboard
+                          </button>
+                          <button
+                            onClick={() => {
+                              handleExportSurvey('qualtrics');
+                              setShowExportDropdown(false);
+                            }}
+                            className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                          >
+                            Export for Qualtrics
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Survey Title and Description */}
+            <div className="mb-6">
+              {isEditingSurvey ? (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Survey Title</label>
+                    <input
+                      type="text"
+                      value={editedSurvey?.title || ''}
+                      onChange={(e) => setEditedSurvey(prev => prev ? { ...prev, title: e.target.value } : null)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-2xl font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Survey Description</label>
+                    <textarea
+                      value={editedSurvey?.description || ''}
+                      onChange={(e) => setEditedSurvey(prev => prev ? { ...prev, description: e.target.value } : null)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      rows={3}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Survey Description</label>
-                  <textarea
-                    value={editedSurvey?.description || ''}
-                    onChange={(e) => setEditedSurvey(prev => prev ? { ...prev, description: e.target.value } : null)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    rows={3}
-                  />
-                </div>
+              ) : (
+                <>
+                  <h1 className="text-2xl font-bold text-gray-900 mb-2">
+                    {surveyToDisplay?.title}
+                  </h1>
+                  <p className="text-gray-600 mb-4">
+                    {surveyToDisplay?.description}
+                  </p>
+                </>
+              )}
+              <div className="flex items-center space-x-4 text-sm text-gray-500 mt-4">
+                <span>⏱️ ~{surveyToDisplay?.estimated_time} minutes</span>
+                <span>📊 {surveyToDisplay?.questions?.length || 0} questions</span>
               </div>
-            ) : (
-              <>
-                <h1 className="text-2xl font-bold text-gray-900 mb-2">
-                  {surveyToDisplay?.title}
-                </h1>
-                <p className="text-gray-600 mb-4">
-                  {surveyToDisplay?.description}
-                </p>
-              </>
-            )}
-            <div className="flex items-center space-x-4 text-sm text-gray-500 mt-4">
-              <span>⏱️ ~{surveyToDisplay?.estimated_time} minutes</span>
-              <span>📊 {surveyToDisplay?.questions?.length || 0} questions</span>
             </div>
           </div>
 
@@ -586,55 +917,6 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
             )}
           </div>
 
-          {/* Action Buttons */}
-          <div className="mt-8 flex space-x-4">
-            {isEditingSurvey ? (
-              <>
-                <button 
-                  onClick={handleSaveEdits}
-                  className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
-                >
-                  Save Changes
-                </button>
-                <button 
-                  onClick={handleCancelEdits}
-                  className="px-6 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
-                >
-                  Cancel Editing
-                </button>
-              </>
-            ) : (
-              <>
-                <button 
-                  onClick={handleStartEditing}
-                  className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                >
-                  Edit Survey
-                </button>
-                <button 
-                  onClick={() => {
-                    // Pre-populate form with survey methodologies
-                    setGoldenFormData(prev => ({
-                      ...prev,
-                      methodology_tags: surveyToDisplay?.methodologies || [],
-                      industry_category: rfqInput.product_category || '',
-                      research_goal: rfqInput.research_goal || ''
-                    }));
-                    setShowGoldenModal(true);
-                  }}
-                  className="px-6 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
-                >
-                  Save as Golden Example
-                </button>
-                <button 
-                  onClick={() => handleExportSurvey('json')}
-                  className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
-                >
-                  Export
-                </button>
-              </>
-            )}
-          </div>
         </div>
 
         {/* Meta Panel */}
@@ -670,7 +952,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
             </div>
           </div>
 
-          {/* Golden Examples */}
+          {/* Reference Examples */}
           {surveyToDisplay?.golden_examples && surveyToDisplay.golden_examples.length > 0 && (
             <div className="bg-white border border-gray-200 rounded-lg p-4">
               <h3 className="font-medium text-gray-900 mb-3">Reference Examples</h3>

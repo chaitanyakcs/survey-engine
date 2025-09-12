@@ -109,13 +109,13 @@ start_application() {
         echo -e "${BLUE}   - FastAPI will run on port $FASTAPI_PORT${NC}"
         
         # Start the consolidated application
-        python3 start.py consolidated
+        ./start.sh consolidated
     else
         echo -e "${BLUE}🏠 Starting in development mode${NC}"
         
         # For local development, just start FastAPI
         echo -e "${BLUE}   - FastAPI will run on port $FASTAPI_PORT${NC}"
-        python3 start.py fastapi
+        ./start.sh fastapi
     fi
 }
 

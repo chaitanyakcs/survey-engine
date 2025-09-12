@@ -347,8 +347,38 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
         </div>
       </div>
 
-      {/* Current Status Message */}
-      {workflow.message && currentStepIndex >= 0 && (
+      {/* Progress Bar */}
+      {workflow.status === 'started' || workflow.status === 'in_progress' ? (
+        <div className="mt-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="font-semibold text-blue-900">Progress</h4>
+            <span className="text-sm font-medium text-blue-700">
+              {workflow.progress || 0}%
+            </span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
+            <div 
+              className="bg-gradient-to-r from-blue-500 to-indigo-500 h-3 rounded-full transition-all duration-500 ease-out"
+              style={{ width: `${workflow.progress || 0}%` }}
+            />
+          </div>
+          {workflow.message && (
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                <SparklesIcon className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <p className="text-blue-700 font-medium">{workflow.message}</p>
+                {currentStepIndex >= 0 && (
+                  <p className="text-sm text-blue-600">
+                    Step {currentStepIndex + 1} of {STEPS.length}: {STEPS[currentStepIndex]?.label}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : workflow.message && currentStepIndex >= 0 ? (
         <div className="mt-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
@@ -360,7 +390,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Action Buttons */}
       <div className="mt-8 flex justify-center space-x-4">

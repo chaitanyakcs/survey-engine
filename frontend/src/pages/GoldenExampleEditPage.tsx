@@ -203,10 +203,10 @@ export const GoldenExampleEditPage: React.FC = () => {
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Golden Example Not Found</h2>
             <p className="text-gray-600 mb-4">The golden example you're looking for doesn't exist.</p>
             <button
-              onClick={() => window.location.href = '/?view=golden-examples'}
+              onClick={() => window.location.href = '/golden-examples'}
               className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
             >
-              Back to Golden Examples
+              Back to Reference Examples
             </button>
           </div>
         </div>
@@ -227,7 +227,7 @@ export const GoldenExampleEditPage: React.FC = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
                 <button
-                  onClick={() => window.location.href = '/?view=golden-examples'}
+                  onClick={() => window.location.href = '/golden-examples'}
                   className="p-3 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-xl transition-all duration-200 group"
                 >
                   <ArrowLeftIcon className="h-6 w-6 group-hover:-translate-x-1 transition-transform" />

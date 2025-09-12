@@ -5,6 +5,7 @@ import { SurveyPreview } from '../components/SurveyPreview';
 import { useAppStore } from '../store/useAppStore';
 import { SurveyListItem } from '../types';
 import { useSidebarLayout } from '../hooks/useSidebarLayout';
+import { ToastContainer } from '../components/Toast';
 import { 
   PlusIcon, 
   MagnifyingGlassIcon,
@@ -28,7 +29,7 @@ interface Survey {
 }
 
 export const SurveysPage: React.FC = () => {
-  const { setSurvey, setRFQInput } = useAppStore();
+  const { setSurvey, setRFQInput, toasts, removeToast, addToast } = useAppStore();
   const [surveys, setSurveys] = useState<SurveyListItem[]>([]);
   const [selectedSurvey, setSelectedSurvey] = useState<SurveyListItem | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,6 +41,7 @@ export const SurveysPage: React.FC = () => {
   const [selectedSurveys, setSelectedSurveys] = useState<Set<string>>(new Set());
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
   const [currentUrl, setCurrentUrl] = useState(window.location.search);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   // Load surveys from URL parameter
   useEffect(() => {
@@ -92,9 +94,20 @@ export const SurveysPage: React.FC = () => {
     }
   }, [selectedSurvey]);
 
-  const fetchSurveys = async () => {
+  const fetchSurveys = async (isRetry = false) => {
     try {
-      setLoading(true);
+      if (isRetry) {
+        setIsRetrying(true);
+        addToast({
+          type: 'info',
+          title: 'Retrying...',
+          message: 'Attempting to fetch surveys again. Please wait.',
+          duration: 3000
+        });
+      } else {
+        setLoading(true);
+      }
+      
       console.log('📡 [Fetch] Starting to fetch surveys from /api/v1/survey/list');
       const response = await fetch('/api/v1/survey/list');
       console.log('📡 [Fetch] Response status:', response.status);
@@ -105,11 +118,30 @@ export const SurveysPage: React.FC = () => {
       console.log('📡 [Fetch] Number of surveys:', data.length);
       console.log('📡 [Fetch] First survey (if any):', data[0]);
       setSurveys(data);
+      setError(null);
+      
+      if (isRetry) {
+        addToast({
+          type: 'success',
+          title: 'Surveys Loaded Successfully',
+          message: 'Surveys have been fetched and loaded successfully.',
+          duration: 5000
+        });
+      }
     } catch (err) {
       console.error('❌ [Fetch] Error fetching surveys:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch surveys');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch surveys';
+      setError(errorMessage);
+      
+      addToast({
+        type: 'error',
+        title: 'Failed to Load Surveys',
+        message: errorMessage,
+        duration: 7000
+      });
     } finally {
       setLoading(false);
+      setIsRetrying(false);
     }
   };
 
@@ -287,6 +319,9 @@ export const SurveysPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 flex">
+      {/* Toast Container */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
+      
       {/* Sidebar */}
       <Sidebar currentView="surveys" onViewChange={handleViewChange} />
 
@@ -372,7 +407,7 @@ export const SurveysPage: React.FC = () => {
                   
                   <div className="flex items-center space-x-3">
                     <button
-                      onClick={fetchSurveys}
+                      onClick={() => fetchSurveys()}
                       className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-xl transition-all duration-200 font-medium"
                     >
                       <ArrowPathIcon className="h-4 w-4" />
@@ -473,10 +508,23 @@ export const SurveysPage: React.FC = () => {
                     <h3 className="text-xl font-semibold text-gray-900 mb-2">Error loading surveys</h3>
                     <p className="text-red-600 mb-6">{error}</p>
                     <button
-                      onClick={fetchSurveys}
-                      className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-200 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                      onClick={() => fetchSurveys(true)}
+                      disabled={isRetrying}
+                      className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
                     >
-                      Try Again
+                      {isRetrying ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                          Retrying...
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                          Try Again
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>

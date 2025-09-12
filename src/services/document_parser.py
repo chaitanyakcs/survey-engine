@@ -21,6 +21,8 @@ class DocumentParser:
     """Service for parsing DOCX documents and converting to survey JSON."""
     
     def __init__(self):
+        if not settings.replicate_api_token:
+            raise ValueError("REPLICATE_API_TOKEN is required but not set. Please set it in your environment variables or .env file.")
         replicate.api_token = settings.replicate_api_token  # type: ignore
         self.model = settings.generation_model  # Use GPT-5 from settings
     

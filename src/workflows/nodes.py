@@ -125,10 +125,22 @@ class GeneratorAgent:
         GPT-4/5 generation with golden-enhanced prompts
         """
         try:
+            # Load custom rules from database
+            from src.database.models import SurveyRule
+            custom_rules_query = self.db.query(SurveyRule).filter(
+                SurveyRule.rule_type == 'custom',
+                SurveyRule.is_active == True
+            ).all()
+            
+            custom_rules = {
+                "rules": [rule.rule_description for rule in custom_rules_query if rule.rule_description]
+            }
+            
             generated_survey = await self.generation_service.generate_survey(
                 context=state.context,
                 golden_examples=state.golden_examples,
-                methodology_blocks=state.methodology_blocks
+                methodology_blocks=state.methodology_blocks,
+                custom_rules=custom_rules
             )
             
             return {

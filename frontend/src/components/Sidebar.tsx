@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { 
-  Bars3Icon, 
+  Bars3BottomLeftIcon, 
   XMarkIcon,
   DocumentTextIcon,
   StarIcon,
@@ -35,7 +35,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) =
     },
     {
       id: 'golden-examples' as const,
-      name: 'Golden Examples',
+      name: 'Reference Examples',
       icon: StarIcon,
       href: null
     }
@@ -77,12 +77,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) =
           
           <button
             onClick={toggleSidebar}
-            className="p-2 rounded-md hover:bg-gray-100 transition-colors"
+            className="p-2 rounded-md hover:bg-gray-100 transition-colors group relative"
+            title={isCollapsed ? "Open sidebar" : "Close sidebar"}
           >
             {isCollapsed ? (
-              <Bars3Icon className="h-5 w-5 text-gray-600" />
+              <Bars3BottomLeftIcon className="h-5 w-5 text-gray-600 group-hover:text-gray-900 transition-colors" />
             ) : (
-              <XMarkIcon className="h-5 w-5 text-gray-600" />
+              <XMarkIcon className="h-5 w-5 text-gray-600 group-hover:text-gray-900 transition-colors" />
             )}
           </button>
         </div>
@@ -100,6 +101,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) =
                 onClick={() => {
                   if (item.id === 'surveys') {
                     window.location.href = '/surveys';
+                  } else if (item.id === 'golden-examples') {
+                    window.location.href = '/golden-examples';
                   } else {
                     onViewChange(item.id);
                   }
