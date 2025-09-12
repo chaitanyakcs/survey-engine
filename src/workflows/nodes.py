@@ -5,6 +5,7 @@ from src.services.embedding_service import EmbeddingService
 from src.services.retrieval_service import RetrievalService
 from src.services.generation_service import GenerationService
 from src.services.validation_service import ValidationService
+from src.utils.error_messages import UserFriendlyError
 
 
 class RFQNode:
@@ -149,6 +150,12 @@ class GeneratorAgent:
                 "error_message": None
             }
             
+        except UserFriendlyError as e:
+            return {
+                "error_message": f"AI Service Configuration Required: {e.message}",
+                "user_friendly_error": True,
+                "action_required": e.action_required
+            }
         except Exception as e:
             return {
                 "error_message": f"Survey generation failed: {str(e)}"

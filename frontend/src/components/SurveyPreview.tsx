@@ -623,34 +623,52 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
             {/* Content */}
             <div className="px-6 py-4">
               <div className="mb-4">
-                <p className="text-gray-700 mb-3">
-                  The document could not be converted to a survey. This is usually caused by:
+                <h3 className="text-lg font-semibold text-gray-800 mb-3">AI Service Configuration Required</h3>
+                <p className="text-gray-700 mb-4">
+                  This application uses AI to automatically generate surveys from your documents. 
+                  To enable this feature, an AI service needs to be configured.
                 </p>
-                <ul className="space-y-2 text-sm text-gray-600">
-                  <li className="flex items-start">
-                    <span className="flex-shrink-0 w-2 h-2 bg-red-400 rounded-full mt-2 mr-3"></span>
-                    <span><strong>Missing API Configuration:</strong> Replicate API token not set or invalid</span>
-                  </li>
-                  <li className="flex items-start">
-                    <span className="flex-shrink-0 w-2 h-2 bg-red-400 rounded-full mt-2 mr-3"></span>
-                    <span><strong>Document Format:</strong> Unsupported file format or corrupted document</span>
-                  </li>
-                  <li className="flex items-start">
-                    <span className="flex-shrink-0 w-2 h-2 bg-red-400 rounded-full mt-2 mr-3"></span>
-                    <span><strong>Network Issues:</strong> Connection problems or API rate limiting</span>
-                  </li>
-                </ul>
-              </div>
-              
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                <h4 className="text-sm font-medium text-blue-800 mb-2">How to Fix This:</h4>
-                <ol className="text-sm text-blue-700 space-y-1">
-                  <li>1. Check that your Replicate API token is configured</li>
-                  <li>2. Ensure the document is a valid .docx file</li>
-                  <li>3. Try uploading a different document using the "Upload & Parse with AI" button above</li>
-                  <li>4. The AI will parse your document and convert it to a survey</li>
-                  <li>5. Contact support if the issue persists</li>
-                </ol>
+                
+                <div className="space-y-4">
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                    <h4 className="text-sm font-medium text-amber-800 mb-2">What's happening?</h4>
+                    <p className="text-sm text-amber-700">
+                      The AI service that converts documents to surveys isn't set up yet. 
+                      This is a one-time configuration that your administrator needs to complete.
+                    </p>
+                  </div>
+                  
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h4 className="text-sm font-medium text-blue-800 mb-3">How to get this working:</h4>
+                    <div className="space-y-3">
+                      <div>
+                        <h5 className="text-sm font-medium text-blue-700 mb-1">Option 1: Replicate (Recommended)</h5>
+                        <ul className="text-xs text-blue-600 space-y-1 ml-4">
+                          <li>• Visit <a href="https://replicate.com" target="_blank" rel="noopener noreferrer" className="underline">replicate.com</a> and create a free account</li>
+                          <li>• Generate an API token from your account settings</li>
+                          <li>• Share the token with your administrator</li>
+                        </ul>
+                      </div>
+                      <div>
+                        <h5 className="text-sm font-medium text-blue-700 mb-1">Option 2: OpenAI (Alternative)</h5>
+                        <ul className="text-xs text-blue-600 space-y-1 ml-4">
+                          <li>• Visit <a href="https://platform.openai.com" target="_blank" rel="noopener noreferrer" className="underline">platform.openai.com</a></li>
+                          <li>• Create an account and generate an API key</li>
+                          <li>• Share the key with your administrator</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">In the meantime, you can:</h4>
+                    <ul className="text-sm text-gray-600 space-y-1">
+                      <li>• Use the manual survey builder to create surveys</li>
+                      <li>• Copy and paste text from your document into the RFQ editor</li>
+                      <li>• Contact your administrator about setting up AI services</li>
+                    </ul>
+                  </div>
+                </div>
               </div>
               
               <div className="flex space-x-3">

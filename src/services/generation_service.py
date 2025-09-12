@@ -1,16 +1,25 @@
 from typing import Dict, List, Any, Optional
 from src.config import settings
 from src.services.prompt_service import PromptService
+from src.utils.error_messages import UserFriendlyError, get_api_configuration_error
 from sqlalchemy.orm import Session
 import replicate
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class GenerationService:
     def __init__(self, db_session: Optional[Session] = None) -> None:
-        replicate.api_token = settings.replicate_api_token  # type: ignore
         self.model = settings.generation_model
         self.prompt_service = PromptService(db_session=db_session)
+        
+        # Check if we have the required API token
+        if not settings.replicate_api_token:
+            logger.warning("No Replicate API token configured. Survey generation will fail.")
+        
+        replicate.api_token = settings.replicate_api_token  # type: ignore
     
     async def generate_survey(
         self,
@@ -23,6 +32,15 @@ class GenerationService:
         Generate survey using GPT with rules-based prompts and golden examples
         """
         try:
+            # Check if API token is configured
+            if not settings.replicate_api_token:
+                error_info = get_api_configuration_error()
+                raise UserFriendlyError(
+                    message=error_info["message"],
+                    technical_details="REPLICATE_API_TOKEN environment variable is not set",
+                    action_required="Configure AI service provider (Replicate or OpenAI)"
+                )
+            
             # Build comprehensive prompt with rules and golden examples
             prompt = self.prompt_service.build_golden_enhanced_prompt(
                 context=context,
@@ -30,6 +48,9 @@ class GenerationService:
                 methodology_blocks=methodology_blocks,
                 custom_rules=custom_rules
             )
+            
+            logger.info(f"🤖 [GenerationService] Generating survey with model: {self.model}")
+            logger.info(f"📝 [GenerationService] Prompt length: {len(prompt)} characters")
             
             output = await replicate.async_run(
                 self.model,
@@ -41,17 +62,35 @@ class GenerationService:
                 }
             )
             
+            logger.info(f"✅ [GenerationService] Received response from {self.model}")
+            
             # Handle different output formats from Replicate
             if isinstance(output, list):
                 survey_text = "".join(output)
             else:
                 survey_text = str(output)
+            
+            logger.info(f"📊 [GenerationService] Response length: {len(survey_text)} characters")
             survey_json = self._extract_survey_json(survey_text)
             
+            logger.info(f"🎉 [GenerationService] Successfully generated survey with {len(survey_json.get('questions', []))} questions")
             return survey_json
             
+        except UserFriendlyError:
+            # Re-raise user-friendly errors as-is
+            raise
         except Exception as e:
-            raise Exception(f"Survey generation failed: {str(e)}")
+            logger.error(f"❌ [GenerationService] Survey generation failed: {str(e)}")
+            # Check if it's an API token related error
+            if "api" in str(e).lower() and "token" in str(e).lower():
+                error_info = get_api_configuration_error()
+                raise UserFriendlyError(
+                    message=error_info["message"],
+                    technical_details=str(e),
+                    action_required="Configure AI service provider (Replicate or OpenAI)"
+                )
+            else:
+                raise Exception(f"Survey generation failed: {str(e)}")
     
     
     def _extract_survey_json(self, response_text: str) -> Dict[str, Any]:

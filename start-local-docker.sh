@@ -94,9 +94,10 @@ start_services() {
     echo -e "${BLUE}🛑 Stopping existing containers...${NC}"
     $COMPOSE_CMD down --remove-orphans
     
-    # Build and start services
-    echo -e "${BLUE}🏗️  Building and starting services...${NC}"
-    $COMPOSE_CMD up --build -d
+    # Build and start services (force rebuild for local architecture)
+    echo -e "${BLUE}🏗️  Building and starting services for $(uname -m) architecture...${NC}"
+    $COMPOSE_CMD build --no-cache
+    $COMPOSE_CMD up -d
     
     echo -e "${GREEN}✅ Docker services started${NC}"
 }
@@ -294,6 +295,14 @@ case "${1:-start}" in
         check_docker_compose
         rebuild_frontend
         ;;
+    "build-local")
+        check_docker
+        check_docker_compose
+        echo -e "${YELLOW}🏗️  Building images for local $(uname -m) architecture...${NC}"
+        build_frontend
+        $COMPOSE_CMD build --no-cache
+        echo -e "${GREEN}✅ Local build completed${NC}"
+        ;;
     "restart-service")
         check_docker
         check_docker_compose
@@ -326,6 +335,7 @@ case "${1:-start}" in
         echo "  status           - Show service status and URLs"
         echo "  cleanup          - Stop services and remove all Docker resources"
         echo "  rebuild-frontend - Rebuild and restart just the frontend"
+        echo "  build-local      - Build images for local ARM64/AMD64 architecture"
         echo "  restart-service  - Restart a specific service (backend, frontend, etc.)"
         echo "  shell            - Open shell in container (default: backend)"
         echo "  migrate          - Run database migrations only"

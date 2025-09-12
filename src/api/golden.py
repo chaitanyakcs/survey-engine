@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from src.database import get_db
 from src.services.golden_service import GoldenService
 from src.services.document_parser import document_parser, DocumentParsingError
+from src.utils.error_messages import UserFriendlyError, create_error_response
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from uuid import UUID
@@ -242,9 +243,15 @@ async def parse_document(
         logger.info(f"🎉 [Document Parse] Successfully parsed document: {file.filename}")
         return response
         
+    except UserFriendlyError as e:
+        logger.error(f"❌ [Document Parse] User-friendly error for {file.filename}: {str(e)}")
+        error_response = create_error_response(e, f"document parsing for {file.filename}")
+        raise HTTPException(status_code=422, detail=error_response)
     except DocumentParsingError as e:
         logger.error(f"❌ [Document Parse] Document parsing error for {file.filename}: {str(e)}")
-        raise HTTPException(status_code=422, detail=str(e))
+        error_response = create_error_response(e, f"document parsing for {file.filename}")
+        raise HTTPException(status_code=422, detail=error_response)
     except Exception as e:
         logger.error(f"❌ [Document Parse] Unexpected error parsing {file.filename}: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to parse document: {str(e)}")
+        error_response = create_error_response(e, f"document parsing for {file.filename}")
+        raise HTTPException(status_code=500, detail=error_response)

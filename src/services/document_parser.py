@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from ..models.survey import SurveyCreate, Question, QuestionType
 from ..config.settings import settings
+from ..utils.error_messages import UserFriendlyError, get_api_configuration_error
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,12 @@ class DocumentParser:
     
     def __init__(self):
         if not settings.replicate_api_token:
-            raise ValueError("REPLICATE_API_TOKEN is required but not set. Please set it in your environment variables or .env file.")
+            error_info = get_api_configuration_error()
+            raise UserFriendlyError(
+                message=error_info["message"],
+                technical_details="REPLICATE_API_TOKEN environment variable is not set",
+                action_required="Configure AI service provider (Replicate or OpenAI)"
+            )
         replicate.api_token = settings.replicate_api_token  # type: ignore
         self.model = settings.generation_model  # Use GPT-5 from settings
     
