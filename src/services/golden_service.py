@@ -3,6 +3,9 @@ from src.database import GoldenRFQSurveyPair
 from src.services.embedding_service import EmbeddingService
 from typing import Dict, List, Any, Optional
 from uuid import UUID
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class GoldenService:
@@ -35,10 +38,22 @@ class GoldenService:
         """
         Create new golden standard pair with embedding generation
         """
+        logger.info(f"🏆 [GoldenService] Starting golden pair creation")
+        logger.info(f"📝 [GoldenService] Input data - title: {title}, rfq_text_length: {len(rfq_text) if rfq_text else 0}")
+        logger.info(f"📊 [GoldenService] Survey JSON type: {type(survey_json)}")
+        logger.info(f"📊 [GoldenService] Survey JSON keys: {list(survey_json.keys()) if isinstance(survey_json, dict) else 'Not a dict'}")
+        logger.info(f"🏷️ [GoldenService] Methodology tags: {methodology_tags}")
+        logger.info(f"🏭 [GoldenService] Industry category: {industry_category}")
+        logger.info(f"🎯 [GoldenService] Research goal: {research_goal}")
+        logger.info(f"⭐ [GoldenService] Quality score: {quality_score}")
+        
         try:
+            logger.info(f"🧠 [GoldenService] Generating embedding for RFQ text")
             # Generate embedding for RFQ text
             rfq_embedding = await self.embedding_service.get_embedding(rfq_text)
+            logger.info(f"✅ [GoldenService] Embedding generated successfully, length: {len(rfq_embedding) if rfq_embedding else 0}")
             
+            logger.info(f"💾 [GoldenService] Creating GoldenRFQSurveyPair record")
             # Create golden pair record
             golden_pair = GoldenRFQSurveyPair(
                 title=title,
@@ -51,13 +66,23 @@ class GoldenService:
                 quality_score=quality_score
             )
             
+            logger.info(f"💾 [GoldenService] Adding golden pair to database")
             self.db.add(golden_pair)
+            
+            logger.info(f"💾 [GoldenService] Committing transaction")
             self.db.commit()
+            
+            logger.info(f"💾 [GoldenService] Refreshing golden pair from database")
             self.db.refresh(golden_pair)
+            
+            logger.info(f"✅ [GoldenService] Golden pair created successfully with ID: {golden_pair.id}")
+            logger.info(f"📋 [GoldenService] Created pair details - title: {golden_pair.title}, quality_score: {golden_pair.quality_score}")
             
             return golden_pair
             
         except Exception as e:
+            logger.error(f"❌ [GoldenService] Failed to create golden pair: {str(e)}", exc_info=True)
+            logger.error(f"❌ [GoldenService] Rolling back transaction")
             self.db.rollback()
             raise Exception(f"Failed to create golden pair: {str(e)}")
     

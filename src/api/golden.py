@@ -77,8 +77,19 @@ async def create_golden_pair(
     """
     Add new golden standard (requires quality_score)
     """
+    logger.info(f"🏆 [Golden Pair API] Starting golden pair creation")
+    logger.info(f"📝 [Golden Pair API] Request data - title: {request.title}, rfq_text_length: {len(request.rfq_text) if request.rfq_text else 0}")
+    logger.info(f"📊 [Golden Pair API] Survey JSON keys: {list(request.survey_json.keys()) if isinstance(request.survey_json, dict) else 'Not a dict'}")
+    logger.info(f"🏷️ [Golden Pair API] Methodology tags: {request.methodology_tags}")
+    logger.info(f"🏭 [Golden Pair API] Industry category: {request.industry_category}")
+    logger.info(f"🎯 [Golden Pair API] Research goal: {request.research_goal}")
+    logger.info(f"⭐ [Golden Pair API] Quality score: {request.quality_score}")
+    
     try:
+        logger.info(f"🔧 [Golden Pair API] Initializing GoldenService")
         golden_service = GoldenService(db)
+        
+        logger.info(f"💾 [Golden Pair API] Calling golden_service.create_golden_pair")
         golden_pair = await golden_service.create_golden_pair(
             rfq_text=request.rfq_text,
             survey_json=request.survey_json,
@@ -89,7 +100,10 @@ async def create_golden_pair(
             quality_score=request.quality_score
         )
         
-        return GoldenPairResponse(
+        logger.info(f"✅ [Golden Pair API] Golden pair created successfully with ID: {golden_pair.id}")
+        logger.info(f"📋 [Golden Pair API] Created pair details - title: {getattr(golden_pair, 'title', None)}, quality_score: {golden_pair.quality_score}")
+        
+        response = GoldenPairResponse(
             id=str(golden_pair.id),
             title=getattr(golden_pair, 'title', None),
             rfq_text=golden_pair.rfq_text,
@@ -101,7 +115,11 @@ async def create_golden_pair(
             usage_count=golden_pair.usage_count
         )
         
+        logger.info(f"🎉 [Golden Pair API] Successfully created golden pair: {response.id}")
+        return response
+        
     except Exception as e:
+        logger.error(f"❌ [Golden Pair API] Failed to create golden pair: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to create golden pair: {str(e)}")
 
 
@@ -222,25 +240,33 @@ async def parse_document(
         survey_data = await document_parser.parse_document(file_content)
         logger.info(f"✅ [Document Parse] LLM parsing completed for: {file.filename}")
         
+        # Log detailed survey data structure for debugging
+        logger.info(f"📊 [Document Parse] Survey data type: {type(survey_data)}")
+        logger.info(f"📊 [Document Parse] Survey data keys: {list(survey_data.keys()) if isinstance(survey_data, dict) else 'Not a dict'}")
+        if isinstance(survey_data, dict):
+            logger.info(f"📊 [Document Parse] Survey title: {survey_data.get('title', 'No title')}")
+            logger.info(f"📊 [Document Parse] Survey description: {survey_data.get('description', 'No description')[:100]}...")
+            logger.info(f"📊 [Document Parse] Questions count: {len(survey_data.get('questions', []))}")
+            logger.info(f"📊 [Document Parse] Confidence score: {survey_data.get('confidence_score', 'No score')}")
+            logger.info(f"📊 [Document Parse] Methodologies: {survey_data.get('methodologies', [])}")
+            logger.info(f"📊 [Document Parse] Full survey data: {survey_data}")
+        else:
+            logger.error(f"❌ [Document Parse] Survey data is not a dictionary: {survey_data}")
+        
         logger.info(f"📝 [Document Parse] Extracting text preview for: {file.filename}")
         # Extract text for preview
         extracted_text = document_parser.extract_text_from_docx(file_content)
         logger.info(f"✅ [Document Parse] Text extraction completed, length: {len(extracted_text)} chars")
-        
-        # Log survey data structure for debugging
-        logger.info(f"📊 [Document Parse] Survey data keys: {list(survey_data.keys()) if isinstance(survey_data, dict) else 'Not a dict'}")
-        if isinstance(survey_data, dict):
-            logger.info(f"📊 [Document Parse] Survey title: {survey_data.get('title', 'No title')}")
-            logger.info(f"📊 [Document Parse] Questions count: {len(survey_data.get('questions', []))}")
-            logger.info(f"📊 [Document Parse] Confidence score: {survey_data.get('confidence_score', 'No score')}")
+        logger.info(f"📝 [Document Parse] Extracted text preview: {extracted_text[:200]}...")
         
         response = DocumentParseResponse(
             survey_json=survey_data,
-            confidence_score=survey_data.get('confidence_score'),
+            confidence_score=survey_data.get('confidence_score') if isinstance(survey_data, dict) else None,
             extracted_text=extracted_text[:1000] + "..." if len(extracted_text) > 1000 else extracted_text
         )
         
         logger.info(f"🎉 [Document Parse] Successfully parsed document: {file.filename}")
+        logger.info(f"📤 [Document Parse] Response prepared - survey_json_keys: {list(response.survey_json.keys()) if isinstance(response.survey_json, dict) else 'Not a dict'}")
         return response
         
     except UserFriendlyError as e:

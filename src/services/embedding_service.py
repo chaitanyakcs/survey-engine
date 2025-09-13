@@ -67,19 +67,22 @@ class EmbeddingService:
         self._model_loading = True
         EmbeddingService._model_loading = True
         try:
-            print(f"🔄 [EmbeddingService] Loading SentenceTransformer model: {self.model_name}")
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"🔄 [EmbeddingService] Loading SentenceTransformer model: {self.model_name}")
+            logger.info(f"⏳ [EmbeddingService] This may take a few seconds on first run...")
             model = SentenceTransformer(self.model_name)
             
             # Store at class level for sharing
             EmbeddingService._model = model
             self.model = model
             
-            print(f"✅ [EmbeddingService] Model loaded successfully: {self.model_name}")
+            logger.info(f"✅ [EmbeddingService] Model loaded successfully: {self.model_name}")
         except Exception as e:
-            print(f"❌ [EmbeddingService] Failed to load model {self.model_name}: {str(e)}")
+            logger.error(f"❌ [EmbeddingService] Failed to load model {self.model_name}: {str(e)}")
             # Fallback to a default model
             try:
-                print(f"🔄 [EmbeddingService] Trying fallback model: all-MiniLM-L6-v2")
+                logger.info(f"🔄 [EmbeddingService] Trying fallback model: all-MiniLM-L6-v2")
                 model = SentenceTransformer('all-MiniLM-L6-v2')
                 
                 # Store at class level for sharing

@@ -48,7 +48,35 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
         except Exception as e:
             logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
         
-        return await rfq_node(state)
+        # Send additional progress update for embedding generation
+        try:
+            logger.info(f"📡 [Workflow] Sending progress update: generating_embeddings for workflow_id={state.workflow_id}")
+            await ws_client.send_progress_update(state.workflow_id, {
+                "type": "progress",
+                "step": "generating_embeddings",
+                "percent": 15,
+                "message": "Generating embeddings for semantic search..."
+            })
+            logger.info(f"✅ [Workflow] Progress update sent successfully: generating_embeddings")
+        except Exception as e:
+            logger.error(f"❌ [Workflow] Failed to send embedding progress update: {str(e)}")
+        
+        result = await rfq_node(state)
+        
+        # Send completion progress update
+        try:
+            logger.info(f"📡 [Workflow] Sending progress update: rfq_parsed for workflow_id={state.workflow_id}")
+            await ws_client.send_progress_update(state.workflow_id, {
+                "type": "progress",
+                "step": "rfq_parsed",
+                "percent": 20,
+                "message": "RFQ analysis completed, starting golden example retrieval..."
+            })
+            logger.info(f"✅ [Workflow] Progress update sent successfully: rfq_parsed")
+        except Exception as e:
+            logger.error(f"❌ [Workflow] Failed to send RFQ completion progress update: {str(e)}")
+        
+        return result
     
     async def retrieve_golden_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
         """Retrieve golden examples with progress update"""
@@ -109,7 +137,15 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
         except Exception as e:
             logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
         
-        return await generator(state)
+        logger.info("🚀 [Workflow] About to call GeneratorAgent...")
+        logger.info(f"📊 [Workflow] State before generation - context: {bool(state.context)}, golden_examples: {len(state.golden_examples) if state.golden_examples else 0}")
+        
+        result = await generator(state)
+        
+        logger.info(f"📊 [Workflow] GeneratorAgent result keys: {list(result.keys()) if result else 'None'}")
+        logger.info(f"📊 [Workflow] GeneratorAgent error_message: {result.get('error_message', 'None') if result else 'None'}")
+        
+        return result
     
     async def validate_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
         """Validate survey with progress update"""

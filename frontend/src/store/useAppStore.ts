@@ -21,8 +21,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   // Workflow State
   workflow: {
-    status: 'idle'
-  },
+    status: 'idle' as WorkflowState['status']
+  } as WorkflowState,
   
   setWorkflowState: (workflowState) => set((state) => ({
     workflow: { ...state.workflow, ...workflowState }
@@ -373,7 +373,19 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   createGoldenExample: async (example: GoldenExampleRequest) => {
+    console.log('🏆 [Store] Starting golden example creation');
+    console.log('📝 [Store] Example data:', {
+      rfq_text_length: example.rfq_text?.length || 0,
+      survey_json_keys: Object.keys(example.survey_json || {}),
+      methodology_tags: example.methodology_tags,
+      industry_category: example.industry_category,
+      research_goal: example.research_goal,
+      quality_score: example.quality_score
+    });
+    console.log('📊 [Store] Survey JSON:', example.survey_json);
+    
     try {
+      console.log('🚀 [Store] Sending POST request to /api/v1/golden-pairs/');
       const response = await fetch('/api/v1/golden-pairs/', {
         method: 'POST',
         headers: {
@@ -381,7 +393,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
         },
         body: JSON.stringify(example),
       });
-      if (!response.ok) throw new Error('Failed to create golden example');
+      
+      console.log('📡 [Store] Response status:', response.status, response.statusText);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ [Store] API error response:', errorText);
+        throw new Error(`Failed to create golden example: ${response.status} ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      console.log('✅ [Store] Golden example created successfully:', result);
       
       // Show success toast
       get().addToast({
@@ -390,8 +412,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
         message: 'Golden example created successfully',
         duration: 4000
       });
+      
+      console.log('🎉 [Store] Golden example creation completed successfully');
     } catch (error) {
-      console.error('Failed to create golden example:', error);
+      console.error('❌ [Store] Failed to create golden example:', error);
+      console.error('❌ [Store] Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
       
       // Show error toast
       get().addToast({

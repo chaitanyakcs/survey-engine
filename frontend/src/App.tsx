@@ -4,6 +4,7 @@ import { SurveyGeneratorPage, SurveyPreviewPage, GoldenExamplesPage } from './pa
 import { RulesPage } from './pages/RulesPage';
 import { SurveysPage } from './pages/SurveysPage';
 import { GoldenExampleEditPage } from './pages/GoldenExampleEditPage';
+import { GoldenExampleCreatePage } from './pages/GoldenExampleCreatePage';
 import { ToastContainer } from './components/Toast';
 import { SidebarProvider } from './contexts/SidebarContext';
 
@@ -27,6 +28,9 @@ function App() {
     }
     if (path.startsWith('/golden-examples/') && path.includes('/edit')) {
       return 'golden-edit';
+    }
+    if (path === '/golden-examples/new') {
+      return 'golden-create';
     }
     return 'generator';
   };
@@ -70,6 +74,8 @@ function App() {
           <GoldenExamplesPage />
         ) : currentPage === 'golden-edit' ? (
           <GoldenExampleEditPage />
+        ) : currentPage === 'golden-create' ? (
+          <GoldenExampleCreatePage />
         ) : (
           <SurveyGeneratorPage />
         )}

@@ -153,13 +153,16 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                 json_content = str(output).strip()
                 
             logger.info(f"✅ [Document Parser] LLM response received, length: {len(json_content)} chars")
-            logger.debug(f"📄 [Document Parser] LLM response preview: {json_content[:200]}...")
+            logger.info(f"📄 [Document Parser] LLM response preview: {json_content[:500]}...")
+            logger.info(f"📄 [Document Parser] LLM response ending: ...{json_content[-200:]}")
             
             # Try to parse the JSON
             logger.info(f"🔍 [Document Parser] Parsing JSON response")
             try:
                 survey_data = json.loads(json_content)
                 logger.info(f"✅ [Document Parser] JSON parsing successful")
+                logger.info(f"📊 [Document Parser] Parsed data keys: {list(survey_data.keys()) if isinstance(survey_data, dict) else 'Not a dict'}")
+                logger.info(f"📊 [Document Parser] Full parsed data: {survey_data}")
                 
                 # Validate the expected structure
                 if not isinstance(survey_data, dict):

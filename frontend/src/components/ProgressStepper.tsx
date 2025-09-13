@@ -1,8 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { CheckIcon, ClockIcon, SparklesIcon } from '@heroicons/react/24/solid';
 import { useAppStore } from '../store/useAppStore';
+import { WorkflowState } from '../types';
 
 const STEPS = [
+  { 
+    key: 'initializing_workflow', 
+    label: 'Starting Workflow', 
+    description: 'Initializing survey generation process',
+    icon: '🚀',
+    color: 'blue',
+    details: 'Setting up the AI-powered survey generation workflow'
+  },
   { 
     key: 'parsing_rfq', 
     label: 'Analyzing Request', 
@@ -10,6 +19,22 @@ const STEPS = [
     icon: '📋',
     color: 'blue',
     details: 'Extracting research objectives, target audience, and key goals from your RFQ'
+  },
+  { 
+    key: 'generating_embeddings', 
+    label: 'Generating Embeddings', 
+    description: 'Creating semantic search vectors',
+    icon: '🧠',
+    color: 'purple',
+    details: 'Converting your request into searchable vectors for finding similar surveys'
+  },
+  { 
+    key: 'rfq_parsed', 
+    label: 'RFQ Analysis Complete', 
+    description: 'Request analysis finished',
+    icon: '✅',
+    color: 'green',
+    details: 'Successfully analyzed your research request and generated embeddings'
   },
   { 
     key: 'matching_golden_examples', 
@@ -20,20 +45,12 @@ const STEPS = [
     details: 'Matching your needs with our database of high-performing surveys'
   },
   { 
-    key: 'applying_business_rules', 
-    label: 'Applying Standards', 
-    description: 'Implementing quality guidelines and best practices',
-    icon: '⚖️',
-    color: 'orange',
-    details: 'Ensuring compliance with market research standards and business requirements'
-  },
-  { 
-    key: 'planning_methodologies', 
-    label: 'Designing Approach', 
-    description: 'Selecting optimal research methodologies',
-    icon: '🧠',
+    key: 'building_context', 
+    label: 'Building Context', 
+    description: 'Assembling research context',
+    icon: '📚',
     color: 'indigo',
-    details: 'Choosing the most effective research methods for your objectives'
+    details: 'Combining golden examples, methodology blocks, and templates'
   },
   { 
     key: 'generating_questions', 
@@ -55,9 +72,17 @@ const STEPS = [
     key: 'finalizing', 
     label: 'Finalizing Survey', 
     description: 'Preparing your professional survey',
-    icon: '🚀',
+    icon: '🎯',
     color: 'emerald',
     details: 'Final review and preparation for deployment to respondents'
+  },
+  { 
+    key: 'completed', 
+    label: 'Survey Ready!', 
+    description: 'Your survey is complete and ready to view',
+    icon: '🎉',
+    color: 'emerald',
+    details: 'Survey generation completed successfully!'
   }
 ];
 
@@ -71,6 +96,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
   onCancelGeneration 
 }) => {
   const { workflow, currentSurvey } = useAppStore();
+  const workflowStatus = workflow.status as any;
   const [currentStepIndex, setCurrentStepIndex] = useState(-1);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   
@@ -96,7 +122,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
   
   const getStepStatus = (index: number) => {
     // If workflow is completed, all steps should be completed
-    if (workflow.status === 'completed') return 'completed';
+    if (workflowStatus === 'completed') return 'completed';
     
     if (completedSteps.includes(index)) return 'completed';
     if (index === currentStepIndex) return 'current';
@@ -347,60 +373,17 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
         </div>
       </div>
 
-      {/* Progress Bar */}
-      {workflow.status === 'started' || workflow.status === 'in_progress' ? (
-        <div className="mt-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl">
-          <div className="flex items-center justify-between mb-4">
-            <h4 className="font-semibold text-blue-900">Progress</h4>
-            <span className="text-sm font-medium text-blue-700">
-              {workflow.progress || 0}%
-            </span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
-            <div 
-              className="bg-gradient-to-r from-blue-500 to-indigo-500 h-3 rounded-full transition-all duration-500 ease-out"
-              style={{ width: `${workflow.progress || 0}%` }}
-            />
-          </div>
-          {workflow.message && (
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
-                <SparklesIcon className="w-4 h-4 text-white" />
-              </div>
-              <div>
-                <p className="text-blue-700 font-medium">{workflow.message}</p>
-                {currentStepIndex >= 0 && (
-                  <p className="text-sm text-blue-600">
-                    Step {currentStepIndex + 1} of {STEPS.length}: {STEPS[currentStepIndex]?.label}
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      ) : workflow.message && currentStepIndex >= 0 ? (
-        <div className="mt-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl">
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
-              <SparklesIcon className="w-4 h-4 text-white" />
-            </div>
-            <div>
-              <h4 className="font-semibold text-blue-900">Current Activity</h4>
-              <p className="text-blue-700">{workflow.message}</p>
-            </div>
-          </div>
-        </div>
-      ) : null}
 
-      {/* Action Buttons */}
-      <div className="mt-8 flex justify-center space-x-4">
+      {/* Action Buttons - Only show during generation, not when completed */}
+      {workflowStatus !== 'completed' && (
+        <div className="mt-8 flex justify-center space-x-4">
         {/* Show Survey Button - enabled only when completed and survey exists */}
         <button
           onClick={() => onShowSurvey && onShowSurvey()}
-          disabled={workflow.status !== 'completed' || !currentSurvey}
+          disabled={workflowStatus !== 'completed' || !currentSurvey}
           className={`
             inline-flex items-center px-8 py-3 rounded-xl font-medium text-lg transition-all duration-200
-            ${workflow.status === 'completed' && currentSurvey
+            ${workflowStatus === 'completed' && currentSurvey
               ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg hover:shadow-emerald-200 transform hover:scale-105'
               : 'bg-gray-200 text-gray-400 cursor-not-allowed'
             }
@@ -411,7 +394,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
           </svg>
           View Survey
-          {workflow.status === 'completed' && currentSurvey && (
+          {workflowStatus === 'completed' && currentSurvey && (
             <span className="ml-2 text-emerald-200">✓</span>
           )}
         </button>
@@ -419,10 +402,10 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
         {/* Cancel Generation Button - enabled only during generation */}
         <button
           onClick={() => onCancelGeneration && onCancelGeneration()}
-          disabled={workflow.status !== 'started' && workflow.status !== 'in_progress'}
+          disabled={workflowStatus !== 'started' && workflowStatus !== 'in_progress'}
           className={`
             inline-flex items-center px-6 py-3 rounded-xl font-medium transition-all duration-200
-            ${workflow.status === 'started' || workflow.status === 'in_progress'
+            ${workflowStatus === 'started' || workflowStatus === 'in_progress'
               ? 'bg-red-100 hover:bg-red-200 text-red-700 border border-red-300 hover:border-red-400'
               : 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
             }
@@ -433,37 +416,38 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
           </svg>
           Cancel Generation
         </button>
-      </div>
+        </div>
+      )}
 
       {/* Status Information */}
       <div className="mt-6 text-center">
         <div className={`
           inline-flex items-center px-4 py-2 rounded-full text-sm font-medium
-          ${workflow.status === 'completed' 
+          ${workflowStatus === 'completed' 
             ? 'bg-emerald-100 text-emerald-800' 
-            : workflow.status === 'failed' 
+            : workflowStatus === 'failed' 
             ? 'bg-red-100 text-red-800'
-            : workflow.status === 'started' || workflow.status === 'in_progress'
+            : workflowStatus === 'started' || workflowStatus === 'in_progress'
             ? 'bg-blue-100 text-blue-800'
             : 'bg-gray-100 text-gray-600'
           }
         `}>
           <div className={`
             w-2 h-2 rounded-full mr-2
-            ${workflow.status === 'completed' 
+            ${workflowStatus === 'completed' 
               ? 'bg-emerald-500' 
-              : workflow.status === 'failed' 
+              : workflowStatus === 'failed' 
               ? 'bg-red-500'
-              : workflow.status === 'started' || workflow.status === 'in_progress'
+              : workflowStatus === 'started' || workflowStatus === 'in_progress'
               ? 'bg-blue-500 animate-pulse'
               : 'bg-gray-400'
             }
           `} />
-          {workflow.status === 'completed' 
+          {workflowStatus === 'completed' 
             ? 'Survey Generation Complete' 
-            : workflow.status === 'failed' 
+            : workflowStatus === 'failed' 
             ? 'Generation Failed'
-            : workflow.status === 'started' || workflow.status === 'in_progress'
+            : workflowStatus === 'started' || workflowStatus === 'in_progress'
             ? 'Generating Survey...'
             : 'Ready to Generate'
           }

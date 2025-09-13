@@ -206,6 +206,14 @@ class WorkflowService:
                 status=survey.status
             )
             
+            # Send 100% completion progress update
+            await self.ws_client.send_progress_update(initial_state.workflow_id, {
+                "type": "progress",
+                "step": "completed",
+                "percent": 100,
+                "message": "Survey generation completed successfully!"
+            })
+            
             # Send completion notification
             await self.ws_client.notify_workflow_completion(
                 initial_state.workflow_id,

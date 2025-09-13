@@ -1,6 +1,6 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from src.api import rfq_router, survey_router, golden_router, analytics_router, rules_router
+from src.api import rfq_router, survey_router, golden_router, analytics_router, rules_router, utils_router, field_extraction_router
 from src.config import settings
 import logging
 import asyncio
@@ -75,6 +75,8 @@ app.include_router(survey_router, prefix="/api/v1")
 app.include_router(golden_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(rules_router, prefix="/api/v1")
+app.include_router(utils_router, prefix="/api/v1")
+app.include_router(field_extraction_router, prefix="/api/v1")
 
 
 @app.websocket("/ws/survey/{workflow_id}")

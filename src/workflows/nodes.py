@@ -19,7 +19,11 @@ class RFQNode:
         """
         try:
             # Generate embedding for the RFQ text
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info("🔄 [RFQNode] Starting embedding generation...")
             embedding = await self.embedding_service.get_embedding(state.rfq_text)
+            logger.info("✅ [RFQNode] Embedding generation completed")
             
             # TODO: Extract research goals and methodologies using NLP
             # Placeholder implementation
@@ -47,27 +51,35 @@ class GoldenRetrieverNode:
         Multi-tier retrieval (golden pairs → methodology blocks → templates)
         """
         try:
-            # Tier 1: Exact golden RFQ-survey pairs
-            if state.rfq_embedding is None:
-                golden_examples = []
-            else:
-                golden_examples = await self.retrieval_service.retrieve_golden_pairs(
-                    embedding=state.rfq_embedding,
-                    methodology_tags=None,  # TODO: Extract from RFQ
-                    limit=3
+            # Get a fresh database session to avoid transaction issues
+            from src.database import get_db
+            fresh_db = next(get_db())
+            fresh_retrieval_service = RetrievalService(fresh_db)
+            
+            try:
+                # Tier 1: Exact golden RFQ-survey pairs
+                if state.rfq_embedding is None:
+                    golden_examples = []
+                else:
+                    golden_examples = await fresh_retrieval_service.retrieve_golden_pairs(
+                        embedding=state.rfq_embedding,
+                        methodology_tags=None,  # TODO: Extract from RFQ
+                        limit=3
+                    )
+                
+                # Tier 2: Methodology blocks
+                methodology_blocks = await fresh_retrieval_service.retrieve_methodology_blocks(
+                    research_goal=state.research_goal,
+                    limit=5
                 )
-            
-            # Tier 2: Methodology blocks
-            methodology_blocks = await self.retrieval_service.retrieve_methodology_blocks(
-                research_goal=state.research_goal,
-                limit=5
-            )
-            
-            # Tier 3: Template questions (fallback)
-            template_questions = await self.retrieval_service.retrieve_template_questions(
-                category=state.product_category,
-                limit=10
-            )
+                
+                # Tier 3: Template questions (fallback)
+                template_questions = await fresh_retrieval_service.retrieve_template_questions(
+                    category=state.product_category,
+                    limit=10
+                )
+            finally:
+                fresh_db.close()
             
             return {
                 "golden_examples": golden_examples,
@@ -120,29 +132,62 @@ class GeneratorAgent:
     def __init__(self, db: Session):
         self.db = db
         self.generation_service = GenerationService(db_session=db)
+        import logging
+        self.logger = logging.getLogger(__name__)
     
     async def __call__(self, state: SurveyGenerationState) -> Dict[str, Any]:
         """
         GPT-4/5 generation with golden-enhanced prompts
         """
         try:
-            # Load custom rules from database
-            from src.database.models import SurveyRule
-            custom_rules_query = self.db.query(SurveyRule).filter(
-                SurveyRule.rule_type == 'custom',
-                SurveyRule.is_active == True
-            ).all()
+            self.logger.info("🤖 [GeneratorAgent] Starting survey generation...")
+            self.logger.info(f"📊 [GeneratorAgent] State context keys: {list(state.context.keys()) if state.context else 'None'}")
+            self.logger.info(f"📊 [GeneratorAgent] Golden examples count: {len(state.golden_examples) if state.golden_examples else 0}")
+            self.logger.info(f"📊 [GeneratorAgent] Methodology blocks count: {len(state.methodology_blocks) if state.methodology_blocks else 0}")
+            
+            # Get a fresh database session to avoid transaction issues
+            from src.database import get_db
+            fresh_db = next(get_db())
+            
+            try:
+                # Load custom rules from database using fresh session
+                from src.database.models import SurveyRule
+                custom_rules_query = fresh_db.query(SurveyRule).filter(
+                    SurveyRule.rule_type == 'custom',
+                    SurveyRule.is_active == True
+                ).all()
+            except Exception as db_error:
+                self.logger.warning(f"⚠️ [GeneratorAgent] Failed to load custom rules: {str(db_error)}")
+                custom_rules_query = []
+            finally:
+                fresh_db.close()
             
             custom_rules = {
                 "rules": [rule.rule_description for rule in custom_rules_query if rule.rule_description]
             }
             
+            self.logger.info(f"📋 [GeneratorAgent] Custom rules loaded: {len(custom_rules['rules'])} rules")
+            self.logger.info(f"🔧 [GeneratorAgent] Generation service model: {self.generation_service.model}")
+            
+            # Check API token configuration
+            from src.config import settings
+            self.logger.info(f"🔧 [GeneratorAgent] Replicate API token configured: {bool(settings.replicate_api_token)}")
+            if settings.replicate_api_token:
+                self.logger.info(f"🔧 [GeneratorAgent] Replicate API token preview: {settings.replicate_api_token[:8]}...")
+            
+            self.logger.info("🚀 [GeneratorAgent] Calling generation service...")
             generated_survey = await self.generation_service.generate_survey(
                 context=state.context,
                 golden_examples=state.golden_examples,
                 methodology_blocks=state.methodology_blocks,
                 custom_rules=custom_rules
             )
+            
+            self.logger.info(f"✅ [GeneratorAgent] Generation completed. Survey keys: {list(generated_survey.keys()) if generated_survey else 'None'}")
+            if generated_survey and 'questions' in generated_survey:
+                self.logger.info(f"📝 [GeneratorAgent] Generated {len(generated_survey['questions'])} questions")
+            else:
+                self.logger.warning("⚠️ [GeneratorAgent] No questions found in generated survey")
             
             return {
                 "raw_survey": generated_survey,
@@ -151,12 +196,14 @@ class GeneratorAgent:
             }
             
         except UserFriendlyError as e:
+            self.logger.error(f"❌ [GeneratorAgent] UserFriendlyError: {e.message}")
             return {
                 "error_message": f"AI Service Configuration Required: {e.message}",
                 "user_friendly_error": True,
                 "action_required": e.action_required
             }
         except Exception as e:
+            self.logger.error(f"❌ [GeneratorAgent] Exception during generation: {str(e)}", exc_info=True)
             return {
                 "error_message": f"Survey generation failed: {str(e)}"
             }
@@ -176,17 +223,25 @@ class GoldenValidatorNode:
                 validation_results = {"schema_valid": False, "methodology_compliant": False}
                 similarity_score = 0.0
             else:
-                validation_results = await self.validation_service.validate_survey(
-                    survey=state.generated_survey,
-                    golden_examples=state.golden_examples,
-                    rfq_text=state.rfq_text
-                )
+                # Get a fresh database session to avoid transaction issues
+                from src.database import get_db
+                fresh_db = next(get_db())
+                fresh_validation_service = ValidationService(fresh_db)
                 
-                # Calculate golden similarity score
-                similarity_score = await self.validation_service.calculate_golden_similarity(
-                    survey=state.generated_survey,
-                    golden_examples=state.golden_examples
-                )
+                try:
+                    validation_results = await fresh_validation_service.validate_survey(
+                        survey=state.generated_survey,
+                        golden_examples=state.golden_examples,
+                        rfq_text=state.rfq_text
+                    )
+                    
+                    # Calculate golden similarity score
+                    similarity_score = await fresh_validation_service.calculate_golden_similarity(
+                        survey=state.generated_survey,
+                        golden_examples=state.golden_examples
+                    )
+                finally:
+                    fresh_db.close()
             
             quality_gate_passed = (
                 validation_results.get("schema_valid", False) and

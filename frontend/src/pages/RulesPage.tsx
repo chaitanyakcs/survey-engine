@@ -57,9 +57,9 @@ export const RulesPage: React.FC = () => {
 
   // Collapse/expand states for sections
   const [expandedSections, setExpandedSections] = useState({
-    methodology: true,
-    quality: true,
-    systemPrompt: true
+    methodology: false,
+    quality: false,
+    systemPrompt: false
   });
 
   const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys') => {
@@ -678,7 +678,7 @@ export const RulesPage: React.FC = () => {
             </div>
             {expandedSections.methodology && (
               <div className="p-6">
-                <div className="grid gap-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {Object.entries(methodologies).map(([name, rule]) => (
                   <div key={name} className="border border-gray-200 rounded-xl p-4 bg-gray-50 hover:bg-gray-100 transition-colors">
                     {editingMethodology === name ? (
@@ -706,8 +706,8 @@ export const RulesPage: React.FC = () => {
                           </div>
                         </div>
                         
-                        <div className="space-y-4">
-                          <div>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                          <div className="lg:col-span-2">
                             <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                             <textarea
                               value={editingMethodologyData?.description || ''}
@@ -834,8 +834,8 @@ export const RulesPage: React.FC = () => {
                       </div>
                     </div>
                     
-                    <div className="space-y-4">
-                      <div>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <div className="lg:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                         <textarea
                           value={newMethodologyData.description}

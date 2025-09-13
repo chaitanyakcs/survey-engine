@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Survey Engine Evaluation Runner
-Run test cases and store results for performance tracking
+Survey Engine Evaluation Runner - Enhanced with LLM-based 5-Pillar Assessment
+Run test cases and store results for performance tracking with comprehensive evaluation
 """
 import asyncio
 import json
@@ -16,11 +16,28 @@ sys.path.append(str(Path(__file__).parent.parent))
 from demo_server import generate_survey_with_gpt5, generate_fallback_survey, RFQSubmissionRequest
 from test_cases import COMPLEX_RFQ_TEST_CASES
 
+# Import the new LLM-based evaluation modules
+try:
+    from modules.pillar_based_evaluator import PillarBasedEvaluator
+    PILLAR_EVALUATION_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Pillar evaluation modules not available: {e}")
+    PILLAR_EVALUATION_AVAILABLE = False
+
 
 class EvaluationRunner:
-    def __init__(self):
+    def __init__(self, enable_pillar_evaluation=True):
         self.results_dir = Path(__file__).parent / "results"
         self.results_dir.mkdir(exist_ok=True)
+        
+        # Initialize LLM-based pillar evaluator if available
+        self.enable_pillar_evaluation = enable_pillar_evaluation and PILLAR_EVALUATION_AVAILABLE
+        if self.enable_pillar_evaluation:
+            self.pillar_evaluator = PillarBasedEvaluator(llm_client=None)  # TODO: Integrate with actual LLM client
+            print("🔍 5-Pillar LLM-based evaluation enabled")
+        else:
+            self.pillar_evaluator = None
+            print("⚠️  5-Pillar evaluation disabled - using basic analysis only")
         
     async def run_single_test(self, test_case):
         """Run a single test case and return results"""
@@ -59,8 +76,24 @@ class EvaluationRunner:
                 "golden_similarity_score": None
             }
             
-            # Analyze the result
+            # Analyze the result with basic analysis
             analysis = self.analyze_result(result, test_case)
+            
+            # Perform LLM-based 5-pillar evaluation if enabled
+            pillar_evaluation = None
+            if self.enable_pillar_evaluation and result.get("survey"):
+                try:
+                    print("🔍 Running 5-pillar evaluation...")
+                    pillar_start = time.time()
+                    pillar_evaluation = await self.pillar_evaluator.evaluate_survey(
+                        result["survey"], 
+                        test_case["rfq_text"]
+                    )
+                    pillar_time = time.time() - pillar_start
+                    print(f"✅ Pillar evaluation completed in {pillar_time:.1f}s")
+                except Exception as e:
+                    print(f"⚠️  Pillar evaluation failed: {e}")
+                    pillar_evaluation = None
             
             # Store the full result
             full_result = {
@@ -73,7 +106,8 @@ class EvaluationRunner:
                 "used_ai_generation": result.get("used_ai_generation", False),
                 "golden_examples_used": result.get("used_golden_examples", []),
                 "similarity_score": result.get("golden_similarity_score"),
-                "analysis": analysis
+                "analysis": analysis,
+                "pillar_evaluation": pillar_evaluation.__dict__ if pillar_evaluation else None
             }
             
             # Save individual result
@@ -147,6 +181,28 @@ class EvaluationRunner:
         
         if result.get("golden_examples_used"):
             print(f"📚 Golden examples used: {len(result['golden_examples_used'])}")
+        
+        # Display 5-pillar evaluation results if available
+        pillar_eval = result.get("pillar_evaluation")
+        if pillar_eval and self.enable_pillar_evaluation:
+            print("\n🏛️  5-PILLAR EVALUATION RESULTS:")
+            print(f"   Overall Score: {pillar_eval.get('overall_score', 0):.2f}/1.0")
+            
+            pillar_scores = pillar_eval.get('pillar_scores', {})
+            print("   Individual Pillars:")
+            print(f"   📖 Content Validity (20%):        {pillar_scores.get('content_validity', 0):.2f}")
+            print(f"   🔬 Methodological Rigor (25%):    {pillar_scores.get('methodological_rigor', 0):.2f}")
+            print(f"   📝 Clarity & Comprehensibility (25%): {pillar_scores.get('clarity_comprehensibility', 0):.2f}")
+            print(f"   🏗️ Structural Coherence (20%):    {pillar_scores.get('structural_coherence', 0):.2f}")
+            print(f"   🚀 Deployment Readiness (10%):    {pillar_scores.get('deployment_readiness', 0):.2f}")
+            
+            recommendations = pillar_eval.get('recommendations', [])
+            if recommendations:
+                print("\n💡 Top Recommendations:")
+                for i, rec in enumerate(recommendations[:3], 1):
+                    print(f"   {i}. {rec}")
+        elif self.enable_pillar_evaluation:
+            print("\n⚠️  5-Pillar evaluation was enabled but failed to complete")
     
     async def run_all_tests(self):
         """Run all test cases and generate summary report"""
@@ -177,6 +233,38 @@ class EvaluationRunner:
             print("\n❌ No successful test cases")
             return
         
+        # Calculate pillar evaluation statistics if available
+        pillar_stats = None
+        pillar_results = [r for r in successful_results if r.get("pillar_evaluation")]
+        
+        if pillar_results and self.enable_pillar_evaluation:
+            pillar_overall_scores = [r["pillar_evaluation"]["overall_score"] for r in pillar_results]
+            pillar_content_scores = [r["pillar_evaluation"]["pillar_scores"]["content_validity"] for r in pillar_results]
+            pillar_method_scores = [r["pillar_evaluation"]["pillar_scores"]["methodological_rigor"] for r in pillar_results]
+            pillar_clarity_scores = [r["pillar_evaluation"]["pillar_scores"]["clarity_comprehensibility"] for r in pillar_results]
+            pillar_structural_scores = [r["pillar_evaluation"]["pillar_scores"]["structural_coherence"] for r in pillar_results]
+            pillar_deployment_scores = [r["pillar_evaluation"]["pillar_scores"]["deployment_readiness"] for r in pillar_results]
+            
+            pillar_stats = {
+                "pillar_evaluation_enabled": True,
+                "surveys_with_pillar_evaluation": len(pillar_results),
+                "average_overall_score": sum(pillar_overall_scores) / len(pillar_overall_scores),
+                "average_pillar_scores": {
+                    "content_validity": sum(pillar_content_scores) / len(pillar_content_scores),
+                    "methodological_rigor": sum(pillar_method_scores) / len(pillar_method_scores),
+                    "clarity_comprehensibility": sum(pillar_clarity_scores) / len(pillar_clarity_scores),
+                    "structural_coherence": sum(pillar_structural_scores) / len(pillar_structural_scores),
+                    "deployment_readiness": sum(pillar_deployment_scores) / len(pillar_deployment_scores)
+                },
+                "score_distribution": {
+                    "excellent_surveys": len([s for s in pillar_overall_scores if s >= 0.8]),
+                    "good_surveys": len([s for s in pillar_overall_scores if 0.6 <= s < 0.8]),
+                    "needs_improvement": len([s for s in pillar_overall_scores if s < 0.6])
+                }
+            }
+        else:
+            pillar_stats = {"pillar_evaluation_enabled": False}
+
         summary = {
             "evaluation_timestamp": datetime.now().isoformat(),
             "total_tests": len(results),
@@ -186,6 +274,7 @@ class EvaluationRunner:
             "ai_generation_rate": sum(1 for r in successful_results if r.get("used_ai_generation")) / len(successful_results) * 100,
             "average_questions_per_survey": sum(r.get("analysis", {}).get("questions_count", 0) for r in successful_results) / len(successful_results),
             "methodology_coverage_avg": sum(r.get("analysis", {}).get("methodology_match", {}).get("coverage_percentage", 0) for r in successful_results) / len(successful_results),
+            "pillar_evaluation_stats": pillar_stats,
             "detailed_results": results
         }
         
@@ -199,7 +288,30 @@ class EvaluationRunner:
         print(f"🤖 AI generation rate: {summary['ai_generation_rate']:.0f}%")
         print(f"📋 Average questions per survey: {summary['average_questions_per_survey']:.1f}")
         print(f"🎯 Average methodology coverage: {summary['methodology_coverage_avg']:.0f}%")
-        print(f"💾 Summary saved to: {summary_file}")
+        
+        # Print pillar evaluation summary if available
+        pillar_stats = summary.get("pillar_evaluation_stats", {})
+        if pillar_stats.get("pillar_evaluation_enabled"):
+            print(f"\n🏛️  5-PILLAR EVALUATION SUMMARY")
+            print(f"📊 Surveys evaluated: {pillar_stats['surveys_with_pillar_evaluation']}")
+            print(f"🎯 Average overall score: {pillar_stats['average_overall_score']:.2f}/1.0")
+            
+            avg_scores = pillar_stats["average_pillar_scores"]
+            print(f"📖 Content Validity: {avg_scores['content_validity']:.2f}")
+            print(f"🔬 Methodological Rigor: {avg_scores['methodological_rigor']:.2f}")
+            print(f"📝 Clarity & Comprehensibility: {avg_scores['clarity_comprehensibility']:.2f}")
+            print(f"🏗️ Structural Coherence: {avg_scores['structural_coherence']:.2f}")
+            print(f"🚀 Deployment Readiness: {avg_scores['deployment_readiness']:.2f}")
+            
+            distribution = pillar_stats["score_distribution"]
+            print(f"\n📈 Quality Distribution:")
+            print(f"   🌟 Excellent (≥0.8): {distribution['excellent_surveys']}")
+            print(f"   ✅ Good (0.6-0.8): {distribution['good_surveys']}")
+            print(f"   ⚠️  Needs work (<0.6): {distribution['needs_improvement']}")
+        else:
+            print(f"\n⚠️  5-Pillar evaluation was disabled or failed")
+        
+        print(f"\n💾 Summary saved to: {summary_file}")
 
 
 async def main():
