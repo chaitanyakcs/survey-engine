@@ -19,6 +19,7 @@ export const GoldenExamplesPage: React.FC = () => {
   const { goldenExamples, fetchGoldenExamples, deleteGoldenExample, toasts, removeToast, addToast } = useAppStore();
   const [isLoading, setIsLoading] = useState(false);
   const [currentView, setCurrentView] = useState<'survey' | 'golden-examples' | 'rules' | 'surveys'>('golden-examples');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const { mainContentClasses } = useSidebarLayout();
 
   const loadGoldenExamples = useCallback(async () => {
@@ -165,6 +166,18 @@ export const GoldenExamplesPage: React.FC = () => {
                             </div>
                             <div className="text-xs text-gray-500">Quality</div>
                           </div>
+                          <div className="flex items-center space-x-1">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setShowDeleteConfirm(example.id);
+                              }}
+                              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Delete Example"
+                            >
+                              <TrashIcon className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                       
@@ -197,6 +210,46 @@ export const GoldenExamplesPage: React.FC = () => {
 
       {/* Toast Container */}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="p-2 bg-red-100 rounded-full">
+                <TrashIcon className="w-6 h-6 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Delete Golden Example</h3>
+                <p className="text-sm text-gray-600">This action cannot be undone.</p>
+              </div>
+            </div>
+            
+            <p className="text-gray-700 mb-6">
+              Are you sure you want to delete this golden example? This will remove it permanently from the system.
+            </p>
+            
+            <div className="flex items-center justify-end space-x-3">
+              <button
+                onClick={() => setShowDeleteConfirm(null)}
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  await handleDeleteExample(showDeleteConfirm);
+                  setShowDeleteConfirm(null);
+                }}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center space-x-2"
+              >
+                <TrashIcon className="w-4 h-4" />
+                <span>Delete</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

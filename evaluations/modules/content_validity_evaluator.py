@@ -19,9 +19,17 @@ class ContentValidityResult:
     recommendations: List[str]
 
 class ContentValidityEvaluator:
-    def __init__(self, llm_client=None):
-        """Initialize with LLM client for analysis"""
+    def __init__(self, llm_client=None, db_session=None):
+        """Initialize with LLM client and database session for analysis"""
         self.llm_client = llm_client
+        self.db_session = db_session
+        
+        # Initialize pillar rules service
+        try:
+            from ..consolidated_rules_integration import ConsolidatedRulesService
+            self.pillar_rules_service = ConsolidatedRulesService(db_session)
+        except ImportError:
+            self.pillar_rules_service = None
         
     async def evaluate_content_validity(self, survey: Dict[str, Any], rfq_text: str) -> ContentValidityResult:
         """
@@ -70,10 +78,17 @@ class ContentValidityEvaluator:
         )
     
     async def _analyze_objective_coverage(self, rfq_text: str, questions: List[Dict]) -> float:
-        """Analyze how well questions cover RFQ objectives using LLM"""
+        """Analyze how well questions cover RFQ objectives using LLM with pillar rules"""
+        
+        # Get pillar-specific rules context
+        rules_context = ""
+        if self.pillar_rules_service:
+            rules_context = self.pillar_rules_service.create_pillar_rule_prompt_context("content_validity")
         
         prompt = f"""
-        Analyze how well the survey questions cover the research objectives stated in the RFQ.
+        {rules_context}
+        
+        Analyze how well the survey questions cover the research objectives stated in the RFQ based on the Content Validity rules specified above.
         
         RFQ Text:
         {rfq_text}
@@ -81,17 +96,21 @@ class ContentValidityEvaluator:
         Survey Questions:
         {json.dumps([q.get('text', '') for q in questions], indent=2)}
         
-        Evaluate:
+        Evaluate specifically against the rules listed above:
         1. Are all key research objectives from the RFQ addressed by questions?
         2. Are there critical gaps where objectives are not covered?
         3. Do questions directly map to stated research goals?
+        4. Is the coverage comprehensive without significant gaps?
+        
+        Provide specific examples of how each rule is met or violated.
         
         Respond with a JSON object containing:
         {{
             "coverage_score": <float 0.0-1.0>,
             "covered_objectives": [<list of objectives that are well covered>],
             "missing_objectives": [<list of objectives not covered>],
-            "gap_analysis": "<detailed analysis of coverage gaps>"
+            "gap_analysis": "<detailed analysis of coverage gaps>",
+            "rule_compliance_analysis": "<specific analysis against pillar rules>"
         }}
         """
         

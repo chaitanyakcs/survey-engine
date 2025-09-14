@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import ConfigDict
 from typing import List
 
 
@@ -32,8 +33,10 @@ class Settings(BaseSettings):
     def edit_collection_priority_list(self) -> List[str]:
         return [item.strip() for item in self.edit_collection_priority.split(",")]
     
-    class Config:
-        env_file = ".env"
+    model_config = ConfigDict(
+        env_file=".env",
+        extra="ignore"  # Ignore extra fields from environment
+    )
 
 
 settings = Settings()

@@ -1,0 +1,118 @@
+{
+  "test_case_id": "luxury_ev_journey",
+  "timestamp": "2025-09-13T18:23:22.517682",
+  "processing_time_seconds": 0.4,
+  "rfq_input": "\n        Luxury electric vehicle consumer journey study for $80k+ EV segment. Research focus: consideration set evolution,\n        charging infrastructure concerns, brand prestige perception, range anxiety vs performance trade-offs,\n        dealer experience expectations, financing vs leasing preferences, sustainability motivations vs luxury appeal,\n        and competitive analysis against Tesla Model S, BMW iX, Mercedes EQS, Audi e-tron GT.\n        Include ethnographic pre-study insights, choice-based conjoint with 8 attributes, Gabor-Granger pricing methodology,\n        TURF analysis for feature combinations, implicit association testing for brand perceptions,\n        and longitudinal tracking of consideration changes. Segment by income, lifestyle, and current vehicle ownership.\n        Target: HHI $150k+, considering luxury EV purchase in next 18 months. 250 responses minimum.\n        ",
+  "generated_survey": {
+    "title": "Evaluation Test: luxury_ev_journey Survey",
+    "description": "Survey based on: \n        Luxury electric vehicle consumer journey study for $80k+ EV segment. Research focus: consid...",
+    "estimated_time": 8,
+    "questions": [
+      {
+        "id": "q1",
+        "text": "How familiar are you with this product category?",
+        "type": "multiple_choice",
+        "options": [
+          "Very familiar",
+          "Somewhat familiar",
+          "Not familiar",
+          "Never heard of it"
+        ],
+        "required": true,
+        "category": "screening"
+      },
+      {
+        "id": "q2",
+        "text": "What is your primary reason for considering this type of product?",
+        "type": "multiple_choice",
+        "options": [
+          "Quality",
+          "Price",
+          "Brand reputation",
+          "Features",
+          "Convenience"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q3",
+        "text": "How important is price when making your decision?",
+        "type": "scale",
+        "options": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "scale_labels": {
+          "1": "Not important",
+          "5": "Very important"
+        },
+        "required": true,
+        "category": "pricing"
+      },
+      {
+        "id": "q4",
+        "text": "What is your age range?",
+        "type": "multiple_choice",
+        "options": [
+          "18-24",
+          "25-34",
+          "35-44",
+          "45-54",
+          "55-64",
+          "65+"
+        ],
+        "required": true,
+        "category": "demographic"
+      }
+    ],
+    "metadata": {
+      "target_responses": 200,
+      "methodology": [
+        "general_survey"
+      ],
+      "generation_method": "template_based",
+      "note": "Generated using fallback templates - add Replicate token for AI generation"
+    }
+  },
+  "model_used": "gpt-5-via-replicate",
+  "used_ai_generation": true,
+  "golden_examples_used": [],
+  "similarity_score": null,
+  "analysis": {
+    "title_generated": true,
+    "description_generated": true,
+    "questions_count": 4,
+    "estimated_time": 8,
+    "methodologies_detected": [
+      "general_survey"
+    ],
+    "meets_min_questions": false,
+    "has_advanced_methodologies": true,
+    "quality_indicators": {
+      "has_screening_questions": true,
+      "has_scale_questions": true,
+      "has_multiple_choice": true,
+      "has_methodology_tags": false,
+      "has_categories": true
+    },
+    "methodology_match": {
+      "expected": [
+        "gabor_granger",
+        "turf_analysis",
+        "implicit_testing",
+        "choice_conjoint"
+      ],
+      "detected": [
+        "general_survey"
+      ],
+      "intersection": [],
+      "coverage_percentage": 0.0
+    }
+  },
+  "pillar_evaluation": {
+    "overall_score": 0.6425555555555555,
+    "pillar_scores": 

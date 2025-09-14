@@ -2,14 +2,14 @@
 
 import logging
 from typing import Dict, Any, Optional
-from ..services.websocket_client import WebSocketClient
+from ..services.websocket_client import WebSocketNotificationService
 
 logger = logging.getLogger(__name__)
 
 class ProgressService:
     """Service for managing real-time progress updates during golden example creation."""
     
-    def __init__(self, ws_client: Optional[WebSocketClient] = None):
+    def __init__(self, ws_client: Optional[WebSocketNotificationService] = None):
         self.ws_client = ws_client
     
     async def send_progress_update(self, session_id: str, step: str, percent: int, message: str, details: Optional[Dict[str, Any]] = None):

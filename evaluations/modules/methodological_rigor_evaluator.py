@@ -21,9 +21,17 @@ class MethodologicalRigorResult:
     recommendations: List[str]
 
 class MethodologicalRigorEvaluator:
-    def __init__(self, llm_client=None):
-        """Initialize with LLM client for analysis"""
+    def __init__(self, llm_client=None, db_session=None):
+        """Initialize with LLM client and database session for analysis"""
         self.llm_client = llm_client
+        self.db_session = db_session
+        
+        # Initialize pillar rules service
+        try:
+            from ..consolidated_rules_integration import ConsolidatedRulesService
+            self.pillar_rules_service = ConsolidatedRulesService(db_session)
+        except ImportError:
+            self.pillar_rules_service = None
         
     async def evaluate_methodological_rigor(self, survey: Dict[str, Any], rfq_text: str) -> MethodologicalRigorResult:
         """
@@ -123,17 +131,24 @@ class MethodologicalRigorEvaluator:
             return self._basic_question_sequencing_analysis(questions)
     
     async def _analyze_bias_patterns(self, questions: List[Dict]) -> float:
-        """Detect various types of bias in questions using LLM"""
+        """Detect various types of bias in questions using LLM with pillar rules"""
         
         questions_text = [q.get('text', '') for q in questions]
         
+        # Get pillar-specific rules context
+        rules_context = ""
+        if self.pillar_rules_service:
+            rules_context = self.pillar_rules_service.create_pillar_rule_prompt_context("methodological_rigor")
+        
         prompt = f"""
-        Analyze these survey questions for various types of bias that could compromise methodological rigor.
+        {rules_context}
+        
+        Analyze these survey questions for various types of bias based on the Methodological Rigor rules specified above.
         
         Questions:
         {json.dumps(questions_text, indent=2)}
         
-        Check for these bias types:
+        Check specifically for bias types that violate the rules above:
         1. Leading questions (suggesting desired answers)
         2. Loaded questions (emotional language or assumptions)
         3. Double-barreled questions (asking multiple things at once)
@@ -143,7 +158,7 @@ class MethodologicalRigorEvaluator:
         7. Response order bias (answer option ordering issues)
         8. Framing effects (how questions are presented)
         
-        For each question, identify potential bias issues and rate overall bias level.
+        For each rule listed above, evaluate compliance and provide specific examples.
         
         Respond with JSON:
         {{
@@ -156,7 +171,8 @@ class MethodologicalRigorEvaluator:
                 "other_bias_types": [<other identified bias issues>]
             }},
             "overall_bias_assessment": "<comprehensive bias analysis>",
-            "neutrality_score": <float 0.0-1.0>
+            "neutrality_score": <float 0.0-1.0>,
+            "rule_compliance_analysis": "<specific analysis against methodological rigor rules>"
         }}
         """
         

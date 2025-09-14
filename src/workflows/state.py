@@ -22,6 +22,7 @@ class SurveyGenerationState(BaseModel):
     
     raw_survey: Optional[Dict[str, Any]] = None
     generated_survey: Optional[Dict[str, Any]] = None
+    pillar_scores: Optional[Dict[str, Any]] = None
     
     validation_results: Dict[str, Any] = {}
     quality_gate_passed: bool = False

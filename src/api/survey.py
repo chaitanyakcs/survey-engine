@@ -21,6 +21,7 @@ class SurveyResponse(BaseModel):
     golden_similarity_score: Optional[float]
     validation_results: Optional[Dict[str, Any]]
     edit_suggestions: Optional[Dict[str, Any]]
+    pillar_scores: Optional[Dict[str, Any]]
 
 
 class EditRequest(BaseModel):
@@ -121,7 +122,8 @@ async def get_survey(
             final_output=survey.final_output,  # type: ignore
             golden_similarity_score=float(survey.golden_similarity_score) if survey.golden_similarity_score else None,  # type: ignore
             validation_results=validation_results,
-            edit_suggestions=edit_suggestions
+            edit_suggestions=edit_suggestions,
+            pillar_scores=survey.pillar_scores  # type: ignore
         )
         
         logger.info(f"🎉 [Survey API] Returning survey response: status={response.status}")

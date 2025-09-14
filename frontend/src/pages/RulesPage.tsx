@@ -4,6 +4,7 @@ import { PlusIcon, TrashIcon, CheckIcon, XMarkIcon, PencilIcon, ExclamationTrian
 import { useSidebarLayout } from '../hooks/useSidebarLayout';
 import { ToastContainer } from '../components/Toast';
 import { useAppStore } from '../store/useAppStore';
+import PillarRulesManager from '../components/PillarRulesManager';
 
 interface MethodologyRule {
   description: string;
@@ -59,6 +60,7 @@ export const RulesPage: React.FC = () => {
   const [expandedSections, setExpandedSections] = useState({
     methodology: false,
     quality: false,
+    pillars: false,
     systemPrompt: false
   });
 
@@ -71,6 +73,18 @@ export const RulesPage: React.FC = () => {
       window.location.href = '/surveys';
     }
   };
+
+  const fetchQualityRules = useCallback(async () => {
+    try {
+      const qualityRes = await fetch('/api/v1/rules/quality-rules');
+      if (qualityRes.ok) {
+        const qualityData = await qualityRes.json();
+        setQualityRules(qualityData);
+      }
+    } catch (error) {
+      console.error('Failed to fetch quality rules:', error);
+    }
+  }, []);
 
   const fetchRules = useCallback(async (isRetry = false) => {
     try {
@@ -250,17 +264,31 @@ export const RulesPage: React.FC = () => {
       });
 
       if (response.ok) {
-        const updatedQualityRules = { ...qualityRules };
-        if (updatedQualityRules[category]) {
-          updatedQualityRules[category] = updatedQualityRules[category].filter((_, index) => index !== ruleIndex);
-          setQualityRules(updatedQualityRules);
-        }
+        // Refresh the data from server to ensure consistency
+        await fetchQualityRules();
+        addToast({
+          type: 'success',
+          title: 'Rule Deleted',
+          message: 'Quality rule has been deleted successfully',
+          duration: 3000
+        });
       } else {
-        alert('Failed to delete quality rule');
+        const errorData = await response.json().catch(() => ({}));
+        addToast({
+          type: 'error',
+          title: 'Delete Failed',
+          message: errorData.detail || 'Failed to delete quality rule',
+          duration: 5000
+        });
       }
     } catch (error) {
       console.error('Failed to delete quality rule:', error);
-      alert('Failed to delete quality rule');
+      addToast({
+        type: 'error',
+        title: 'Delete Failed',
+        message: 'Network error occurred while deleting the rule',
+        duration: 5000
+      });
     } finally {
       setSaving(null);
     }
@@ -569,7 +597,7 @@ export const RulesPage: React.FC = () => {
     }
   };
 
-  const toggleSection = (section: 'methodology' | 'quality' | 'systemPrompt') => {
+  const toggleSection = (section: 'methodology' | 'quality' | 'pillars' | 'systemPrompt') => {
     setExpandedSections(prev => ({
       ...prev,
       [section]: !prev[section]
@@ -1025,6 +1053,41 @@ export const RulesPage: React.FC = () => {
                   </div>
                 ))}
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* Pillar Rules */}
+          <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 overflow-hidden hover:shadow-xl transition-all duration-300">
+            <div 
+              className="bg-gradient-to-r from-purple-600 via-purple-700 to-indigo-700 px-6 py-6 text-white cursor-pointer"
+              onClick={() => toggleSection('pillars')}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <h2 className="text-2xl font-bold">5-Pillar Evaluation Rules</h2>
+                      <span className="px-2 py-1 bg-white/20 rounded-full text-xs font-medium">NEW</span>
+                    </div>
+                    <p className="text-purple-100 mt-1">Customize evaluation criteria for the 5-pillar survey assessment framework</p>
+                  </div>
+                </div>
+                <ChevronDownIcon 
+                  className={`w-6 h-6 transition-transform duration-200 ${
+                    expandedSections.pillars ? 'rotate-180' : ''
+                  }`} 
+                />
+              </div>
+            </div>
+            {expandedSections.pillars && (
+              <div className="p-6">
+                <PillarRulesManager />
               </div>
             )}
           </div>

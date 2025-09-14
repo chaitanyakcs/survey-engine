@@ -191,8 +191,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
           // Show success toast notification
           get().addToast({
             type: 'success',
-            title: 'Survey Ready! 🎉',
-            message: 'Your survey has been generated successfully. Click to view it!',
+            title: '🎉 Survey Complete!',
+            message: 'Your professional survey is ready to collect insights!',
             duration: 8000
           });
           

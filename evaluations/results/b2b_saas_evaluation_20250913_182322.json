@@ -1,0 +1,118 @@
+{
+  "test_case_id": "b2b_saas_evaluation",
+  "timestamp": "2025-09-13T18:23:22.111171",
+  "processing_time_seconds": 0.53,
+  "rfq_input": "\n        We need comprehensive research for B2B SaaS platform evaluation targeting mid-market companies (500-2000 employees).\n        Key research areas: decision-making process mapping, stakeholder influence analysis, feature importance across different user roles,\n        implementation timeline expectations, budget approval workflows, competitive landscape analysis (Salesforce, HubSpot, Microsoft),\n        TCO considerations, security compliance requirements, and integration complexity concerns.\n        Use conjoint analysis for feature trade-offs, MaxDiff for priority ranking, Van Westendorp for pricing sensitivity across user tiers,\n        and brand perception mapping. Need to segment by company size, industry vertical, and current tech stack maturity.\n        Target: IT directors, business users, procurement teams, and C-level executives. Minimum 200 qualified responses.\n        ",
+  "generated_survey": {
+    "title": "Evaluation Test: b2b_saas_evaluation Survey",
+    "description": "Survey based on: \n        We need comprehensive research for B2B SaaS platform evaluation targeting mid-market compan...",
+    "estimated_time": 8,
+    "questions": [
+      {
+        "id": "q1",
+        "text": "How familiar are you with this product category?",
+        "type": "multiple_choice",
+        "options": [
+          "Very familiar",
+          "Somewhat familiar",
+          "Not familiar",
+          "Never heard of it"
+        ],
+        "required": true,
+        "category": "screening"
+      },
+      {
+        "id": "q2",
+        "text": "What is your primary reason for considering this type of product?",
+        "type": "multiple_choice",
+        "options": [
+          "Quality",
+          "Price",
+          "Brand reputation",
+          "Features",
+          "Convenience"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q3",
+        "text": "How important is price when making your decision?",
+        "type": "scale",
+        "options": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "scale_labels": {
+          "1": "Not important",
+          "5": "Very important"
+        },
+        "required": true,
+        "category": "pricing"
+      },
+      {
+        "id": "q4",
+        "text": "What is your age range?",
+        "type": "multiple_choice",
+        "options": [
+          "18-24",
+          "25-34",
+          "35-44",
+          "45-54",
+          "55-64",
+          "65+"
+        ],
+        "required": true,
+        "category": "demographic"
+      }
+    ],
+    "metadata": {
+      "target_responses": 200,
+      "methodology": [
+        "general_survey"
+      ],
+      "generation_method": "template_based",
+      "note": "Generated using fallback templates - add Replicate token for AI generation"
+    }
+  },
+  "model_used": "gpt-5-via-replicate",
+  "used_ai_generation": true,
+  "golden_examples_used": [],
+  "similarity_score": null,
+  "analysis": {
+    "title_generated": true,
+    "description_generated": true,
+    "questions_count": 4,
+    "estimated_time": 8,
+    "methodologies_detected": [
+      "general_survey"
+    ],
+    "meets_min_questions": false,
+    "has_advanced_methodologies": true,
+    "quality_indicators": {
+      "has_screening_questions": true,
+      "has_scale_questions": true,
+      "has_multiple_choice": true,
+      "has_methodology_tags": false,
+      "has_categories": true
+    },
+    "methodology_match": {
+      "expected": [
+        "conjoint_analysis",
+        "maxdiff",
+        "brand_perception",
+        "van_westendorp"
+      ],
+      "detected": [
+        "general_survey"
+      ],
+      "intersection": [],
+      "coverage_percentage": 0.0
+    }
+  },
+  "pillar_evaluation": {
+    "overall_score": 0.6399195402298852,
+    "pillar_scores": 

@@ -1,0 +1,224 @@
+{
+  "test_case_id": "healthcare_ai_adoption",
+  "timestamp": "2025-09-13T18:50:05.207200",
+  "processing_time_seconds": 0.33,
+  "rfq_input": "\n        We need comprehensive research on AI-powered diagnostic tools adoption in mid-sized hospitals (100-500 beds). \n        Key focus areas: decision-making hierarchy, budget approval processes, clinical staff acceptance, patient privacy concerns, \n        ROI expectations, integration challenges with existing HIS/EMR systems, regulatory compliance barriers, \n        and competitive landscape analysis for vendors like GE Healthcare, Philips, and Siemens Healthineers.\n        Include KANO model analysis for feature prioritization and discrete choice modeling for pricing sensitivity.\n        Target: C-suite executives, CIOs, Chief Medical Officers, and department heads. Need 150+ qualified responses.\n        ",
+  "generated_survey": {
+    "title": "Evaluation Test: healthcare_ai_adoption Survey",
+    "description": "Survey based on: \n        We need comprehensive research on AI-powered diagnostic tools adoption in mid-sized hospita...",
+    "estimated_time": 8,
+    "questions": [
+      {
+        "id": "q1",
+        "text": "How familiar are you with this product category?",
+        "type": "multiple_choice",
+        "options": [
+          "Very familiar",
+          "Somewhat familiar",
+          "Not familiar",
+          "Never heard of it"
+        ],
+        "required": true,
+        "category": "screening"
+      },
+      {
+        "id": "q2",
+        "text": "What is your primary reason for considering this type of product?",
+        "type": "multiple_choice",
+        "options": [
+          "Quality",
+          "Price",
+          "Brand reputation",
+          "Features",
+          "Convenience"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q3",
+        "text": "How important is price when making your decision?",
+        "type": "scale",
+        "options": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "scale_labels": {
+          "1": "Not important",
+          "5": "Very important"
+        },
+        "required": true,
+        "category": "pricing"
+      },
+      {
+        "id": "q4",
+        "text": "What is your age range?",
+        "type": "multiple_choice",
+        "options": [
+          "18-24",
+          "25-34",
+          "35-44",
+          "45-54",
+          "55-64",
+          "65+"
+        ],
+        "required": true,
+        "category": "demographic"
+      }
+    ],
+    "metadata": {
+      "target_responses": 200,
+      "methodology": [
+        "general_survey"
+      ],
+      "generation_method": "template_based",
+      "note": "Generated using fallback templates - add Replicate token for AI generation"
+    }
+  },
+  "model_used": "gpt-5-via-replicate",
+  "used_ai_generation": true,
+  "golden_examples_used": [],
+  "similarity_score": null,
+  "analysis": {
+    "title_generated": true,
+    "description_generated": true,
+    "questions_count": 4,
+    "estimated_time": 8,
+    "methodologies_detected": [
+      "general_survey"
+    ],
+    "meets_min_questions": false,
+    "has_advanced_methodologies": true,
+    "quality_indicators": {
+      "has_screening_questions": true,
+      "has_scale_questions": true,
+      "has_multiple_choice": true,
+      "has_methodology_tags": false,
+      "has_categories": true
+    },
+    "methodology_match": {
+      "expected": [
+        "stakeholder_mapping",
+        "discrete_choice",
+        "kano_model"
+      ],
+      "detected": [
+        "general_survey"
+      ],
+      "intersection": [],
+      "coverage_percentage": 0.0
+    }
+  },
+  "pillar_evaluation": {
+    "overall_score": 0.6411917808219179,
+    "pillar_scores": {
+      "content_validity": 0.43095890410958904,
+      "methodological_rigor": 0.6200000000000001,
+      "clarity_comprehensibility": 0.8,
+      "structural_coherence": 0.7,
+      "deployment_readiness": 0.6
+    },
+    "recommendations": [
+      "Review survey questions for better alignment with RFQ objectives",
+      "Add questions to cover missing research areas",
+      "Improve question wording for clarity and relevance",
+      "Continue following current methodology practices",
+      "Adjust survey length or complexity for better deployment feasibility",
+      "Good quality with room for targeted improvements"
+    ],
+    "detailed_results": {
+      "content_validity": {
+        "score": 0.43095890410958904,
+        "objective_coverage": 0.0273972602739726,
+        "topic_comprehensiveness": 0.6,
+        "research_goal_alignment": 0.8999999999999999,
+        "detailed_analysis": {
+          "strengths": [
+            "Survey generated successfully",
+            "Questions are structured"
+          ],
+          "weaknesses": [
+            "Limited LLM analysis available"
+          ],
+          "coverage_gaps": [
+            "Detailed gap analysis requires LLM"
+          ],
+          "quality_indicators": {
+            "question_relevance": 0.0273972602739726,
+            "scope_appropriateness": 0.6,
+            "objective_mapping": 0.8999999999999999
+          },
+          "narrative_summary": "Content validity analysis completed with scores: Objective Coverage 0.03, Topic Comprehensiveness 0.60, Goal Alignment 0.90"
+        },
+        "recommendations": [
+          "Review survey questions for better alignment with RFQ objectives",
+          "Add questions to cover missing research areas",
+          "Improve question wording for clarity and relevance"
+        ]
+      },
+      "methodological_rigor": {
+        "score": 0.6200000000000001,
+        "question_sequencing": 0.8,
+        "bias_detection": 1.0,
+        "sampling_considerations": 0.4,
+        "methodology_implementation": 0.0,
+        "detailed_analysis": {
+          "methodological_strengths": [
+            "Structured question format",
+            "Multiple methodologies attempted"
+          ],
+          "methodological_weaknesses": [
+            "Limited bias analysis",
+            "Basic sequencing validation"
+          ],
+          "rigor_assessment": {
+            "question_quality": 0.8,
+            "methodology_adherence": 0.0,
+            "bias_control": 1.0,
+            "sampling_appropriateness": 0.4
+          },
+          "best_practices_analysis": "Basic adherence to survey methodology principles",
+          "improvement_areas": [
+            "Enhanced bias detection",
+            "Improved question flow",
+            "Better methodology implementation"
+          ]
+        },
+        "bias_indicators": [],
+        "recommendations": [
+          "Continue following current methodology practices"
+        ]
+      },
+      "clarity_comprehensibility": {
+        "evaluation_focus": "Language accessibility and question wording effectiveness",
+        "key_metrics": [
+          "language_accessibility",
+          "question_wording_quality",
+          "ambiguity_check"
+        ],
+        "analysis_method": "LLM-based clarity assessment"
+      },
+      "structural_coherence": {
+        "evaluation_focus": "Logical flow and question type appropriateness",
+        "key_metrics": [
+          "logical_flow",
+          "question_type_appropriateness",
+          "scale_consistency"
+        ],
+        "analysis_method": "LLM-based structural assessment"
+      },
+      "deployment_readiness": {
+        "evaluation_focus": "Practical deployment considerations",
+        "key_metrics": [
+          "length_appropriateness",
+          "time_reasonableness",
+          "feasibility_assessment"
+        ],
+        "analysis_method": "LLM-based deployment assessment"
+      }
+    }
+  }
+}

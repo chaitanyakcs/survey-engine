@@ -1,6 +1,7 @@
 from typing import Dict, List, Any, Optional
 from src.config import settings
 from src.services.prompt_service import PromptService
+from src.services.pillar_scoring_service import PillarScoringService
 from src.utils.error_messages import UserFriendlyError, get_api_configuration_error
 from sqlalchemy.orm import Session
 import replicate
@@ -14,6 +15,7 @@ class GenerationService:
     def __init__(self, db_session: Optional[Session] = None) -> None:
         self.model = settings.generation_model
         self.prompt_service = PromptService(db_session=db_session)
+        self.pillar_scoring_service = PillarScoringService(db_session=db_session)
         
         logger.info(f"🔧 [GenerationService] Initializing with model: {self.model}")
         logger.info(f"🔧 [GenerationService] Replicate API token configured: {bool(settings.replicate_api_token)}")
@@ -133,9 +135,37 @@ class GenerationService:
             logger.info("🔍 [GenerationService] Extracting survey JSON...")
             survey_json = self._extract_survey_json(survey_text)
             
+            # Evaluate survey against pillar rules
+            logger.info("🏛️ [GenerationService] Evaluating survey against pillar rules...")
+            pillar_scores = self.pillar_scoring_service.evaluate_survey_pillars(survey_json)
+            
             logger.info(f"🎉 [GenerationService] Successfully generated survey with {len(survey_json.get('questions', []))} questions")
             logger.info(f"🎉 [GenerationService] Survey keys: {list(survey_json.keys())}")
-            return survey_json
+            logger.info(f"🏛️ [GenerationService] Pillar adherence score: {pillar_scores.overall_grade} ({pillar_scores.weighted_score:.1%})")
+            
+            return {
+                "survey": survey_json,
+                "pillar_scores": {
+                    "overall_grade": pillar_scores.overall_grade,
+                    "weighted_score": pillar_scores.weighted_score,
+                    "total_score": pillar_scores.total_score,
+                    "summary": pillar_scores.summary,
+                    "pillar_breakdown": [
+                        {
+                            "pillar_name": score.pillar_name,
+                            "display_name": score.pillar_name.replace('_', ' ').title().replace('Comprehensibility', '& Comprehensibility'),
+                            "score": score.score,
+                            "weighted_score": score.weighted_score,
+                            "weight": score.weight,
+                            "criteria_met": score.criteria_met,
+                            "total_criteria": score.total_criteria,
+                            "grade": self._calculate_pillar_grade(score.score)
+                        }
+                        for score in pillar_scores.pillar_scores
+                    ],
+                    "recommendations": self._compile_recommendations(pillar_scores.pillar_scores)
+                }
+            }
             
         except UserFriendlyError as e:
             logger.error(f"❌ [GenerationService] UserFriendlyError: {e.message}")
@@ -206,3 +236,32 @@ class GenerationService:
             raise ValueError(f"Invalid JSON in survey response: {str(e)}")
         except Exception as e:
             raise ValueError(f"Failed to extract survey JSON: {str(e)}")
+    
+    def _calculate_pillar_grade(self, score: float) -> str:
+        """Calculate letter grade for individual pillar score"""
+        if score >= 0.9:
+            return "A"
+        elif score >= 0.8:
+            return "B"
+        elif score >= 0.7:
+            return "C"
+        elif score >= 0.6:
+            return "D"
+        else:
+            return "F"
+    
+    def _compile_recommendations(self, pillar_scores) -> List[str]:
+        """Compile recommendations from all pillar scores"""
+        all_recommendations = []
+        for score in pillar_scores:
+            all_recommendations.extend(score.recommendations)
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_recommendations = []
+        for rec in all_recommendations:
+            if rec not in seen:
+                seen.add(rec)
+                unique_recommendations.append(rec)
+        
+        return unique_recommendations

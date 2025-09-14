@@ -22,5 +22,12 @@
   },
   "include": [
     "src"
+  ],
+  "exclude": [
+    "src/**/*.test.tsx",
+    "src/**/*.test.ts",
+    "src/**/__tests__/**/*",
+    "src/test-utils.tsx",
+    "src/setupTests.ts"
   ]
 }

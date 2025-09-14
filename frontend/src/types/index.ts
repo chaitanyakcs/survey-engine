@@ -32,6 +32,23 @@ export interface Survey {
   // For golden examples that have nested structure
   final_output?: Survey;
   settings?: any;
+  pillar_scores?: {
+    overall_grade: string;
+    weighted_score: number;
+    total_score: number;
+    summary: string;
+    pillar_breakdown: Array<{
+      pillar_name: string;
+      display_name: string;
+      score: number;
+      weighted_score: number;
+      weight: number;
+      criteria_met: number;
+      total_criteria: number;
+      grade: string;
+    }>;
+    recommendations: string[];
+  };
 }
 
 export interface SurveyListItem {

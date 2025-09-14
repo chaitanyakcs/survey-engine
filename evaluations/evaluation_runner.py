@@ -9,12 +9,37 @@ import time
 from datetime import datetime
 from pathlib import Path
 import sys
+import os
+
+# Load environment variables
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    print("🔧 Environment variables loaded from .env file")
+except ImportError:
+    print("⚠️  python-dotenv not available - using system environment only")
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
 from demo_server import generate_survey_with_gpt5, generate_fallback_survey, RFQSubmissionRequest
 from test_cases import COMPLEX_RFQ_TEST_CASES
+
+# Import database connection
+try:
+    from src.database import get_db
+    DATABASE_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Database connection not available: {e}")
+    DATABASE_AVAILABLE = False
+
+# Import LLM client for evaluation
+try:
+    from llm_client import create_evaluation_llm_client
+    LLM_CLIENT_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: LLM client not available: {e}")
+    LLM_CLIENT_AVAILABLE = False
 
 # Import the new LLM-based evaluation modules
 try:
@@ -30,11 +55,38 @@ class EvaluationRunner:
         self.results_dir = Path(__file__).parent / "results"
         self.results_dir.mkdir(exist_ok=True)
         
+        # Initialize database session if available
+        self.db_session = None
+        if DATABASE_AVAILABLE:
+            try:
+                self.db_session = next(get_db())
+                print("📊 Database session initialized for pillar rules access")
+            except Exception as e:
+                print(f"⚠️  Could not initialize database session: {e}")
+                self.db_session = None
+        
+        # Initialize LLM client if available
+        self.llm_client = None
+        if LLM_CLIENT_AVAILABLE:
+            try:
+                self.llm_client = create_evaluation_llm_client()
+                print("🤖 LLM client initialized for sophisticated evaluation")
+            except Exception as e:
+                print(f"⚠️  Could not initialize LLM client: {e}")
+                self.llm_client = None
+        
         # Initialize LLM-based pillar evaluator if available
         self.enable_pillar_evaluation = enable_pillar_evaluation and PILLAR_EVALUATION_AVAILABLE
         if self.enable_pillar_evaluation:
-            self.pillar_evaluator = PillarBasedEvaluator(llm_client=None)  # TODO: Integrate with actual LLM client
-            print("🔍 5-Pillar LLM-based evaluation enabled")
+            self.pillar_evaluator = PillarBasedEvaluator(llm_client=self.llm_client, db_session=self.db_session)
+            if self.llm_client and self.db_session:
+                print("🔍 5-Pillar evaluation: LLM-powered + database-driven rules")
+            elif self.llm_client:
+                print("🔍 5-Pillar evaluation: LLM-powered + fallback rules")
+            elif self.db_session:
+                print("🔍 5-Pillar evaluation: Heuristic + database-driven rules")
+            else:
+                print("🔍 5-Pillar evaluation: Heuristic + fallback rules")
         else:
             self.pillar_evaluator = None
             print("⚠️  5-Pillar evaluation disabled - using basic analysis only")
@@ -107,7 +159,18 @@ class EvaluationRunner:
                 "golden_examples_used": result.get("used_golden_examples", []),
                 "similarity_score": result.get("golden_similarity_score"),
                 "analysis": analysis,
-                "pillar_evaluation": pillar_evaluation.__dict__ if pillar_evaluation else None
+                "pillar_evaluation": {
+                    "overall_score": pillar_evaluation.overall_score,
+                    "pillar_scores": {
+                        "content_validity": pillar_evaluation.pillar_scores.content_validity,
+                        "methodological_rigor": pillar_evaluation.pillar_scores.methodological_rigor,
+                        "clarity_comprehensibility": pillar_evaluation.pillar_scores.clarity_comprehensibility,
+                        "structural_coherence": pillar_evaluation.pillar_scores.structural_coherence,
+                        "deployment_readiness": pillar_evaluation.pillar_scores.deployment_readiness
+                    },
+                    "recommendations": pillar_evaluation.recommendations,
+                    "detailed_results": pillar_evaluation.detailed_results
+                } if pillar_evaluation else None
             }
             
             # Save individual result
@@ -312,11 +375,23 @@ class EvaluationRunner:
             print(f"\n⚠️  5-Pillar evaluation was disabled or failed")
         
         print(f"\n💾 Summary saved to: {summary_file}")
+    
+    def cleanup(self):
+        """Clean up resources"""
+        if self.db_session:
+            try:
+                self.db_session.close()
+                print("📊 Database session closed")
+            except Exception as e:
+                print(f"⚠️  Error closing database session: {e}")
 
 
 async def main():
     runner = EvaluationRunner()
-    await runner.run_all_tests()
+    try:
+        await runner.run_all_tests()
+    finally:
+        runner.cleanup()
 
 
 if __name__ == "__main__":

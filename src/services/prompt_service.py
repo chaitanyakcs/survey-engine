@@ -18,6 +18,7 @@ class PromptService:
         self.base_rules = self._load_base_rules()
         self.methodology_rules = {}
         self.quality_rules = {}
+        self.pillar_rules = {}
         self.system_prompt = ""
         self._load_database_rules()
     
@@ -90,6 +91,25 @@ class PromptService:
                     if rule.rule_description:
                         self.quality_rules[rule.category].append(rule.rule_description)
                 
+                # Load pillar rules
+                pillar_rules = self.db_session.query(SurveyRule).filter(
+                    SurveyRule.rule_type == 'pillar',
+                    SurveyRule.is_active == True
+                ).all()
+                
+                for rule in pillar_rules:
+                    if rule.category not in self.pillar_rules:
+                        self.pillar_rules[rule.category] = []
+                    
+                    rule_content = rule.rule_content or {}
+                    self.pillar_rules[rule.category].append({
+                        'id': str(rule.id),
+                        'name': rule.rule_name,
+                        'description': rule.rule_description,
+                        'priority': rule_content.get('priority', 'medium'),
+                        'evaluation_criteria': rule_content.get('evaluation_criteria', [])
+                    })
+                
                 # Load system prompt
                 system_prompt_rule = self.db_session.query(SurveyRule).filter(
                     SurveyRule.rule_type == 'system_prompt',
@@ -101,7 +121,7 @@ class PromptService:
                 else:
                     self.system_prompt = ""
                 
-                logger.info(f"Loaded {len(methodology_rules)} methodology rules, {len(quality_rules)} quality rules, {len(custom_rules)} custom rules, and system prompt from database")
+                logger.info(f"Loaded {len(methodology_rules)} methodology rules, {len(quality_rules)} quality rules, {len(custom_rules)} custom rules, {sum(len(rules) for rules in self.pillar_rules.values())} pillar rules, and system prompt from database")
             else:
                 # Fallback to hardcoded rules if no database session
                 self._load_fallback_rules()
@@ -312,6 +332,16 @@ class PromptService:
                 ""
             ])
         
+        # Add pillar rules context
+        pillar_rules_context = self.get_pillar_rules_context()
+        if pillar_rules_context:
+            prompt_parts.extend([
+                "## 5-PILLAR EVALUATION FRAMEWORK:",
+                "Follow these comprehensive rules to ensure high-quality survey design:",
+                pillar_rules_context,
+                ""
+            ])
+        
         # Add methodology guidance
         if methodology_blocks:
             prompt_parts.extend([
@@ -338,6 +368,7 @@ class PromptService:
             "",
             "## TASK:",
             "Generate a complete, high-quality survey following all the rules and guidelines above.",
+            "CRITICAL: Ensure compliance with the 5-Pillar Evaluation Framework rules listed above.",
             "Use the golden examples as reference for quality and structure.",
             "Ensure methodology compliance and proper question design.",
             "",
@@ -398,6 +429,41 @@ class PromptService:
     def get_methodology_guidelines(self, methodology: str) -> Optional[Dict[str, Any]]:
         """Get specific guidelines for a methodology"""
         return self.methodology_rules.get(methodology.lower())
+    
+    def get_pillar_rules_context(self) -> str:
+        """Get pillar rules formatted for LLM prompt context"""
+        if not self.pillar_rules:
+            return ""
+        
+        context_parts = []
+        pillar_weights = {
+            'content_validity': 0.20,
+            'methodological_rigor': 0.25,
+            'clarity_comprehensibility': 0.25,
+            'structural_coherence': 0.20,
+            'deployment_readiness': 0.10
+        }
+        
+        for pillar, rules in self.pillar_rules.items():
+            if not rules:
+                continue
+                
+            weight = pillar_weights.get(pillar, 0.0)
+            pillar_display = pillar.replace('_', ' ').title().replace('Comprehensibility', '& Comprehensibility')
+            
+            context_parts.append(f"\n## {pillar_display} ({weight:.0%} Weight)")
+            context_parts.append("Follow these rules to ensure high-quality survey design:")
+            
+            for rule in rules:
+                priority_indicator = "🔴" if rule['priority'] == 'critical' else "🟡" if rule['priority'] == 'high' else "🔵" if rule['priority'] == 'medium' else "⚪"
+                context_parts.append(f"- {priority_indicator} {rule['description']}")
+                
+                # Add evaluation criteria if available
+                if rule.get('evaluation_criteria'):
+                    for criterion in rule['evaluation_criteria']:
+                        context_parts.append(f"  • {criterion}")
+        
+        return "\n".join(context_parts)
     
     def validate_survey_against_rules(
         self,

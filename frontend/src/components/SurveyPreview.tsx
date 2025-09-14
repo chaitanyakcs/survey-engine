@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { Question, Survey } from '../types';
+import PillarScoresDisplay from './PillarScoresDisplay';
 import { PencilIcon, BookmarkIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 
 const QuestionCard: React.FC<{ 
@@ -939,6 +940,15 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
 
         {/* Meta Panel */}
         <div className="space-y-6">
+          {/* Pillar Scores - Moved to top for better visibility */}
+          {surveyToDisplay?.pillar_scores && (
+            <PillarScoresDisplay 
+              pillarScores={surveyToDisplay.pillar_scores}
+              className="mb-6"
+              compact={true}
+            />
+          )}
+
           {/* Confidence Score */}
           <div className="bg-white border border-gray-200 rounded-lg p-4">
             <h3 className="font-medium text-gray-900 mb-3">Quality Score</h3>

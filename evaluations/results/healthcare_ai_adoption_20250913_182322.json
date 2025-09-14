@@ -1,0 +1,117 @@
+{
+  "test_case_id": "healthcare_ai_adoption",
+  "timestamp": "2025-09-13T18:23:22.929859",
+  "processing_time_seconds": 0.41,
+  "rfq_input": "\n        We need comprehensive research on AI-powered diagnostic tools adoption in mid-sized hospitals (100-500 beds). \n        Key focus areas: decision-making hierarchy, budget approval processes, clinical staff acceptance, patient privacy concerns, \n        ROI expectations, integration challenges with existing HIS/EMR systems, regulatory compliance barriers, \n        and competitive landscape analysis for vendors like GE Healthcare, Philips, and Siemens Healthineers.\n        Include KANO model analysis for feature prioritization and discrete choice modeling for pricing sensitivity.\n        Target: C-suite executives, CIOs, Chief Medical Officers, and department heads. Need 150+ qualified responses.\n        ",
+  "generated_survey": {
+    "title": "Evaluation Test: healthcare_ai_adoption Survey",
+    "description": "Survey based on: \n        We need comprehensive research on AI-powered diagnostic tools adoption in mid-sized hospita...",
+    "estimated_time": 8,
+    "questions": [
+      {
+        "id": "q1",
+        "text": "How familiar are you with this product category?",
+        "type": "multiple_choice",
+        "options": [
+          "Very familiar",
+          "Somewhat familiar",
+          "Not familiar",
+          "Never heard of it"
+        ],
+        "required": true,
+        "category": "screening"
+      },
+      {
+        "id": "q2",
+        "text": "What is your primary reason for considering this type of product?",
+        "type": "multiple_choice",
+        "options": [
+          "Quality",
+          "Price",
+          "Brand reputation",
+          "Features",
+          "Convenience"
+        ],
+        "required": true,
+        "category": "core"
+      },
+      {
+        "id": "q3",
+        "text": "How important is price when making your decision?",
+        "type": "scale",
+        "options": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "scale_labels": {
+          "1": "Not important",
+          "5": "Very important"
+        },
+        "required": true,
+        "category": "pricing"
+      },
+      {
+        "id": "q4",
+        "text": "What is your age range?",
+        "type": "multiple_choice",
+        "options": [
+          "18-24",
+          "25-34",
+          "35-44",
+          "45-54",
+          "55-64",
+          "65+"
+        ],
+        "required": true,
+        "category": "demographic"
+      }
+    ],
+    "metadata": {
+      "target_responses": 200,
+      "methodology": [
+        "general_survey"
+      ],
+      "generation_method": "template_based",
+      "note": "Generated using fallback templates - add Replicate token for AI generation"
+    }
+  },
+  "model_used": "gpt-5-via-replicate",
+  "used_ai_generation": true,
+  "golden_examples_used": [],
+  "similarity_score": null,
+  "analysis": {
+    "title_generated": true,
+    "description_generated": true,
+    "questions_count": 4,
+    "estimated_time": 8,
+    "methodologies_detected": [
+      "general_survey"
+    ],
+    "meets_min_questions": false,
+    "has_advanced_methodologies": true,
+    "quality_indicators": {
+      "has_screening_questions": true,
+      "has_scale_questions": true,
+      "has_multiple_choice": true,
+      "has_methodology_tags": false,
+      "has_categories": true
+    },
+    "methodology_match": {
+      "expected": [
+        "stakeholder_mapping",
+        "discrete_choice",
+        "kano_model"
+      ],
+      "detected": [
+        "general_survey"
+      ],
+      "intersection": [],
+      "coverage_percentage": 0.0
+    }
+  },
+  "pillar_evaluation": {
+    "overall_score": 0.6411917808219179,
+    "pillar_scores": 

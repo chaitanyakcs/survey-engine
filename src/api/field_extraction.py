@@ -10,7 +10,7 @@ import uuid
 from ..database import get_db
 from ..services.field_extraction_service import field_extraction_service
 from ..services.progress_service import progress_service
-from ..services.websocket_client import WebSocketClient
+from ..services.websocket_client import WebSocketNotificationService
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ async def extract_fields(
     
     try:
         # Initialize progress service with WebSocket client
-        ws_client = WebSocketClient()
+        ws_client = WebSocketNotificationService()
         progress_service.ws_client = ws_client
         
         # Send initial progress

@@ -10,9 +10,17 @@ from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
 from datetime import datetime
 
-# Import the pillar evaluators
-from .content_validity_evaluator import ContentValidityEvaluator, ContentValidityResult
-from .methodological_rigor_evaluator import MethodologicalRigorEvaluator, MethodologicalRigorResult
+# Import the pillar evaluators (prioritize advanced versions)
+try:
+    from .advanced_content_validity_evaluator import AdvancedContentValidityEvaluator as ContentValidityEvaluator
+    from .advanced_methodological_rigor_evaluator import AdvancedMethodologicalRigorEvaluator as MethodologicalRigorEvaluator
+    print("🚀 Using advanced evaluators with chain-of-thought reasoning")
+    USING_ADVANCED_EVALUATORS = True
+except ImportError:
+    from .content_validity_evaluator import ContentValidityEvaluator, ContentValidityResult
+    from .methodological_rigor_evaluator import MethodologicalRigorEvaluator, MethodologicalRigorResult
+    print("⚠️  Using basic evaluators - advanced modules not available")
+    USING_ADVANCED_EVALUATORS = False
 
 @dataclass
 class PillarScores:
@@ -45,13 +53,22 @@ class PillarBasedEvaluator:
         'deployment_readiness': 0.10        # 10%
     }
     
-    def __init__(self, llm_client=None):
-        """Initialize with LLM client for comprehensive analysis"""
+    def __init__(self, llm_client=None, db_session=None):
+        """Initialize with LLM client and database session for comprehensive analysis"""
         self.llm_client = llm_client
+        self.db_session = db_session
         
         # Initialize pillar evaluators
-        self.content_validity_evaluator = ContentValidityEvaluator(llm_client)
-        self.methodological_rigor_evaluator = MethodologicalRigorEvaluator(llm_client)
+        self.content_validity_evaluator = ContentValidityEvaluator(llm_client, db_session)
+        self.methodological_rigor_evaluator = MethodologicalRigorEvaluator(llm_client, db_session)
+        
+        # Initialize pillar rules service
+        try:
+            from ..consolidated_rules_integration import ConsolidatedRulesService
+            self.pillar_rules_service = ConsolidatedRulesService(db_session)
+        except ImportError:
+            print("Warning: ConsolidatedRulesService not available - using basic evaluation")
+            self.pillar_rules_service = None
         
     async def evaluate_survey(self, survey: Dict[str, Any], rfq_text: str) -> PillarEvaluationResult:
         """
@@ -83,10 +100,17 @@ class PillarBasedEvaluator:
         print("🚀 Evaluating Pillar 5: Deployment Readiness (10%)")
         deployment_score = await self._evaluate_deployment_readiness(survey, rfq_text)
         
-        # Create pillar scores
+        # Create pillar scores (handle both advanced and basic result types)
+        if USING_ADVANCED_EVALUATORS:
+            content_validity_score = content_validity_result.overall_score
+            methodological_rigor_score = methodological_rigor_result.overall_score
+        else:
+            content_validity_score = content_validity_result.score
+            methodological_rigor_score = methodological_rigor_result.score
+            
         pillar_scores = PillarScores(
-            content_validity=content_validity_result.score,
-            methodological_rigor=methodological_rigor_result.score,
+            content_validity=content_validity_score,
+            methodological_rigor=methodological_rigor_score,
             clarity_comprehensibility=clarity_score,
             structural_coherence=structural_score,
             deployment_readiness=deployment_score
@@ -113,21 +137,40 @@ class PillarBasedEvaluator:
             'deployment_readiness': await self._get_deployment_detailed_analysis(survey, rfq_text)
         }
         
-        # Generate comprehensive recommendations
+        # Generate comprehensive recommendations (handle both advanced and basic result types)
+        if USING_ADVANCED_EVALUATORS:
+            # Advanced evaluators have structured recommendations
+            content_recs = [rec.get('issue', 'Recommendation') for rec in content_validity_result.specific_recommendations]
+            method_recs = [rec.get('issue', 'Recommendation') for rec in methodological_rigor_result.specific_recommendations]
+        else:
+            # Basic evaluators have simple recommendation lists
+            content_recs = content_validity_result.recommendations
+            method_recs = methodological_rigor_result.recommendations
+            
         recommendations = await self._generate_comprehensive_recommendations(
-            pillar_scores, detailed_results, content_validity_result.recommendations, 
-            methodological_rigor_result.recommendations
+            pillar_scores, detailed_results, content_recs, method_recs
         )
         
         # Create evaluation metadata
         evaluation_metadata = {
             'evaluation_timestamp': datetime.now().isoformat(),
             'pillar_weights_used': self.PILLAR_WEIGHTS,
-            'evaluation_version': '1.0-llm-based',
+            'evaluation_version': '2.0-advanced-chain-of-thought' if USING_ADVANCED_EVALUATORS else '1.0-llm-based',
+            'advanced_evaluators_used': USING_ADVANCED_EVALUATORS,
             'total_questions': len(survey.get('questions', [])),
             'declared_methodologies': survey.get('metadata', {}).get('methodology', []),
             'estimated_completion_time': survey.get('estimated_time', 0)
         }
+        
+        # Add advanced evaluation metadata if available
+        if USING_ADVANCED_EVALUATORS:
+            evaluation_metadata.update({
+                'content_validity_confidence': content_validity_result.confidence_score,
+                'methodological_rigor_confidence': methodological_rigor_result.confidence_score,
+                'objectives_extracted': len(content_validity_result.research_objectives),
+                'biases_detected': len(methodological_rigor_result.bias_analysis),
+                'reasoning_chains_used': True
+            })
         
         print(f"✅ Evaluation complete! Overall Score: {overall_score:.2f}")
         
@@ -151,31 +194,35 @@ class PillarBasedEvaluator:
         )
     
     async def _evaluate_clarity_comprehensibility(self, survey: Dict[str, Any], rfq_text: str) -> float:
-        """Evaluate clarity and comprehensibility (Pillar 3) using LLM"""
+        """Evaluate clarity and comprehensibility (Pillar 3) using LLM with pillar-specific rules"""
         
         questions = survey.get("questions", [])
         questions_text = [q.get('text', '') for q in questions]
         
+        # Get pillar-specific rules context
+        rules_context = ""
+        if self.pillar_rules_service:
+            rules_context = self.pillar_rules_service.create_pillar_rule_prompt_context("clarity_comprehensibility")
+        
         prompt = f"""
-        Evaluate the clarity and comprehensibility of this survey focusing on language accessibility, 
-        question wording effectiveness, and absence of ambiguous or double-barreled questions.
+        {rules_context}
+        
+        Evaluate the clarity and comprehensibility of this survey based on the rules specified above.
         
         Survey Questions:
         {json.dumps(questions_text, indent=2)}
         
-        Evaluate:
+        RFQ Context:
+        {rfq_text[:500]}...
+        
+        Focus your evaluation on:
         1. Language Accessibility - Are questions written in clear, accessible language?
         2. Question Wording Effectiveness - Are questions well-worded and unambiguous?
         3. Absence of Double-barreled Questions - Does each question focus on one concept?
         4. Reading Level Appropriateness - Is the language appropriate for target audience?
         5. Cultural Sensitivity - Are questions culturally appropriate and inclusive?
         
-        Standards:
-        - Use simple, clear language
-        - Avoid jargon unless necessary
-        - One concept per question
-        - Appropriate reading level (typically 8th grade or below)
-        - Neutral, inclusive tone
+        For each rule listed in the evaluation criteria above, assess compliance and provide specific examples.
         
         Respond with JSON:
         {{
@@ -183,7 +230,8 @@ class PillarBasedEvaluator:
             "language_accessibility": <float 0.0-1.0>,
             "question_wording_quality": <float 0.0-1.0>,
             "ambiguity_check": <float 0.0-1.0>,
-            "reading_level_appropriateness": <float 0.0-1.0>
+            "reading_level_appropriateness": <float 0.0-1.0>,
+            "rule_compliance_details": "<specific analysis against pillar rules>"
         }}
         """
         

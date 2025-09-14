@@ -156,18 +156,22 @@ class GeneratorAgent:
                     SurveyRule.rule_type == 'custom',
                     SurveyRule.is_active == True
                 ).all()
+                
+                # Create a new GenerationService with fresh database session
+                from src.services.generation_service import GenerationService
+                fresh_generation_service = GenerationService(db_session=fresh_db)
+                
             except Exception as db_error:
                 self.logger.warning(f"⚠️ [GeneratorAgent] Failed to load custom rules: {str(db_error)}")
                 custom_rules_query = []
-            finally:
-                fresh_db.close()
+                fresh_generation_service = self.generation_service  # Fallback to original
             
             custom_rules = {
                 "rules": [rule.rule_description for rule in custom_rules_query if rule.rule_description]
             }
             
             self.logger.info(f"📋 [GeneratorAgent] Custom rules loaded: {len(custom_rules['rules'])} rules")
-            self.logger.info(f"🔧 [GeneratorAgent] Generation service model: {self.generation_service.model}")
+            self.logger.info(f"🔧 [GeneratorAgent] Generation service model: {fresh_generation_service.model}")
             
             # Check API token configuration
             from src.config import settings
@@ -176,24 +180,45 @@ class GeneratorAgent:
                 self.logger.info(f"🔧 [GeneratorAgent] Replicate API token preview: {settings.replicate_api_token[:8]}...")
             
             self.logger.info("🚀 [GeneratorAgent] Calling generation service...")
-            generated_survey = await self.generation_service.generate_survey(
+            generation_result = await fresh_generation_service.generate_survey(
                 context=state.context,
                 golden_examples=state.golden_examples,
                 methodology_blocks=state.methodology_blocks,
                 custom_rules=custom_rules
             )
             
+            # Extract survey and pillar scores from generation result
+            generated_survey = generation_result.get("survey", {})
+            pillar_scores = generation_result.get("pillar_scores", {})
+            
             self.logger.info(f"✅ [GeneratorAgent] Generation completed. Survey keys: {list(generated_survey.keys()) if generated_survey else 'None'}")
+            self.logger.info(f"🏛️ [GeneratorAgent] Pillar scores present: {pillar_scores is not None and len(pillar_scores) > 0}")
+            self.logger.info(f"🏛️ [GeneratorAgent] Pillar scores: {pillar_scores.get('overall_grade', 'N/A')} ({pillar_scores.get('weighted_score', 0):.1%})")
+            self.logger.info(f"🏛️ [GeneratorAgent] Pillar scores type: {type(pillar_scores)}")
+            if isinstance(pillar_scores, dict):
+                self.logger.info(f"🏛️ [GeneratorAgent] Pillar scores keys: {list(pillar_scores.keys())}")
+            
             if generated_survey and 'questions' in generated_survey:
                 self.logger.info(f"📝 [GeneratorAgent] Generated {len(generated_survey['questions'])} questions")
             else:
                 self.logger.warning("⚠️ [GeneratorAgent] No questions found in generated survey")
             
-            return {
+            result = {
                 "raw_survey": generated_survey,
                 "generated_survey": generated_survey,
+                "pillar_scores": pillar_scores,
                 "error_message": None
             }
+            
+            self.logger.info(f"🏛️ [GeneratorAgent] Returning result with pillar_scores: {result.get('pillar_scores') is not None}")
+            
+            # Close the fresh database session
+            try:
+                fresh_db.close()
+            except Exception as e:
+                self.logger.warning(f"⚠️ [GeneratorAgent] Failed to close fresh database session: {e}")
+            
+            return result
             
         except UserFriendlyError as e:
             self.logger.error(f"❌ [GeneratorAgent] UserFriendlyError: {e.message}")
