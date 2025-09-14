@@ -637,3 +637,355 @@ async def delete_methodology_rule(methodology_name: str, db: Session = Depends(g
         logger.error(f"Failed to delete methodology rule: {str(e)}")
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to delete methodology rule: {str(e)}")
+
+
+# Pillar-based Rules Endpoints
+class PillarRuleRequest(BaseModel):
+    pillar_name: str
+    rule_text: str
+    priority: Optional[str] = "medium"  # high, medium, low
+
+class PillarRuleUpdateRequest(BaseModel):
+    rule_id: str
+    rule_text: str
+    priority: Optional[str] = None
+
+
+@router.get("/pillar-rules")
+async def get_all_pillar_rules(db: Session = Depends(get_db)):
+    """Get all pillar-based rules organized by pillar category"""
+    try:
+        from src.database.models import SurveyRule
+        
+        # Get all pillar rules from database
+        pillar_rules = db.query(SurveyRule).filter(
+            SurveyRule.rule_type == "pillar",
+            SurveyRule.is_active == True
+        ).order_by(SurveyRule.category, SurveyRule.priority.desc()).all()
+        
+        # Organize by pillar category
+        organized_rules = {}
+        pillar_categories = ["content_validity", "methodological_rigor", "clarity_comprehensibility", 
+                           "structural_coherence", "deployment_readiness"]
+        
+        for category in pillar_categories:
+            organized_rules[category] = {
+                "rules": [],
+                "count": 0
+            }
+        
+        for rule in pillar_rules:
+            if rule.category in organized_rules:
+                organized_rules[rule.category]["rules"].append({
+                    "id": str(rule.id),
+                    "rule_text": rule.rule_description,
+                    "priority": rule.rule_content.get("priority", "medium") if rule.rule_content else "medium",
+                    "created_at": rule.created_at.isoformat() if rule.created_at else "",
+                    "created_by": rule.created_by
+                })
+                organized_rules[rule.category]["count"] += 1
+        
+        return {
+            "pillar_rules": organized_rules,
+            "total_rules": len(pillar_rules),
+            "pillar_categories": pillar_categories
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch pillar rules: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch pillar rules: {str(e)}")
+
+
+@router.get("/pillar-rules/{pillar_name}")
+async def get_pillar_rules(pillar_name: str, db: Session = Depends(get_db)):
+    """Get all rules for a specific pillar"""
+    try:
+        from src.database.models import SurveyRule
+        
+        valid_pillars = ["content_validity", "methodological_rigor", "clarity_comprehensibility", 
+                        "structural_coherence", "deployment_readiness"]
+        
+        if pillar_name not in valid_pillars:
+            raise HTTPException(status_code=400, detail=f"Invalid pillar name. Must be one of: {valid_pillars}")
+        
+        # Get rules for specific pillar
+        rules = db.query(SurveyRule).filter(
+            SurveyRule.rule_type == "pillar",
+            SurveyRule.category == pillar_name,
+            SurveyRule.is_active == True
+        ).order_by(SurveyRule.priority.desc()).all()
+        
+        formatted_rules = []
+        for rule in rules:
+            formatted_rules.append({
+                "id": str(rule.id),
+                "rule_text": rule.rule_description,
+                "priority": rule.rule_content.get("priority", "medium") if rule.rule_content else "medium",
+                "created_at": rule.created_at.isoformat() if rule.created_at else "",
+                "created_by": rule.created_by
+            })
+        
+        return {
+            "pillar_name": pillar_name,
+            "rules": formatted_rules,
+            "count": len(formatted_rules)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to fetch pillar rules for {pillar_name}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch pillar rules: {str(e)}")
+
+
+@router.post("/pillar-rules")
+async def add_pillar_rule(request: PillarRuleRequest, db: Session = Depends(get_db)):
+    """Add a new pillar-based rule"""
+    try:
+        from src.database.models import SurveyRule
+        import uuid
+        
+        valid_pillars = ["content_validity", "methodological_rigor", "clarity_comprehensibility", 
+                        "structural_coherence", "deployment_readiness"]
+        
+        if request.pillar_name not in valid_pillars:
+            raise HTTPException(status_code=400, detail=f"Invalid pillar name. Must be one of: {valid_pillars}")
+        
+        # Map priority to numerical value
+        priority_map = {"high": 10, "medium": 5, "low": 1}
+        priority_value = priority_map.get(request.priority, 5)
+        
+        # Create new pillar rule
+        new_rule = SurveyRule(
+            id=uuid.uuid4(),
+            rule_type="pillar",
+            category=request.pillar_name,
+            rule_name=f"{request.pillar_name.replace('_', ' ').title()} Rule",
+            rule_description=request.rule_text,
+            rule_content={
+                "pillar": request.pillar_name,
+                "priority": request.priority,
+                "custom": True
+            },
+            is_active=True,
+            priority=priority_value,
+            created_by="user"
+        )
+        
+        db.add(new_rule)
+        db.commit()
+        db.refresh(new_rule)
+        
+        logger.info(f"Added pillar rule to {request.pillar_name}: {request.rule_text}")
+        return {
+            "message": "Pillar rule added successfully",
+            "rule_id": str(new_rule.id),
+            "pillar_name": request.pillar_name,
+            "rule_text": request.rule_text
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to add pillar rule: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to add pillar rule: {str(e)}")
+
+
+@router.put("/pillar-rules")
+async def update_pillar_rule(request: PillarRuleUpdateRequest, db: Session = Depends(get_db)):
+    """Update an existing pillar rule"""
+    try:
+        from src.database.models import SurveyRule
+        import uuid
+        
+        # Find the rule
+        rule = db.query(SurveyRule).filter(
+            SurveyRule.id == uuid.UUID(request.rule_id),
+            SurveyRule.rule_type == "pillar",
+            SurveyRule.is_active == True
+        ).first()
+        
+        if not rule:
+            raise HTTPException(status_code=404, detail="Pillar rule not found")
+        
+        # Update rule text
+        rule.rule_description = request.rule_text
+        
+        # Update priority if provided
+        if request.priority:
+            priority_map = {"high": 10, "medium": 5, "low": 1}
+            rule.priority = priority_map.get(request.priority, 5)
+            
+            if rule.rule_content:
+                rule.rule_content["priority"] = request.priority
+            else:
+                rule.rule_content = {"priority": request.priority}
+        
+        db.commit()
+        
+        logger.info(f"Updated pillar rule {request.rule_id}: {request.rule_text}")
+        return {"message": "Pillar rule updated successfully"}
+        
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid rule ID format")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update pillar rule: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to update pillar rule: {str(e)}")
+
+
+@router.delete("/pillar-rules/{rule_id}")
+async def delete_pillar_rule(rule_id: str, db: Session = Depends(get_db)):
+    """Delete a pillar rule"""
+    try:
+        from src.database.models import SurveyRule
+        import uuid
+        
+        # Find the rule
+        rule = db.query(SurveyRule).filter(
+            SurveyRule.id == uuid.UUID(rule_id),
+            SurveyRule.rule_type == "pillar",
+            SurveyRule.is_active == True
+        ).first()
+        
+        if not rule:
+            raise HTTPException(status_code=404, detail="Pillar rule not found")
+        
+        # Soft delete
+        rule.is_active = False
+        db.commit()
+        
+        logger.info(f"Deleted pillar rule: {rule_id}")
+        return {"message": "Pillar rule deleted successfully"}
+        
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid rule ID format")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete pillar rule: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete pillar rule: {str(e)}")
+
+
+@router.post("/pillar-rules/deduplicate")
+async def deduplicate_pillar_rules(db: Session = Depends(get_db)):
+    """Remove duplicate pillar rules and keep only the latest version of each unique rule"""
+    try:
+        from src.database.models import SurveyRule
+        from sqlalchemy import text
+        
+        # Get all pillar rules
+        pillar_rules = db.query(SurveyRule).filter(
+            SurveyRule.rule_type == "pillar",
+            SurveyRule.is_active == True
+        ).order_by(SurveyRule.created_at.desc()).all()
+        
+        if not pillar_rules:
+            return {"message": "No pillar rules found", "duplicates_removed": 0}
+        
+        # Track unique rules by rule description (rule text)
+        seen_rules = {}
+        duplicates_to_remove = []
+        
+        for rule in pillar_rules:
+            rule_key = (rule.category, rule.rule_description.strip())
+            
+            if rule_key in seen_rules:
+                # This is a duplicate - mark for removal
+                duplicates_to_remove.append(rule.id)
+                logger.info(f"Found duplicate rule: {rule.category} - {rule.rule_description[:50]}...")
+            else:
+                # Keep this rule (first/latest occurrence)
+                seen_rules[rule_key] = rule.id
+                logger.info(f"Keeping rule: {rule.category} - {rule.rule_description[:50]}...")
+        
+        # Remove duplicates by setting is_active = False (soft delete)
+        duplicates_removed = 0
+        for rule_id in duplicates_to_remove:
+            db.query(SurveyRule).filter(
+                SurveyRule.id == rule_id
+            ).update({"is_active": False})
+            duplicates_removed += 1
+        
+        db.commit()
+        
+        # Get final counts
+        remaining_rules = db.query(SurveyRule).filter(
+            SurveyRule.rule_type == "pillar",
+            SurveyRule.is_active == True
+        ).count()
+        
+        logger.info(f"Deduplication completed: {duplicates_removed} duplicates removed, {remaining_rules} unique rules remaining")
+        
+        return {
+            "message": "Pillar rules deduplication completed successfully",
+            "duplicates_removed": duplicates_removed,
+            "unique_rules_remaining": remaining_rules,
+            "total_processed": len(pillar_rules)
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to deduplicate pillar rules: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to deduplicate pillar rules: {str(e)}")
+
+
+@router.get("/pillar-rules/stats")
+async def get_pillar_rules_stats(db: Session = Depends(get_db)):
+    """Get statistics about pillar rules including duplicates"""
+    try:
+        from src.database.models import SurveyRule
+        from sqlalchemy import func, text
+        
+        # Count active pillar rules by category
+        active_rules = db.query(
+            SurveyRule.category, 
+            func.count(SurveyRule.id).label('count')
+        ).filter(
+            SurveyRule.rule_type == "pillar",
+            SurveyRule.is_active == True
+        ).group_by(SurveyRule.category).all()
+        
+        # Count potential duplicates (same category and rule_description)
+        duplicate_check = db.execute(text("""
+            SELECT category, rule_description, COUNT(*) as duplicate_count
+            FROM survey_rules 
+            WHERE rule_type = 'pillar' AND is_active = true
+            GROUP BY category, rule_description
+            HAVING COUNT(*) > 1
+            ORDER BY duplicate_count DESC
+        """)).fetchall()
+        
+        # Total counts
+        total_active = db.query(SurveyRule).filter(
+            SurveyRule.rule_type == "pillar",
+            SurveyRule.is_active == True
+        ).count()
+        
+        total_inactive = db.query(SurveyRule).filter(
+            SurveyRule.rule_type == "pillar",
+            SurveyRule.is_active == False
+        ).count()
+        
+        return {
+            "total_active_rules": total_active,
+            "total_inactive_rules": total_inactive,
+            "rules_by_category": {rule.category: rule.count for rule in active_rules},
+            "potential_duplicates": [
+                {
+                    "category": dup.category,
+                    "rule_description": dup.rule_description[:100] + "..." if len(dup.rule_description) > 100 else dup.rule_description,
+                    "duplicate_count": dup.duplicate_count
+                }
+                for dup in duplicate_check
+            ],
+            "total_duplicates_found": len(duplicate_check)
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get pillar rules stats: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get pillar rules stats: {str(e)}")
