@@ -78,7 +78,14 @@ const PillarRulesManager: React.FC = () => {
   const fetchPillarRules = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/v1/rules/pillar-rules');
+      const timestamp = new Date().getTime();
+      const response = await fetch(`/api/v1/rules/pillar-rules?t=${timestamp}`, {
+        method: 'GET',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
       if (response.ok) {
         const data = await response.json();
         console.log('Pillar rules API response:', data);

@@ -55,6 +55,8 @@ class APIService {
       methodologies: backendResponse.final_output?.methodologies || [],
       golden_examples: backendResponse.final_output?.golden_examples || [],
       questions: backendResponse.final_output?.questions || [],
+      sections: backendResponse.final_output?.sections || [], // Include sections
+      pillar_scores: backendResponse.pillar_scores || null,
       metadata: {
         target_responses: backendResponse.final_output?.target_responses || 100,
         methodology: backendResponse.final_output?.methodologies || [],
@@ -65,10 +67,18 @@ class APIService {
       }
     };
     
+    // Extract questions count from both legacy and sections format
+    const questionsCount = survey.questions 
+      ? survey.questions.length 
+      : survey.sections 
+        ? survey.sections.reduce((total, section) => total + (section.questions?.length || 0), 0)
+        : 0;
+
     console.log('✅ [API] Mapped survey:', {
       survey_id: survey.survey_id,
       title: survey.title,
-      questionsCount: survey.questions.length
+      questionsCount: questionsCount,
+      hasPillarScores: !!survey.pillar_scores
     });
     
     return survey;

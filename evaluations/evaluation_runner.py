@@ -24,6 +24,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from demo_server import generate_survey_with_gpt5, generate_fallback_survey, RFQSubmissionRequest
 from test_cases import COMPLEX_RFQ_TEST_CASES
+from utils import extract_all_questions
 
 # Import database connection
 try:
@@ -48,6 +49,7 @@ try:
 except ImportError as e:
     print(f"Warning: Pillar evaluation modules not available: {e}")
     PILLAR_EVALUATION_AVAILABLE = False
+
 
 
 class EvaluationRunner:
@@ -198,20 +200,23 @@ class EvaluationRunner:
             return {"error": "No survey generated"}
         
         survey = result["survey"]
+        all_questions = extract_all_questions(survey)
+        
         analysis = {
             "title_generated": bool(survey.get("title")),
             "description_generated": bool(survey.get("description")),
-            "questions_count": len(survey.get("questions", [])),
+            "questions_count": len(all_questions),
             "estimated_time": survey.get("estimated_time"),
             "methodologies_detected": survey.get("metadata", {}).get("methodology", []),
-            "meets_min_questions": len(survey.get("questions", [])) >= test_case.get("min_questions", 10),
+            "meets_min_questions": len(all_questions) >= test_case.get("min_questions", 10),
             "has_advanced_methodologies": bool(survey.get("metadata", {}).get("methodology", [])),
+            "has_sections": bool(survey.get("sections")),
             "quality_indicators": {
-                "has_screening_questions": any(q.get("category") == "screening" for q in survey.get("questions", [])),
-                "has_scale_questions": any(q.get("type") == "scale" for q in survey.get("questions", [])),
-                "has_multiple_choice": any(q.get("type") == "multiple_choice" for q in survey.get("questions", [])),
-                "has_methodology_tags": any(q.get("methodology") for q in survey.get("questions", [])),
-                "has_categories": any(q.get("category") for q in survey.get("questions", []))
+                "has_screening_questions": any(q.get("category") == "screening" for q in all_questions),
+                "has_scale_questions": any(q.get("type") == "scale" for q in all_questions),
+                "has_multiple_choice": any(q.get("type") == "multiple_choice" for q in all_questions),
+                "has_methodology_tags": any(q.get("methodology") for q in all_questions),
+                "has_categories": any(q.get("category") for q in all_questions)
             }
         }
         

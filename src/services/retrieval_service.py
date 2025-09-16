@@ -3,6 +3,9 @@ from sqlalchemy import text
 from src.database.models import GoldenRFQSurveyPair
 from typing import List, Dict, Any, Optional
 import numpy as np
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class RetrievalService:
@@ -66,11 +69,17 @@ class RetrievalService:
                 })
             
             # Update usage count for retrieved golden pairs
+            logger.info(f"📊 [RetrievalService] Updating usage counts for {len(golden_examples)} golden examples")
             for example in golden_examples:
-                self.db.execute(
+                # Convert string ID back to UUID for database update
+                from uuid import UUID
+                example_id = UUID(example["id"])
+                logger.info(f"📊 [RetrievalService] Updating usage count for example ID: {example_id}")
+                result = self.db.execute(
                     text("UPDATE golden_rfq_survey_pairs SET usage_count = usage_count + 1 WHERE id = :id"),
-                    {"id": example["id"]}
+                    {"id": example_id}
                 )
+                logger.info(f"📊 [RetrievalService] Update result: {result.rowcount} rows affected")
             
             self.db.commit()
             return golden_examples

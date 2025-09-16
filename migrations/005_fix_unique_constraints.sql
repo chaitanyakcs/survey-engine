@@ -53,3 +53,4 @@ SELECT
 FROM information_schema.table_constraints 
 WHERE table_name = 'survey_rules' 
 AND constraint_type = 'UNIQUE';
+

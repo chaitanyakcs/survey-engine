@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from sqlalchemy.orm import Session
 from src.database import get_db
 from src.services.golden_service import GoldenService
-from src.services.document_parser import document_parser, DocumentParsingError
+# from src.services.document_parser import document_parser, DocumentParsingError
 from src.utils.error_messages import UserFriendlyError, create_error_response
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any

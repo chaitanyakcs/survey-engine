@@ -20,3 +20,4 @@ SELECT
 FROM information_schema.columns 
 WHERE table_name = 'surveys' 
 AND column_name = 'pillar_scores';
+

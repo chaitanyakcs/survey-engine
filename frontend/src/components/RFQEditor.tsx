@@ -5,10 +5,10 @@ export const RFQEditor: React.FC = () => {
   const { rfqInput, setRFQInput, submitRFQ, workflow } = useAppStore();
   
   // Upload functionality state
-  const [inputMode, setInputMode] = useState<'text' | 'upload'>('text');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [uploadMessage, setUploadMessage] = useState('');
+  const [hasUploadedDocument, setHasUploadedDocument] = useState(false);
 
   // Set default values when component mounts
   React.useEffect(() => {
@@ -77,6 +77,7 @@ export const RFQEditor: React.FC = () => {
         // Show success message
         setUploadStatus('success');
         setUploadMessage('Text successfully extracted from document! Review and adjust the details below.');
+        setHasUploadedDocument(true);
         
         // Clear success message after 5 seconds
         setTimeout(() => setUploadStatus('idle'), 5000);
@@ -218,7 +219,7 @@ export const RFQEditor: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Input Mode Toggle */}
+                {/* Research Requirements Input */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <h4 className="text-lg font-semibold text-gray-900 flex items-center">
@@ -235,136 +236,97 @@ export const RFQEditor: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Input Mode Toggle */}
-                  <div className="flex items-center space-x-4 mb-4">
-                    <div className="flex bg-gray-100 rounded-xl p-1">
-                      <button
-                        type="button"
-                        onClick={() => setInputMode('text')}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                          inputMode === 'text'
-                            ? 'bg-white text-gray-900 shadow-sm'
-                            : 'text-gray-600 hover:text-gray-900'
-                        }`}
+                  {/* Document Upload Section - Always visible */}
+                  <div className="space-y-4">
+                    <div className="border-2 border-dashed border-gray-300 rounded-2xl p-6 text-center hover:border-blue-400 transition-colors duration-200">
+                      <input
+                        type="file"
+                        accept=".docx"
+                        onChange={handleFileUpload}
+                        disabled={isUploading}
+                        className="hidden"
+                        id="rfq-file-upload"
+                      />
+                      <label
+                        htmlFor="rfq-file-upload"
+                        className={`cursor-pointer ${isUploading ? 'cursor-not-allowed opacity-50' : ''}`}
                       >
-                        <div className="flex items-center space-x-2">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                          <span>Text Input</span>
-                        </div>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setInputMode('upload')}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                          inputMode === 'upload'
-                            ? 'bg-white text-gray-900 shadow-sm'
-                            : 'text-gray-600 hover:text-gray-900'
-                        }`}
-                      >
-                        <div className="flex items-center space-x-2">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                          </svg>
-                          <span>Upload DOCX</span>
-                        </div>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* File Upload Section */}
-                  {inputMode === 'upload' && (
-                    <div className="space-y-4">
-                      <div className="border-2 border-dashed border-gray-300 rounded-2xl p-8 text-center hover:border-blue-400 transition-colors duration-200">
-                        <input
-                          type="file"
-                          accept=".docx"
-                          onChange={handleFileUpload}
-                          disabled={isUploading}
-                          className="hidden"
-                          id="rfq-file-upload"
-                        />
-                        <label
-                          htmlFor="rfq-file-upload"
-                          className={`cursor-pointer ${isUploading ? 'cursor-not-allowed opacity-50' : ''}`}
-                        >
-                          <div className="space-y-4">
-                            <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
-                              {isUploading ? (
-                                <svg className="animate-spin w-8 h-8 text-blue-600" fill="none" viewBox="0 0 24 24">
-                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                              ) : (
-                                <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                                </svg>
-                              )}
-                            </div>
-                            <div>
-                              <p className="text-lg font-medium text-gray-900">
-                                {isUploading ? 'Processing document...' : 'Upload DOCX file'}
-                              </p>
-                              <p className="text-sm text-gray-500 mt-1">
-                                {isUploading ? 'Please wait while we parse your document' : 'Click to browse or drag and drop your DOCX file here'}
-                              </p>
-                            </div>
+                        <div className="space-y-3">
+                          <div className="mx-auto w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                            {isUploading ? (
+                              <svg className="animate-spin w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                            ) : (
+                              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                              </svg>
+                            )}
                           </div>
-                        </label>
-                      </div>
-
-                      {/* Upload Status Messages */}
-                      {uploadStatus !== 'idle' && (
-                        <div className={`p-4 rounded-xl ${
-                          uploadStatus === 'success' 
-                            ? 'bg-green-50 border border-green-200' 
-                            : 'bg-red-50 border border-red-200'
-                        }`}>
-                          <div className="flex items-center space-x-3">
-                            <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
-                              uploadStatus === 'success' ? 'bg-green-500' : 'bg-red-500'
-                            }`}>
-                              {uploadStatus === 'success' ? (
-                                <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
-                              ) : (
-                                <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                              )}
-                            </div>
-                            <p className={`text-sm font-medium ${
-                              uploadStatus === 'success' ? 'text-green-800' : 'text-red-800'
-                            }`}>
-                              {uploadMessage}
+                          <div>
+                            <p className="text-base font-medium text-gray-900">
+                              {isUploading ? 'Processing document...' : hasUploadedDocument ? 'Upload another DOCX file' : 'Upload DOCX file to populate requirements'}
+                            </p>
+                            <p className="text-sm text-gray-500 mt-1">
+                              {isUploading ? 'Please wait while we parse your document' : 'Click to browse or drag and drop your DOCX file here'}
                             </p>
                           </div>
                         </div>
-                      )}
+                      </label>
                     </div>
-                  )}
 
-                  {/* Text Input Section */}
-                  {inputMode === 'text' && (
-                    <div className="group relative">
-                      <textarea
-                        value={rfqInput.description}
-                        onChange={(e) => setRFQInput({ description: e.target.value })}
-                        placeholder="Describe your research requirements in detail. Include methodologies, target audience, key questions, and any specific analysis needed..."
-                        rows={10}
-                        required
-                        className="w-full px-6 py-6 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-3xl focus:ring-4 focus:ring-orange-500/20 focus:border-orange-500 transition-all duration-300 shadow-lg hover:shadow-xl group-hover:shadow-xl text-gray-900 placeholder-gray-400 resize-none leading-relaxed"
-                      />
-                      <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-orange-500/5 via-red-500/5 to-pink-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
-                      
-                      {/* Character count indicator */}
-                      <div className="absolute bottom-4 right-6 text-xs text-gray-400 bg-white/80 backdrop-blur-sm px-2 py-1 rounded-lg">
-                        {rfqInput.description.length} characters
+                    {/* Upload Status Messages */}
+                    {uploadStatus !== 'idle' && (
+                      <div className={`p-4 rounded-xl ${
+                        uploadStatus === 'success' 
+                          ? 'bg-green-50 border border-green-200' 
+                          : 'bg-red-50 border border-red-200'
+                      }`}>
+                        <div className="flex items-center space-x-3">
+                          <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
+                            uploadStatus === 'success' ? 'bg-green-500' : 'bg-red-500'
+                          }`}>
+                            {uploadStatus === 'success' ? (
+                              <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            ) : (
+                              <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            )}
+                          </div>
+                          <p className={`text-sm font-medium ${
+                            uploadStatus === 'success' ? 'text-green-800' : 'text-red-800'
+                          }`}>
+                            {uploadMessage}
+                          </p>
+                        </div>
                       </div>
+                    )}
+                  </div>
+
+                  {/* Text Input Section - Always visible */}
+                  <div className="group relative">
+                    <textarea
+                      value={rfqInput.description}
+                      onChange={(e) => setRFQInput({ description: e.target.value })}
+                      placeholder={hasUploadedDocument 
+                        ? "Review and adjust the extracted text below, or type your research requirements directly..."
+                        : "Upload a DOCX file above or describe your research requirements in detail. Include methodologies, target audience, key questions, and any specific analysis needed..."
+                      }
+                      rows={10}
+                      required
+                      className="w-full px-6 py-6 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-3xl focus:ring-4 focus:ring-orange-500/20 focus:border-orange-500 transition-all duration-300 shadow-lg hover:shadow-xl group-hover:shadow-xl text-gray-900 placeholder-gray-400 resize-none leading-relaxed"
+                    />
+                    <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-orange-500/5 via-red-500/5 to-pink-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
+                    
+                    {/* Character count indicator */}
+                    <div className="absolute bottom-4 right-6 text-xs text-gray-400 bg-white/80 backdrop-blur-sm px-2 py-1 rounded-lg">
+                      {rfqInput.description.length} characters
                     </div>
-                  )}
+                  </div>
                   
                   <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl p-4 border border-blue-100">
                     <div className="flex items-start space-x-3">

@@ -6,8 +6,14 @@ Evaluates adherence to market research best practices, question sequencing, bias
 
 import asyncio
 import json
+import sys
+import os
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
+
+# Add parent directory to path for utils import
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+from utils import extract_all_questions
 
 @dataclass
 class MethodologicalRigorResult:
@@ -45,7 +51,7 @@ class MethodologicalRigorEvaluator:
             MethodologicalRigorResult with comprehensive analysis
         """
         
-        questions = survey.get("questions", [])
+        questions = extract_all_questions(survey)
         methodologies = survey.get("metadata", {}).get("methodology", [])
         
         # Perform LLM-based analysis

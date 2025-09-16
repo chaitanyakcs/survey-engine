@@ -145,3 +145,4 @@ def create_error_response(error: Exception, context: str = "") -> Dict[str, Any]
             "solutions": formatted_error.get("solutions", []),
             "contact_support": formatted_error.get("contact_support", "")
         }
+

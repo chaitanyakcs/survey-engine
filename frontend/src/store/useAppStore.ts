@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { AppStore, RFQRequest, Survey, WorkflowState, ProgressMessage, GoldenExample, GoldenExampleRequest, ToastMessage } from '../types';
+import { AppStore, RFQRequest, WorkflowState, ProgressMessage, GoldenExampleRequest, ToastMessage, SurveyAnnotations } from '../types';
 import { apiService } from '../services/api';
 
 // Utility function to generate unique IDs
@@ -21,7 +21,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   // Workflow State
   workflow: {
-    status: 'idle' as WorkflowState['status']
+    status: 'idle'
   } as WorkflowState,
   
   setWorkflowState: (workflowState) => set((state) => ({
@@ -43,6 +43,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
   // UI State
   selectedQuestionId: undefined,
   setSelectedQuestion: (id) => set({ selectedQuestionId: id }),
+
+  // Annotation State
+  isAnnotationMode: false,
+  setAnnotationMode: (enabled) => set({ isAnnotationMode: enabled }),
+  currentAnnotations: undefined,
+  setCurrentAnnotations: (annotations) => set({ currentAnnotations: annotations }),
 
   // Toast State
   toasts: [],
@@ -492,6 +498,158 @@ export const useAppStore = create<AppStore>((set, get) => ({
       });
       
       throw error;
+    }
+  },
+
+  // Annotation Actions
+  saveAnnotations: async (annotations: SurveyAnnotations) => {
+    try {
+      // Transform frontend format to backend format
+      const transformedRequest = {
+        survey_id: annotations.surveyId,
+        question_annotations: annotations.questionAnnotations.map(qa => ({
+          question_id: qa.questionId,
+          required: qa.required,
+          quality: qa.quality,
+          relevant: qa.relevant,
+          methodological_rigor: qa.pillars.methodologicalRigor,
+          content_validity: qa.pillars.contentValidity,
+          respondent_experience: qa.pillars.respondentExperience,
+          analytical_value: qa.pillars.analyticalValue,
+          business_impact: qa.pillars.businessImpact,
+          comment: qa.comment,
+          annotator_id: qa.annotatorId || "current-user"
+        })),
+        section_annotations: annotations.sectionAnnotations.map(sa => ({
+          section_id: parseInt(sa.sectionId),
+          quality: sa.quality,
+          relevant: sa.relevant,
+          methodological_rigor: sa.pillars.methodologicalRigor,
+          content_validity: sa.pillars.contentValidity,
+          respondent_experience: sa.pillars.respondentExperience,
+          analytical_value: sa.pillars.analyticalValue,
+          business_impact: sa.pillars.businessImpact,
+          comment: sa.comment,
+          annotator_id: sa.annotatorId || "current-user"
+        })),
+        overall_comment: annotations.overallComment,
+        annotator_id: annotations.annotatorId || "current-user"
+      };
+
+      const response = await fetch(`/api/v1/annotations/survey/${annotations.surveyId}/bulk`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(transformedRequest),
+      });
+      
+      if (!response.ok) throw new Error('Failed to save annotations');
+      
+      const result = await response.json();
+      
+      // Update current annotations
+      set({ currentAnnotations: { ...annotations, ...result } });
+      
+      // Show success toast
+      get().addToast({
+        type: 'success',
+        title: 'Annotations Saved',
+        message: 'Survey annotations saved successfully',
+        duration: 4000
+      });
+      
+    } catch (error) {
+      console.error('Failed to save annotations:', error);
+      
+      // Show error toast
+      get().addToast({
+        type: 'error',
+        title: 'Save Error',
+        message: 'Failed to save annotations. Please try again.',
+        duration: 5000
+      });
+      
+      throw error;
+    }
+  },
+
+  loadAnnotations: async (surveyId: string) => {
+    console.log('🔍 [Store] loadAnnotations called with surveyId:', surveyId);
+    try {
+      const response = await fetch(`/api/v1/surveys/${surveyId}/annotations`);
+      
+      if (response.status === 404) {
+        console.log('🔍 [Store] No annotations found, creating empty structure');
+        // No annotations exist yet, create empty structure
+        const emptyAnnotations: SurveyAnnotations = {
+          surveyId,
+          questionAnnotations: [],
+          sectionAnnotations: [],
+          overallComment: '',
+        };
+        set({ currentAnnotations: emptyAnnotations });
+        return;
+      }
+      
+      if (!response.ok) throw new Error('Failed to load annotations');
+      
+      const backendAnnotations = await response.json();
+      console.log('🔍 [Store] Loaded annotations from backend:', backendAnnotations);
+      
+      // Transform backend format to frontend format
+      const frontendAnnotations: SurveyAnnotations = {
+        surveyId: backendAnnotations.survey_id,
+        questionAnnotations: backendAnnotations.question_annotations.map((qa: any) => ({
+          questionId: qa.question_id,
+          required: qa.required,
+          quality: qa.quality,
+          relevant: qa.relevant,
+          pillars: {
+            methodologicalRigor: qa.methodological_rigor,
+            contentValidity: qa.content_validity,
+            respondentExperience: qa.respondent_experience,
+            analyticalValue: qa.analytical_value,
+            businessImpact: qa.business_impact,
+          },
+          comment: qa.comment,
+          annotatorId: qa.annotator_id,
+          timestamp: qa.created_at
+        })),
+        sectionAnnotations: backendAnnotations.section_annotations.map((sa: any) => ({
+          sectionId: sa.section_id.toString(),
+          quality: sa.quality,
+          relevant: sa.relevant,
+          pillars: {
+            methodologicalRigor: sa.methodological_rigor,
+            contentValidity: sa.content_validity,
+            respondentExperience: sa.respondent_experience,
+            analyticalValue: sa.analytical_value,
+            businessImpact: sa.business_impact,
+          },
+          comment: sa.comment,
+          annotatorId: sa.annotator_id,
+          timestamp: sa.created_at
+        })),
+        overallComment: backendAnnotations.overall_comment || '',
+        annotatorId: backendAnnotations.annotator_id,
+        createdAt: backendAnnotations.created_at,
+        updatedAt: backendAnnotations.updated_at
+      };
+      
+      console.log('🔍 [Store] Setting currentAnnotations:', frontendAnnotations);
+      set({ currentAnnotations: frontendAnnotations });
+      
+    } catch (error) {
+      console.error('Failed to load annotations:', error);
+      
+      // Show error toast
+      get().addToast({
+        type: 'error',
+        title: 'Load Error',
+        message: 'Failed to load annotations.',
+        duration: 5000
+      });
     }
   }
 }));

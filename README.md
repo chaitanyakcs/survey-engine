@@ -20,6 +20,34 @@ cp .env.example .env
 OPENAI_API_KEY=sk-your-openai-api-key-here
 ```
 
+### Pillar Rules Setup (Optional)
+The 5-Pillar Evaluation system uses pillar-based rules for survey quality assessment. These rules are managed via API and not automatically seeded during startup.
+
+To set up pillar rules for evaluation:
+
+1. **Add pillar rules via API** (recommended):
+```bash
+# Add rules through the Rules Manager in the frontend
+# Navigate to: http://localhost:8000/rules
+```
+
+2. **Or seed pillar rules programmatically**:
+```bash
+# Use the deduplication endpoint to clean up any existing duplicates
+curl -X POST http://localhost:8000/api/v1/rules/pillar-rules/deduplicate
+
+# Add pillar rules via API endpoints
+curl -X POST http://localhost:8000/api/v1/rules/pillar-rules \
+  -H "Content-Type: application/json" \
+  -d '{
+    "pillar_name": "content_validity",
+    "rule_text": "Survey questions must directly address all stated research objectives from the RFQ",
+    "priority": "high"
+  }'
+```
+
+**Note**: Pillar rules are now managed through the API to prevent duplicates and allow for better customization.
+
 ### Running with Docker
 ```bash
 # Start all services

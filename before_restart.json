@@ -1,0 +1,22 @@
+[
+  {
+    "pillar": "content_validity",
+    "count": 5
+  },
+  {
+    "pillar": "methodological_rigor",
+    "count": 7
+  },
+  {
+    "pillar": "clarity_comprehensibility",
+    "count": 7
+  },
+  {
+    "pillar": "structural_coherence",
+    "count": 7
+  },
+  {
+    "pillar": "deployment_readiness",
+    "count": 7
+  }
+]

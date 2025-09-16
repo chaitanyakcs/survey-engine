@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, File, UploadFile
-from src.services.document_parser import document_parser
+# from src.services.document_parser import document_parser
 from src.utils.error_messages import UserFriendlyError, create_error_response
 from pydantic import BaseModel
 from typing import Optional
@@ -60,3 +60,4 @@ async def extract_text(
         logger.error(f"❌ [Text Extract] Unexpected error extracting text from {file.filename}: {str(e)}", exc_info=True)
         error_response = create_error_response(e, f"text extraction from {file.filename}")
         raise HTTPException(status_code=500, detail=error_response)
+

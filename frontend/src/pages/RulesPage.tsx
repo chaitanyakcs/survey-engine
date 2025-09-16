@@ -14,8 +14,15 @@ interface MethodologyRule {
   best_practices?: string[];
 }
 
+interface QualityRuleItem {
+  id: string;
+  text: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 interface QualityRule {
-  [category: string]: string[];
+  [category: string]: QualityRuleItem[];
 }
 
 interface SystemPrompt {
@@ -38,11 +45,18 @@ export const RulesPage: React.FC = () => {
   const [isRetrying, setIsRetrying] = useState(false);
 
   // Quality rules editing states
-  const [editingRule, setEditingRule] = useState<{category: string, ruleIndex: number} | null>(null);
+  const [editingRule, setEditingRule] = useState<{category: string, ruleId: string} | null>(null);
   const [editingText, setEditingText] = useState('');
   const [addingRule, setAddingRule] = useState<{category: string} | null>(null);
   const [newRuleText, setNewRuleText] = useState('');
   const [saving, setSaving] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    show: boolean;
+    type: 'rule' | 'methodology' | 'system-prompt';
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   // Methodology rules editing states
   const [editingMethodology, setEditingMethodology] = useState<string | null>(null);
@@ -76,7 +90,14 @@ export const RulesPage: React.FC = () => {
 
   const fetchQualityRules = useCallback(async () => {
     try {
-      const qualityRes = await fetch('/api/v1/rules/quality-rules');
+      const timestamp = new Date().getTime();
+      const qualityRes = await fetch(`/api/v1/rules/quality-rules?t=${timestamp}`, {
+        method: 'GET',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
       if (qualityRes.ok) {
         const qualityData = await qualityRes.json();
         setQualityRules(qualityData);
@@ -100,10 +121,29 @@ export const RulesPage: React.FC = () => {
         setLoading(true);
       }
       
+      const timestamp = new Date().getTime();
       const [methodologiesRes, qualityRes, systemPromptRes] = await Promise.all([
-        fetch('/api/v1/rules/methodologies'),
-        fetch('/api/v1/rules/quality-rules'),
-        fetch('/api/v1/rules/system-prompt')
+        fetch(`/api/v1/rules/methodologies?t=${timestamp}`, {
+          method: 'GET',
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        }),
+        fetch(`/api/v1/rules/quality-rules?t=${timestamp}`, {
+          method: 'GET',
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        }),
+        fetch(`/api/v1/rules/system-prompt?t=${timestamp}`, {
+          method: 'GET',
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        })
       ]);
 
       if (!methodologiesRes.ok || !qualityRes.ok) {
@@ -154,8 +194,8 @@ export const RulesPage: React.FC = () => {
   }, [fetchRules]);
 
   // Quality Rules Handlers
-  const startEditRule = (category: string, ruleIndex: number, currentRule: string) => {
-    setEditingRule({ category, ruleIndex });
+  const startEditRule = (category: string, ruleId: string, currentRule: string) => {
+    setEditingRule({ category, ruleId });
     setEditingText(currentRule);
   };
 
@@ -167,7 +207,7 @@ export const RulesPage: React.FC = () => {
   const saveEditRule = async () => {
     if (!editingRule || !editingText.trim()) return;
 
-    const saveKey = `${editingRule.category}-${editingRule.ruleIndex}`;
+    const saveKey = `${editingRule.category}-${editingRule.ruleId}`;
     setSaving(saveKey);
 
     try {
@@ -175,19 +215,14 @@ export const RulesPage: React.FC = () => {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          category: editingRule.category,
-          rule_index: editingRule.ruleIndex,
+          rule_id: editingRule.ruleId,
           rule_text: editingText.trim()
         })
       });
 
       if (response.ok) {
-        const updatedQualityRules = { ...qualityRules };
-        if (updatedQualityRules[editingRule.category]) {
-          updatedQualityRules[editingRule.category] = [...updatedQualityRules[editingRule.category]];
-          updatedQualityRules[editingRule.category][editingRule.ruleIndex] = editingText.trim();
-          setQualityRules(updatedQualityRules);
-        }
+        // Refresh the rules from the server to ensure consistency
+        await fetchRules();
         setEditingRule(null);
         setEditingText('');
       } else {
@@ -228,12 +263,8 @@ export const RulesPage: React.FC = () => {
       });
 
       if (response.ok) {
-        const updatedQualityRules = { ...qualityRules };
-        if (!updatedQualityRules[addingRule.category]) {
-          updatedQualityRules[addingRule.category] = [];
-        }
-        updatedQualityRules[addingRule.category] = [...updatedQualityRules[addingRule.category], newRuleText.trim()];
-        setQualityRules(updatedQualityRules);
+        // Refresh data from server to get proper UUIDs instead of using temporary IDs
+        await fetchQualityRules();
         setAddingRule(null);
         setNewRuleText('');
       } else {
@@ -247,25 +278,48 @@ export const RulesPage: React.FC = () => {
     }
   };
 
-  const deleteRule = async (category: string, ruleIndex: number) => {
-    if (!window.confirm('Are you sure you want to delete this rule?')) return;
+  const deleteRule = async (category: string, ruleId: string) => {
+    console.log('🗑️ [FRONTEND] Starting quality rule deletion:', { category, ruleId });
+    
+    setDeleteConfirm({
+      show: true,
+      type: 'rule',
+      title: 'Delete Rule',
+      message: 'Are you sure you want to delete this rule? This action cannot be undone.',
+      onConfirm: async () => {
+        setDeleteConfirm(null);
+        await performRuleDeletion(category, ruleId);
+      }
+    });
+  };
 
-    const saveKey = `delete-${category}-${ruleIndex}`;
+  const performRuleDeletion = async (category: string, ruleId: string) => {
+
+    const saveKey = `delete-${category}-${ruleId}`;
     setSaving(saveKey);
 
     try {
+      console.log('🗑️ [FRONTEND] Sending DELETE request with rule_id:', ruleId);
+
       const response = await fetch('/api/v1/rules/quality-rules', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          category,
-          rule_index: ruleIndex
+          rule_id: ruleId
         })
       });
 
+      console.log('🗑️ [FRONTEND] Response status:', response.status, response.statusText);
+
       if (response.ok) {
+        console.log('✅ [FRONTEND] Delete request successful');
+        const responseData = await response.json();
+        console.log('✅ [FRONTEND] Delete response:', responseData);
+        
         // Refresh the data from server to ensure consistency
+        console.log('🔄 [FRONTEND] Refreshing quality rules from server...');
         await fetchQualityRules();
+        
         addToast({
           type: 'success',
           title: 'Rule Deleted',
@@ -273,23 +327,34 @@ export const RulesPage: React.FC = () => {
           duration: 3000
         });
       } else {
-        const errorData = await response.json().catch(() => ({}));
+        console.error('❌ [FRONTEND] Delete request failed:', response.status, response.statusText);
+        let errorMessage = 'Failed to delete quality rule';
+        try {
+          const errorData = await response.json();
+          console.error('❌ [FRONTEND] Error response data:', errorData);
+          errorMessage = errorData.detail || errorData.message || errorMessage;
+        } catch (parseError) {
+          console.error('❌ [FRONTEND] Failed to parse error response:', parseError);
+        }
+        
         addToast({
           type: 'error',
           title: 'Delete Failed',
-          message: errorData.detail || 'Failed to delete quality rule',
+          message: errorMessage,
           duration: 5000
         });
       }
     } catch (error) {
-      console.error('Failed to delete quality rule:', error);
+      console.error('❌ [FRONTEND] Network/Exception error during delete:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Network error occurred while deleting the rule';
       addToast({
         type: 'error',
         title: 'Delete Failed',
-        message: 'Network error occurred while deleting the rule',
+        message: errorMessage,
         duration: 5000
       });
     } finally {
+      console.log('🔄 [FRONTEND] Delete operation completed, clearing saving state');
       setSaving(null);
     }
   };
@@ -331,19 +396,46 @@ export const RulesPage: React.FC = () => {
   };
 
   const handleDeleteSystemPrompt = async () => {
-    if (window.confirm('Are you sure you want to delete the system prompt?')) {
-      try {
-        const response = await fetch('/api/v1/rules/system-prompt', { method: 'DELETE' });
-        if (response.ok) {
-          setSystemPrompt({ id: '', prompt_text: '', created_at: '', updated_at: '' });
-          setTempPromptText('');
-        } else {
-          alert('Failed to delete system prompt');
-        }
-      } catch (error) {
-        console.error('Failed to delete system prompt:', error);
-        alert('Failed to delete system prompt');
+    setDeleteConfirm({
+      show: true,
+      type: 'system-prompt',
+      title: 'Delete System Prompt',
+      message: 'Are you sure you want to delete the system prompt? This action cannot be undone.',
+      onConfirm: async () => {
+        setDeleteConfirm(null);
+        await performSystemPromptDeletion();
       }
+    });
+  };
+
+  const performSystemPromptDeletion = async () => {
+    try {
+      const response = await fetch('/api/v1/rules/system-prompt', { method: 'DELETE' });
+      if (response.ok) {
+        setSystemPrompt({ id: '', prompt_text: '', created_at: '', updated_at: '' });
+        setTempPromptText('');
+        addToast({
+          type: 'success',
+          title: 'System Prompt Deleted',
+          message: 'System prompt has been deleted successfully',
+          duration: 3000
+        });
+      } else {
+        addToast({
+          type: 'error',
+          title: 'Delete Failed',
+          message: 'Failed to delete system prompt',
+          duration: 5000
+        });
+      }
+    } catch (error) {
+      console.error('Failed to delete system prompt:', error);
+      addToast({
+        type: 'error',
+        title: 'Delete Failed',
+        message: 'Network error occurred while deleting system prompt',
+        duration: 5000
+      });
     }
   };
 
@@ -416,7 +508,19 @@ export const RulesPage: React.FC = () => {
   };
 
   const deleteMethodology = async (methodologyName: string) => {
-    if (!window.confirm(`Are you sure you want to delete the '${methodologyName}' methodology?`)) return;
+    setDeleteConfirm({
+      show: true,
+      type: 'methodology',
+      title: 'Delete Methodology',
+      message: `Are you sure you want to delete the '${methodologyName}' methodology? This action cannot be undone.`,
+      onConfirm: async () => {
+        setDeleteConfirm(null);
+        await performMethodologyDeletion(methodologyName);
+      }
+    });
+  };
+
+  const performMethodologyDeletion = async (methodologyName: string) => {
 
     const saveKey = `delete-methodology-${methodologyName}`;
     setSaving(saveKey);
@@ -967,8 +1071,8 @@ export const RulesPage: React.FC = () => {
                     
                     <div className="space-y-3">
                       {rules.map((rule, index) => (
-                        <div key={index} className="flex items-center space-x-3 p-3 bg-white rounded-lg border border-gray-200 hover:border-amber-300 transition-colors">
-                          {editingRule?.category === category && editingRule?.ruleIndex === index ? (
+                        <div key={rule.id || index} className="flex items-center space-x-3 p-3 bg-white rounded-lg border border-gray-200 hover:border-amber-300 transition-colors">
+                          {editingRule?.category === category && editingRule?.ruleId === rule.id ? (
                             <div className="flex-1 flex items-center space-x-2">
                               <input
                                 type="text"
@@ -979,10 +1083,10 @@ export const RulesPage: React.FC = () => {
                               />
                               <button
                                 onClick={saveEditRule}
-                                disabled={saving === `${category}-${index}`}
+                                disabled={saving === `${category}-${rule.id}`}
                                 className="p-2 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
                               >
-                                {saving === `${category}-${index}` ? (
+                                {saving === `${category}-${rule.id}` ? (
                                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
                                 ) : (
                                   <CheckIcon className="w-4 h-4" />
@@ -997,19 +1101,19 @@ export const RulesPage: React.FC = () => {
                             </div>
                           ) : (
                             <>
-                              <div className="flex-1 text-gray-700">{rule}</div>
+                              <div className="flex-1 text-gray-700">{rule.text}</div>
                               <button
-                                onClick={() => startEditRule(category, index, rule)}
+                                onClick={() => startEditRule(category, rule.id, rule.text)}
                                 className="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
                               >
                                 <PencilIcon className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={() => deleteRule(category, index)}
-                                disabled={saving === `delete-${category}-${index}`}
+                                onClick={() => deleteRule(category, rule.id)}
+                                disabled={saving === `delete-${category}-${rule.id}`}
                                 className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
                               >
-                                {saving === `delete-${category}-${index}` ? (
+                                {saving === `delete-${category}-${rule.id}` ? (
                                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
                                 ) : (
                                   <TrashIcon className="w-4 h-4" />
@@ -1224,6 +1328,55 @@ export const RulesPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div className="p-6">
+              <div className="flex items-center mb-4">
+                <div className="flex-shrink-0">
+                  <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                    <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="ml-4">
+                  <h3 className="text-lg font-medium text-gray-900">
+                    {deleteConfirm.title}
+                  </h3>
+                </div>
+              </div>
+              
+              <div className="mb-6">
+                <p className="text-sm text-gray-500">
+                  {deleteConfirm.message}
+                </p>
+              </div>
+              
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={deleteConfirm.onConfirm}
+                  className={`px-4 py-2 text-sm font-medium text-white rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${
+                    deleteConfirm.type === 'rule' || deleteConfirm.type === 'methodology' || deleteConfirm.type === 'system-prompt'
+                      ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500'
+                      : 'bg-red-600 hover:bg-red-700 focus:ring-red-500'
+                  }`}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

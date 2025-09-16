@@ -242,7 +242,30 @@ export const SurveysPage: React.FC = () => {
       console.log('📊 [Survey View] Final output questions:', surveyData.final_output?.questions);
       
       // Convert to the format expected by SurveyPreview
-      const extractedQuestions = surveyData.final_output?.questions || surveyData.raw_output?.questions || [];
+      // Handle both legacy questions format and new sections format
+      let extractedQuestions = [];
+      let sections = [];
+      
+      if (surveyData.final_output?.sections && surveyData.final_output.sections.length > 0) {
+        // New sections format
+        sections = surveyData.final_output.sections;
+        extractedQuestions = sections.flatMap((section: any) => section.questions || []);
+        console.log('📋 [Survey View] Using sections format - sections:', sections.length, 'questions:', extractedQuestions.length);
+      } else if (surveyData.final_output?.questions && surveyData.final_output.questions.length > 0) {
+        // Legacy questions format
+        extractedQuestions = surveyData.final_output.questions;
+        console.log('📋 [Survey View] Using legacy questions format - questions:', extractedQuestions.length);
+      } else if (surveyData.raw_output?.sections && surveyData.raw_output.sections.length > 0) {
+        // Fallback to raw_output sections
+        sections = surveyData.raw_output.sections;
+        extractedQuestions = sections.flatMap((section: any) => section.questions || []);
+        console.log('📋 [Survey View] Using raw_output sections format - sections:', sections.length, 'questions:', extractedQuestions.length);
+      } else if (surveyData.raw_output?.questions && surveyData.raw_output.questions.length > 0) {
+        // Fallback to raw_output questions
+        extractedQuestions = surveyData.raw_output.questions;
+        console.log('📋 [Survey View] Using raw_output questions format - questions:', extractedQuestions.length);
+      }
+      
       console.log('📋 [Survey View] Extracted questions:', extractedQuestions);
       console.log('📋 [Survey View] Questions count:', extractedQuestions.length);
       
@@ -255,6 +278,7 @@ export const SurveysPage: React.FC = () => {
         methodologies: survey.methodology_tags || [],
         golden_examples: [], // Empty for now
         questions: extractedQuestions,
+        sections: sections, // Include sections for new format
         metadata: {
           target_responses: 100,
           methodology: survey.methodology_tags || [],

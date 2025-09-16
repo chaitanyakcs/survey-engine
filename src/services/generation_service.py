@@ -3,6 +3,7 @@ from src.config import settings
 from src.services.prompt_service import PromptService
 from src.services.pillar_scoring_service import PillarScoringService
 from src.utils.error_messages import UserFriendlyError, get_api_configuration_error
+from src.utils.survey_utils import get_questions_count
 from sqlalchemy.orm import Session
 import replicate
 import json
@@ -139,7 +140,7 @@ class GenerationService:
             logger.info("🏛️ [GenerationService] Evaluating survey against pillar rules...")
             pillar_scores = self.pillar_scoring_service.evaluate_survey_pillars(survey_json)
             
-            logger.info(f"🎉 [GenerationService] Successfully generated survey with {len(survey_json.get('questions', []))} questions")
+            logger.info(f"🎉 [GenerationService] Successfully generated survey with {get_questions_count(survey_json)} questions")
             logger.info(f"🎉 [GenerationService] Survey keys: {list(survey_json.keys())}")
             logger.info(f"🏛️ [GenerationService] Pillar adherence score: {pillar_scores.overall_grade} ({pillar_scores.weighted_score:.1%})")
             
@@ -227,7 +228,7 @@ class GenerationService:
             if not survey_json.get("description"):
                 survey_json["description"] = "AI-generated survey"
             
-            logger.info(f"✅ [GenerationService] Final survey has {len(survey_json.get('questions', []))} questions")
+            logger.info(f"✅ [GenerationService] Final survey has {get_questions_count(survey_json)} questions")
             return survey_json
             
         except json.JSONDecodeError as e:

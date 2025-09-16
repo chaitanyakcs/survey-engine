@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from sqlalchemy.orm import Session
 from src.database import get_db, Survey
 from src.services.survey_service import SurveyService
+from src.utils.survey_utils import get_questions_count
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from uuid import UUID
@@ -79,7 +80,7 @@ async def list_surveys(
                 methodology_tags=methodology_tags,
                 quality_score=metadata.get('quality_score'),
                 estimated_time=metadata.get('estimated_time'),
-                question_count=len(survey_data.get('questions', [])),
+                question_count=get_questions_count(survey_data),
                 annotation=None  # Survey model doesn't have annotation field
             ))
         

@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from typing import Dict, List, Any
 from src.config import settings
 from src.services.embedding_service import EmbeddingService
+from src.utils.survey_utils import extract_all_questions
 import json
 import numpy as np
 
@@ -76,47 +77,113 @@ class ValidationService:
     
     def _validate_schema(self, survey: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Validate survey JSON schema
+        Validate survey JSON schema with sections support
         """
         errors = []
         
-        # Required top-level fields
-        required_fields = ["title", "questions"]
+        # Required top-level fields - now supporting both old and new format
+        required_fields = ["title"]
         for field in required_fields:
             if field not in survey:
                 errors.append(f"Missing required field: {field}")
         
-        # Validate questions structure
-        if "questions" in survey:
+        # Check if using new sections format or old questions format
+        has_sections = "sections" in survey
+        has_questions = "questions" in survey
+        
+        if has_sections and has_questions:
+            errors.append("Survey cannot have both 'sections' and 'questions' fields. Use sections format.")
+        elif not has_sections and not has_questions:
+            errors.append("Survey must have either 'sections' or 'questions' field")
+        
+        # Validate sections structure (new format)
+        if has_sections:
+            if not isinstance(survey["sections"], list):
+                errors.append("Sections must be a list")
+            else:
+                valid_section_ids = [1, 2, 3, 4, 5]
+                section_titles = [
+                    "Screener & Demographics",
+                    "Consumer Details", 
+                    "Consumer product awareness, usage and preference",
+                    "Product introduction and Concept reaction",
+                    "Methodology"
+                ]
+                
+                found_section_ids = []
+                for i, section in enumerate(survey["sections"]):
+                    if not isinstance(section, dict):
+                        errors.append(f"Section {i} must be an object")
+                        continue
+                    
+                    # Required section fields
+                    required_section_fields = ["id", "title", "questions"]
+                    for field in required_section_fields:
+                        if field not in section:
+                            errors.append(f"Section {i} missing required field: {field}")
+                    
+                    # Validate section ID
+                    if "id" in section:
+                        if section["id"] not in valid_section_ids:
+                            errors.append(f"Section {i} has invalid ID {section['id']}. Must be 1-5")
+                        else:
+                            found_section_ids.append(section["id"])
+                    
+                    # Validate questions within section
+                    if "questions" in section:
+                        if not isinstance(section["questions"], list):
+                            errors.append(f"Section {i} questions must be a list")
+                        else:
+                            self._validate_questions_array(section["questions"], errors, f"Section {i}")
+                
+                # Check if all required sections are present
+                missing_sections = [sid for sid in valid_section_ids if sid not in found_section_ids]
+                if missing_sections:
+                    errors.append(f"Missing required section IDs: {missing_sections}")
+        
+        # Validate questions structure (legacy format)
+        elif has_questions:
             if not isinstance(survey["questions"], list):
                 errors.append("Questions must be a list")
             else:
-                for i, question in enumerate(survey["questions"]):
-                    if not isinstance(question, dict):
-                        errors.append(f"Question {i} must be an object")
-                        continue
-                    
-                    # Required question fields
-                    required_q_fields = ["text", "type"]
-                    for field in required_q_fields:
-                        if field not in question:
-                            errors.append(f"Question {i} missing required field: {field}")
-                    
-                    # Validate question type
-                    if "type" in question:
-                        valid_types = ["multiple_choice", "text", "scale", "ranking", "yes_no"]
-                        if question["type"] not in valid_types:
-                            errors.append(f"Question {i} has invalid type: {question['type']}")
-                    
-                    # Validate options for multiple choice
-                    if question.get("type") == "multiple_choice":
-                        if "options" not in question or not isinstance(question["options"], list):
-                            errors.append(f"Question {i} multiple_choice must have options list")
+                self._validate_questions_array(survey["questions"], errors, "Survey")
         
         return {
             "schema_valid": len(errors) == 0,
             "validation_errors": errors
         }
+    
+    def _validate_questions_array(self, questions: List[Dict], errors: List[str], context: str):
+        """
+        Validate an array of questions
+        """
+        for i, question in enumerate(questions):
+            if not isinstance(question, dict):
+                errors.append(f"{context} question {i} must be an object")
+                continue
+            
+            # Required question fields
+            required_q_fields = ["text", "type"]
+            for field in required_q_fields:
+                if field not in question:
+                    errors.append(f"{context} question {i} missing required field: {field}")
+            
+            # Validate question type
+            if "type" in question:
+                valid_types = ["multiple_choice", "text", "scale", "ranking", "yes_no"]
+                if question["type"] not in valid_types:
+                    errors.append(f"{context} question {i} has invalid type: {question['type']}")
+                
+                # Validate options for multiple choice
+                if question.get("type") == "multiple_choice":
+                    if "options" not in question or not isinstance(question["options"], list):
+                        errors.append(f"{context} question {i} multiple_choice must have options list")
+    
+    def _extract_all_questions(self, survey: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Extract all questions from survey, supporting both sections and legacy formats
+        """
+        return extract_all_questions(survey)
     
     async def _validate_methodology(self, survey: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -160,7 +227,7 @@ class ValidationService:
         pricing_questions = []
         required_pricing_types = ["too_expensive", "too_cheap", "getting_expensive", "good_deal"]
         
-        for question in survey.get("questions", []):
+        for question in self._extract_all_questions(survey):
             if question.get("methodology") == "pricing" or "price" in question.get("text", "").lower():
                 pricing_questions.append(question)
         
@@ -177,7 +244,7 @@ class ValidationService:
         
         # Find price ladder questions
         price_ladder_questions = []
-        for question in survey.get("questions", []):
+        for question in self._extract_all_questions(survey):
             if question.get("type") == "scale" and "price" in question.get("text", "").lower():
                 if "options" in question and isinstance(question["options"], list):
                     price_ladder_questions.append(question)
@@ -200,7 +267,7 @@ class ValidationService:
         
         # Count conjoint attributes
         conjoint_attributes = []
-        for question in survey.get("questions", []):
+        for question in self._extract_all_questions(survey):
             if question.get("methodology") == "conjoint" or "conjoint" in question.get("text", "").lower():
                 conjoint_attributes.append(question)
         
@@ -221,7 +288,17 @@ class ValidationService:
         if "description" in survey:
             text_parts.append(f"Description: {survey['description']}")
         
-        if "questions" in survey:
+        # Handle both sections and legacy format
+        if "sections" in survey:
+            text_parts.append("Sections:")
+            for section in survey["sections"]:
+                text_parts.append(f"Section {section.get('id', '')}: {section.get('title', '')}")
+                if "questions" in section:
+                    for i, question in enumerate(section["questions"], 1):
+                        text_parts.append(f"  {i}. {question.get('text', '')}")
+                        if question.get("options"):
+                            text_parts.append(f"  Options: {', '.join(question['options'])}")
+        elif "questions" in survey:
             text_parts.append("Questions:")
             for i, question in enumerate(survey["questions"], 1):
                 text_parts.append(f"{i}. {question.get('text', '')}")

@@ -5,6 +5,7 @@ import { RulesPage } from './pages/RulesPage';
 import { SurveysPage } from './pages/SurveysPage';
 import { GoldenExampleEditPage } from './pages/GoldenExampleEditPage';
 import { GoldenExampleCreatePage } from './pages/GoldenExampleCreatePage';
+import { SurveyGenerationSummaryPage } from './pages/SurveyGenerationSummaryPage';
 import { ToastContainer } from './components/Toast';
 import { SidebarProvider } from './contexts/SidebarContext';
 
@@ -16,6 +17,9 @@ function App() {
     const path = window.location.pathname;
     if (path === '/preview') {
       return 'preview';
+    }
+    if (path.startsWith('/summary/')) {
+      return 'summary';
     }
     if (path === '/rules') {
       return 'rules';
@@ -66,6 +70,8 @@ function App() {
         {/* Route to appropriate page */}
         {currentPage === 'preview' ? (
           <SurveyPreviewPage />
+        ) : currentPage === 'summary' ? (
+          <SurveyGenerationSummaryPage />
         ) : currentPage === 'rules' ? (
           <RulesPage />
         ) : currentPage === 'surveys' ? (

@@ -32,3 +32,4 @@ ON survey_rules (rule_type, category, is_active);
 -- Add comment explaining the constraint
 COMMENT ON CONSTRAINT unique_rule_description_category_type ON survey_rules 
 IS 'Prevents duplicate rules with same description, category, and type';
+

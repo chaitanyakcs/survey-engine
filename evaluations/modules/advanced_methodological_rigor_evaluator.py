@@ -7,9 +7,15 @@ Implements sophisticated bias detection and methodological analysis with detaile
 import asyncio
 import json
 import re
+import sys
+import os
 from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass, asdict
 from datetime import datetime
+
+# Add parent directory to path for utils import
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+from utils import extract_all_questions
 
 @dataclass
 class BiasAnalysis:
@@ -91,11 +97,11 @@ class AdvancedMethodologicalRigorEvaluator:
         
         # Step 1: Advanced Bias Detection
         reasoning_chain.append("STEP 1: Performing advanced multi-type bias detection with severity assessment")
-        bias_analysis = await self._advanced_bias_detection(survey.get("questions", []))
+        bias_analysis = await self._advanced_bias_detection(extract_all_questions(survey))
         
         # Step 2: Question Flow Analysis
         reasoning_chain.append("STEP 2: Analyzing question sequencing and logical flow")
-        flow_analysis = await self._question_flow_analysis(survey.get("questions", []), rfq_text)
+        flow_analysis = await self._question_flow_analysis(extract_all_questions(survey), rfq_text)
         
         # Step 3: Methodology Compliance Analysis
         reasoning_chain.append("STEP 3: Evaluating methodology implementation compliance")
@@ -307,7 +313,7 @@ class AdvancedMethodologicalRigorEvaluator:
             return []
         
         questions_with_methods = []
-        for i, q in enumerate(survey.get("questions", [])):
+        for i, q in enumerate(extract_all_questions(survey)):
             if q.get('methodology'):
                 questions_with_methods.append({
                     'id': f'q{i+1}',
@@ -403,7 +409,7 @@ class AdvancedMethodologicalRigorEvaluator:
         SURVEY DETAILS:
         - Target Responses: {target_responses}
         - Methodologies: {methodologies}
-        - Number of Questions: {len(survey.get("questions", []))}
+        - Number of Questions: {len(extract_all_questions(survey))}
         
         STATISTICAL POWER ANALYSIS:
         

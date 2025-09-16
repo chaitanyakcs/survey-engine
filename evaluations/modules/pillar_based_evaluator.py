@@ -9,6 +9,10 @@ import json
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
 from datetime import datetime
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
+from utils import extract_all_questions
 
 # Import the pillar evaluators (prioritize advanced versions)
 try:
@@ -157,7 +161,7 @@ class PillarBasedEvaluator:
             'pillar_weights_used': self.PILLAR_WEIGHTS,
             'evaluation_version': '2.0-advanced-chain-of-thought' if USING_ADVANCED_EVALUATORS else '1.0-llm-based',
             'advanced_evaluators_used': USING_ADVANCED_EVALUATORS,
-            'total_questions': len(survey.get('questions', [])),
+            'total_questions': len(extract_all_questions(survey)),
             'declared_methodologies': survey.get('metadata', {}).get('methodology', []),
             'estimated_completion_time': survey.get('estimated_time', 0)
         }
@@ -196,7 +200,7 @@ class PillarBasedEvaluator:
     async def _evaluate_clarity_comprehensibility(self, survey: Dict[str, Any], rfq_text: str) -> float:
         """Evaluate clarity and comprehensibility (Pillar 3) using LLM with pillar-specific rules"""
         
-        questions = survey.get("questions", [])
+        questions = extract_all_questions(survey)
         questions_text = [q.get('text', '') for q in questions]
         
         # Get pillar-specific rules context
@@ -249,7 +253,7 @@ class PillarBasedEvaluator:
     async def _evaluate_structural_coherence(self, survey: Dict[str, Any], rfq_text: str) -> float:
         """Evaluate structural coherence (Pillar 4) using LLM"""
         
-        questions = survey.get("questions", [])
+        questions = extract_all_questions(survey)
         
         prompt = f"""
         Evaluate the structural coherence of this survey focusing on logical flow, 
@@ -304,7 +308,7 @@ class PillarBasedEvaluator:
         
         estimated_time = survey.get("estimated_time", 0)
         target_responses = survey.get("target_responses", 0)
-        questions_count = len(survey.get("questions", []))
+        questions_count = len(extract_all_questions(survey))
         
         prompt = f"""
         Evaluate the deployment readiness of this survey focusing on practical considerations 
@@ -453,7 +457,7 @@ class PillarBasedEvaluator:
         score = 0.6
         
         estimated_time = survey.get("estimated_time", 0)
-        questions_count = len(survey.get("questions", []))
+        questions_count = len(extract_all_questions(survey))
         
         # Check reasonable survey length
         if 10 <= estimated_time <= 25:

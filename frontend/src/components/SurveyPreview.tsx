@@ -1,22 +1,50 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { Question, Survey } from '../types';
+import { Question, Survey, SurveySection, QuestionAnnotation, SectionAnnotation, SurveyAnnotations } from '../types';
 import PillarScoresDisplay from './PillarScoresDisplay';
-import { PencilIcon, BookmarkIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import QuestionAnnotationPanel from './QuestionAnnotationPanel';
+import SectionAnnotationPanel from './SectionAnnotationPanel';
+import AnnotationMode from './AnnotationMode';
+import { PencilIcon, BookmarkIcon, ArrowDownTrayIcon, ChevronDownIcon, ChevronRightIcon, TagIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
+
+// Helper function to extract all questions from survey (supports both formats)
+const extractAllQuestions = (survey: Survey): Question[] => {
+  if (survey.sections) {
+    return survey.sections.flatMap(section => section.questions);
+  } else if (survey.questions) {
+    return survey.questions;
+  }
+  return [];
+};
+
+// Helper function to check if survey uses sections format
+const hasSections = (survey: Survey): boolean => {
+  return !!survey.sections && survey.sections.length > 0;
+};
 
 const QuestionCard: React.FC<{ 
   question: Question; 
   index: number; 
   onUpdate: (updatedQuestion: Question) => void; 
   onDelete: () => void;
-  onRegenerate: (questionId: string) => void;
   onMove: (questionId: string, direction: 'up' | 'down') => void;
   canMoveUp: boolean;
   canMoveDown: boolean;
   isEditingSurvey: boolean;
-}> = ({ question, index, onUpdate, onDelete, onRegenerate, onMove, canMoveUp, canMoveDown, isEditingSurvey }) => {
+  isAnnotationMode: boolean;
+  onAnnotate?: (annotation: QuestionAnnotation) => void;
+  annotation?: QuestionAnnotation;
+}> = ({ question, index, onUpdate, onDelete, onMove, canMoveUp, canMoveDown, isEditingSurvey, isAnnotationMode, onAnnotate, annotation }) => {
   const { selectedQuestionId, setSelectedQuestion } = useAppStore();
   const isSelected = selectedQuestionId === question.id;
+  
+  console.log('🔍 [QuestionCard] Rendered with:', {
+    questionId: question.id,
+    isSelected,
+    selectedQuestionId,
+    isAnnotationMode,
+    hasAnnotation: !!annotation
+  });
   const [isEditing, setIsEditing] = useState(false);
   const [editedQuestion, setEditedQuestion] = useState<Question>(question);
 
@@ -50,13 +78,30 @@ const QuestionCard: React.FC<{
     updateQuestionField('options', newOptions);
   };
 
+  const handleAnnotationSave = (newAnnotation: QuestionAnnotation) => {
+    if (onAnnotate) {
+      onAnnotate(newAnnotation);
+    }
+  };
+
+  const handleAnnotationCancel = () => {
+    // No-op since we're not using intermediate state
+  };
+
   return (
     <div 
       className={`
         border rounded-lg p-4 cursor-pointer transition-all duration-200
         ${isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}
       `}
-      onClick={() => setSelectedQuestion(isSelected ? undefined : question.id)}
+      onClick={() => {
+        console.log('🔍 [QuestionCard] Question clicked:', {
+          questionId: question.id,
+          isSelected,
+          willSelect: !isSelected
+        });
+        setSelectedQuestion(isSelected ? undefined : question.id);
+      }}
     >
       {/* Question Header */}
       <div className="flex items-start justify-between mb-3">
@@ -76,11 +121,32 @@ const QuestionCard: React.FC<{
           `}>
             {question.category}
           </span>
+          {annotation && (
+            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+              <TagIcon className="w-3 h-3 mr-1" />
+              Annotated
+            </span>
+          )}
         </div>
         
-        {question.required && (
-          <span className="text-red-500 text-sm">*</span>
-        )}
+        <div className="flex items-center space-x-2">
+          {question.required && (
+            <span className="text-red-500 text-sm">*</span>
+          )}
+          {/* X button to exit edit mode */}
+          {isEditing && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCancelEdit();
+              }}
+              className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
+              title="Exit edit mode"
+            >
+              <XMarkIcon className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Question Text */}
@@ -229,13 +295,6 @@ const QuestionCard: React.FC<{
         )}
       </div>
 
-      {/* AI Rationale (when expanded) */}
-      {isSelected && question.ai_rationale && (
-        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-          <h4 className="text-sm font-medium text-blue-900 mb-1">AI Rationale</h4>
-          <p className="text-sm text-blue-800">{question.ai_rationale}</p>
-        </div>
-      )}
       
       {/* Question Controls (when expanded and in edit mode) */}
       {isSelected && isEditingSurvey && (
@@ -264,12 +323,6 @@ const QuestionCard: React.FC<{
                 Edit
               </button>
               <button 
-                onClick={() => onRegenerate(question.id)}
-                className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
-              >
-                Regenerate
-              </button>
-              <button 
                 onClick={() => onMove(question.id, 'up')}
                 disabled={!canMoveUp}
                 className="px-3 py-1 text-sm bg-gray-600 text-white rounded hover:bg-gray-700 disabled:opacity-50"
@@ -293,6 +346,127 @@ const QuestionCard: React.FC<{
           )}
         </div>
       )}
+
+      {/* Annotation Panel - Show directly when in annotation mode and question is selected */}
+      {isSelected && isAnnotationMode && (
+        <QuestionAnnotationPanel
+          key={question.id}
+          question={question}
+          annotation={annotation}
+          onSave={handleAnnotationSave}
+          onCancel={handleAnnotationCancel}
+        />
+      )}
+    </div>
+  );
+};
+
+const SectionCard: React.FC<{
+  section: SurveySection;
+  isEditingSurvey: boolean;
+  isAnnotationMode: boolean;
+  onQuestionUpdate: (updatedQuestion: Question) => void;
+  onQuestionDelete: (questionId: string) => void;
+  onQuestionMove: (questionId: string, direction: 'up' | 'down') => void;
+  onAnnotateSection?: (annotation: SectionAnnotation) => void;
+  sectionAnnotation?: SectionAnnotation;
+}> = ({
+  section,
+  isEditingSurvey,
+  isAnnotationMode,
+  onQuestionUpdate,
+  onQuestionDelete,
+  onQuestionMove,
+  onAnnotateSection,
+  sectionAnnotation
+}) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const handleAnnotationSave = (newAnnotation: SectionAnnotation) => {
+    if (onAnnotateSection) {
+      onAnnotateSection(newAnnotation);
+    }
+    // Close the annotation panel after saving
+    setIsExpanded(false);
+  };
+
+  const handleAnnotationCancel = () => {
+    // Close the annotation panel when canceling
+    setIsExpanded(false);
+  };
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+      {/* Section Header */}
+      <div
+        className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 border-b border-gray-200 cursor-pointer hover:from-blue-100 hover:to-indigo-100 transition-colors"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center justify-center w-8 h-8 bg-blue-100 text-blue-600 rounded-full font-semibold text-sm">
+              {section.id}
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h3 className="text-lg font-semibold text-gray-900">{section.title}</h3>
+                {sectionAnnotation && (
+                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                    <TagIcon className="w-3 h-3 mr-1" />
+                    Annotated
+                  </span>
+                )}
+              </div>
+              <p className="text-sm text-gray-600">{section.description}</p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-3">
+            <span className="text-sm text-gray-500">
+              {section.questions.length} question{section.questions.length !== 1 ? 's' : ''}
+            </span>
+            {isExpanded ? (
+              <ChevronDownIcon className="w-5 h-5 text-gray-400" />
+            ) : (
+              <ChevronRightIcon className="w-5 h-5 text-gray-400" />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Section Questions */}
+      {isExpanded && (
+        <div className="p-6 space-y-4">
+          {section.questions.map((question, index) => (
+            <QuestionCard
+              key={question.id}
+              question={question}
+              index={index}
+              onUpdate={onQuestionUpdate}
+              onDelete={() => onQuestionDelete(question.id)}
+              onMove={onQuestionMove}
+              canMoveUp={index > 0}
+              canMoveDown={index < section.questions.length - 1}
+              isEditingSurvey={isEditingSurvey}
+              isAnnotationMode={isAnnotationMode}
+            />
+          ))}
+          {section.questions.length === 0 && (
+            <div className="text-center py-8 text-gray-500">
+              <p>No questions in this section yet.</p>
+            </div>
+          )}
+
+          {/* Section Annotation Panel - Show when expanded and in annotation mode */}
+          {isAnnotationMode && (
+            <SectionAnnotationPanel
+              section={section}
+              annotation={sectionAnnotation}
+              onSave={handleAnnotationSave}
+              onCancel={handleAnnotationCancel}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -308,7 +482,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
   isEditable = false, 
   onSurveyChange 
 }) => {
-  const { currentSurvey, setSurvey, rfqInput, createGoldenExample } = useAppStore();
+  const { currentSurvey, setSurvey, rfqInput, createGoldenExample, isAnnotationMode, setAnnotationMode, currentAnnotations, setCurrentAnnotations, loadAnnotations, saveAnnotations } = useAppStore();
   const survey = propSurvey || currentSurvey;
   const [editedSurvey, setEditedSurvey] = useState<Survey | null>(null);
   const [isEditingSurvey, setIsEditingSurvey] = useState(isEditable);
@@ -478,38 +652,165 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
   };
 
   const handleQuestionUpdate = (updatedQuestion: Question) => {
-    if (!editedSurvey || !editedSurvey.questions) return;
-    const updatedQuestions = editedSurvey.questions.map(q =>
-      q.id === updatedQuestion.id ? updatedQuestion : q
-    );
-    setEditedSurvey({ ...editedSurvey, questions: updatedQuestions });
+    if (!editedSurvey) return;
+    
+    if (hasSections(editedSurvey)) {
+      // Update question in sections format
+      const updatedSections = editedSurvey.sections?.map(section => ({
+        ...section,
+        questions: section.questions.map(q =>
+          q.id === updatedQuestion.id ? updatedQuestion : q
+        )
+      }));
+      setEditedSurvey({ ...editedSurvey, sections: updatedSections });
+    } else if (editedSurvey.questions) {
+      // Update question in legacy format
+      const updatedQuestions = editedSurvey.questions.map(q =>
+        q.id === updatedQuestion.id ? updatedQuestion : q
+      );
+      setEditedSurvey({ ...editedSurvey, questions: updatedQuestions });
+    }
   };
 
   const handleQuestionDelete = (questionId: string) => {
-    if (!editedSurvey || !editedSurvey.questions) return;
-    const updatedQuestions = editedSurvey.questions.filter(q => q.id !== questionId);
-    setEditedSurvey({ ...editedSurvey, questions: updatedQuestions });
+    if (!editedSurvey) return;
+    
+    if (hasSections(editedSurvey)) {
+      // Delete question from sections format
+      const updatedSections = editedSurvey.sections?.map(section => ({
+        ...section,
+        questions: section.questions.filter(q => q.id !== questionId)
+      }));
+      setEditedSurvey({ ...editedSurvey, sections: updatedSections });
+    } else if (editedSurvey.questions) {
+      // Delete question from legacy format
+      const updatedQuestions = editedSurvey.questions.filter(q => q.id !== questionId);
+      setEditedSurvey({ ...editedSurvey, questions: updatedQuestions });
+    }
   };
 
-  const handleQuestionRegenerate = async (questionId: string) => {
-    // TODO: Implement question regeneration using AI
-    console.log('Regenerating question:', questionId);
-    alert('Question regeneration coming soon!');
-  };
 
   const handleMoveQuestion = (questionId: string, direction: 'up' | 'down') => {
-    if (!editedSurvey || !editedSurvey.questions) return;
-    const questions = [...editedSurvey.questions];
-    const currentIndex = questions.findIndex(q => q.id === questionId);
+    if (!editedSurvey) return;
     
-    if (currentIndex === -1) return;
+    if (hasSections(editedSurvey)) {
+      // Move question within its section
+      const updatedSections = editedSurvey.sections?.map(section => {
+        const questions = [...section.questions];
+        const currentIndex = questions.findIndex(q => q.id === questionId);
+        
+        if (currentIndex === -1) return section; // Question not in this section
+        
+        let newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+        if (newIndex < 0 || newIndex >= questions.length) return section; // Can't move
+        
+        // Swap questions within the section
+        [questions[currentIndex], questions[newIndex]] = [questions[newIndex], questions[currentIndex]];
+        
+        return { ...section, questions };
+      });
+      setEditedSurvey({ ...editedSurvey, sections: updatedSections });
+    } else if (editedSurvey.questions) {
+      // Move question in legacy format
+      const questions = [...editedSurvey.questions];
+      const currentIndex = questions.findIndex(q => q.id === questionId);
+      
+      if (currentIndex === -1) return;
+      
+      let newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+      if (newIndex < 0 || newIndex >= questions.length) return;
+      
+      // Swap questions
+      [questions[currentIndex], questions[newIndex]] = [questions[newIndex], questions[currentIndex]];
+      setEditedSurvey({ ...editedSurvey, questions });
+    }
+  };
+
+  // Annotation handlers
+  const handleQuestionAnnotation = async (annotation: QuestionAnnotation) => {
+    let updatedAnnotations: SurveyAnnotations;
     
-    let newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    if (newIndex < 0 || newIndex >= questions.length) return;
+    if (!currentAnnotations) {
+      updatedAnnotations = {
+        surveyId: survey?.survey_id || '',
+        questionAnnotations: [annotation],
+        sectionAnnotations: [],
+        annotatorId: 'current-user', // TODO: Get from auth
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+    } else {
+      updatedAnnotations = {
+        ...currentAnnotations,
+        questionAnnotations: [
+          ...(currentAnnotations.questionAnnotations || []).filter(a => a.questionId !== annotation.questionId),
+          annotation
+        ],
+        updatedAt: new Date().toISOString()
+      };
+    }
     
-    // Swap questions
-    [questions[currentIndex], questions[newIndex]] = [questions[newIndex], questions[currentIndex]];
-    setEditedSurvey({ ...editedSurvey, questions });
+    setCurrentAnnotations(updatedAnnotations);
+    
+    // Auto-save annotations
+    if (survey?.survey_id) {
+      try {
+        await saveAnnotations(updatedAnnotations);
+        console.log('Question annotation auto-saved');
+      } catch (error) {
+        console.error('Failed to auto-save question annotation:', error);
+      }
+    }
+  };
+
+  const handleSectionAnnotation = async (annotation: SectionAnnotation) => {
+    let updatedAnnotations: SurveyAnnotations;
+    
+    if (!currentAnnotations) {
+      updatedAnnotations = {
+        surveyId: survey?.survey_id || '',
+        questionAnnotations: [],
+        sectionAnnotations: [annotation],
+        annotatorId: 'current-user', // TODO: Get from auth
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+    } else {
+      updatedAnnotations = {
+        ...currentAnnotations,
+        sectionAnnotations: [
+          ...(currentAnnotations.sectionAnnotations || []).filter(a => a.sectionId !== annotation.sectionId),
+          annotation
+        ],
+        updatedAt: new Date().toISOString()
+      };
+    }
+    
+    setCurrentAnnotations(updatedAnnotations);
+    
+    // Auto-save annotations
+    if (survey?.survey_id) {
+      try {
+        await saveAnnotations(updatedAnnotations);
+        console.log('Section annotation auto-saved');
+      } catch (error) {
+        console.error('Failed to auto-save section annotation:', error);
+      }
+    }
+  };
+
+  const handleExitAnnotationMode = async () => {
+    // Save annotations before exiting if there are any
+    if (currentAnnotations && survey?.survey_id) {
+      try {
+        await saveAnnotations(currentAnnotations);
+        console.log('Annotations saved successfully before exiting annotation mode');
+      } catch (error) {
+        console.error('Failed to save annotations before exiting:', error);
+        // Still exit annotation mode even if save fails
+      }
+    }
+    setAnnotationMode(false);
   };
 
   const handleExportSurvey = (format: 'json' | 'clipboard' | 'qualtrics') => {
@@ -577,7 +878,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
   if (!survey) {
     console.log('❌ [SurveyPreview] No survey available');
     return (
-      <div className="max-w-4xl mx-auto p-6 text-center">
+      <div className="w-full p-6 text-center">
         <p className="text-gray-500">No survey to preview yet.</p>
         <p className="text-sm text-gray-400 mt-2">Debug: survey is {typeof survey}</p>
       </div>
@@ -603,7 +904,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
     );
     
     return (
-      <div className="max-w-4xl mx-auto p-6">
+      <div className="w-full p-6">
         {isErrorResponse ? (
           <div className="bg-white rounded-lg shadow-lg border border-red-200">
             {/* Header */}
@@ -776,100 +1077,151 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
     );
   }
 
+  // If in annotation mode, show the new annotation interface
+  if (isAnnotationMode) {
+    return (
+      <AnnotationMode
+        survey={survey}
+        currentAnnotations={currentAnnotations}
+        onQuestionAnnotation={handleQuestionAnnotation}
+        onSectionAnnotation={handleSectionAnnotation}
+        onExitAnnotationMode={handleExitAnnotationMode}
+      />
+    );
+  }
+
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+    <div className="w-full p-6">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         {/* Main Survey Preview */}
-        <div className="lg:col-span-3">
+        <div className="lg:col-span-2">
           {/* Survey Header */}
           <div className="mb-8 p-6 bg-white border border-gray-200 rounded-lg">
             {/* Action Buttons */}
-            <div className="flex justify-end gap-3 mb-6">
-              {isEditingSurvey ? (
-                <>
-                  <button 
-                    onClick={handleSaveEdits}
-                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
-                  >
-                    <PencilIcon className="w-4 h-4" />
-                    Save Changes
-                  </button>
-                  <button 
-                    onClick={handleCancelEdits}
-                    className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button 
-                    onClick={handleStartEditing}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                  >
-                    <PencilIcon className="w-4 h-4" />
-                    Edit Survey
-                  </button>
-                  <button 
-                    onClick={() => {
-                      // Pre-populate form with survey methodologies
-                      setGoldenFormData(prev => ({
-                        ...prev,
-                        methodology_tags: surveyToDisplay?.methodologies || [],
-                        industry_category: rfqInput.product_category || '',
-                        research_goal: rfqInput.research_goal || ''
-                      }));
-                      setShowGoldenModal(true);
-                    }}
-                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
-                  >
-                    <BookmarkIcon className="w-4 h-4" />
-                    Save as Golden Example
-                  </button>
-                  <div className="relative export-dropdown">
-                    <button 
-                      onClick={() => setShowExportDropdown(!showExportDropdown)}
-                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
-                    >
-                      <ArrowDownTrayIcon className="w-4 h-4" />
-                      Export
-                    </button>
-                    {showExportDropdown && (
-                      <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-10">
-                        <div className="py-1">
-                          <button
-                            onClick={() => {
-                              handleExportSurvey('json');
-                              setShowExportDropdown(false);
-                            }}
-                            className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                          >
-                            Export as JSON
-                          </button>
-                          <button
-                            onClick={() => {
-                              handleExportSurvey('clipboard');
-                              setShowExportDropdown(false);
-                            }}
-                            className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                          >
-                            Copy to Clipboard
-                          </button>
-                          <button
-                            onClick={() => {
-                              handleExportSurvey('qualtrics');
-                              setShowExportDropdown(false);
-                            }}
-                            className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                          >
-                            Export for Qualtrics
-                          </button>
-                        </div>
-                      </div>
-                    )}
+            <div className="flex justify-between items-center mb-6">
+              {/* Annotation Mode Toggle */}
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={async () => {
+                    if (!isAnnotationMode && survey?.survey_id) {
+                      // Entering annotation mode - load existing annotations
+                      await loadAnnotations(survey.survey_id);
+                      setAnnotationMode(true);
+                    } else {
+                      // Exiting annotation mode - save annotations first
+                      await handleExitAnnotationMode();
+                    }
+                  }}
+                  className={`p-2 rounded-md transition-colors ${
+                    isAnnotationMode 
+                      ? 'bg-yellow-600 text-white hover:bg-yellow-700' 
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                  title={isAnnotationMode ? 'Exit Annotation Mode' : 'Enter Annotation Mode'}
+                >
+                  <TagIcon className="w-5 h-5" />
+                </button>
+                {isAnnotationMode && (
+                  <span className="text-sm text-yellow-600 font-medium">
+                    Click on questions or sections to annotate them
+                  </span>
+                )}
+              </div>
+
+              {/* Other Action Buttons */}
+              <div className="flex gap-3">
+                {isAnnotationMode && (
+                  <div className="text-xs text-green-600 font-medium px-2 py-1 bg-green-50 rounded">
+                    ✓ Auto-saving
                   </div>
-                </>
-              )}
+                )}
+                {isEditingSurvey ? (
+                  <>
+                    <button 
+                      onClick={handleSaveEdits}
+                      className="p-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                      title="Save Changes"
+                    >
+                      <CheckIcon className="w-5 h-5" />
+                    </button>
+                    <button 
+                      onClick={handleCancelEdits}
+                      className="p-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+                      title="Cancel"
+                    >
+                      <XMarkIcon className="w-5 h-5" />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button 
+                      onClick={handleStartEditing}
+                      className="p-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                      title="Edit Survey"
+                    >
+                      <PencilIcon className="w-5 h-5" />
+                    </button>
+                    <button 
+                      onClick={() => {
+                        // Pre-populate form with survey methodologies
+                        setGoldenFormData(prev => ({
+                          ...prev,
+                          methodology_tags: surveyToDisplay?.methodologies || [],
+                          industry_category: rfqInput.product_category || '',
+                          research_goal: rfqInput.research_goal || ''
+                        }));
+                        setShowGoldenModal(true);
+                      }}
+                      className="p-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
+                      title="Save as Golden Example"
+                    >
+                      <BookmarkIcon className="w-5 h-5" />
+                    </button>
+                    <div className="relative export-dropdown">
+                      <button 
+                        onClick={() => setShowExportDropdown(!showExportDropdown)}
+                        className="p-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                        title="Export"
+                      >
+                        <ArrowDownTrayIcon className="w-5 h-5" />
+                      </button>
+                      {showExportDropdown && (
+                        <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-10">
+                          <div className="py-1">
+                            <button
+                              onClick={() => {
+                                handleExportSurvey('json');
+                                setShowExportDropdown(false);
+                              }}
+                              className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                            >
+                              Export as JSON
+                            </button>
+                            <button
+                              onClick={() => {
+                                handleExportSurvey('clipboard');
+                                setShowExportDropdown(false);
+                              }}
+                              className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                            >
+                              Copy to Clipboard
+                            </button>
+                            <button
+                              onClick={() => {
+                                handleExportSurvey('qualtrics');
+                                setShowExportDropdown(false);
+                              }}
+                              className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                            >
+                              Export for Qualtrics
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Survey Title and Description */}
@@ -907,47 +1259,71 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
               )}
               <div className="flex items-center space-x-4 text-sm text-gray-500 mt-4">
                 <span>⏱️ ~{surveyToDisplay?.estimated_time} minutes</span>
-                <span>📊 {surveyToDisplay?.questions?.length || 0} questions</span>
+                <span>📊 {extractAllQuestions(surveyToDisplay || {} as Survey).length} questions</span>
+                {hasSections(surveyToDisplay || {} as Survey) && (
+                  <span>📋 {surveyToDisplay?.sections?.length} sections</span>
+                )}
               </div>
             </div>
           </div>
 
-          {/* Questions */}
+          {/* Questions or Sections */}
           <div className="space-y-4">
-            {surveyToDisplay?.questions && surveyToDisplay.questions.length > 0 ? (
-              surveyToDisplay.questions?.map((question, index) => (
-                <QuestionCard
-                  key={question.id}
-                  question={question}
-                  index={index}
-                  onUpdate={handleQuestionUpdate}
-                  onDelete={() => handleQuestionDelete(question.id)}
-                  onRegenerate={handleQuestionRegenerate}
-                  onMove={handleMoveQuestion}
-                  canMoveUp={index > 0}
-                  canMoveDown={index < (surveyToDisplay?.questions?.length || 0) - 1}
+            {hasSections(surveyToDisplay || {} as Survey) ? (
+              // New sections format
+              surveyToDisplay?.sections?.map((section) => (
+                <SectionCard
+                  key={section.id}
+                  section={section}
                   isEditingSurvey={isEditingSurvey}
+                  isAnnotationMode={isAnnotationMode}
+                  onQuestionUpdate={handleQuestionUpdate}
+                  onQuestionDelete={handleQuestionDelete}
+                  onQuestionMove={handleMoveQuestion}
+                  onAnnotateSection={handleSectionAnnotation}
+                  sectionAnnotation={currentAnnotations?.sectionAnnotations?.find(a => a.sectionId === String(section.id))}
                 />
               ))
             ) : (
-              <div className="text-center py-8 text-gray-500">
-                <p>No questions available for this survey.</p>
-              </div>
+              // Legacy questions format
+              surveyToDisplay?.questions && surveyToDisplay.questions.length > 0 ? (
+                surveyToDisplay.questions?.map((question, index) => (
+                  <QuestionCard
+                    key={question.id}
+                    question={question}
+                    index={index}
+                    onUpdate={handleQuestionUpdate}
+                    onDelete={() => handleQuestionDelete(question.id)}
+                    onMove={handleMoveQuestion}
+                    canMoveUp={index > 0}
+                    canMoveDown={index < (surveyToDisplay?.questions?.length || 0) - 1}
+                    isEditingSurvey={isEditingSurvey}
+                    isAnnotationMode={isAnnotationMode}
+                    onAnnotate={handleQuestionAnnotation}
+                    annotation={currentAnnotations?.questionAnnotations?.find(a => a.questionId === question.id)}
+                  />
+                ))
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <p>No questions available for this survey.</p>
+                </div>
+              )
             )}
           </div>
 
         </div>
 
-        {/* Meta Panel */}
-        <div className="space-y-6">
-          {/* Pillar Scores - Moved to top for better visibility */}
-          {surveyToDisplay?.pillar_scores && (
-            <PillarScoresDisplay 
-              pillarScores={surveyToDisplay.pillar_scores}
-              className="mb-6"
-              compact={true}
-            />
-          )}
+        {/* Right Sidebar - Shows pillar scores in normal mode, annotation progress in annotation mode */}
+        {!isAnnotationMode ? (
+          <div className="lg:col-span-1 space-y-6">
+            {/* Pillar Scores - Moved to top for better visibility */}
+            {surveyToDisplay?.pillar_scores && (
+              <PillarScoresDisplay 
+                pillarScores={surveyToDisplay.pillar_scores}
+                className="mb-6"
+                compact={true}
+              />
+            )}
 
           {/* Confidence Score */}
           <div className="bg-white border border-gray-200 rounded-lg p-4">
@@ -1019,7 +1395,41 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
               </button>
             </div>
           </div>
-        </div>
+          </div>
+        ) : (
+          <div className="lg:col-span-1 space-y-6">
+            {/* Annotation Summary */}
+            {currentAnnotations && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <h3 className="font-medium text-gray-900 mb-3 flex items-center">
+                  <TagIcon className="w-4 h-4 mr-2 text-yellow-600" />
+                  Annotation Progress
+                </h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Questions Annotated:</span>
+                    <span className="font-medium">
+                      {currentAnnotations?.questionAnnotations?.length || 0} / {extractAllQuestions(surveyToDisplay || {} as Survey).length}
+                    </span>
+                  </div>
+                  {hasSections(surveyToDisplay || {} as Survey) && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Sections Annotated:</span>
+                      <span className="font-medium">
+                        {currentAnnotations?.sectionAnnotations?.length || 0} / {surveyToDisplay?.sections?.length || 0}
+                      </span>
+                    </div>
+                  )}
+                  <div className="pt-2 border-t border-yellow-200">
+                    <div className="text-xs text-gray-500">
+                      Last updated: {new Date(currentAnnotations?.updatedAt || currentAnnotations?.createdAt || '').toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Save as Golden Example Modal */}
@@ -1117,22 +1527,25 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
                 </div>
 
                 <p className="text-sm text-gray-600 mt-1"><strong>Survey Title:</strong> {surveyToDisplay?.title}</p>
-                <p className="text-sm text-gray-600 mt-1"><strong>Total Questions:</strong> {surveyToDisplay?.questions?.length || 0}</p>
+                <p className="text-sm text-gray-600 mt-1"><strong>Total Questions:</strong> {extractAllQuestions(surveyToDisplay || {} as Survey).length}</p>
                 
                 {/* Sample Questions - First 5 questions */}
-                {surveyToDisplay?.questions && surveyToDisplay.questions.length > 0 && (
-                  <div className="mt-2">
-                    <p className="text-sm font-medium text-gray-700">Sample Questions:</p>
-                    <ul className="text-xs text-gray-600 mt-1 space-y-1">
-                      {surveyToDisplay.questions?.slice(0, 5).map((q, idx) => (
-                        <li key={idx} className="truncate">• {q.text}</li>
-                      )) || []}
-                      {surveyToDisplay.questions && surveyToDisplay.questions.length > 5 && (
-                        <li className="text-gray-500">... and {surveyToDisplay.questions.length - 5} more questions</li>
-                      )}
-                    </ul>
-                  </div>
-                )}
+                {(() => {
+                  const allQuestions = extractAllQuestions(surveyToDisplay || {} as Survey);
+                  return allQuestions.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-sm font-medium text-gray-700">Sample Questions:</p>
+                      <ul className="text-xs text-gray-600 mt-1 space-y-1">
+                        {allQuestions.slice(0, 5).map((q, idx) => (
+                          <li key={idx} className="truncate">• {q.text}</li>
+                        ))}
+                        {allQuestions.length > 5 && (
+                          <li className="text-gray-500">... and {allQuestions.length - 5} more questions</li>
+                        )}
+                      </ul>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
             

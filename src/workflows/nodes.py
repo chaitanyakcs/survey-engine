@@ -6,6 +6,7 @@ from src.services.retrieval_service import RetrievalService
 from src.services.generation_service import GenerationService
 from src.services.validation_service import ValidationService
 from src.utils.error_messages import UserFriendlyError
+from src.utils.survey_utils import get_questions_count
 
 
 class RFQNode:
@@ -198,10 +199,13 @@ class GeneratorAgent:
             if isinstance(pillar_scores, dict):
                 self.logger.info(f"🏛️ [GeneratorAgent] Pillar scores keys: {list(pillar_scores.keys())}")
             
-            if generated_survey and 'questions' in generated_survey:
-                self.logger.info(f"📝 [GeneratorAgent] Generated {len(generated_survey['questions'])} questions")
+            if generated_survey:
+                question_count = get_questions_count(generated_survey)
+                self.logger.info(f"📝 [GeneratorAgent] Generated {question_count} questions")
+                if question_count == 0:
+                    self.logger.warning("⚠️ [GeneratorAgent] No questions found in generated survey")
             else:
-                self.logger.warning("⚠️ [GeneratorAgent] No questions found in generated survey")
+                self.logger.warning("⚠️ [GeneratorAgent] No survey data generated")
             
             result = {
                 "raw_survey": generated_survey,

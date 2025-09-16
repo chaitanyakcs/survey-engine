@@ -510,28 +510,8 @@ def main():
     if success:
         print("\n🎉 Rules seeding completed successfully!")
         
-        # Check if pillar rules need seeding
-        print("\n🏛️ Checking pillar rules...")
-        try:
-            # Get a fresh database session
-            pillar_db = next(get_db())
-            
-            # Check existing pillar rules count
-            pillar_count = pillar_db.query(SurveyRule).filter(
-                SurveyRule.rule_type == "pillar",
-                SurveyRule.is_active == True
-            ).count()
-            
-            if pillar_count >= 15:
-                print(f"✅ {pillar_count} pillar rules already exist - skipping pillar seeding")
-            else:
-                print(f"🌟 Only {pillar_count} pillar rules found - seeding pillars...")
-                from seed_pillar_rules import seed_pillar_rules
-                seed_pillar_rules()
-                print("✅ Pillar rules seeded successfully!")
-        except Exception as e:
-            print(f"⚠️ Pillar rules seeding failed: {e}")
-            print("Continuing without pillar rules...")
+        # Pillar rules seeding removed - now handled via API with duplicate detection
+        print("\n🏛️ Pillar rules seeding skipped - now handled via API with duplicate detection")
         
         print("\n📋 Next steps:")
         print("  1. Deploy the updated application")

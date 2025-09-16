@@ -13,6 +13,13 @@ export interface RFQSubmissionResponse {
   status: string;
 }
 
+export interface SurveySection {
+  id: number;
+  title: string;
+  description: string;
+  questions: Question[];
+}
+
 export interface Survey {
   survey_id: string;
   title: string;
@@ -21,7 +28,9 @@ export interface Survey {
   confidence_score: number;
   methodologies: string[];
   golden_examples: GoldenExample[];
-  questions: Question[];
+  // Support both legacy and new formats
+  questions?: Question[];
+  sections?: SurveySection[];
   metadata: SurveyMetadata;
   raw_output?: {
     document_text?: string;
@@ -81,6 +90,7 @@ export interface Question {
 export interface SurveyMetadata {
   target_responses: number;
   methodology: string[];
+  sections_count?: number;
   [key: string]: any;
 }
 
@@ -133,6 +143,52 @@ export interface GoldenExamplesResponse {
   count: number;
 }
 
+// Annotation Types
+export type LikertScale = 1 | 2 | 3 | 4 | 5;
+
+export interface QuestionAnnotation {
+  questionId: string;
+  required: boolean;
+  quality: LikertScale;
+  relevant: LikertScale;
+  pillars: {
+    methodologicalRigor: LikertScale;
+    contentValidity: LikertScale;
+    respondentExperience: LikertScale;
+    analyticalValue: LikertScale;
+    businessImpact: LikertScale;
+  };
+  comment?: string;
+  annotatorId?: string;
+  timestamp?: string;
+}
+
+export interface SectionAnnotation {
+  sectionId: string;
+  quality: LikertScale;
+  relevant: LikertScale;
+  pillars: {
+    methodologicalRigor: LikertScale;
+    contentValidity: LikertScale;
+    respondentExperience: LikertScale;
+    analyticalValue: LikertScale;
+    businessImpact: LikertScale;
+  };
+  comment?: string;
+  annotatorId?: string;
+  timestamp?: string;
+}
+
+export interface SurveyAnnotations {
+  surveyId: string;
+  questionAnnotations: QuestionAnnotation[];
+  sectionAnnotations: SectionAnnotation[];
+  overallComment?: string;
+  annotatorId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 // Toast Types
 export interface ToastMessage {
   id: string;
@@ -164,6 +220,12 @@ export interface AppStore {
   selectedQuestionId?: string;
   setSelectedQuestion: (id?: string) => void;
   
+  // Annotation State
+  isAnnotationMode: boolean;
+  setAnnotationMode: (enabled: boolean) => void;
+  currentAnnotations?: SurveyAnnotations;
+  setCurrentAnnotations: (annotations: SurveyAnnotations) => void;
+  
   // Toast Notifications
   toasts: ToastMessage[];
   addToast: (toast: Omit<ToastMessage, 'id'>) => void;
@@ -184,4 +246,8 @@ export interface AppStore {
   createGoldenExample: (example: GoldenExampleRequest) => Promise<void>;
   updateGoldenExample: (id: string, example: GoldenExampleRequest) => Promise<void>;
   deleteGoldenExample: (id: string) => Promise<void>;
+  
+  // Annotation Actions
+  saveAnnotations: (annotations: SurveyAnnotations) => Promise<void>;
+  loadAnnotations: (surveyId: string) => Promise<void>;
 }

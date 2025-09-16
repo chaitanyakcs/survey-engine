@@ -64,3 +64,4 @@ export const resetMocks = () => {
   jest.clearAllMocks();
   (global.fetch as jest.Mock).mockClear();
 };
+

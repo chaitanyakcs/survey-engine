@@ -101,6 +101,12 @@ export const SurveyGeneratorPage: React.FC = () => {
                         window.location.href = `/preview?surveyId=${currentSurvey.survey_id}`;
                       }
                     }}
+                    onShowSummary={() => {
+                      if (currentSurvey?.survey_id) {
+                        console.log('🔍 [SurveyGeneratorPage] Navigating to summary with survey ID:', currentSurvey.survey_id);
+                        window.location.href = `/summary/${currentSurvey.survey_id}`;
+                      }
+                    }}
                     onCancelGeneration={() => {
                       console.log('🔄 [SurveyGeneratorPage] Canceling generation and reloading');
                       window.location.reload();
@@ -188,6 +194,12 @@ export const SurveyGeneratorPage: React.FC = () => {
                       if (currentSurvey?.survey_id) {
                         console.log('🔍 [SurveyGeneratorPage] Navigating to preview with survey ID:', currentSurvey.survey_id);
                         window.location.href = `/preview?surveyId=${currentSurvey.survey_id}`;
+                      }
+                    }}
+                    onShowSummary={() => {
+                      if (currentSurvey?.survey_id) {
+                        console.log('🔍 [SurveyGeneratorPage] Navigating to summary with survey ID:', currentSurvey.survey_id);
+                        window.location.href = `/summary/${currentSurvey.survey_id}`;
                       }
                     }}
                     onCancelGeneration={() => {

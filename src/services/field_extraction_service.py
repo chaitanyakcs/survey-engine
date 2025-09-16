@@ -265,3 +265,4 @@ Return ONLY a JSON object with this exact structure:
 
 # Global instance
 field_extraction_service = FieldExtractionService()
+

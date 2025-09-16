@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from src.database import get_db
 from src.services.prompt_service import PromptService
 from pydantic import BaseModel
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Union
 import logging
 
 logger = logging.getLogger(__name__)
@@ -41,13 +41,41 @@ async def get_available_methodologies(db: Session = Depends(get_db)):
 
 @router.get("/quality-rules")
 async def get_quality_rules(db: Session = Depends(get_db)):
-    """Get current quality rules including custom rules from database"""
+    """Get current quality rules including custom rules from database with IDs"""
     try:
         from src.database.models import SurveyRule
         
-        # Get quality rules from service (includes database rules)
-        prompt_service = PromptService(db_session=db)
-        return prompt_service.quality_rules
+        # Get active quality rules with their IDs
+        active_rules = db.query(SurveyRule).filter(
+            SurveyRule.rule_type == "quality",
+            SurveyRule.is_active == True
+        ).all()
+        logger.info(f"Found {len(active_rules)} active quality rules in database")
+        
+        # Build response with rule IDs
+        quality_rules_with_ids = {}
+        for rule in active_rules:
+            category = rule.category
+            if category not in quality_rules_with_ids:
+                quality_rules_with_ids[category] = []
+            
+            # Extract rule text from rule_content or use rule_description
+            rule_text = ""
+            if rule.rule_content and isinstance(rule.rule_content, dict):
+                rule_text = rule.rule_content.get('rule_text', '')
+            elif rule.rule_description:
+                rule_text = rule.rule_description
+            
+            if rule_text:
+                quality_rules_with_ids[category].append({
+                    "id": str(rule.id),
+                    "text": rule_text,
+                    "created_at": rule.created_at.isoformat() if rule.created_at else None,
+                    "updated_at": rule.updated_at.isoformat() if rule.updated_at else None
+                })
+        
+        logger.info(f"Returning {len(quality_rules_with_ids)} quality rule categories with IDs")
+        return quality_rules_with_ids
         
     except Exception as e:
         logger.error(f"Failed to fetch quality rules: {str(e)}")
@@ -258,14 +286,14 @@ class QualityRuleRequest(BaseModel):
 
 
 class QualityRuleUpdateRequest(BaseModel):
-    category: str
-    rule_index: int
+    rule_id: str
     rule_text: str
 
 
+from typing import Union
+
 class QualityRuleDeleteRequest(BaseModel):
-    category: str
-    rule_index: int
+    rule_id: str
 
 
 class SystemPromptRequest(BaseModel):
@@ -334,26 +362,28 @@ async def update_quality_rule(request: QualityRuleUpdateRequest, db: Session = D
     """Update an existing quality rule"""
     try:
         from src.database.models import SurveyRule
+        import uuid
         
-        # Find the rule to update
-        rules = db.query(SurveyRule).filter(
+        # Find the rule to update by ID
+        rule_to_update = db.query(SurveyRule).filter(
+            SurveyRule.id == uuid.UUID(request.rule_id),
             SurveyRule.rule_type == "quality",
-            SurveyRule.category == request.category,
             SurveyRule.is_active == True
-        ).all()
+        ).first()
         
-        if request.rule_index >= len(rules):
+        if not rule_to_update:
             raise HTTPException(status_code=404, detail="Rule not found")
         
-        rule_to_update = rules[request.rule_index]
         rule_to_update.rule_description = request.rule_text
         rule_to_update.rule_content = {"rule_text": request.rule_text}
         
         db.commit()
         
-        logger.info(f"Updated quality rule in {request.category}: {request.rule_text}")
+        logger.info(f"Updated quality rule {request.rule_id}: {request.rule_text}")
         return {"message": "Quality rule updated successfully"}
         
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid rule ID format")
     except Exception as e:
         logger.error(f"Failed to update quality rule: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to update quality rule: {str(e)}")
@@ -361,28 +391,42 @@ async def update_quality_rule(request: QualityRuleUpdateRequest, db: Session = D
 
 @router.delete("/quality-rules")
 async def delete_quality_rule(request: QualityRuleDeleteRequest, db: Session = Depends(get_db)):
-    """Delete a quality rule"""
+    """Delete a quality rule by ID"""
+    logger.info(f"🗑️ [BACKEND] Starting quality rule deletion request: {request.dict()}")
+    
     try:
         from src.database.models import SurveyRule
+        import uuid
         
-        # Find the rule to delete
-        rules = db.query(SurveyRule).filter(
+        # Find the rule to delete by ID
+        rule_to_delete = db.query(SurveyRule).filter(
+            SurveyRule.id == uuid.UUID(request.rule_id),
             SurveyRule.rule_type == "quality",
-            SurveyRule.category == request.category,
             SurveyRule.is_active == True
-        ).all()
+        ).first()
         
-        if request.rule_index >= len(rules):
+        if not rule_to_delete:
+            logger.error(f"❌ [BACKEND] No rule found with ID: {request.rule_id}")
             raise HTTPException(status_code=404, detail="Rule not found")
         
-        rule_to_delete = rules[request.rule_index]
+        logger.info(f"🗑️ [BACKEND] Found rule to delete: {rule_to_delete.id} - {rule_to_delete.rule_description[:50]}...")
+        
+        # Mark as inactive instead of deleting
         rule_to_delete.is_active = False
         
-        db.commit()
+        try:
+            db.commit()
+            logger.info(f"✅ [BACKEND] Database commit successful")
+        except Exception as commit_error:
+            logger.error(f"❌ [BACKEND] Database commit failed: {str(commit_error)}")
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed to commit deletion: {str(commit_error)}")
         
-        logger.info(f"Deleted quality rule from {request.category}")
+        logger.info(f"✅ [BACKEND] Successfully deleted quality rule: {request.rule_id}")
         return {"message": "Quality rule deleted successfully"}
         
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid rule ID format")
     except Exception as e:
         logger.error(f"Failed to delete quality rule: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to delete quality rule: {str(e)}")
@@ -740,7 +784,7 @@ async def get_pillar_rules(pillar_name: str, db: Session = Depends(get_db)):
 
 @router.post("/pillar-rules")
 async def add_pillar_rule(request: PillarRuleRequest, db: Session = Depends(get_db)):
-    """Add a new pillar-based rule"""
+    """Add a new pillar-based rule with silent duplicate detection"""
     try:
         from src.database.models import SurveyRule
         import uuid
@@ -750,6 +794,25 @@ async def add_pillar_rule(request: PillarRuleRequest, db: Session = Depends(get_
         
         if request.pillar_name not in valid_pillars:
             raise HTTPException(status_code=400, detail=f"Invalid pillar name. Must be one of: {valid_pillars}")
+        
+        # Check for existing duplicate rule (silent duplicate detection)
+        existing_rule = db.query(SurveyRule).filter(
+            SurveyRule.rule_type == "pillar",
+            SurveyRule.category == request.pillar_name,
+            SurveyRule.rule_description == request.rule_text,
+            SurveyRule.is_active == True
+        ).first()
+        
+        # If duplicate exists, return success silently without creating new rule
+        if existing_rule:
+            logger.info(f"Duplicate pillar rule detected for {request.pillar_name}, returning existing rule silently")
+            return {
+                "message": "Pillar rule added successfully",
+                "rule_id": str(existing_rule.id),
+                "pillar_name": request.pillar_name,
+                "rule_text": request.rule_text,
+                "duplicate_detected": True
+            }
         
         # Map priority to numerical value
         priority_map = {"high": 10, "medium": 5, "low": 1}
@@ -869,6 +932,59 @@ async def delete_pillar_rule(rule_id: str, db: Session = Depends(get_db)):
         logger.error(f"Failed to delete pillar rule: {str(e)}")
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to delete pillar rule: {str(e)}")
+
+
+@router.post("/quality-rules/cleanup-invalid-ids")
+async def cleanup_invalid_rule_ids(db: Session = Depends(get_db)):
+    """Remove any rules with invalid (non-UUID) IDs from the database"""
+    try:
+        from src.database.models import SurveyRule
+        import uuid
+        
+        # Get all rules
+        all_rules = db.query(SurveyRule).all()
+        logger.info(f"🔍 [CLEANUP] Found {len(all_rules)} total rules to check")
+        
+        invalid_rules = []
+        for rule in all_rules:
+            rule_id_str = str(rule.id)
+            try:
+                # Try to parse as UUID
+                uuid.UUID(rule_id_str)
+                logger.info(f"✅ [CLEANUP] Valid UUID: {rule_id_str[:8]}... - {rule.rule_type}/{rule.category}")
+            except ValueError:
+                invalid_rules.append(rule)
+                logger.warning(f"❌ [CLEANUP] Invalid ID found: {rule.id} - {rule.rule_type}/{rule.category}")
+        
+        if not invalid_rules:
+            logger.info(f"✅ [CLEANUP] All {len(all_rules)} rules have valid UUID IDs")
+            return {
+                "message": "No cleanup needed - all rules have valid UUIDs", 
+                "total_rules": len(all_rules),
+                "invalid_rules_found": 0
+            }
+        
+        # Remove invalid rules
+        deleted_count = 0
+        for rule in invalid_rules:
+            logger.info(f"🗑️ [CLEANUP] Deleting rule with invalid ID: {rule.id} - {rule.rule_description[:50]}...")
+            db.delete(rule)
+            deleted_count += 1
+        
+        db.commit()
+        logger.info(f"✅ [CLEANUP] Successfully deleted {deleted_count} rules with invalid IDs")
+        
+        return {
+            "message": f"Successfully cleaned up {deleted_count} rules with invalid IDs",
+            "total_rules_checked": len(all_rules),
+            "invalid_rules_deleted": deleted_count,
+            "valid_rules_remaining": len(all_rules) - deleted_count
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ [CLEANUP] Failed to cleanup invalid rule IDs: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to cleanup invalid rule IDs: {str(e)}")
 
 
 @router.post("/pillar-rules/deduplicate")

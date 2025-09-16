@@ -284,3 +284,4 @@ export const IntelligentFieldExtractor: React.FC<IntelligentFieldExtractorProps>
     </div>
   );
 };
+

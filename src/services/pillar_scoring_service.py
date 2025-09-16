@@ -8,6 +8,7 @@ import logging
 from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
 from sqlalchemy.orm import Session
+from src.utils.survey_utils import extract_all_questions, get_questions_count
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,7 @@ class PillarScoringService:
         """
         logger.info("🏛️ [PillarScoring] Starting pillar evaluation for survey")
         logger.info(f"🏛️ [PillarScoring] Survey data keys: {list(survey_data.keys()) if survey_data else 'None'}")
-        logger.info(f"🏛️ [PillarScoring] Survey questions count: {len(survey_data.get('questions', [])) if survey_data else 0}")
+        logger.info(f"🏛️ [PillarScoring] Survey questions count: {get_questions_count(survey_data) if survey_data else 0}")
         
         pillar_scores = []
         total_weighted_score = 0.0
@@ -204,7 +205,7 @@ class PillarScoringService:
     
     def _evaluate_content_validity(self, survey_data: Dict[str, Any], rule_description: str, recommendations: List[str]) -> Dict[str, Any]:
         """Evaluate content validity rules"""
-        questions = survey_data.get('questions', [])
+        questions = extract_all_questions(survey_data)
         
         if 'research objective' in rule_description:
             # Check if questions address research objectives
@@ -242,7 +243,7 @@ class PillarScoringService:
     
     def _evaluate_methodological_rigor(self, survey_data: Dict[str, Any], rule_description: str, recommendations: List[str]) -> Dict[str, Any]:
         """Evaluate methodological rigor rules"""
-        questions = survey_data.get('questions', [])
+        questions = extract_all_questions(survey_data)
         
         if 'leading' in rule_description or 'loaded' in rule_description:
             # Check for leading questions
@@ -279,7 +280,7 @@ class PillarScoringService:
     
     def _evaluate_clarity_comprehensibility(self, survey_data: Dict[str, Any], rule_description: str, recommendations: List[str]) -> Dict[str, Any]:
         """Evaluate clarity and comprehensibility rules"""
-        questions = survey_data.get('questions', [])
+        questions = extract_all_questions(survey_data)
         
         if 'jargon' in rule_description or 'technical' in rule_description:
             # Check for jargon
@@ -319,7 +320,7 @@ class PillarScoringService:
     
     def _evaluate_structural_coherence(self, survey_data: Dict[str, Any], rule_description: str, recommendations: List[str]) -> Dict[str, Any]:
         """Evaluate structural coherence rules"""
-        questions = survey_data.get('questions', [])
+        questions = extract_all_questions(survey_data)
         
         if 'logical progression' in rule_description:
             # Check for logical flow
@@ -353,7 +354,7 @@ class PillarScoringService:
     
     def _evaluate_deployment_readiness(self, survey_data: Dict[str, Any], rule_description: str, recommendations: List[str]) -> Dict[str, Any]:
         """Evaluate deployment readiness rules"""
-        questions = survey_data.get('questions', [])
+        questions = extract_all_questions(survey_data)
         
         if 'appropriate length' in rule_description:
             # Check survey length

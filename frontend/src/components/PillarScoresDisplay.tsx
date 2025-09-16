@@ -2,7 +2,6 @@ import React from 'react';
 import { 
   CheckCircleIcon, 
   ExclamationTriangleIcon, 
-  XCircleIcon,
   AcademicCapIcon,
   ChartBarIcon,
   EyeIcon,
@@ -105,7 +104,7 @@ const PillarScoresDisplay: React.FC<PillarScoresDisplayProps> = ({
         </div>
 
         {/* Compact Pillar Grid */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-3">
           {pillarScores.pillar_breakdown.map((pillar, index) => (
             <div key={index} className="bg-gray-50 rounded-lg p-3">
               <div className="flex items-center justify-between mb-2">
@@ -122,7 +121,7 @@ const PillarScoresDisplay: React.FC<PillarScoresDisplayProps> = ({
                   <div className={`text-lg font-semibold ${getScoreColor(pillar.score)}`}>
                     {Math.round(pillar.score * 100)}%
                   </div>
-                  <div className={`text-xs px-1.5 py-0.5 rounded-full ${getGradeColor(pillar.grade)}`}>
+                  <div className={`text-xs px-1.5 py-0.5 rounded-full ${getGradeColor(pillar.grade)} text-center`}>
                     {pillar.grade}
                   </div>
                 </div>
@@ -144,12 +143,6 @@ const PillarScoresDisplay: React.FC<PillarScoresDisplayProps> = ({
           ))}
         </div>
 
-        {/* Compact Summary */}
-        {pillarScores.summary && (
-          <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-            <p className="text-sm text-blue-800">{pillarScores.summary}</p>
-          </div>
-        )}
       </div>
     );
   }
@@ -179,12 +172,6 @@ const PillarScoresDisplay: React.FC<PillarScoresDisplayProps> = ({
         </div>
       </div>
 
-      {/* Summary */}
-      {pillarScores.summary && (
-        <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-          <p className="text-sm text-gray-700">{pillarScores.summary}</p>
-        </div>
-      )}
 
       {/* Pillar Breakdown */}
       <div className="space-y-4">
@@ -208,7 +195,7 @@ const PillarScoresDisplay: React.FC<PillarScoresDisplayProps> = ({
                 <div className={`text-lg font-semibold ${getScoreColor(pillar.score)}`}>
                   {Math.round(pillar.score * 100)}%
                 </div>
-                <div className={`text-xs px-2 py-1 rounded-full ${getGradeColor(pillar.grade)}`}>
+                <div className={`text-xs px-2 py-1 rounded-full ${getGradeColor(pillar.grade)} text-center`}>
                   {pillar.grade}
                 </div>
               </div>

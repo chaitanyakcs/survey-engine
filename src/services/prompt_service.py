@@ -372,26 +372,69 @@ class PromptService:
             "Use the golden examples as reference for quality and structure.",
             "Ensure methodology compliance and proper question design.",
             "",
-            "Return valid JSON with this exact structure:",
+            "## SECTION ORGANIZATION GUIDELINES:",
+            "Organize all questions into the following 5 sections based on their purpose:",
+            "1. **Screener & Demographics**: Age, location, income, qualifying criteria, basic demographics",
+            "2. **Consumer Details**: Lifestyle, behavior patterns, detailed consumer profile information", 
+            "3. **Consumer product awareness, usage and preference**: Brand awareness, usage frequency, preferences, satisfaction",
+            "4. **Product introduction and Concept reaction**: New product/concept presentation, reactions, purchase intent",
+            "5. **Methodology**: Research-specific questions, validation questions, feedback on survey experience",
+            "",
+            "IMPORTANT: Every question must be placed in the most appropriate section. Each section should have at least 2-3 relevant questions unless the RFQ specifically doesn't require that type of information.",
+            "",
+            "Return valid JSON with this exact structure organized by sections:",
             json.dumps({
                 "title": "Survey Title",
                 "description": "Survey Description",
-                "questions": [
+                "sections": [
                     {
-                        "id": "q1",
-                        "text": "Question text",
-                        "type": "multiple_choice|text|scale|ranking",
-                        "options": ["Option 1", "Option 2"],
-                        "required": True,
-                        "methodology": "screening|core|demographic",
-                        "validation": "optional validation rules"
+                        "id": 1,
+                        "title": "Screener & Demographics",
+                        "description": "Initial screening questions and demographic information",
+                        "questions": [
+                            {
+                                "id": "q1",
+                                "text": "Question text",
+                                "type": "multiple_choice|text|scale|ranking|yes_no",
+                                "options": ["Option 1", "Option 2"],
+                                "required": True,
+                                "methodology": "screening|core|demographic",
+                                "validation": "optional validation rules",
+                                "order": 1
+                            }
+                        ]
+                    },
+                    {
+                        "id": 2,
+                        "title": "Consumer Details", 
+                        "description": "Detailed consumer information and behavior patterns",
+                        "questions": []
+                    },
+                    {
+                        "id": 3,
+                        "title": "Consumer product awareness, usage and preference",
+                        "description": "Understanding consumer awareness, usage patterns and preferences",
+                        "questions": []
+                    },
+                    {
+                        "id": 4,
+                        "title": "Product introduction and Concept reaction",
+                        "description": "Introduction of new concepts and gathering reactions",
+                        "questions": []
+                    },
+                    {
+                        "id": 5,
+                        "title": "Methodology",
+                        "description": "Methodology-specific questions and validation",
+                        "questions": []
                     }
                 ],
                 "metadata": {
                     "estimated_time": 10,
                     "methodology_tags": ["tag1", "tag2"],
                     "target_responses": 100,
-                    "quality_score": 0.85
+                    "quality_score": 0.85,
+                    "sections_count": 5
                 }
             }, indent=2),
             "",

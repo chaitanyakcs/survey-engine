@@ -120,3 +120,4 @@ def mock_field_extraction_service():
         }
         mock.return_value = mock_instance
         yield mock_instance
+

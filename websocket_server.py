@@ -39,6 +39,10 @@ from src.database import engine, SessionLocal, Base
 # Use shared database models from src.database
 from src.database import GoldenRFQSurveyPair, RFQ, Survey
 
+# Import API routers
+from src.api import annotations
+from src.api.rules import router as rules_router
+
 # Initialize embedding model lazily
 embedding_model = None
 embedding_model_loading = False
@@ -65,6 +69,10 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# Include API routers
+app.include_router(annotations.router, prefix="/api/v1")
+app.include_router(rules_router, prefix="/api/v1")
 
 class RFQSubmissionRequest(BaseModel):
     title: Optional[str] = None

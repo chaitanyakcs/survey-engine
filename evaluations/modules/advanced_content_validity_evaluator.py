@@ -7,9 +7,15 @@ Implements sophisticated LLM reasoning for content validity assessment
 import asyncio
 import json
 import re
+import sys
+import os
 from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass, asdict
 from datetime import datetime
+
+# Add parent directory to path for utils import
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+from utils import extract_all_questions
 
 @dataclass
 class ResearchObjective:
@@ -99,7 +105,7 @@ class AdvancedContentValidityEvaluator:
         
         # Step 2: Question-Objective Mapping
         reasoning_chain.append("STEP 2: Mapping survey questions to research objectives")
-        question_mappings = await self._map_questions_to_objectives(survey.get("questions", []), research_objectives)
+        question_mappings = await self._map_questions_to_objectives(extract_all_questions(survey), research_objectives)
         
         # Step 3: Coverage Gap Analysis
         reasoning_chain.append("STEP 3: Analyzing coverage gaps and overlaps")

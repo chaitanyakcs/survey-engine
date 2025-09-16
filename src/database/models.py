@@ -125,3 +125,91 @@ class RuleValidation(Base):
         Index('idx_rule_validations_survey', 'survey_id'),
         Index('idx_rule_validations_rule', 'rule_id'),
     )
+
+
+class QuestionAnnotation(Base):
+    """Model for storing question annotations"""
+    __tablename__ = "question_annotations"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    question_id = Column(String(255), nullable=False)
+    survey_id = Column(String(255), nullable=False)
+    required = Column(Boolean, nullable=False, default=True)
+    quality = Column(Integer, nullable=False)
+    relevant = Column(Integer, nullable=False)
+    # Individual pillar ratings
+    methodological_rigor = Column(Integer, nullable=False)
+    content_validity = Column(Integer, nullable=False)
+    respondent_experience = Column(Integer, nullable=False)
+    analytical_value = Column(Integer, nullable=False)
+    business_impact = Column(Integer, nullable=False)
+    comment = Column(Text)
+    annotator_id = Column(String(255))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Constraints
+    __table_args__ = (
+        CheckConstraint('quality >= 1 AND quality <= 5', name='check_quality_range'),
+        CheckConstraint('relevant >= 1 AND relevant <= 5', name='check_relevant_range'),
+        CheckConstraint('methodological_rigor >= 1 AND methodological_rigor <= 5', name='check_methodological_rigor_range'),
+        CheckConstraint('content_validity >= 1 AND content_validity <= 5', name='check_content_validity_range'),
+        CheckConstraint('respondent_experience >= 1 AND respondent_experience <= 5', name='check_respondent_experience_range'),
+        CheckConstraint('analytical_value >= 1 AND analytical_value <= 5', name='check_analytical_value_range'),
+        CheckConstraint('business_impact >= 1 AND business_impact <= 5', name='check_business_impact_range'),
+        Index('idx_question_annotations_survey_id', 'survey_id'),
+        Index('idx_question_annotations_annotator_id', 'annotator_id'),
+        Index('idx_question_annotations_unique', 'question_id', 'annotator_id', unique=True),
+    )
+
+
+class SectionAnnotation(Base):
+    """Model for storing section annotations"""
+    __tablename__ = "section_annotations"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    section_id = Column(Integer, nullable=False)
+    survey_id = Column(String(255), nullable=False)
+    quality = Column(Integer, nullable=False)
+    relevant = Column(Integer, nullable=False)
+    # Individual pillar ratings
+    methodological_rigor = Column(Integer, nullable=False)
+    content_validity = Column(Integer, nullable=False)
+    respondent_experience = Column(Integer, nullable=False)
+    analytical_value = Column(Integer, nullable=False)
+    business_impact = Column(Integer, nullable=False)
+    comment = Column(Text)
+    annotator_id = Column(String(255))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Constraints
+    __table_args__ = (
+        CheckConstraint('quality >= 1 AND quality <= 5', name='check_quality_range'),
+        CheckConstraint('relevant >= 1 AND relevant <= 5', name='check_relevant_range'),
+        CheckConstraint('methodological_rigor >= 1 AND methodological_rigor <= 5', name='check_methodological_rigor_range'),
+        CheckConstraint('content_validity >= 1 AND content_validity <= 5', name='check_content_validity_range'),
+        CheckConstraint('respondent_experience >= 1 AND respondent_experience <= 5', name='check_respondent_experience_range'),
+        CheckConstraint('analytical_value >= 1 AND analytical_value <= 5', name='check_analytical_value_range'),
+        CheckConstraint('business_impact >= 1 AND business_impact <= 5', name='check_business_impact_range'),
+        Index('idx_section_annotations_survey_id', 'survey_id'),
+        Index('idx_section_annotations_annotator_id', 'annotator_id'),
+        Index('idx_section_annotations_unique', 'section_id', 'annotator_id', unique=True),
+    )
+
+
+class SurveyAnnotation(Base):
+    """Model for storing survey-level annotation metadata"""
+    __tablename__ = "survey_annotations"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    survey_id = Column(String(255), nullable=False, unique=True)
+    overall_comment = Column(Text)
+    annotator_id = Column(String(255))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_survey_annotations_annotator_id', 'annotator_id'),
+    )

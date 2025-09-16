@@ -89,14 +89,16 @@ const STEPS = [
 interface ProgressStepperProps {
   onShowSurvey?: () => void;
   onCancelGeneration?: () => void;
+  onShowSummary?: () => void;
 }
 
 export const ProgressStepper: React.FC<ProgressStepperProps> = ({ 
   onShowSurvey, 
-  onCancelGeneration 
+  onCancelGeneration,
+  onShowSummary
 }) => {
   const { workflow, currentSurvey } = useAppStore();
-  const workflowStatus = workflow.status as any;
+  const workflowStatus = workflow.status;
   const [currentStepIndex, setCurrentStepIndex] = useState(-1);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   
@@ -373,51 +375,79 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
         </div>
       </div>
 
+      {/* Action Buttons */}
+      <div className="mt-8 flex justify-center space-x-4">
+        {/* Show buttons based on status */}
+        {workflowStatus === 'completed' && currentSurvey ? (
+          <>
+            {/* Primary: View Summary Button */}
+            <button
+              onClick={() => onShowSummary && onShowSummary()}
+              className="inline-flex items-center px-10 py-4 rounded-xl font-bold text-lg transition-all duration-200 bg-gradient-to-r from-blue-600 to-emerald-600 hover:from-blue-700 hover:to-emerald-700 text-white shadow-xl hover:shadow-2xl transform hover:scale-105"
+            >
+              <SparklesIcon className="w-6 h-6 mr-3" />
+              View AI Analysis Summary
+              <svg className="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
 
-      {/* Action Buttons - Only show during generation, not when completed */}
-      {workflowStatus !== 'completed' && (
-        <div className="mt-8 flex justify-center space-x-4">
-        {/* Show Survey Button - enabled only when completed and survey exists */}
-        <button
-          onClick={() => onShowSurvey && onShowSurvey()}
-          disabled={workflowStatus !== 'completed' || !currentSurvey}
-          className={`
-            inline-flex items-center px-8 py-3 rounded-xl font-medium text-lg transition-all duration-200
-            ${workflowStatus === 'completed' && currentSurvey
-              ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg hover:shadow-emerald-200 transform hover:scale-105'
-              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-            }
-          `}
-        >
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-          </svg>
-          View Survey
-          {workflowStatus === 'completed' && currentSurvey && (
-            <span className="ml-2 text-emerald-200">✓</span>
-          )}
-        </button>
+            {/* Secondary: Direct Survey View */}
+            <button
+              onClick={() => onShowSurvey && onShowSurvey()}
+              className="inline-flex items-center px-6 py-4 rounded-xl font-medium text-lg transition-all duration-200 bg-gray-100 hover:bg-gray-200 text-gray-700 shadow-lg hover:shadow-xl"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+              View Survey
+            </button>
+          </>
+        ) : (
+          <>
+            {/* During generation or failed state */}
+            <button
+              onClick={() => onShowSurvey && onShowSurvey()}
+              disabled={workflowStatus !== 'completed' || !currentSurvey}
+              className={`
+                inline-flex items-center px-8 py-3 rounded-xl font-medium text-lg transition-all duration-200
+                ${workflowStatus === 'completed' && currentSurvey
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg hover:shadow-emerald-200 transform hover:scale-105'
+                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                }
+              `}
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+              View Survey
+              {workflowStatus === 'completed' && currentSurvey && (
+                <span className="ml-2 text-emerald-200">✓</span>
+              )}
+            </button>
 
-        {/* Cancel Generation Button - enabled only during generation */}
-        <button
-          onClick={() => onCancelGeneration && onCancelGeneration()}
-          disabled={workflowStatus !== 'started' && workflowStatus !== 'in_progress'}
-          className={`
-            inline-flex items-center px-6 py-3 rounded-xl font-medium transition-all duration-200
-            ${workflowStatus === 'started' || workflowStatus === 'in_progress'
-              ? 'bg-red-100 hover:bg-red-200 text-red-700 border border-red-300 hover:border-red-400'
-              : 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
-            }
-          `}
-        >
-          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-          Cancel Generation
-        </button>
-        </div>
-      )}
+            {/* Cancel Generation Button - enabled only during generation */}
+            <button
+              onClick={() => onCancelGeneration && onCancelGeneration()}
+              disabled={workflowStatus !== 'started' && workflowStatus !== 'in_progress'}
+              className={`
+                inline-flex items-center px-6 py-3 rounded-xl font-medium transition-all duration-200
+                ${workflowStatus === 'started' || workflowStatus === 'in_progress'
+                  ? 'bg-red-100 hover:bg-red-200 text-red-700 border border-red-300 hover:border-red-400'
+                  : 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
+                }
+              `}
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Cancel Generation
+            </button>
+          </>
+        )}
+      </div>
 
       {/* Status Information */}
       <div className="mt-6 text-center">
