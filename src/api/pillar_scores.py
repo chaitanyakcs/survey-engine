@@ -17,9 +17,23 @@ import sys
 import os
 
 # Add evaluations directory to path for advanced evaluators
-eval_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'evaluations')
+# Find project root by looking for the evaluations directory
+current_dir = os.path.dirname(__file__)
+project_root = current_dir
+while project_root != '/' and project_root != '':
+    eval_path = os.path.join(project_root, 'evaluations')
+    if os.path.exists(eval_path):
+        break
+    project_root = os.path.dirname(project_root)
+
+if not os.path.exists(eval_path):
+    # Fallback: use current working directory
+    project_root = os.getcwd()
+    eval_path = os.path.join(project_root, 'evaluations')
+
+eval_path = os.path.abspath(eval_path)  # Convert to absolute path
 if eval_path not in sys.path:
-    sys.path.append(eval_path)
+    sys.path.insert(0, eval_path)  # Insert at beginning for higher priority
 
 try:
     from evaluations.modules.pillar_based_evaluator import PillarBasedEvaluator
