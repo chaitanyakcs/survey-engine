@@ -1,3 +1,13 @@
+// Utility Functions
+export const getQuestionCount = (survey: Survey): number => {
+  // Check if we have sections (new format)
+  if (survey.sections && survey.sections.length > 0) {
+    return survey.sections.reduce((total, section) => total + (section.questions?.length || 0), 0);
+  }
+  // Fallback to legacy format
+  return survey.questions?.length || 0;
+};
+
 // Core API Types
 export interface RFQRequest {
   title?: string;

@@ -25,18 +25,42 @@ export const SurveyGenerationSummaryPage: React.FC = () => {
         const surveyResponse = await fetch(`/api/v1/survey/${id}`);
         if (surveyResponse.ok) {
           const surveyData = await surveyResponse.json();
-          setSurvey(surveyData);
+          
+          // Extract the actual survey data from final_output
+          const rawSurvey = surveyData.final_output || surveyData.raw_output || {};
+          
+          // Create properly structured survey object
+          const survey = {
+            survey_id: surveyData.id,
+            title: rawSurvey.title || 'Untitled Survey',
+            description: rawSurvey.description || '',
+            estimated_time: rawSurvey.metadata?.estimated_time || rawSurvey.estimated_time || 10,
+            confidence_score: rawSurvey.confidence_score || 0.8,
+            methodologies: rawSurvey.methodologies || rawSurvey.metadata?.methodology_tags || [],
+            golden_examples: rawSurvey.golden_examples || [],
+            questions: rawSurvey.questions || [],
+            sections: rawSurvey.sections || [],
+            metadata: {
+              target_responses: rawSurvey.metadata?.target_responses || 100,
+              methodology: rawSurvey.methodologies || rawSurvey.metadata?.methodology_tags || [],
+              estimated_time: rawSurvey.metadata?.estimated_time || rawSurvey.estimated_time || 10,
+              quality_score: rawSurvey.metadata?.quality_score,
+              methodology_tags: rawSurvey.methodologies || rawSurvey.metadata?.methodology_tags || []
+            },
+            pillar_scores: surveyData.pillar_scores
+          };
+          
+          setSurvey(survey);
+          
+          // Pillar scores are now included in the survey object from the API service
+          // No need to fetch separately - they are already advanced scores
+          if (surveyData.pillar_scores) {
+            setPillarScores(surveyData.pillar_scores);
+          }
         } else {
           console.error('Failed to fetch survey:', surveyResponse.status);
           setLoading(false);
           return;
-        }
-
-        // Fetch pillar scores
-        const pillarResponse = await fetch(`/api/v1/pillar-scores/${id}`);
-        if (pillarResponse.ok) {
-          const scores = await pillarResponse.json();
-          setPillarScores(scores);
         }
       } catch (error) {
         console.error('Failed to fetch survey data:', error);
@@ -50,7 +74,7 @@ export const SurveyGenerationSummaryPage: React.FC = () => {
 
   const handleViewSurvey = () => {
     if (surveyId) {
-      window.location.href = `/preview?surveyId=${surveyId}`;
+      window.location.href = `/surveys?id=${surveyId}`;
     } else {
       window.location.href = '/surveys';
     }

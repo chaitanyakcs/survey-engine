@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useAppStore } from './store/useAppStore';
 import { SurveyGeneratorPage, SurveyPreviewPage, GoldenExamplesPage } from './pages';
 import { RulesPage } from './pages/RulesPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { SurveysPage } from './pages/SurveysPage';
 import { GoldenExampleEditPage } from './pages/GoldenExampleEditPage';
 import { GoldenExampleCreatePage } from './pages/GoldenExampleCreatePage';
@@ -23,6 +24,9 @@ function App() {
     }
     if (path === '/rules') {
       return 'rules';
+    }
+    if (path === '/settings') {
+      return 'settings';
     }
     if (path === '/surveys') {
       return 'surveys';
@@ -74,6 +78,8 @@ function App() {
           <SurveyGenerationSummaryPage />
         ) : currentPage === 'rules' ? (
           <RulesPage />
+        ) : currentPage === 'settings' ? (
+          <SettingsPage />
         ) : currentPage === 'surveys' ? (
           <SurveysPage />
         ) : currentPage === 'golden-examples' ? (

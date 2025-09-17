@@ -168,7 +168,7 @@ export const GoldenExampleEditPage: React.FC = () => {
     setIsEditing(false);
   };
 
-  const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys') => {
+  const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings') => {
     if (view === 'survey') {
       window.location.href = '/';
     } else if (view === 'golden-examples') {

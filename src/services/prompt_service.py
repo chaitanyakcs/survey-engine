@@ -283,6 +283,7 @@ class PromptService:
     ) -> str:
         """
         Build the complete prompt with system rules, golden examples, and context
+        Focused on sections format generation with all essential rules
         """
         # Get methodology tags from context or golden examples
         methodology_tags = []
@@ -296,23 +297,14 @@ class PromptService:
         # Remove duplicates and convert to lowercase
         methodology_tags = list(set([tag.lower() for tag in methodology_tags]))
         
-        # Build system prompt with rules
+        # Build system prompt with rules (but shorter than full version)
         system_prompt = self.build_system_prompt(
             context=context,
             methodology_tags=methodology_tags,
             custom_rules=custom_rules
         )
         
-        # Log the final system prompt before RAG kicks in
-        logger.info("=" * 80)
-        logger.info("🎯 FINAL SYSTEM PROMPT GENERATED (Before RAG)")
-        logger.info("=" * 80)
-        logger.info(system_prompt)
-        logger.info("=" * 80)
-        logger.info("🚀 Now proceeding with RAG and golden examples...")
-        logger.info("=" * 80)
-        
-        # Build the main prompt with golden examples
+        # Build the main prompt with all essential components
         prompt_parts = [
             system_prompt,
             "",
@@ -320,15 +312,15 @@ class PromptService:
             ""
         ]
         
-        # Add golden examples as few-shot prompts
-        for i, example in enumerate(golden_examples[:settings.max_golden_examples], 1):
+        # Add golden examples as few-shot prompts (but limit to 3 for brevity)
+        for i, example in enumerate(golden_examples[:3], 1):
             prompt_parts.extend([
                 f"### Example {i}:",
-                f"**RFQ:** {example['rfq_text'][:500]}...",
+                f"**RFQ:** {example['rfq_text'][:400]}...",
                 f"**Quality Score:** {example.get('quality_score', 'N/A')}",
                 f"**Methodology:** {', '.join(example.get('methodology_tags', []))}",
                 f"**Survey Structure:**",
-                json.dumps(example['survey_json'], indent=2)[:1000] + "...",
+                json.dumps(example['survey_json'], indent=2)[:800] + "...",
                 ""
             ])
         
@@ -342,20 +334,6 @@ class PromptService:
                 ""
             ])
         
-        # Add methodology guidance
-        if methodology_blocks:
-            prompt_parts.extend([
-                "## METHODOLOGY GUIDANCE:",
-                ""
-            ])
-            for block in methodology_blocks:
-                prompt_parts.extend([
-                    f"### {block['methodology']}:",
-                    f"**Structure:** {json.dumps(block['example_structure'], indent=2)}",
-                    f"**Usage Pattern:** {json.dumps(block['usage_pattern'], indent=2)}",
-                    ""
-                ])
-        
         # Add current RFQ context
         rfq_details = context.get("rfq_details", {})
         prompt_parts.extend([
@@ -366,23 +344,30 @@ class PromptService:
             f"**Target Segment:** {rfq_details.get('segment', 'N/A')}",
             f"**Research Goal:** {rfq_details.get('goal', 'N/A')}",
             "",
+            "## CRITICAL REQUIREMENT - SECTIONS FORMAT:",
+            "🚨 MANDATORY: You MUST generate the survey using the SECTIONS format, NOT the legacy questions format.",
+            "🚨 The survey MUST have a 'sections' array with exactly 5 sections, each containing questions.",
+            "🚨 DO NOT use a flat 'questions' array - this will cause errors.",
+            "",
             "## TASK:",
             "Generate a complete, high-quality survey following all the rules and guidelines above.",
             "CRITICAL: Ensure compliance with the 5-Pillar Evaluation Framework rules listed above.",
             "Use the golden examples as reference for quality and structure.",
             "Ensure methodology compliance and proper question design.",
             "",
-            "## SECTION ORGANIZATION GUIDELINES:",
-            "Organize all questions into the following 5 sections based on their purpose:",
-            "1. **Screener & Demographics**: Age, location, income, qualifying criteria, basic demographics",
-            "2. **Consumer Details**: Lifestyle, behavior patterns, detailed consumer profile information", 
-            "3. **Consumer product awareness, usage and preference**: Brand awareness, usage frequency, preferences, satisfaction",
-            "4. **Product introduction and Concept reaction**: New product/concept presentation, reactions, purchase intent",
-            "5. **Methodology**: Research-specific questions, validation questions, feedback on survey experience",
+            "## SECTION ORGANIZATION - REQUIRED STRUCTURE:",
+            "You MUST organize all questions into these 5 sections:",
+            "1. **Screener & Demographics** (id: 1): Age, location, income, qualifying criteria, basic demographics",
+            "2. **Consumer Details** (id: 2): Lifestyle, behavior patterns, detailed consumer profile information", 
+            "3. **Consumer product awareness, usage and preference** (id: 3): Brand awareness, usage frequency, preferences, satisfaction",
+            "4. **Product introduction and Concept reaction** (id: 4): New product/concept presentation, reactions, purchase intent",
+            "5. **Methodology** (id: 5): Research-specific questions, validation questions, feedback on survey experience",
             "",
-            "IMPORTANT: Every question must be placed in the most appropriate section. Each section should have at least 2-3 relevant questions unless the RFQ specifically doesn't require that type of information.",
+            "⚠️  CRITICAL: Every question MUST be placed in the most appropriate section.",
+            "⚠️  Each section should have at least 2-3 relevant questions unless the RFQ specifically doesn't require that type of information.",
+            "⚠️  The JSON structure MUST use 'sections' array, NOT 'questions' array.",
             "",
-            "Return valid JSON with this exact structure organized by sections:",
+            "## REQUIRED JSON STRUCTURE:",
             json.dumps({
                 "title": "Survey Title",
                 "description": "Survey Description",
@@ -437,6 +422,10 @@ class PromptService:
                     "sections_count": 5
                 }
             }, indent=2),
+            "",
+            "🚨 FINAL REMINDER: Generate the survey JSON using the SECTIONS format above.",
+            "🚨 DO NOT use a flat 'questions' array - use the 'sections' structure with 5 sections.",
+            "🚨 Each section must have an 'id' (1-5), 'title', 'description', and 'questions' array.",
             "",
             "Generate the survey JSON now:"
         ])

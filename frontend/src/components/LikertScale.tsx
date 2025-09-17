@@ -24,6 +24,29 @@ const LikertScale: React.FC<LikertScaleProps> = ({
     const newValue = parseInt(event.target.value) as LikertScaleType;
     onChange(newValue);
   };
+
+  // Color coding based on Likert scale value
+  const getValueColor = (val: number) => {
+    switch (val) {
+      case 1: return 'bg-red-100 text-red-800 border-red-200';
+      case 2: return 'bg-orange-100 text-orange-800 border-orange-200';
+      case 3: return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 4: return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 5: return 'bg-green-100 text-green-800 border-green-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
+  const getSliderColor = (val: number) => {
+    switch (val) {
+      case 1: return '#ef4444'; // red-500
+      case 2: return '#f97316'; // orange-500
+      case 3: return '#eab308'; // yellow-500
+      case 4: return '#3b82f6'; // blue-500
+      case 5: return '#22c55e'; // green-500
+      default: return '#3b82f6'; // blue-500
+    }
+  };
   
   return (
     <div className={`flex items-center gap-4 ${className}`}>
@@ -45,7 +68,7 @@ const LikertScale: React.FC<LikertScaleProps> = ({
             onChange={handleSliderChange}
             className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
             style={{
-              background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((currentValue - 1) / 4) * 100}%, #e5e7eb ${((currentValue - 1) / 4) * 100}%, #e5e7eb 100%)`
+              background: `linear-gradient(to right, ${getSliderColor(currentValue)} 0%, ${getSliderColor(currentValue)} ${((currentValue - 1) / 4) * 100}%, #e5e7eb ${((currentValue - 1) / 4) * 100}%, #e5e7eb 100%)`
             }}
           />
         </div>
@@ -53,7 +76,7 @@ const LikertScale: React.FC<LikertScaleProps> = ({
         <span className="text-xs text-gray-500 flex-shrink-0">{highLabel}</span>
         
         {/* Current value display */}
-        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 min-w-[24px] justify-center">
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border min-w-[24px] justify-center ${getValueColor(currentValue)}`}>
           {currentValue}
         </span>
       </div>
@@ -65,7 +88,7 @@ const LikertScale: React.FC<LikertScaleProps> = ({
             height: 16px;
             width: 16px;
             border-radius: 50%;
-            background: #3b82f6;
+            background: ${getSliderColor(currentValue)};
             cursor: pointer;
             border: 2px solid #ffffff;
             box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
@@ -75,7 +98,7 @@ const LikertScale: React.FC<LikertScaleProps> = ({
             height: 16px;
             width: 16px;
             border-radius: 50%;
-            background: #3b82f6;
+            background: ${getSliderColor(currentValue)};
             cursor: pointer;
             border: 2px solid #ffffff;
             box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);

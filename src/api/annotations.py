@@ -124,10 +124,16 @@ def get_survey_annotations(
         )
     ).first()
     
+    # Return empty response instead of 404 when no annotations exist
     if not question_annotations and not section_annotations and not survey_annotation:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No annotations found for this survey"
+        return SurveyAnnotationsResponse(
+            survey_id=survey_id,
+            question_annotations=[],
+            section_annotations=[],
+            overall_comment=None,
+            annotator_id=annotator_id,
+            created_at=datetime.now(),
+            updated_at=datetime.now()
         )
     
     # Get creation/update timestamps

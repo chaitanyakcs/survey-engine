@@ -1,5 +1,5 @@
 import React from 'react';
-import { Survey } from '../types';
+import { Survey, getQuestionCount } from '../types';
 import { 
   EyeIcon, 
   PencilIcon, 
@@ -48,7 +48,7 @@ export const SurveyGenerationSummary: React.FC<SurveyGenerationSummaryProps> = (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-emerald-50">
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Header */}
-        <div className="text-center mb-12">
+        <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-blue-500 to-emerald-500 rounded-full mb-6">
             <ChartBarIcon className="w-10 h-10 text-white" />
           </div>
@@ -58,9 +58,34 @@ export const SurveyGenerationSummary: React.FC<SurveyGenerationSummaryProps> = (
           <p className="text-xl text-gray-600 mb-2">
             Your survey has been generated and evaluated
           </p>
-          <p className="text-lg text-gray-500">
+          <p className="text-lg text-gray-500 mb-8">
             {survey.title || 'Untitled Survey'}
           </p>
+          
+          {/* Action Buttons - Moved to top */}
+          <div className="flex flex-wrap justify-center gap-4 mb-8">
+            <button
+              onClick={onViewSurvey}
+              className="flex items-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors shadow-lg hover:shadow-xl"
+            >
+              <EyeIcon className="w-5 h-5 mr-2" />
+              View Survey
+            </button>
+            <button
+              onClick={onEditSurvey}
+              className="flex items-center px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium transition-colors shadow-lg hover:shadow-xl"
+            >
+              <PencilIcon className="w-5 h-5 mr-2" />
+              Edit Survey
+            </button>
+            <button
+              onClick={onStartNew}
+              className="flex items-center px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-medium transition-colors shadow-lg hover:shadow-xl"
+            >
+              <PlusIcon className="w-5 h-5 mr-2" />
+              Create New Survey
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -76,7 +101,7 @@ export const SurveyGenerationSummary: React.FC<SurveyGenerationSummaryProps> = (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                 <div className="text-center p-4 bg-blue-50 rounded-xl">
                   <div className="text-3xl font-bold text-blue-600 mb-2">
-                    {survey.questions?.length || 0}
+                    {getQuestionCount(survey)}
                   </div>
                   <div className="text-sm font-medium text-blue-800">Questions</div>
                 </div>
@@ -179,49 +204,23 @@ export const SurveyGenerationSummary: React.FC<SurveyGenerationSummaryProps> = (
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Action Buttons */}
-            <div className="bg-white rounded-2xl shadow-xl p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Next Steps</h3>
-              <div className="space-y-3">
-                <button
-                  onClick={onViewSurvey}
-                  className="w-full flex items-center justify-center px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors"
-                >
-                  <EyeIcon className="w-5 h-5 mr-2" />
-                  View Survey
-                </button>
-                <button
-                  onClick={onEditSurvey}
-                  className="w-full flex items-center justify-center px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium transition-colors"
-                >
-                  <PencilIcon className="w-5 h-5 mr-2" />
-                  Edit Survey
-                </button>
-                <button
-                  onClick={onStartNew}
-                  className="w-full flex items-center justify-center px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-medium transition-colors"
-                >
-                  <PlusIcon className="w-5 h-5 mr-2" />
-                  Create New Survey
-                </button>
-              </div>
-            </div>
-
-            {/* Quality Score */}
-            {survey.confidence_score && (
+            {/* Quality Score - Advanced Chain-of-Thought Evaluation */}
+            {survey.pillar_scores?.weighted_score && (
               <div className="bg-white rounded-2xl shadow-xl p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Quality Score</h3>
                 <div className="text-center">
                   <div className="text-4xl font-bold text-emerald-600 mb-2">
-                    {Math.round(survey.confidence_score * 100)}%
+                    {Math.round(survey.pillar_scores.weighted_score * 100)}%
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-3">
                     <div 
                       className="bg-emerald-500 h-3 rounded-full transition-all duration-300"
-                      style={{ width: `${survey.confidence_score * 100}%` }}
+                      style={{ width: `${survey.pillar_scores.weighted_score * 100}%` }}
                     />
                   </div>
-                  <p className="text-sm text-gray-600 mt-2">Overall survey quality</p>
+                  <p className="text-sm text-gray-600 mt-2">
+                    Grade {survey.pillar_scores.overall_grade} - Chain-of-Thought Evaluation
+                  </p>
                 </div>
               </div>
             )}

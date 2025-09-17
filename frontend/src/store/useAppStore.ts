@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { AppStore, RFQRequest, WorkflowState, ProgressMessage, GoldenExampleRequest, ToastMessage, SurveyAnnotations } from '../types';
+import { AppStore, RFQRequest, WorkflowState, ProgressMessage, GoldenExampleRequest, ToastMessage, SurveyAnnotations, getQuestionCount } from '../types';
 import { apiService } from '../services/api';
 
 // Utility function to generate unique IDs
@@ -135,7 +135,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       console.log('✅ [Store] Survey fetched successfully:', {
         surveyId: survey.survey_id,
         title: survey.title,
-        questionsCount: survey.questions?.length || 0
+        questionsCount: getQuestionCount(survey)
       });
       
       
@@ -600,7 +600,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       // Transform backend format to frontend format
       const frontendAnnotations: SurveyAnnotations = {
         surveyId: backendAnnotations.survey_id,
-        questionAnnotations: backendAnnotations.question_annotations.map((qa: any) => ({
+        questionAnnotations: (backendAnnotations.question_annotations || []).map((qa: any) => ({
           questionId: qa.question_id,
           required: qa.required,
           quality: qa.quality,
@@ -616,7 +616,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           annotatorId: qa.annotator_id,
           timestamp: qa.created_at
         })),
-        sectionAnnotations: backendAnnotations.section_annotations.map((sa: any) => ({
+        sectionAnnotations: (backendAnnotations.section_annotations || []).map((sa: any) => ({
           sectionId: sa.section_id.toString(),
           quality: sa.quality,
           relevant: sa.relevant,

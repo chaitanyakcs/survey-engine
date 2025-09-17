@@ -71,6 +71,13 @@ async def list_surveys(
             if not isinstance(methodology_tags, list):
                 methodology_tags = []
             
+            # Use pillar scores if available, fallback to metadata quality_score
+            quality_score = None
+            if survey.pillar_scores and isinstance(survey.pillar_scores, dict):
+                quality_score = survey.pillar_scores.get('weighted_score')
+            elif metadata.get('quality_score'):
+                quality_score = metadata.get('quality_score')
+            
             survey_list.append(SurveyListItem(
                 id=str(survey.id),
                 title=survey_data.get('title', 'Untitled Survey'),
@@ -78,7 +85,7 @@ async def list_surveys(
                 status=survey.status,
                 created_at=survey.created_at.isoformat() if survey.created_at else '',
                 methodology_tags=methodology_tags,
-                quality_score=metadata.get('quality_score'),
+                quality_score=quality_score,
                 estimated_time=metadata.get('estimated_time'),
                 question_count=get_questions_count(survey_data),
                 annotation=None  # Survey model doesn't have annotation field

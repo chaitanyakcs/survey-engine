@@ -46,6 +46,8 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
       annotation,
       hasAnnotation: !!annotation
     });
+    
+    // Always reset form data when question changes
     setFormData({
       questionId: question.id,
       required: annotation?.required ?? true,
@@ -63,26 +65,6 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
     });
   }, [question.id, annotation]);
 
-  // Reset form when question changes (additional safety)
-  useEffect(() => {
-    if (question.id !== formData.questionId) {
-      setFormData({
-        questionId: question.id,
-        required: annotation?.required ?? true,
-        quality: annotation?.quality ?? 3,
-        relevant: annotation?.relevant ?? 3,
-        pillars: {
-          methodologicalRigor: annotation?.pillars?.methodologicalRigor ?? 3,
-          contentValidity: annotation?.pillars?.contentValidity ?? 3,
-          respondentExperience: annotation?.pillars?.respondentExperience ?? 3,
-          analyticalValue: annotation?.pillars?.analyticalValue ?? 3,
-          businessImpact: annotation?.pillars?.businessImpact ?? 3,
-        },
-        comment: annotation?.comment ?? '',
-        timestamp: new Date().toISOString()
-      });
-    }
-  }, [question.id, annotation, formData.questionId]);
 
   const handleSave = () => {
     onSave(formData);

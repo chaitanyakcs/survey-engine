@@ -213,3 +213,25 @@ class SurveyAnnotation(Base):
     __table_args__ = (
         Index('idx_survey_annotations_annotator_id', 'annotator_id'),
     )
+
+
+class SystemPromptAudit(Base):
+    """Model for storing system prompts used in survey generation for audit purposes"""
+    __tablename__ = "system_prompt_audit"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    survey_id = Column(String(255), nullable=False)  # Loose key - not foreign key to allow persistence after survey deletion
+    rfq_id = Column(UUID(as_uuid=True), nullable=True)  # Optional reference to RFQ
+    system_prompt = Column(Text, nullable=False)  # The actual system prompt used
+    prompt_type = Column(String(50), nullable=False, default="generation")  # 'generation', 'validation', etc.
+    model_version = Column(String(100), nullable=True)  # AI model used
+    generation_context = Column(JSONB, nullable=True)  # Context used for generation
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Indexes for efficient querying
+    __table_args__ = (
+        Index('idx_system_prompt_audit_survey_id', 'survey_id'),
+        Index('idx_system_prompt_audit_rfq_id', 'rfq_id'),
+        Index('idx_system_prompt_audit_created_at', 'created_at'),
+        Index('idx_system_prompt_audit_prompt_type', 'prompt_type'),
+    )

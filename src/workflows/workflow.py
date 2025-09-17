@@ -155,7 +155,7 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
                 "type": "progress",
                 "step": "validation_scoring",
                 "percent": 80,
-                "message": "Validation and quality checking..."
+                "message": "Running comprehensive evaluations and quality assessments..."
             })
             logger.info(f"✅ [Workflow] Progress update sent successfully: validation_scoring")
         except Exception as e:

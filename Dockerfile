@@ -44,6 +44,7 @@ RUN python3 -c "from sentence_transformers import SentenceTransformer; print('Pr
 
 # Copy all application code
 COPY src/ ./src/
+COPY evaluations/ ./evaluations/
 COPY alembic/ ./alembic/
 COPY alembic.ini ./
 COPY websocket_server.py ./

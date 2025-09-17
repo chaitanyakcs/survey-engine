@@ -6,14 +6,15 @@ import {
   StarIcon,
   Cog6ToothIcon,
   HomeIcon,
-  InformationCircleIcon
+  InformationCircleIcon,
+  DocumentCheckIcon
 } from '@heroicons/react/24/outline';
 import AIEngineInfoModal from './AIEngineInfoModal';
 import { useSidebar } from '../contexts/SidebarContext';
 
 interface SidebarProps {
-  currentView: 'survey' | 'golden-examples' | 'rules' | 'surveys';
-  onViewChange: (view: 'survey' | 'golden-examples' | 'rules' | 'surveys') => void;
+  currentView: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings';
+  onViewChange: (view: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings') => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) => {
@@ -45,8 +46,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) =
     {
       id: 'rules',
       name: 'Rules',
-      icon: Cog6ToothIcon,
+      icon: DocumentCheckIcon,
       href: '/rules'
+    },
+    {
+      id: 'settings',
+      name: 'Settings',
+      icon: Cog6ToothIcon,
+      href: '/settings'
     }
   ];
 

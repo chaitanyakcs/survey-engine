@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, File, UploadFile
-# from src.services.document_parser import document_parser
+from src.services.document_parser import document_parser
 from src.utils.error_messages import UserFriendlyError, create_error_response
 from pydantic import BaseModel
 from typing import Optional

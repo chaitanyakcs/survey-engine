@@ -37,6 +37,7 @@ if eval_path not in sys.path:
 
 try:
     from evaluations.modules.pillar_based_evaluator import PillarBasedEvaluator
+    from evaluations.modules.single_call_evaluator import SingleCallEvaluator
     ADVANCED_EVALUATORS_AVAILABLE = True
     logger = logging.getLogger(__name__)
     logger.info("🚀 Advanced pillar evaluators loaded successfully")
@@ -68,18 +69,46 @@ class OverallPillarScoreResponse(BaseModel):
     pillar_breakdown: List[PillarScoreResponse]
     recommendations: List[str]
 
-async def _evaluate_with_advanced_system(survey_data: Dict[str, Any], rfq_text: str, db: Session) -> OverallPillarScoreResponse:
+async def _get_evaluation_mode() -> str:
+    """Get current evaluation mode from settings"""
+    try:
+        import requests
+        response = requests.get("http://localhost:8000/api/v1/settings/evaluation-mode")
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("evaluation_mode", "single_call")
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to get evaluation mode from settings: {e}")
+    
+    # Default to single_call if settings unavailable
+    return "single_call"
+
+async def _evaluate_with_advanced_system(survey_data: Dict[str, Any], rfq_text: str, db: Session, survey_id: str = None, rfq_id: str = None) -> OverallPillarScoreResponse:
     """
-    Evaluate survey using the advanced pillar-based evaluator system
+    Evaluate survey using the appropriate evaluator based on settings
     """
-    logger.info("🚀 Using advanced pillar evaluators with chain-of-thought reasoning")
+    # Get evaluation mode from settings
+    evaluation_mode = await _get_evaluation_mode()
+    logger.info(f"🚀 Using {evaluation_mode} evaluation mode")
     
     try:
-        # Initialize advanced evaluator
-        evaluator = PillarBasedEvaluator(llm_client=None, db_session=db)
+        # Initialize LLM client for advanced evaluator
+        from evaluations.llm_client import create_evaluation_llm_client
+        llm_client = create_evaluation_llm_client()
         
-        # Run advanced evaluation
-        result = await evaluator.evaluate_survey(survey_data, rfq_text)
+        # Choose evaluator based on settings
+        if evaluation_mode == "single_call":
+            # Use single-call evaluator for cost efficiency
+            evaluator = SingleCallEvaluator(llm_client=llm_client, db_session=db)
+            result = await evaluator.evaluate_survey(survey_data, rfq_text, survey_id, rfq_id)
+        elif evaluation_mode == "multiple_calls":
+            # Use multiple-call evaluator for detailed analysis
+            evaluator = PillarBasedEvaluator(llm_client=llm_client, db_session=db)
+            result = await evaluator.evaluate_survey(survey_data, rfq_text, survey_id, rfq_id)
+        else:  # hybrid
+            # Use single-call for now (can implement hybrid later)
+            evaluator = SingleCallEvaluator(llm_client=llm_client, db_session=db)
+            result = await evaluator.evaluate_survey(survey_data, rfq_text, survey_id, rfq_id)
         
         # Convert advanced results to API format
         pillar_breakdown = []
@@ -93,11 +122,37 @@ async def _evaluate_with_advanced_system(survey_data: Dict[str, Any], rfq_text: 
             'deployment_readiness': 'Deployment Readiness'
         }
         
-        weights = evaluator.PILLAR_WEIGHTS
+        # Handle different result types
+        if hasattr(result, 'pillar_scores') and isinstance(result.pillar_scores, dict):
+            # SingleCallEvaluator result
+            pillar_scores = result.pillar_scores
+            weights = {
+                'content_validity': 0.20,
+                'methodological_rigor': 0.25,
+                'clarity_comprehensibility': 0.25,
+                'structural_coherence': 0.20,
+                'deployment_readiness': 0.10
+            }
+        else:
+            # PillarBasedEvaluator result
+            pillar_scores = {
+                'content_validity': getattr(result.pillar_scores, 'content_validity', 0.5),
+                'methodological_rigor': getattr(result.pillar_scores, 'methodological_rigor', 0.5),
+                'clarity_comprehensibility': getattr(result.pillar_scores, 'clarity_comprehensibility', 0.5),
+                'structural_coherence': getattr(result.pillar_scores, 'structural_coherence', 0.5),
+                'deployment_readiness': getattr(result.pillar_scores, 'deployment_readiness', 0.5)
+            }
+            weights = getattr(evaluator, 'PILLAR_WEIGHTS', {
+                'content_validity': 0.20,
+                'methodological_rigor': 0.25,
+                'clarity_comprehensibility': 0.25,
+                'structural_coherence': 0.20,
+                'deployment_readiness': 0.10
+            })
         
         for pillar_name, display_name in pillar_mapping.items():
-            score = getattr(result.pillar_scores, pillar_name)
-            weight = weights[pillar_name]
+            score = pillar_scores.get(pillar_name, 0.5)
+            weight = weights.get(pillar_name, 0.2)
             weighted_score = score * weight
             
             # Convert score to criteria format (simulate criteria met/total for UI compatibility)
@@ -128,33 +183,61 @@ async def _evaluate_with_advanced_system(survey_data: Dict[str, Any], rfq_text: 
             ))
         
         # Calculate overall grade
-        if result.overall_score >= 0.9:
+        overall_score = getattr(result, 'weighted_score', getattr(result, 'overall_score', 0.5))
+        if overall_score >= 0.9:
             overall_grade = "A"
-        elif result.overall_score >= 0.8:
+        elif overall_score >= 0.8:
             overall_grade = "B" 
-        elif result.overall_score >= 0.7:
+        elif overall_score >= 0.7:
             overall_grade = "C"
-        elif result.overall_score >= 0.6:
+        elif overall_score >= 0.6:
             overall_grade = "D"
         else:
             overall_grade = "F"
         
-        # Create enhanced summary with advanced evaluation info
-        advanced_info = f"Advanced Chain-of-Thought Analysis (v{result.evaluation_metadata.get('evaluation_version', '2.0')})"
-        if result.evaluation_metadata.get('advanced_evaluators_used'):
-            confidence_info = f"Content Validity Confidence: {result.evaluation_metadata.get('content_validity_confidence', 0):.0%}, " \
-                           f"Methodological Rigor Confidence: {result.evaluation_metadata.get('methodological_rigor_confidence', 0):.0%}"
-            advanced_summary = f"{advanced_info} | {confidence_info} | {result.evaluation_metadata.get('objectives_extracted', 0)} objectives extracted, {result.evaluation_metadata.get('biases_detected', 0)} biases detected"
+        # Create enhanced summary with evaluation info
+        evaluation_mode = await _get_evaluation_mode()
+        cost_savings = getattr(result, 'cost_savings', {})
+        
+        if evaluation_mode == "single_call":
+            cost_info = f"Cost Savings: {cost_savings.get('cost_reduction_percent', 0):.0f}% (${cost_savings.get('estimated_cost_saved', 0):.2f} saved)"
+            advanced_info = f"Single-Call Comprehensive Analysis | {cost_info}"
         else:
-            advanced_summary = f"{advanced_info} | Fallback mode active"
+            advanced_info = f"Multiple-Call Detailed Analysis (v{result.evaluation_metadata.get('evaluation_version', '2.0')})"
+        
+        # Get recommendations
+        recommendations = []
+        if hasattr(result, 'overall_recommendations'):
+            recommendations = result.overall_recommendations
+        elif hasattr(result, 'recommendations'):
+            recommendations = result.recommendations
+        elif hasattr(result, 'detailed_analysis'):
+            # Extract recommendations from detailed analysis
+            for pillar_data in result.detailed_analysis.values():
+                if isinstance(pillar_data, dict) and 'recommendations' in pillar_data:
+                    recommendations.extend(pillar_data['recommendations'])
+        
+        # Update cost metrics
+        try:
+            import requests
+            cost_per_evaluation = 0.24 if evaluation_mode == "single_call" else 1.21  # Approximate costs
+            requests.post(
+                "http://localhost:8000/api/v1/settings/cost-metrics/update",
+                params={
+                    "evaluation_mode": evaluation_mode,
+                    "cost_per_evaluation": cost_per_evaluation
+                }
+            )
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to update cost metrics: {e}")
         
         return OverallPillarScoreResponse(
             overall_grade=overall_grade,
-            weighted_score=result.overall_score,
-            total_score=result.overall_score,  # For advanced system, these are the same
-            summary=advanced_summary,
+            weighted_score=overall_score,
+            total_score=overall_score,
+            summary=advanced_info,
             pillar_breakdown=pillar_breakdown,
-            recommendations=result.recommendations
+            recommendations=recommendations
         )
         
     except Exception as e:
@@ -164,12 +247,16 @@ async def _evaluate_with_advanced_system(survey_data: Dict[str, Any], rfq_text: 
 @router.get("/{survey_id}", response_model=OverallPillarScoreResponse)
 async def get_pillar_scores(
     survey_id: UUID,
+    force: bool = False,
     db: Session = Depends(get_db)
 ):
     """
     Get pillar adherence scores for a specific survey
+    Args:
+        survey_id: UUID of the survey
+        force: If True, re-evaluate even if scores exist (default: False)
     """
-    logger.info(f"🏛️ [Pillar Scores API] Getting pillar scores for survey: {survey_id}")
+    logger.info(f"🏛️ [Pillar Scores API] Getting pillar scores for survey: {survey_id} (force={force})")
     
     try:
         # Get survey from database
@@ -181,15 +268,51 @@ async def get_pillar_scores(
         if not survey.final_output:
             raise HTTPException(status_code=400, detail="Survey has not been generated yet")
         
+        # Check if pillar scores already exist in the survey object (unless forced to re-evaluate)
+        if not force and survey.pillar_scores:
+            logger.info("📋 [Pillar Scores API] Returning cached pillar scores from survey object")
+            # Convert stored scores to response format
+            stored_scores = survey.pillar_scores
+            
+            # Validate that the stored scores have the expected structure
+            if (stored_scores.get('overall_grade') and 
+                stored_scores.get('weighted_score') is not None and
+                stored_scores.get('pillar_breakdown')):
+                
+                pillar_breakdown = [
+                    PillarScoreResponse(
+                        pillar_name=pillar.get('pillar_name', ''),
+                        display_name=pillar.get('display_name', ''),
+                        score=pillar.get('score', 0.0),
+                        weighted_score=pillar.get('weighted_score', 0.0),
+                        weight=pillar.get('weight', 0.0),
+                        criteria_met=pillar.get('criteria_met', 0),
+                        total_criteria=pillar.get('total_criteria', 0),
+                        grade=pillar.get('grade', 'F')
+                    )
+                    for pillar in stored_scores.get('pillar_breakdown', [])
+                ]
+                
+                return OverallPillarScoreResponse(
+                    overall_grade=stored_scores.get('overall_grade', 'F'),
+                    weighted_score=stored_scores.get('weighted_score', 0.0),
+                    total_score=stored_scores.get('total_score', 0.0),
+                    summary=stored_scores.get('summary', 'Cached evaluation results'),
+                    pillar_breakdown=pillar_breakdown,
+                    recommendations=stored_scores.get('recommendations', [])
+                )
+            else:
+                logger.warning("⚠️ [Pillar Scores API] Stored pillar scores are incomplete, re-evaluating")
+        
         # Use advanced evaluators if available, otherwise fallback to basic
         if ADVANCED_EVALUATORS_AVAILABLE:
             # Extract RFQ text for advanced evaluation (fallback if not available)
-            rfq_text = getattr(survey, 'original_rfq', survey.metadata.get('rfq', '')) if survey.metadata else ''
+            rfq_text = getattr(survey, 'original_rfq', survey.rfq.description if survey.rfq else '')
             if not rfq_text:
                 rfq_text = f"Survey: {survey.final_output.get('title', 'Unnamed Survey')}"
             
             logger.info("🚀 Using advanced pillar evaluation system")
-            response = await _evaluate_with_advanced_system(survey.final_output, rfq_text, db)
+            response = await _evaluate_with_advanced_system(survey.final_output, rfq_text, db, str(survey.id), str(survey.rfq_id) if survey.rfq_id else None)
             return response
         else:
             logger.info("⚠️  Using legacy pillar scoring system")
@@ -255,7 +378,7 @@ async def evaluate_survey_pillars(
             rfq_text = survey_data.get('description', survey_data.get('title', 'Test survey evaluation'))
             
             logger.info("🚀 Using advanced pillar evaluation system for testing")
-            response = await _evaluate_with_advanced_system(survey_data, rfq_text, db)
+            response = await _evaluate_with_advanced_system(survey_data, rfq_text, db, "test_survey", None)
             return response
         else:
             logger.info("⚠️  Using legacy pillar scoring system for testing")

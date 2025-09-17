@@ -117,7 +117,7 @@ const PillarScoresDisplay: React.FC<PillarScoresDisplayProps> = ({
                     <p className="text-xs text-gray-500">{pillar.criteria_met}/{pillar.total_criteria}</p>
                   </div>
                 </div>
-                <div className="text-right">
+                <div className="text-center">
                   <div className={`text-lg font-semibold ${getScoreColor(pillar.score)}`}>
                     {Math.round(pillar.score * 100)}%
                   </div>
@@ -191,7 +191,7 @@ const PillarScoresDisplay: React.FC<PillarScoresDisplayProps> = ({
                 </div>
               </div>
               
-              <div className="text-right">
+              <div className="text-center">
                 <div className={`text-lg font-semibold ${getScoreColor(pillar.score)}`}>
                   {Math.round(pillar.score * 100)}%
                 </div>

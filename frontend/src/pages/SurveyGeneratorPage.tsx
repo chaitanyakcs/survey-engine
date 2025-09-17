@@ -9,7 +9,7 @@ import { useSidebarLayout } from '../hooks/useSidebarLayout';
 
 export const SurveyGeneratorPage: React.FC = () => {
   const { workflow, currentSurvey, toasts, removeToast, addToast } = useAppStore();
-  const [currentView, setCurrentView] = useState<'survey' | 'golden-examples' | 'rules' | 'surveys'>('survey');
+  const [currentView, setCurrentView] = useState<'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings'>('survey');
   const { mainContentClasses } = useSidebarLayout();
 
   // Debug logging
@@ -45,7 +45,16 @@ export const SurveyGeneratorPage: React.FC = () => {
     
     if (surveyId && surveyId !== 'undefined' && surveyId !== 'null' && !currentSurvey) {
       console.log('📥 [SurveyGeneratorPage] Loading survey from URL parameter:', surveyId);
-      useAppStore.getState().fetchSurvey(surveyId);
+      useAppStore.getState().fetchSurvey(surveyId).then(async () => {
+        // Load annotations after survey is loaded
+        try {
+          console.log('🔍 [SurveyGeneratorPage] Loading annotations for survey:', surveyId);
+          await useAppStore.getState().loadAnnotations(surveyId);
+          console.log('✅ [SurveyGeneratorPage] Annotations loaded successfully');
+        } catch (error) {
+          console.warn('⚠️ [SurveyGeneratorPage] Failed to load annotations:', error);
+        }
+      });
     } else if (!surveyId || surveyId === 'undefined' || surveyId === 'null') {
       console.log('⚠️ [SurveyGeneratorPage] No valid survey ID found in URL parameters');
     } else if (currentSurvey) {
@@ -53,7 +62,7 @@ export const SurveyGeneratorPage: React.FC = () => {
     }
   }, [currentSurvey]);
 
-  const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys') => {
+  const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings') => {
     if (view === 'rules') {
       window.location.href = '/rules';
     } else if (view === 'surveys') {
@@ -75,6 +84,26 @@ export const SurveyGeneratorPage: React.FC = () => {
 
       {/* Main Content */}
       <div className={`flex-1 ${mainContentClasses} transition-all duration-300 ease-in-out`}>
+        {/* Header */}
+        <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200/50 sticky top-0 z-30 shadow-sm">
+          <div className="px-6 py-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+                    Survey Generator
+                  </h1>
+                  <p className="text-gray-600">Create AI-powered surveys with advanced methodologies</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
 
         <main className="py-4">
         {/* Survey Generator View */}
@@ -97,8 +126,8 @@ export const SurveyGeneratorPage: React.FC = () => {
                   <ProgressStepper 
                     onShowSurvey={() => {
                       if (currentSurvey?.survey_id) {
-                        console.log('🔍 [SurveyGeneratorPage] Navigating to preview with survey ID:', currentSurvey.survey_id);
-                        window.location.href = `/preview?surveyId=${currentSurvey.survey_id}`;
+                        console.log('🔍 [SurveyGeneratorPage] Navigating to surveys section with survey ID:', currentSurvey.survey_id);
+                        window.location.href = `/surveys?id=${currentSurvey.survey_id}`;
                       }
                     }}
                     onShowSummary={() => {
@@ -136,8 +165,8 @@ export const SurveyGeneratorPage: React.FC = () => {
                     <button
                       onClick={() => {
                         if (currentSurvey?.survey_id) {
-                          console.log('🔍 [SurveyGeneratorPage] Navigating to preview with survey ID:', currentSurvey.survey_id);
-                          window.location.href = `/preview?surveyId=${currentSurvey.survey_id}`;
+                          console.log('🔍 [SurveyGeneratorPage] Navigating to surveys section with survey ID:', currentSurvey.survey_id);
+                          window.location.href = `/surveys?id=${currentSurvey.survey_id}`;
                         }
                       }}
                       className="inline-flex items-center px-10 py-5 bg-gradient-to-r from-emerald-600 to-green-600 text-white rounded-2xl font-bold text-xl shadow-2xl hover:shadow-emerald-300 transform hover:scale-105 transition-all duration-300"
@@ -192,8 +221,8 @@ export const SurveyGeneratorPage: React.FC = () => {
                   <ProgressStepper 
                     onShowSurvey={() => {
                       if (currentSurvey?.survey_id) {
-                        console.log('🔍 [SurveyGeneratorPage] Navigating to preview with survey ID:', currentSurvey.survey_id);
-                        window.location.href = `/preview?surveyId=${currentSurvey.survey_id}`;
+                        console.log('🔍 [SurveyGeneratorPage] Navigating to surveys section with survey ID:', currentSurvey.survey_id);
+                        window.location.href = `/surveys?id=${currentSurvey.survey_id}`;
                       }
                     }}
                     onShowSummary={() => {

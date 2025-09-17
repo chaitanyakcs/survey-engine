@@ -295,6 +295,16 @@ export const SurveysPage: React.FC = () => {
       setSurvey(surveyForPreview);
       console.log('✅ [Survey View] Survey set in store');
       
+      // Load existing annotations for this survey
+      try {
+        console.log('🔍 [Survey View] Loading annotations for survey:', survey.id);
+        await useAppStore.getState().loadAnnotations(survey.id);
+        console.log('✅ [Survey View] Annotations loaded successfully');
+      } catch (error) {
+        console.warn('⚠️ [Survey View] Failed to load annotations:', error);
+        // Continue without annotations - they'll be created when needed
+      }
+      
       // Set a mock RFQ input for context
       setRFQInput({
         title: survey.title,
@@ -330,7 +340,7 @@ export const SurveysPage: React.FC = () => {
   console.log('🔍 [Render] Filtered surveys count:', filteredSurveys.length);
   console.log('🔍 [Render] First filtered survey (if any):', filteredSurveys[0]);
 
-  const handleViewChange = (view: 'survey' | 'golden-examples' | 'surveys' | 'rules') => {
+  const handleViewChange = (view: 'survey' | 'golden-examples' | 'surveys' | 'rules' | 'settings') => {
     if (view === 'survey') {
       window.location.href = '/';
     } else if (view === 'golden-examples') {

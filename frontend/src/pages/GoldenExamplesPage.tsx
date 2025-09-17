@@ -18,7 +18,7 @@ import {
 export const GoldenExamplesPage: React.FC = () => {
   const { goldenExamples, fetchGoldenExamples, deleteGoldenExample, toasts, removeToast, addToast } = useAppStore();
   const [isLoading, setIsLoading] = useState(false);
-  const [currentView, setCurrentView] = useState<'survey' | 'golden-examples' | 'rules' | 'surveys'>('golden-examples');
+  const [currentView, setCurrentView] = useState<'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings'>('golden-examples');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const { mainContentClasses } = useSidebarLayout();
 
@@ -53,7 +53,7 @@ export const GoldenExamplesPage: React.FC = () => {
     return `${(score * 100).toFixed(0)}%`;
   };
 
-  const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys') => {
+  const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings') => {
     if (view === 'rules') {
       window.location.href = '/rules';
     } else if (view === 'surveys') {

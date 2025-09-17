@@ -135,6 +135,10 @@ class ConsolidatedRulesService:
         
         return context
     
+    def create_pillar_rule_prompt_context(self, pillar_name: str) -> str:
+        """Create LLM prompt context for a specific pillar evaluation (alias for get_pillar_rules_for_llm_context)"""
+        return self.get_pillar_rules_for_llm_context(pillar_name)
+    
     def get_comprehensive_evaluation_context(self) -> str:
         """Generate comprehensive LLM context for all pillars"""
         context = """

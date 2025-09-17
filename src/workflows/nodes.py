@@ -106,6 +106,8 @@ class ContextBuilderNode:
         """
         try:
             context = {
+                "survey_id": str(state.survey_id) if state.survey_id else None,
+                "rfq_id": str(state.rfq_id) if state.rfq_id else None,
                 "rfq_details": {
                     "text": state.rfq_text,
                     "title": state.rfq_title,
@@ -158,21 +160,19 @@ class GeneratorAgent:
                     SurveyRule.is_active == True
                 ).all()
                 
-                # Create a new GenerationService with fresh database session
-                from src.services.generation_service import GenerationService
-                fresh_generation_service = GenerationService(db_session=fresh_db)
+                # Update the existing generation service with fresh database session
+                self.generation_service.db_session = fresh_db
                 
             except Exception as db_error:
                 self.logger.warning(f"⚠️ [GeneratorAgent] Failed to load custom rules: {str(db_error)}")
                 custom_rules_query = []
-                fresh_generation_service = self.generation_service  # Fallback to original
             
             custom_rules = {
                 "rules": [rule.rule_description for rule in custom_rules_query if rule.rule_description]
             }
             
             self.logger.info(f"📋 [GeneratorAgent] Custom rules loaded: {len(custom_rules['rules'])} rules")
-            self.logger.info(f"🔧 [GeneratorAgent] Generation service model: {fresh_generation_service.model}")
+            self.logger.info(f"🔧 [GeneratorAgent] Generation service model: {self.generation_service.model}")
             
             # Check API token configuration
             from src.config import settings
@@ -181,7 +181,7 @@ class GeneratorAgent:
                 self.logger.info(f"🔧 [GeneratorAgent] Replicate API token preview: {settings.replicate_api_token[:8]}...")
             
             self.logger.info("🚀 [GeneratorAgent] Calling generation service...")
-            generation_result = await fresh_generation_service.generate_survey(
+            generation_result = await self.generation_service.generate_survey(
                 context=state.context,
                 golden_examples=state.golden_examples,
                 methodology_blocks=state.methodology_blocks,

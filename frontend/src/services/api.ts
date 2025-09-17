@@ -36,14 +36,27 @@ class APIService {
   }
 
   async fetchSurvey(surveyId: string): Promise<Survey> {
-    const response = await fetch(`${API_BASE_URL}/v1/survey/${surveyId}`);
+    // Fetch survey data and advanced pillar scores in parallel
+    const [surveyResponse, pillarScoresResponse] = await Promise.all([
+      fetch(`${API_BASE_URL}/v1/survey/${surveyId}`),
+      fetch(`${API_BASE_URL}/v1/pillar-scores/${surveyId}`)
+    ]);
     
-    if (!response.ok) {
-      throw new Error(`Failed to fetch survey: ${response.statusText}`);
+    if (!surveyResponse.ok) {
+      throw new Error(`Failed to fetch survey: ${surveyResponse.statusText}`);
     }
 
-    const backendResponse = await response.json();
-    console.log('🔍 [API] Backend response:', backendResponse);
+    const backendResponse = await surveyResponse.json();
+    console.log('🔍 [API] Backend survey response:', backendResponse);
+    
+    // Fetch advanced pillar scores (prioritize over legacy scores)
+    let advancedPillarScores = null;
+    if (pillarScoresResponse.ok) {
+      advancedPillarScores = await pillarScoresResponse.json();
+      console.log('🔍 [API] Advanced pillar scores:', advancedPillarScores);
+    } else {
+      console.warn('⚠️ [API] Failed to fetch advanced pillar scores:', pillarScoresResponse.statusText);
+    }
     
     // Map backend response to frontend format
     const survey: Survey = {
@@ -56,7 +69,7 @@ class APIService {
       golden_examples: backendResponse.final_output?.golden_examples || [],
       questions: backendResponse.final_output?.questions || [],
       sections: backendResponse.final_output?.sections || [], // Include sections
-      pillar_scores: backendResponse.pillar_scores || null,
+      pillar_scores: advancedPillarScores || null, // Always use advanced scores, never legacy
       metadata: {
         target_responses: backendResponse.final_output?.target_responses || 100,
         methodology: backendResponse.final_output?.methodologies || [],

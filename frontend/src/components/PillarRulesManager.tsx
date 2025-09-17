@@ -57,7 +57,17 @@ const PRIORITY_COLORS = {
   low: { bg: 'bg-gray-100', text: 'text-gray-800', border: 'border-gray-300', indicator: '⚪' }
 };
 
-const PillarRulesManager: React.FC = () => {
+interface PillarRulesManagerProps {
+  onShowDeleteConfirm: (config: {
+    show: boolean;
+    type: 'rule' | 'methodology' | 'system-prompt' | 'pillar-rule';
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }) => void;
+}
+
+const PillarRulesManager: React.FC<PillarRulesManagerProps> = ({ onShowDeleteConfirm }) => {
   const [pillarRules, setPillarRules] = useState<PillarRules>({});
   const [loading, setLoading] = useState(true);
   const [selectedPillar, setSelectedPillar] = useState<string>('content_validity');
@@ -140,16 +150,22 @@ const PillarRulesManager: React.FC = () => {
     if (!editingRule || !editingData) return;
 
     try {
-      const response = await fetch(`/api/v1/rules/pillar-rules/${editingRule}`, {
+      const response = await fetch('/api/v1/rules/pillar-rules', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editingData)
+        body: JSON.stringify({
+          rule_id: editingRule,
+          rule_text: editingData.rule_description,
+          priority: editingData.rule_content?.priority || 'medium'
+        })
       });
 
       if (response.ok) {
         await fetchPillarRules();
         setEditingRule(null);
         setEditingData(null);
+      } else {
+        console.error('Failed to update pillar rule:', response.status, response.statusText);
       }
     } catch (error) {
       console.error('Failed to update pillar rule:', error);
@@ -157,8 +173,18 @@ const PillarRulesManager: React.FC = () => {
   };
 
   const deleteRule = async (ruleId: string) => {
-    if (!window.confirm('Are you sure you want to delete this rule?')) return;
+    onShowDeleteConfirm({
+      show: true,
+      type: 'pillar-rule',
+      title: 'Delete Pillar Rule',
+      message: 'Are you sure you want to delete this pillar rule? This action cannot be undone.',
+      onConfirm: async () => {
+        await performPillarRuleDeletion(ruleId);
+      }
+    });
+  };
 
+  const performPillarRuleDeletion = async (ruleId: string) => {
     try {
       const response = await fetch(`/api/v1/rules/pillar-rules/${ruleId}`, {
         method: 'DELETE'
@@ -166,6 +192,16 @@ const PillarRulesManager: React.FC = () => {
 
       if (response.ok) {
         await fetchPillarRules();
+        // Close the delete confirmation popup
+        onShowDeleteConfirm({
+          show: false,
+          type: 'pillar-rule',
+          title: '',
+          message: '',
+          onConfirm: () => {}
+        });
+      } else {
+        console.error('Failed to delete pillar rule:', response.status, response.statusText);
       }
     } catch (error) {
       console.error('Failed to delete pillar rule:', error);

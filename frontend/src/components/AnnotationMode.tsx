@@ -20,7 +20,37 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
   onExitAnnotationMode
 }) => {
   const { selectedQuestionId, setSelectedQuestion } = useAppStore();
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(survey?.sections?.map((s: any) => String(s.id || s.section_id)) || []));
+  
+  // Debug: Log survey data structure
+  console.log('🔍 [AnnotationMode] Survey data:', survey);
+  console.log('🔍 [AnnotationMode] Survey sections:', survey?.sections);
+  console.log('🔍 [AnnotationMode] Survey questions:', survey?.questions);
+  console.log('🔍 [AnnotationMode] Survey final_output:', survey?.final_output);
+  
+  // Handle nested survey data structure
+  const actualSurvey = survey?.final_output || survey;
+  console.log('🔍 [AnnotationMode] Actual survey data:', actualSurvey);
+  console.log('🔍 [AnnotationMode] Actual survey sections:', actualSurvey?.sections);
+  console.log('🔍 [AnnotationMode] Actual survey questions:', actualSurvey?.questions);
+  
+  // Handle both sections format and legacy questions format
+  const hasSections = actualSurvey?.sections && actualSurvey.sections.length > 0;
+  const hasQuestions = actualSurvey?.questions && actualSurvey.questions.length > 0;
+  
+  console.log('🔍 [AnnotationMode] Has sections:', hasSections);
+  console.log('🔍 [AnnotationMode] Has questions:', hasQuestions);
+  
+  // If no sections but has questions, create a default section
+  const sectionsToUse = hasSections ? actualSurvey.sections : (hasQuestions ? [{
+    id: 'default',
+    title: 'Survey Questions',
+    description: 'All survey questions',
+    questions: actualSurvey.questions
+  }] : []);
+  
+  console.log('🔍 [AnnotationMode] Sections to use:', sectionsToUse);
+  
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(sectionsToUse.map((s: any) => String(s.id || s.section_id))));
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
   
   // Use global state for selected question
@@ -129,7 +159,7 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
           <div className="p-4">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Survey Structure</h3>
             <div className="space-y-2">
-              {survey?.sections?.map((section: any) => {
+              {sectionsToUse.map((section: any) => {
                 const sectionId = String(section.id || section.section_id);
                 return (
                 <div key={sectionId} className={`border rounded-lg transition-all duration-200 ${
@@ -235,7 +265,8 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
           <div className="p-4">
             {selectedQuestion ? (
               <QuestionAnnotationForm
-                question={survey?.sections?.flatMap((s: any) => s.questions || []).find((q: any) => (q.question_id || q.id) === selectedQuestion)}
+                key={selectedQuestion}
+                question={sectionsToUse.flatMap((s: any) => s.questions || []).find((q: any) => (q.question_id || q.id) === selectedQuestion)}
                 annotation={getQuestionAnnotation(selectedQuestion)}
                 onSave={(annotation) => {
                   onQuestionAnnotation(annotation);
@@ -245,7 +276,7 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
               />
             ) : selectedSection ? (
               <SectionAnnotationForm
-                section={survey?.sections?.find((s: any) => String(s.id || s.section_id) === selectedSection)}
+                section={sectionsToUse.find((s: any) => String(s.id || s.section_id) === selectedSection)}
                 annotation={getSectionAnnotation(selectedSection)}
                 onSave={(annotation) => {
                   onSectionAnnotation(annotation);

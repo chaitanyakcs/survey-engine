@@ -83,7 +83,7 @@ class AdvancedContentValidityEvaluator:
         except ImportError:
             self.pillar_rules_service = None
     
-    async def evaluate_content_validity(self, survey: Dict[str, Any], rfq_text: str) -> AdvancedContentValidityResult:
+    async def evaluate_content_validity(self, survey: Dict[str, Any], rfq_text: str, survey_id: str = None, rfq_id: str = None) -> AdvancedContentValidityResult:
         """
         Perform advanced content validity evaluation using chain-of-thought reasoning
         
@@ -101,7 +101,7 @@ class AdvancedContentValidityEvaluator:
         
         # Step 1: Semantic RFQ Analysis
         reasoning_chain.append("STEP 1: Extracting research objectives with semantic analysis")
-        research_objectives = await self._extract_research_objectives(rfq_text)
+        research_objectives = await self._extract_research_objectives(rfq_text, survey_id, rfq_id)
         
         # Step 2: Question-Objective Mapping
         reasoning_chain.append("STEP 2: Mapping survey questions to research objectives")
@@ -144,7 +144,7 @@ class AdvancedContentValidityEvaluator:
             }
         )
     
-    async def _extract_research_objectives(self, rfq_text: str) -> List[ResearchObjective]:
+    async def _extract_research_objectives(self, rfq_text: str, survey_id: str = None, rfq_id: str = None) -> List[ResearchObjective]:
         """
         Extract research objectives with semantic analysis using advanced LLM reasoning
         """
@@ -189,6 +189,19 @@ class AdvancedContentValidityEvaluator:
         
         try:
             if self.llm_client:
+                # Store evaluation prompt in audit table
+                await self._store_evaluation_prompt_audit(
+                    prompt=prompt,
+                    prompt_type="content_validity_objective_extraction",
+                    evaluation_context={
+                        "survey_id": survey_id,
+                        "rfq_id": rfq_id,
+                        "rfq_text_length": len(rfq_text),
+                        "rules_context_length": len(rules_context),
+                        "evaluation_step": "objective_extraction"
+                    }
+                )
+                
                 response = await self.llm_client.analyze(prompt, max_tokens=1500)
                 if response.success:
                     result = json.loads(response.content)
@@ -472,3 +485,33 @@ class AdvancedContentValidityEvaluator:
             ))
         
         return objectives
+    
+    async def _store_evaluation_prompt_audit(self, prompt: str, prompt_type: str, evaluation_context: Dict[str, Any]) -> None:
+        """
+        Store evaluation prompt in audit table
+        """
+        try:
+            if not self.db_session:
+                print("⚠️ No database session available for evaluation prompt audit")
+                return
+            
+            # Import here to avoid circular imports
+            from src.services.generation_service import GenerationService
+            
+            # Get survey_id and rfq_id from context if available
+            survey_id = evaluation_context.get('survey_id', 'unknown')
+            rfq_id = evaluation_context.get('rfq_id')
+            
+            await GenerationService.store_evaluation_prompt_audit(
+                db_session=self.db_session,
+                survey_id=survey_id,
+                rfq_id=rfq_id,
+                system_prompt=prompt,
+                prompt_type=prompt_type,
+                model_version="gpt-4o-mini",  # Default model for evaluations
+                evaluation_context=evaluation_context
+            )
+            
+        except Exception as e:
+            print(f"❌ Failed to store evaluation prompt audit: {str(e)}")
+            # Don't raise exception to avoid breaking evaluation flow

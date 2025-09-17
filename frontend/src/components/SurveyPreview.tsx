@@ -5,6 +5,7 @@ import PillarScoresDisplay from './PillarScoresDisplay';
 import QuestionAnnotationPanel from './QuestionAnnotationPanel';
 import SectionAnnotationPanel from './SectionAnnotationPanel';
 import AnnotationMode from './AnnotationMode';
+import { SystemPromptViewer } from './SystemPromptViewer';
 import { PencilIcon, BookmarkIcon, ArrowDownTrayIcon, ChevronDownIcon, ChevronRightIcon, TagIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 // Helper function to extract all questions from survey (supports both formats)
@@ -350,7 +351,6 @@ const QuestionCard: React.FC<{
       {/* Annotation Panel - Show directly when in annotation mode and question is selected */}
       {isSelected && isAnnotationMode && (
         <QuestionAnnotationPanel
-          key={question.id}
           question={question}
           annotation={annotation}
           onSave={handleAnnotationSave}
@@ -488,6 +488,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
   const [isEditingSurvey, setIsEditingSurvey] = useState(isEditable);
   const [showGoldenModal, setShowGoldenModal] = useState(false);
   const [showExportDropdown, setShowExportDropdown] = useState(false);
+  const [showSystemPromptModal, setShowSystemPromptModal] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [uploadMessage, setUploadMessage] = useState('');
@@ -1098,130 +1099,188 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
           {/* Survey Header */}
           <div className="mb-8 p-6 bg-white border border-gray-200 rounded-lg">
             {/* Action Buttons */}
-            <div className="flex justify-between items-center mb-6">
-              {/* Annotation Mode Toggle */}
-              <div className="flex items-center gap-3">
-                <button 
-                  onClick={async () => {
-                    if (!isAnnotationMode && survey?.survey_id) {
-                      // Entering annotation mode - load existing annotations
-                      await loadAnnotations(survey.survey_id);
-                      setAnnotationMode(true);
-                    } else {
-                      // Exiting annotation mode - save annotations first
-                      await handleExitAnnotationMode();
-                    }
-                  }}
-                  className={`p-2 rounded-md transition-colors ${
-                    isAnnotationMode 
-                      ? 'bg-yellow-600 text-white hover:bg-yellow-700' 
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                  title={isAnnotationMode ? 'Exit Annotation Mode' : 'Enter Annotation Mode'}
-                >
-                  <TagIcon className="w-5 h-5" />
-                </button>
-                {isAnnotationMode && (
-                  <span className="text-sm text-yellow-600 font-medium">
-                    Click on questions or sections to annotate them
-                  </span>
-                )}
+            <div className="mb-6">
+              {/* Primary Action Buttons */}
+              <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+                {/* Left side - Annotation Mode */}
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={async () => {
+                      if (!isAnnotationMode && survey?.survey_id) {
+                        // Entering annotation mode - ensure annotations are loaded
+                        if (!currentAnnotations || currentAnnotations.surveyId !== survey.survey_id) {
+                          console.log('🔍 [SurveyPreview] Loading annotations before entering annotation mode');
+                          await loadAnnotations(survey.survey_id);
+                        }
+                        setAnnotationMode(true);
+                      } else {
+                        // Exiting annotation mode - save annotations first
+                        await handleExitAnnotationMode();
+                      }
+                    }}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
+                      isAnnotationMode 
+                        ? 'bg-yellow-600 text-white hover:bg-yellow-700 shadow-lg' 
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300'
+                    }`}
+                  >
+                    <TagIcon className="w-5 h-5" />
+                    <span className="text-sm">
+                      {isAnnotationMode ? 'Exit Annotation' : 'Annotate Survey'}
+                    </span>
+                  </button>
+                  
+                  {isAnnotationMode && (
+                    <div className="flex items-center gap-2 text-sm text-yellow-600 font-medium px-3 py-1 bg-yellow-50 rounded-lg border border-yellow-200">
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      Auto-saving
+                    </div>
+                  )}
+                </div>
+
+                {/* Right side - Survey Actions */}
+                <div className="flex items-center gap-3">
+                  {isEditingSurvey ? (
+                    <>
+                      <button 
+                        onClick={handleSaveEdits}
+                        className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors shadow-lg"
+                      >
+                        <CheckIcon className="w-5 h-5" />
+                        <span className="text-sm">Save Changes</span>
+                      </button>
+                      <button 
+                        onClick={handleCancelEdits}
+                        className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg font-medium hover:bg-gray-700 transition-colors"
+                      >
+                        <XMarkIcon className="w-5 h-5" />
+                        <span className="text-sm">Cancel</span>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button 
+                        onClick={handleStartEditing}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-lg"
+                      >
+                        <PencilIcon className="w-5 h-5" />
+                        <span className="text-sm">Edit Survey</span>
+                      </button>
+                      
+                      <button 
+                        onClick={() => {
+                          // Pre-populate form with survey methodologies
+                          setGoldenFormData(prev => ({
+                            ...prev,
+                            methodology_tags: surveyToDisplay?.methodologies || [],
+                            industry_category: rfqInput.product_category || '',
+                            research_goal: rfqInput.research_goal || ''
+                          }));
+                          setShowGoldenModal(true);
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors shadow-lg"
+                      >
+                        <BookmarkIcon className="w-5 h-5" />
+                        <span className="text-sm">Save as Golden Example</span>
+                      </button>
+                      
+                      <button 
+                        onClick={() => setShowSystemPromptModal(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors shadow-lg"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                        </svg>
+                        <span className="text-sm">View System Prompt</span>
+                      </button>
+                      
+                      <div className="relative export-dropdown">
+                        <button 
+                          onClick={() => setShowExportDropdown(!showExportDropdown)}
+                          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors shadow-lg"
+                        >
+                          <ArrowDownTrayIcon className="w-5 h-5" />
+                          <span className="text-sm">Export</span>
+                        </button>
+                        {showExportDropdown && (
+                          <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-10 overflow-hidden">
+                            <div className="py-2">
+                              <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-100">
+                                Export Options
+                              </div>
+                              <button
+                                onClick={() => {
+                                  handleExportSurvey('json');
+                                  setShowExportDropdown(false);
+                                }}
+                                className="flex items-center gap-3 w-full px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                              >
+                                <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                                  <span className="text-blue-600 font-bold text-xs">JSON</span>
+                                </div>
+                                <div className="text-left">
+                                  <div className="font-medium">Download JSON</div>
+                                  <div className="text-xs text-gray-500">Raw survey data</div>
+                                </div>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  handleExportSurvey('clipboard');
+                                  setShowExportDropdown(false);
+                                }}
+                                className="flex items-center gap-3 w-full px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                              >
+                                <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+                                  <span className="text-green-600 font-bold text-xs">📋</span>
+                                </div>
+                                <div className="text-left">
+                                  <div className="font-medium">Copy to Clipboard</div>
+                                  <div className="text-xs text-gray-500">Quick sharing</div>
+                                </div>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  handleExportSurvey('qualtrics');
+                                  setShowExportDropdown(false);
+                                }}
+                                className="flex items-center gap-3 w-full px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                              >
+                                <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
+                                  <span className="text-orange-600 font-bold text-xs">Q</span>
+                                </div>
+                                <div className="text-left">
+                                  <div className="font-medium">Export for Qualtrics</div>
+                                  <div className="text-xs text-gray-500">Survey platform integration</div>
+                                </div>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
 
-              {/* Other Action Buttons */}
-              <div className="flex gap-3">
-                {isAnnotationMode && (
-                  <div className="text-xs text-green-600 font-medium px-2 py-1 bg-green-50 rounded">
-                    ✓ Auto-saving
-                  </div>
-                )}
-                {isEditingSurvey ? (
-                  <>
-                    <button 
-                      onClick={handleSaveEdits}
-                      className="p-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
-                      title="Save Changes"
-                    >
-                      <CheckIcon className="w-5 h-5" />
-                    </button>
-                    <button 
-                      onClick={handleCancelEdits}
-                      className="p-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
-                      title="Cancel"
-                    >
-                      <XMarkIcon className="w-5 h-5" />
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button 
-                      onClick={handleStartEditing}
-                      className="p-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                      title="Edit Survey"
-                    >
-                      <PencilIcon className="w-5 h-5" />
-                    </button>
-                    <button 
-                      onClick={() => {
-                        // Pre-populate form with survey methodologies
-                        setGoldenFormData(prev => ({
-                          ...prev,
-                          methodology_tags: surveyToDisplay?.methodologies || [],
-                          industry_category: rfqInput.product_category || '',
-                          research_goal: rfqInput.research_goal || ''
-                        }));
-                        setShowGoldenModal(true);
-                      }}
-                      className="p-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
-                      title="Save as Golden Example"
-                    >
-                      <BookmarkIcon className="w-5 h-5" />
-                    </button>
-                    <div className="relative export-dropdown">
-                      <button 
-                        onClick={() => setShowExportDropdown(!showExportDropdown)}
-                        className="p-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
-                        title="Export"
-                      >
-                        <ArrowDownTrayIcon className="w-5 h-5" />
-                      </button>
-                      {showExportDropdown && (
-                        <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-10">
-                          <div className="py-1">
-                            <button
-                              onClick={() => {
-                                handleExportSurvey('json');
-                                setShowExportDropdown(false);
-                              }}
-                              className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                            >
-                              Export as JSON
-                            </button>
-                            <button
-                              onClick={() => {
-                                handleExportSurvey('clipboard');
-                                setShowExportDropdown(false);
-                              }}
-                              className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                            >
-                              Copy to Clipboard
-                            </button>
-                            <button
-                              onClick={() => {
-                                handleExportSurvey('qualtrics');
-                                setShowExportDropdown(false);
-                              }}
-                              className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                            >
-                              Export for Qualtrics
-                            </button>
-                          </div>
-                        </div>
-                      )}
+              {/* Annotation Mode Instructions */}
+              {isAnnotationMode && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0">
+                      <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
+                        <TagIcon className="w-5 h-5 text-yellow-600" />
+                      </div>
                     </div>
-                  </>
-                )}
-              </div>
+                    <div>
+                      <h3 className="text-sm font-medium text-yellow-800 mb-1">Annotation Mode Active</h3>
+                      <p className="text-sm text-yellow-700">
+                        Click on any question or section below to add quality annotations. 
+                        Your annotations are automatically saved and will help improve future survey generation.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Survey Title and Description */}
@@ -1325,21 +1384,28 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
               />
             )}
 
-          {/* Confidence Score */}
-          <div className="bg-white border border-gray-200 rounded-lg p-4">
-            <h3 className="font-medium text-gray-900 mb-3">Quality Score</h3>
-            <div className="flex items-center">
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
-                  className="bg-green-600 h-2 rounded-full"
-                  style={{ width: `${surveyToDisplay?.confidence_score ? surveyToDisplay.confidence_score * 100 : 0}%` }}
-                />
+          {/* Quality Score - Always use advanced pillar scores */}
+          {surveyToDisplay?.pillar_scores && (
+            <div className="bg-white border border-gray-200 rounded-lg p-4">
+              <h3 className="font-medium text-gray-900 mb-3">Quality Score (Advanced)</h3>
+              <div className="flex items-center">
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-green-600 h-2 rounded-full"
+                    style={{ 
+                      width: `${surveyToDisplay.pillar_scores.weighted_score * 100}%` 
+                    }}
+                  />
+                </div>
+                <span className="ml-3 text-sm font-medium text-gray-700">
+                  {Math.round(surveyToDisplay.pillar_scores.weighted_score * 100)}%
+                </span>
               </div>
-              <span className="ml-3 text-sm font-medium text-gray-700">
-                {Math.round((surveyToDisplay?.confidence_score || 0) * 100)}%
-              </span>
+              <div className="mt-2 text-xs text-gray-500">
+                Grade: {surveyToDisplay.pillar_scores.overall_grade} • Chain-of-Thought Evaluation
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Methodologies */}
           <div className="bg-white border border-gray-200 rounded-lg p-4">
@@ -1566,6 +1632,14 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* System Prompt Modal */}
+      {showSystemPromptModal && (
+        <SystemPromptViewer
+          surveyId={survey?.survey_id || ''}
+          onClose={() => setShowSystemPromptModal(false)}
+        />
       )}
     </div>
   );

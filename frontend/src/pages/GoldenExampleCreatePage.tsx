@@ -310,7 +310,7 @@ export const GoldenExampleCreatePage: React.FC = () => {
     }
   };
 
-  const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys') => {
+  const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings') => {
     if (view === 'rules') {
       window.location.href = '/rules';
     } else if (view === 'surveys') {

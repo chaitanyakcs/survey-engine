@@ -74,7 +74,7 @@ class PillarBasedEvaluator:
             print("Warning: ConsolidatedRulesService not available - using basic evaluation")
             self.pillar_rules_service = None
         
-    async def evaluate_survey(self, survey: Dict[str, Any], rfq_text: str) -> PillarEvaluationResult:
+    async def evaluate_survey(self, survey: Dict[str, Any], rfq_text: str, survey_id: str = None, rfq_id: str = None) -> PillarEvaluationResult:
         """
         Perform comprehensive 5-pillar evaluation of the survey
         
@@ -90,10 +90,10 @@ class PillarBasedEvaluator:
         
         # Evaluate each pillar
         print("📊 Evaluating Pillar 1: Content Validity (20%)")
-        content_validity_result = await self.content_validity_evaluator.evaluate_content_validity(survey, rfq_text)
+        content_validity_result = await self.content_validity_evaluator.evaluate_content_validity(survey, rfq_text, survey_id, rfq_id)
         
         print("🔬 Evaluating Pillar 2: Methodological Rigor (25%)")
-        methodological_rigor_result = await self.methodological_rigor_evaluator.evaluate_methodological_rigor(survey, rfq_text)
+        methodological_rigor_result = await self.methodological_rigor_evaluator.evaluate_methodological_rigor(survey, rfq_text, survey_id, rfq_id)
         
         print("📝 Evaluating Pillar 3: Clarity & Comprehensibility (25%)")
         clarity_score = await self._evaluate_clarity_comprehensibility(survey, rfq_text)
