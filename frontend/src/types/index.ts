@@ -106,23 +106,26 @@ export interface SurveyMetadata {
 
 // WebSocket Progress Types
 export interface ProgressMessage {
-  type: 'progress' | 'completed' | 'error';
+  type: 'progress' | 'completed' | 'error' | 'human_review_required';
   step?: string;
   percent?: number;
   message?: string;
   survey_id?: string;
   status?: string;
+  workflow_paused?: boolean;
+  review_id?: number;
 }
 
 // UI State Types
 export interface WorkflowState {
-  status: 'idle' | 'started' | 'in_progress' | 'completed' | 'failed';
+  status: 'idle' | 'started' | 'in_progress' | 'completed' | 'failed' | 'paused';
   workflow_id?: string;
   survey_id?: string;
   current_step?: string;
   progress?: number;
   message?: string;
   error?: string;
+  workflow_paused?: boolean;
 }
 
 // Golden Examples Types
@@ -202,10 +205,43 @@ export interface SurveyAnnotations {
 // Toast Types
 export interface ToastMessage {
   id: string;
-  type: 'success' | 'error' | 'info';
+  type: 'success' | 'error' | 'info' | 'warning';
   title: string;
   message?: string;
   duration?: number;
+}
+
+// Human Review Types
+export interface PendingReview {
+  id: number;
+  workflow_id: string;
+  survey_id?: string;
+  review_status: 'pending' | 'in_progress' | 'in_review' | 'approved' | 'rejected' | 'expired';
+  prompt_data: string;
+  original_rfq: string;
+  reviewer_id?: string;
+  review_deadline?: string;
+  reviewer_notes?: string;
+  approval_reason?: string;
+  rejection_reason?: string;
+  created_at: string;
+  updated_at: string;
+  is_expired?: boolean;
+  time_remaining_hours?: number;
+}
+
+export interface ReviewDecision {
+  decision: 'approve' | 'reject';
+  notes?: string;
+  reason?: string;
+}
+
+export interface PendingReviewsSummary {
+  total_pending: number;
+  total_in_progress: number;
+  total_expired: number;
+  oldest_pending?: string;
+  reviews: PendingReview[];
 }
 
 // Store Types
@@ -260,4 +296,19 @@ export interface AppStore {
   // Annotation Actions
   saveAnnotations: (annotations: SurveyAnnotations) => Promise<void>;
   loadAnnotations: (surveyId: string) => Promise<void>;
+  
+  // Human Review State
+  pendingReviews: PendingReview[];
+  activeReview?: PendingReview;
+  setPendingReviews: (reviews: PendingReview[]) => void;
+  setActiveReview: (review?: PendingReview) => void;
+  
+  // Human Review Actions
+  checkPendingReviews: () => Promise<void>;
+  fetchReviewByWorkflow: (workflowId: string) => Promise<PendingReview | null>;
+  submitReviewDecision: (reviewId: number, decision: ReviewDecision) => Promise<void>;
+  resumeReview: (reviewId: number) => Promise<void>;
+  persistWorkflowState: (workflowId: string, state: any) => void;
+  recoverWorkflowState: () => Promise<void>;
+  resetWorkflow: () => void;
 }

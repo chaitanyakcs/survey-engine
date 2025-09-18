@@ -5,7 +5,8 @@ from .nodes import (
     ContextBuilderNode,
     GeneratorAgent,
     GoldenValidatorNode,
-    ResearcherNode
+    ResearcherNode,
+    HumanPromptReviewNode
 )
 from .workflow import create_workflow
 
@@ -17,5 +18,6 @@ __all__ = [
     "GeneratorAgent",
     "GoldenValidatorNode",
     "ResearcherNode",
+    "HumanPromptReviewNode",
     "create_workflow"
 ]

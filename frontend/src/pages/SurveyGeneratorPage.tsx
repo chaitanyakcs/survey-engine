@@ -2,13 +2,12 @@ import React, { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { RFQEditor } from '../components/RFQEditor';
 import { ProgressStepper } from '../components/ProgressStepper';
-import { SurveyPreview } from '../components/SurveyPreview';
 import { Sidebar } from '../components/Sidebar';
 import { ToastContainer } from '../components/Toast';
 import { useSidebarLayout } from '../hooks/useSidebarLayout';
 
 export const SurveyGeneratorPage: React.FC = () => {
-  const { workflow, currentSurvey, toasts, removeToast, addToast } = useAppStore();
+  const { workflow, currentSurvey, toasts, removeToast, addToast, resetWorkflow } = useAppStore();
   const [currentView, setCurrentView] = useState<'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings'>('survey');
   const { mainContentClasses } = useSidebarLayout();
 
@@ -18,9 +17,25 @@ export const SurveyGeneratorPage: React.FC = () => {
       workflowStatus: workflow.status,
       hasSurvey: !!currentSurvey,
       surveyId: currentSurvey?.survey_id,
+      workflowSurveyId: workflow.survey_id,
       currentView
     });
   }, [workflow.status, currentSurvey, currentView]);
+
+  // Fallback: Fetch survey if workflow is completed but survey is not loaded
+  React.useEffect(() => {
+    if (workflow.status === 'completed' && !currentSurvey && workflow.survey_id) {
+      console.log('🔄 [SurveyGeneratorPage] Workflow completed but survey not loaded, fetching survey:', workflow.survey_id);
+      useAppStore.getState().fetchSurvey(workflow.survey_id).catch((error) => {
+        console.error('❌ [SurveyGeneratorPage] Failed to fetch survey:', error);
+        // If survey doesn't exist, clean up the workflow state
+        if (error.message.includes('404') || error.message.includes('Not Found')) {
+          console.log('🧹 [SurveyGeneratorPage] Survey not found, cleaning up workflow state');
+          resetWorkflow();
+        }
+      });
+    }
+  }, [workflow.status, currentSurvey, workflow.survey_id, resetWorkflow]);
 
   // Load survey from URL parameters if present
   React.useEffect(() => {
@@ -137,8 +152,8 @@ export const SurveyGeneratorPage: React.FC = () => {
                       }
                     }}
                     onCancelGeneration={() => {
-                      console.log('🔄 [SurveyGeneratorPage] Canceling generation and reloading');
-                      window.location.reload();
+                      console.log('🔄 [SurveyGeneratorPage] Canceling generation');
+                      resetWorkflow();
                     }}
                   />
                 </div>
@@ -146,7 +161,7 @@ export const SurveyGeneratorPage: React.FC = () => {
             )}
 
             {/* Survey Completed Phase */}
-            {workflow.status === 'completed' && currentSurvey && (
+            {workflow.status === 'completed' && (
               <div>
                 <div className="max-w-6xl mx-auto px-4 mb-8 text-center">
                   <div className="mb-6">
@@ -159,6 +174,28 @@ export const SurveyGeneratorPage: React.FC = () => {
                     <p className="text-lg text-gray-600 mb-2">We've crafted a professional survey tailored to your needs</p>
                     <p className="text-sm text-gray-500">Ready to collect valuable insights from your target audience</p>
                   </div>
+                  
+                  {/* Survey Loading State */}
+                  {!currentSurvey && workflow.survey_id && (
+                    <div className="mb-8">
+                      <div className="inline-flex items-center px-6 py-3 bg-blue-50 text-blue-700 rounded-xl">
+                        <div className="w-5 h-5 border-2 border-blue-500 rounded-full border-t-transparent animate-spin mr-3"></div>
+                        <span className="font-medium">Loading your survey...</span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Survey Not Found State */}
+                  {!currentSurvey && !workflow.survey_id && (
+                    <div className="mb-8">
+                      <div className="inline-flex items-center px-6 py-3 bg-yellow-50 text-yellow-700 rounded-xl">
+                        <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                        </svg>
+                        <span className="font-medium">Survey generation completed but survey data is not available. Please try refreshing the page.</span>
+                      </div>
+                    </div>
+                  )}
                   
                   {/* Primary Action Button - View Survey */}
                   <div className="mt-8">
@@ -185,7 +222,7 @@ export const SurveyGeneratorPage: React.FC = () => {
                     <button
                       onClick={() => {
                         console.log('🔄 [SurveyGeneratorPage] Starting new survey');
-                        window.location.reload();
+                        resetWorkflow();
                       }}
                       className="inline-flex items-center px-8 py-4 bg-white border-2 border-gray-200 text-gray-700 rounded-xl font-semibold text-lg hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 transition-all duration-200"
                     >
@@ -216,27 +253,6 @@ export const SurveyGeneratorPage: React.FC = () => {
                   </div>
                 </div>
                 
-                {/* Progress Stepper for showing completion steps */}
-                <div className="max-w-4xl mx-auto px-4 mb-8">
-                  <ProgressStepper 
-                    onShowSurvey={() => {
-                      if (currentSurvey?.survey_id) {
-                        console.log('🔍 [SurveyGeneratorPage] Navigating to surveys section with survey ID:', currentSurvey.survey_id);
-                        window.location.href = `/surveys?id=${currentSurvey.survey_id}`;
-                      }
-                    }}
-                    onShowSummary={() => {
-                      if (currentSurvey?.survey_id) {
-                        console.log('🔍 [SurveyGeneratorPage] Navigating to summary with survey ID:', currentSurvey.survey_id);
-                        window.location.href = `/summary/${currentSurvey.survey_id}`;
-                      }
-                    }}
-                    onCancelGeneration={() => {
-                      console.log('🔄 [SurveyGeneratorPage] Starting new survey');
-                      window.location.reload();
-                    }}
-                  />
-                </div>
                 
               </div>
             )}
@@ -259,10 +275,10 @@ export const SurveyGeneratorPage: React.FC = () => {
                       addToast({
                         type: 'info',
                         title: 'Restarting Generation',
-                        message: 'Reloading the page to start a new survey generation.',
+                        message: 'Resetting workflow to start a new survey generation.',
                         duration: 3000
                       });
-                      setTimeout(() => window.location.reload(), 1000);
+                      resetWorkflow();
                     }}
                     className="inline-flex items-center px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
                   >

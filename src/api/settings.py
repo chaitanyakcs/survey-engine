@@ -5,6 +5,7 @@ Settings API - Handle evaluation settings and cost tracking
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from src.database import get_db
+from src.services.settings_service import SettingsService
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 import logging
@@ -38,24 +39,6 @@ class CostMetrics(BaseModel):
     cost_savings_single_call: float
     cost_savings_percent: float
 
-# In-memory settings store (in production, use Redis or database)
-_settings_store: Dict[str, Any] = {
-    "evaluation_mode": "single_call",
-    "enable_cost_tracking": True,
-    "enable_parallel_processing": False,
-    "enable_ab_testing": False,
-    "cost_threshold_daily": 50.0,
-    "cost_threshold_monthly": 1000.0,
-    "fallback_mode": "basic",
-    
-    # Human Prompt Review Settings
-    "enable_prompt_review": False,
-    "prompt_review_mode": "disabled",
-    "require_approval_for_generation": False,
-    "auto_approve_trusted_prompts": False,
-    "prompt_review_timeout_hours": 24
-}
-
 # In-memory cost metrics (in production, use database)
 _cost_metrics: Dict[str, Any] = {
     "daily_cost": 0.0,
@@ -68,17 +51,19 @@ _cost_metrics: Dict[str, Any] = {
 }
 
 @router.get("/evaluation", response_model=EvaluationSettings)
-async def get_evaluation_settings():
+async def get_evaluation_settings(db: Session = Depends(get_db)):
     """Get current evaluation settings"""
     logger.info("🔧 [Settings API] Retrieving evaluation settings")
     try:
-        return EvaluationSettings(**_settings_store)
+        settings_service = SettingsService(db)
+        settings = settings_service.get_evaluation_settings()
+        return EvaluationSettings(**settings)
     except Exception as e:
         logger.error(f"❌ [Settings API] Failed to retrieve settings: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @router.put("/evaluation", response_model=EvaluationSettings)
-async def update_evaluation_settings(settings: EvaluationSettings):
+async def update_evaluation_settings(settings: EvaluationSettings, db: Session = Depends(get_db)):
     """Update evaluation settings"""
     logger.info(f"🔧 [Settings API] Updating evaluation settings: {settings.evaluation_mode}")
     try:
@@ -106,11 +91,17 @@ async def update_evaluation_settings(settings: EvaluationSettings):
         if settings.prompt_review_mode != 'disabled' and not settings.enable_prompt_review:
             raise HTTPException(status_code=400, detail="Cannot set review mode without enabling prompt review")
         
-        # Update settings
-        _settings_store.update(settings.dict())
+        # Update settings in database
+        settings_service = SettingsService(db)
+        success = settings_service.update_evaluation_settings(settings.dict())
         
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update settings in database")
+        
+        # Return updated settings
+        updated_settings = settings_service.get_evaluation_settings()
         logger.info(f"✅ [Settings API] Settings updated successfully")
-        return EvaluationSettings(**_settings_store)
+        return EvaluationSettings(**updated_settings)
         
     except HTTPException:
         raise
@@ -170,40 +161,31 @@ async def update_cost_metrics(
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @router.get("/evaluation-mode")
-async def get_current_evaluation_mode():
+async def get_current_evaluation_mode(db: Session = Depends(get_db)):
     """Get current evaluation mode for use by other services"""
     logger.info("🔧 [Settings API] Retrieving current evaluation mode")
     try:
+        settings_service = SettingsService(db)
+        settings = settings_service.get_evaluation_settings()
         return {
-            "evaluation_mode": _settings_store["evaluation_mode"],
-            "enable_parallel_processing": _settings_store["enable_parallel_processing"],
-            "fallback_mode": _settings_store["fallback_mode"]
+            "evaluation_mode": settings["evaluation_mode"],
+            "enable_parallel_processing": settings["enable_parallel_processing"],
+            "fallback_mode": settings["fallback_mode"]
         }
     except Exception as e:
         logger.error(f"❌ [Settings API] Failed to retrieve evaluation mode: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @router.post("/reset")
-async def reset_settings():
+async def reset_settings(db: Session = Depends(get_db)):
     """Reset all settings to defaults"""
     logger.info("🔄 [Settings API] Resetting settings to defaults")
     try:
-        _settings_store.update({
-            "evaluation_mode": "single_call",
-            "enable_cost_tracking": True,
-            "enable_parallel_processing": False,
-            "enable_ab_testing": False,
-            "cost_threshold_daily": 50.0,
-            "cost_threshold_monthly": 1000.0,
-            "fallback_mode": "basic",
-            
-            # Human Prompt Review Settings
-            "enable_prompt_review": False,
-            "prompt_review_mode": "disabled",
-            "require_approval_for_generation": False,
-            "auto_approve_trusted_prompts": False,
-            "prompt_review_timeout_hours": 24
-        })
+        settings_service = SettingsService(db)
+        success = settings_service.reset_to_defaults()
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to reset settings in database")
         
         logger.info("✅ [Settings API] Settings reset to defaults")
         return {"message": "Settings reset to defaults successfully"}

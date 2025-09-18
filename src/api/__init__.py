@@ -6,5 +6,6 @@ from .rules import router as rules_router
 from .utils import router as utils_router
 from .field_extraction import router as field_extraction_router
 from .pillar_scores import router as pillar_scores_router
+from .human_reviews import router as human_reviews_router
 
-__all__ = ["rfq_router", "survey_router", "golden_router", "analytics_router", "rules_router", "utils_router", "field_extraction_router", "pillar_scores_router"]
+__all__ = ["rfq_router", "survey_router", "golden_router", "analytics_router", "rules_router", "utils_router", "field_extraction_router", "pillar_scores_router", "human_reviews_router"]

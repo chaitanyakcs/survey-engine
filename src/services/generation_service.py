@@ -109,7 +109,6 @@ class GenerationService:
             
             logger.info(f"🤖 [GenerationService] Generating survey with model: {self.model}")
             logger.info(f"📝 [GenerationService] Prompt length: {len(prompt)} characters")
-            logger.info(f"📝 [GenerationService] Prompt preview (first 200 chars): {prompt[:200]}...")
             
             # Store system prompt in audit table
             await self._store_system_prompt_audit(
@@ -167,6 +166,13 @@ class GenerationService:
             
             logger.info(f"📊 [GenerationService] Final response length: {len(survey_text)} characters")
             logger.info(f"📊 [GenerationService] Response preview: {survey_text[:500]}...")
+            
+            # Log the full response for debugging (but truncate if too long)
+            if len(survey_text) > 2000:
+                logger.info(f"🔍 [GenerationService] Full LLM response (truncated): {survey_text[:2000]}...")
+                logger.info(f"🔍 [GenerationService] Response end: ...{survey_text[-500:]}")
+            else:
+                logger.info(f"🔍 [GenerationService] Full LLM response: {survey_text}")
             
             # Check if response is empty or too short
             if not survey_text or len(survey_text.strip()) < 10:
@@ -252,6 +258,7 @@ class GenerationService:
                 survey_json = json.loads(json_text)
             except json.JSONDecodeError as e:
                 logger.warning(f"⚠️ [GenerationService] Initial JSON parse failed, attempting repair: {str(e)}")
+                logger.debug(f"🔍 [GenerationService] JSON error details: line {e.lineno}, column {e.colno}, position {e.pos}")
                 
                 # Try multiple repair strategies
                 repaired_json = self._repair_json(json_text)
@@ -261,11 +268,13 @@ class GenerationService:
                         survey_json = json.loads(repaired_json)
                     except json.JSONDecodeError as repair_error:
                         logger.error(f"❌ [GenerationService] Repaired JSON still invalid: {str(repair_error)}")
+                        logger.debug(f"🔍 [GenerationService] Repair error details: line {repair_error.lineno}, column {repair_error.colno}")
                         # Try fallback extraction
                         survey_json = self._extract_partial_survey(json_text)
                         if survey_json:
                             logger.info(f"🔧 [GenerationService] Fallback extraction succeeded")
                         else:
+                            logger.error(f"❌ [GenerationService] All JSON repair strategies failed")
                             raise e
                 else:
                     # Try fallback extraction
@@ -273,6 +282,7 @@ class GenerationService:
                     if survey_json:
                         logger.info(f"🔧 [GenerationService] Fallback extraction succeeded")
                     else:
+                        logger.error(f"❌ [GenerationService] All JSON repair strategies failed")
                         raise e
             logger.info(f"✅ [GenerationService] Successfully parsed JSON with keys: {list(survey_json.keys())}")
             
@@ -328,12 +338,17 @@ class GenerationService:
             # Common repairs for LLM-generated JSON
             
             # 1. Fix missing commas between array elements (most common issue)
-            # Look for patterns like: "text"\n\s*"text" and add comma
-            json_text = re.sub(r'"\s*\n\s*"', '",\n            "', json_text)
+            # Look for patterns like: "text"\n\s*"text" and add comma (but not between object keys)
+            # Only match when the first quote is a value (after a colon) or in array context
+            json_text = re.sub(r'(":\s*"[^"]*")\s*\n\s*"', r'\1,\n            "', json_text)
             
             # 1b. More specific fix for the error we're seeing: missing comma after quoted string
-            # Look for patterns like: "text"\n\s*] or "text"\n\s*}
-            json_text = re.sub(r'"\s*\n\s*([}\]])', r'"\n          \1', json_text)
+            # Look for patterns like: "text"\n\s*] or "text"\n\s*} (but not after opening braces)
+            json_text = re.sub(r'"[^"]*"\s*\n\s*([}\]])', r'",\n          \1', json_text)
+            
+            # 1c. Fix missing commas in arrays with mixed content
+            # Look for patterns like: "text"\n\s*[0-9] or "text"\n\s*{ (but not after opening braces)
+            json_text = re.sub(r'"[^"]*"\s*\n\s*([0-9{])', r'",\n            \1', json_text)
             
             # 2. Fix missing commas between object properties
             # Look for patterns like: }\n\s*"property" and add comma  
@@ -351,12 +366,31 @@ class GenerationService:
             # Look for patterns like: ]\n\s*"property" and add comma
             json_text = re.sub(r']\s*\n\s*"', '],\n        "', json_text)
             
-            # 5. Fix trailing commas that might break parsing
+            # 5. Fix missing commas between object properties in arrays
+            # Look for patterns like: }\n\s*{ and add comma
+            json_text = re.sub(r'}\s*\n\s*{', '},\n        {', json_text)
+            
+            # 6. Fix missing commas between array elements with objects
+            # Look for patterns like: }\n\s*" and add comma
+            json_text = re.sub(r'}\s*\n\s*"', '},\n        "', json_text)
+            
+            # 7. Fix trailing commas that might break parsing
             json_text = re.sub(r',\s*}', '}', json_text)
             json_text = re.sub(r',\s*]', ']', json_text)
             
-            # 6. Fix common quote issues
+            # 8. Fix common quote issues
             json_text = re.sub(r'([^"\\])"([^",:}\]\s])', r'\1"\2', json_text)
+            
+            # 9. Fix missing commas after quoted string values (most specific first)
+            # Look for patterns like: "key": "value"\n\s*"key2" (missing comma after string value)
+            json_text = re.sub(r'("[^"]*":\s*"[^"]*")\s*\n\s*"', r'\1,\n        "', json_text)
+            
+            
+            # 10. Fix missing commas after boolean/null values
+            json_text = re.sub(r'(true|false|null)\s*\n\s*"', r'\1,\n        "', json_text)
+            
+            logger.debug(f"🔍 [GenerationService] JSON repair check: original_text == json_text: {original_text == json_text}")
+            logger.debug(f"🔍 [GenerationService] Original length: {len(original_text)}, Repaired length: {len(json_text)}")
             
             if json_text != original_text:
                 logger.info(f"🔧 [GenerationService] Applied JSON repairs")
@@ -364,14 +398,90 @@ class GenerationService:
                 logger.debug(f"🔧 [GenerationService] Repaired: {json_text[:500]}...")
                 
                 # Test if the repair worked
-                json.loads(json_text)
-                return json_text
+                try:
+                    json.loads(json_text)
+                    logger.info(f"✅ [GenerationService] JSON repair validation successful")
+                    return json_text
+                except json.JSONDecodeError as test_error:
+                    logger.warning(f"⚠️ [GenerationService] Repaired JSON still invalid: {str(test_error)}")
+                    logger.debug(f"🔍 [GenerationService] Repair validation error: line {test_error.lineno}, column {test_error.colno}")
+                    # Try one more aggressive repair pass
+                    return self._aggressive_json_repair(json_text)
             else:
                 logger.warning(f"⚠️ [GenerationService] No repairs applied to JSON")
+                logger.debug(f"🔍 [GenerationService] Original text: {original_text[:200]}...")
+                logger.debug(f"🔍 [GenerationService] Repaired text: {json_text[:200]}...")
                 return None
                 
         except Exception as repair_error:
             logger.error(f"❌ [GenerationService] JSON repair failed: {str(repair_error)}")
+            return None
+    
+    def _aggressive_json_repair(self, json_text: str) -> str:
+        """More aggressive JSON repair for difficult cases"""
+        try:
+            import re
+            
+            # Try to find and fix the specific error pattern
+            # Look for missing commas in array contexts
+            lines = json_text.split('\n')
+            repaired_lines = []
+            
+            for i, line in enumerate(lines):
+                repaired_lines.append(line)
+                
+                # Check if next line starts a new array element or object property
+                if i < len(lines) - 1:
+                    next_line = lines[i + 1].strip()
+                    current_line = line.strip()
+                    
+                    # If current line ends with quote and next line starts with quote (missing comma)
+                    if (current_line.endswith('"') and 
+                        next_line.startswith('"') and 
+                        not current_line.endswith('",') and
+                        not current_line.endswith('":')):
+                        # Add comma to current line
+                        repaired_lines[-1] = line.rstrip() + ','
+                        logger.info(f"🔧 [GenerationService] Added missing comma at line {i+1}")
+                    
+                    # If current line ends with } and next line starts with " (missing comma)
+                    elif (current_line.endswith('}') and 
+                          next_line.startswith('"') and 
+                          not current_line.endswith('},')):
+                        repaired_lines[-1] = line.rstrip() + ','
+                        logger.info(f"🔧 [GenerationService] Added missing comma at line {i+1}")
+                    
+                    # If current line ends with " and next line starts with " (missing comma between properties)
+                    elif (current_line.endswith('"') and 
+                          next_line.startswith('"') and 
+                          not current_line.endswith('",') and
+                          not current_line.endswith('":') and
+                          ':' in current_line):
+                        repaired_lines[-1] = line.rstrip() + ','
+                        logger.info(f"🔧 [GenerationService] Added missing comma between properties at line {i+1}")
+                    
+                    # If current line ends with a value and next line starts with " (missing comma)
+                    elif (next_line.startswith('"') and 
+                          not current_line.endswith(',') and
+                          not current_line.endswith('{') and
+                          not current_line.endswith('[') and
+                          ':' in current_line):
+                        repaired_lines[-1] = line.rstrip() + ','
+                        logger.info(f"🔧 [GenerationService] Added missing comma after value at line {i+1}")
+            
+            repaired_text = '\n'.join(repaired_lines)
+            
+            # Test the aggressive repair
+            try:
+                json.loads(repaired_text)
+                logger.info(f"🔧 [GenerationService] Aggressive repair successful")
+                return repaired_text
+            except json.JSONDecodeError:
+                logger.warning(f"⚠️ [GenerationService] Aggressive repair also failed")
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ [GenerationService] Aggressive repair failed: {str(e)}")
             return None
 
     def _extract_partial_survey(self, json_text: str) -> Optional[Dict[str, Any]]:
@@ -477,45 +587,152 @@ class GenerationService:
         questions = []
         logger.info(f"🔍 [GenerationService] Extracting questions from text (length: {len(text)})")
         
-        # More flexible question pattern that handles various JSON structures
-        # Look for question objects with id and text fields
-        question_pattern = r'\{\s*"id"\s*:\s*"([^"]*)".*?"text"\s*:\s*"([^"]*)".*?\}'
-        question_matches = re.finditer(question_pattern, text, re.DOTALL)
+        # Try multiple parsing strategies to maximize question extraction
+        import json
         
-        logger.info(f"🔍 [GenerationService] Found {len(list(re.finditer(question_pattern, text, re.DOTALL)))} question matches")
+        # Strategy 1: Look for complete question objects with both id and text
+        logger.info("🔍 [GenerationService] Strategy 1: Looking for complete question objects...")
+        complete_pattern = r'\{[^{}]*"id"[^{}]*"text"[^{}]*\}|\{[^{}]*"text"[^{}]*"id"[^{}]*\}'
+        complete_matches = list(re.finditer(complete_pattern, text, re.DOTALL))
+        logger.info(f"🔍 [GenerationService] Found {len(complete_matches)} complete question objects")
         
-        for i, match in enumerate(question_matches):
-            question_id = match.group(1)
-            question_text = match.group(2)
+        for i, match in enumerate(complete_matches):
+            try:
+                match_text = match.group(0)
+                logger.info(f"🔍 [GenerationService] Processing complete match {i+1}: {match_text[:100]}...")
+                question_json = json.loads(match_text)
+                logger.info(f"🔍 [GenerationService] Parsed JSON keys: {list(question_json.keys())}")
+                
+                if 'id' in question_json and 'text' in question_json:
+                    question_id = question_json['id']
+                    question_text = question_json['text']
+                    
+                    logger.info(f"✅ [GenerationService] Successfully parsed question {i+1}: id='{question_id}', text='{question_text[:50]}...'")
+                    
+                    # Create question object with all available fields
+                    question_obj = {
+                        "id": question_id or f"q{i+1}",
+                        "text": question_text,
+                        "type": question_json.get("type", "text"),
+                        "required": question_json.get("required", True),
+                        "order": len(questions) + 1
+                    }
+                    
+                    # Add other fields if present
+                    if "options" in question_json:
+                        question_obj["options"] = question_json["options"]
+                    if "scale_labels" in question_json:
+                        question_obj["scale_labels"] = question_json["scale_labels"]
+                    if "category" in question_json:
+                        question_obj["category"] = question_json["category"]
+                    if "methodology" in question_json:
+                        question_obj["methodology"] = question_json["methodology"]
+                    if "ai_rationale" in question_json:
+                        question_obj["ai_rationale"] = question_json["ai_rationale"]
+                    
+                    questions.append(question_obj)
+                else:
+                    logger.warning(f"⚠️ [GenerationService] Complete match {i+1} missing required fields: {list(question_json.keys())}")
+                    
+            except json.JSONDecodeError as e:
+                logger.warning(f"⚠️ [GenerationService] Failed to parse complete match {i+1}: {e}")
+                continue
+            except Exception as e:
+                logger.warning(f"⚠️ [GenerationService] Error processing complete match {i+1}: {e}")
+                continue
+        
+        # Strategy 2: Look for any JSON objects that might contain questions
+        if len(questions) == 0:
+            logger.info("🔍 [GenerationService] Strategy 2: Looking for any JSON objects...")
+            # More flexible pattern - any JSON object
+            any_json_pattern = r'\{[^{}]*\}'
+            any_matches = list(re.finditer(any_json_pattern, text, re.DOTALL))
+            logger.info(f"🔍 [GenerationService] Found {len(any_matches)} potential JSON objects")
             
-            logger.info(f"🔍 [GenerationService] Processing question {i+1}: id='{question_id}', text='{question_text[:50]}...'")
+            for i, match in enumerate(any_matches):
+                try:
+                    match_text = match.group(0)
+                    logger.info(f"🔍 [GenerationService] Processing any JSON {i+1}: {match_text[:100]}...")
+                    question_json = json.loads(match_text)
+                    logger.info(f"🔍 [GenerationService] Parsed JSON keys: {list(question_json.keys())}")
+                    
+                    # Check if this looks like a question (has text field)
+                    if 'text' in question_json and question_json['text']:
+                        question_id = question_json.get('id', f"q{len(questions) + 1}")
+                        question_text = question_json['text']
+                        
+                        logger.info(f"✅ [GenerationService] Successfully parsed question from any JSON {i+1}: id='{question_id}', text='{question_text[:50]}...'")
+                        
+                        # Create question object
+                        question_obj = {
+                            "id": question_id,
+                            "text": question_text,
+                            "type": question_json.get("type", "text"),
+                            "required": question_json.get("required", True),
+                            "order": len(questions) + 1
+                        }
+                        
+                        # Add other fields if present
+                        if "options" in question_json:
+                            question_obj["options"] = question_json["options"]
+                        if "scale_labels" in question_json:
+                            question_obj["scale_labels"] = question_json["scale_labels"]
+                        if "category" in question_json:
+                            question_obj["category"] = question_json["category"]
+                        if "methodology" in question_json:
+                            question_obj["methodology"] = question_json["methodology"]
+                        if "ai_rationale" in question_json:
+                            question_obj["ai_rationale"] = question_json["ai_rationale"]
+                        
+                        questions.append(question_obj)
+                    else:
+                        logger.debug(f"🔍 [GenerationService] Any JSON {i+1} doesn't look like a question: {list(question_json.keys())}")
+                        
+                except json.JSONDecodeError as e:
+                    logger.debug(f"🔍 [GenerationService] Any JSON {i+1} not valid JSON: {e}")
+                    continue
+                except Exception as e:
+                    logger.warning(f"⚠️ [GenerationService] Error processing any JSON {i+1}: {e}")
+                    continue
+        
+        # Strategy 3: Fallback to regex if no questions found
+        if len(questions) == 0:
+            logger.info("🔍 [GenerationService] Strategy 3: Fallback to regex pattern matching...")
+            question_pattern = r'\{\s*"id"\s*:\s*"([^"]*)".*?"text"\s*:\s*"([^"]*)".*?\}'
+            question_matches = re.finditer(question_pattern, text, re.DOTALL)
             
-            # Try to extract additional fields if present
-            question_obj = {
-                "id": question_id or f"q{i+1}",
-                "text": question_text,
-                "type": "text",  # Default to text type
-                "required": True,
-                "order": i + 1
-            }
-            
-            # Try to extract question type if present
-            type_match = re.search(r'"type"\s*:\s*"([^"]*)"', match.group(0))
-            if type_match:
-                question_obj["type"] = type_match.group(1)
-            
-            # Try to extract options if present
-            options_match = re.search(r'"options"\s*:\s*\[(.*?)\]', match.group(0), re.DOTALL)
-            if options_match:
-                options_text = options_match.group(1)
-                # Extract individual options
-                option_pattern = r'"([^"]*)"'
-                options = re.findall(option_pattern, options_text)
-                question_obj["options"] = options
-            
-            questions.append(question_obj)
+            for i, match in enumerate(question_matches):
+                question_id = match.group(1)
+                question_text = match.group(2)
+                
+                logger.info(f"✅ [GenerationService] Successfully parsed question via regex {i+1}: id='{question_id}', text='{question_text[:50]}...'")
+                
+                question_obj = {
+                    "id": question_id or f"q{i+1}",
+                    "text": question_text,
+                    "type": "text",  # Default to text type
+                    "required": True,
+                    "order": len(questions) + 1
+                }
+                
+                # Try to extract question type if present
+                type_match = re.search(r'"type"\s*:\s*"([^"]*)"', match.group(0))
+                if type_match:
+                    question_obj["type"] = type_match.group(1)
+                
+                questions.append(question_obj)
         
         logger.info(f"🔍 [GenerationService] Total questions extracted: {len(questions)}")
+        
+        # Log summary of extracted questions
+        if len(questions) > 0:
+            logger.info(f"✅ [GenerationService] Successfully extracted questions:")
+            for i, q in enumerate(questions):
+                logger.info(f"  {i+1}. ID: {q.get('id', 'N/A')}, Text: {q.get('text', 'N/A')[:50]}..., Type: {q.get('type', 'N/A')}")
+        else:
+            logger.warning("⚠️ [GenerationService] No questions could be extracted from the response")
+            logger.warning(f"⚠️ [GenerationService] Response text sample: {text[:500]}...")
+        
         return questions
 
     def _calculate_pillar_grade(self, score: float) -> str:

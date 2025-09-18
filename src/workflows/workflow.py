@@ -8,7 +8,8 @@ from .nodes import (
     ContextBuilderNode,
     GeneratorAgent,
     GoldenValidatorNode,
-    ResearcherNode
+    ResearcherNode,
+    HumanPromptReviewNode
 )
 from src.services.websocket_client import WebSocketNotificationService
 import logging
@@ -26,6 +27,7 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     rfq_node = RFQNode(db)
     golden_retriever = GoldenRetrieverNode(db)
     context_builder = ContextBuilderNode(db)
+    prompt_reviewer = HumanPromptReviewNode(db)
     generator = GeneratorAgent(db)
     validator = GoldenValidatorNode(db)
     researcher = ResearcherNode(db)
@@ -123,6 +125,44 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
         
         return await context_builder(state)
     
+    async def prompt_review_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
+        """Human prompt review with progress update"""
+        try:
+            logger.info(f"📡 [Workflow] Sending progress update: human_review for workflow_id={state.workflow_id}")
+            await ws_client.send_progress_update(state.workflow_id, {
+                "type": "progress",
+                "step": "human_review",
+                "percent": 50,
+                "message": "Reviewing AI-generated system prompt..."
+            })
+            logger.info(f"✅ [Workflow] Progress update sent successfully: human_review")
+        except Exception as e:
+            logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
+
+        logger.info(f"🚀 [Workflow] About to call HumanPromptReviewNode...")
+        result = await prompt_reviewer(state)
+        logger.info(f"📊 [Workflow] HumanPromptReviewNode result: {result}")
+        logger.info(f"📊 [Workflow] Pending human review: {result.get('pending_human_review', False)}")
+        logger.info(f"📊 [Workflow] Workflow paused: {result.get('workflow_paused', False)}")
+        
+        # If blocking review is pending, send special WebSocket message
+        if result.get('pending_human_review'):
+            try:
+                logger.info(f"🛑 [Workflow] Sending human review required message for workflow_id={state.workflow_id}")
+                await ws_client.send_progress_update(state.workflow_id, {
+                    "type": "human_review_required",
+                    "step": "human_review",
+                    "percent": 50,
+                    "message": "Waiting for human review of system prompt...",
+                    "review_id": result.get('review_id'),
+                    "workflow_paused": True
+                })
+                logger.info(f"✅ [Workflow] Human review required message sent successfully")
+            except Exception as e:
+                logger.error(f"❌ [Workflow] Failed to send human review required message: {str(e)}")
+        
+        return result
+    
     async def generate_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
         """Generate survey with progress update"""
         try:
@@ -183,6 +223,7 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     workflow.add_node("parse_rfq", parse_rfq_with_progress)
     workflow.add_node("retrieve_golden", retrieve_golden_with_progress)
     workflow.add_node("build_context", build_context_with_progress)
+    workflow.add_node("prompt_review", prompt_review_with_progress)
     workflow.add_node("generate", generate_with_progress)
     workflow.add_node("validate", validate_with_progress)
     workflow.add_node("human_review", human_review_with_progress)
@@ -193,8 +234,47 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     # Add sequential edges
     workflow.add_edge("parse_rfq", "retrieve_golden")
     workflow.add_edge("retrieve_golden", "build_context")
-    workflow.add_edge("build_context", "generate")
+    workflow.add_edge("build_context", "prompt_review")
     workflow.add_edge("generate", "validate")
+    
+    # Add a pause node for human review
+    async def pause_for_review(state: SurveyGenerationState) -> Dict[str, Any]:
+        """Pause point for human review - workflow will be resumed externally"""
+        return {
+            "workflow_paused": True,
+            "pause_reason": "human_review_required",
+            "error_message": None
+        }
+    
+    workflow.add_node("pause_for_review", pause_for_review)
+    
+    # Conditional edge for prompt review - determines if workflow should pause or continue
+    def should_continue_after_review(state: SurveyGenerationState) -> str:
+        """
+        Determine if workflow should continue to generation or pause for human review
+        """
+        if state.error_message:
+            return "human_review"  # Error occurred, send to final human review
+            
+        # Check if human review is pending (blocking mode)
+        if getattr(state, 'pending_human_review', False):
+            # In blocking mode, workflow should pause here
+            # The workflow will be resumed externally when review is completed
+            return "pause_for_review"  # Pause workflow
+        
+        # Non-blocking mode or review disabled - continue to generation
+        return "generate"
+    
+    # Add conditional edge for prompt review
+    workflow.add_conditional_edges(
+        "prompt_review",
+        should_continue_after_review,
+        {
+            "generate": "generate",
+            "human_review": "human_review",
+            "pause_for_review": "pause_for_review"
+        }
+    )
     
     # Conditional edge for validation with retry logic
     def should_retry(state: SurveyGenerationState) -> str:
@@ -220,6 +300,9 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
             "human_review": "human_review"
         }
     )
+    
+    # Add edge from pause_for_review to end
+    workflow.add_edge("pause_for_review", "human_review")
     
     # Set end point
     workflow.set_finish_point("human_review")

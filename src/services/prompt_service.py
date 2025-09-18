@@ -274,6 +274,54 @@ class PromptService:
         
         return "\n".join(prompt_parts)
     
+    def create_survey_prompt(
+        self,
+        rfq_text: str,
+        context: Dict[str, Any],
+        golden_examples: List[Dict[str, Any]],
+        methodology_blocks: List[Dict[str, Any]],
+        custom_rules: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Create a survey generation prompt with RFQ text, context, and examples.
+        This method is used by the HumanPromptReviewNode for prompt review.
+        """
+        # Ensure context has rfq_details for consistency
+        if "rfq_details" not in context:
+            context["rfq_details"] = {}
+        
+        # Add RFQ text to context if not already present
+        if "text" not in context["rfq_details"]:
+            context["rfq_details"]["text"] = rfq_text
+        
+        # Build the complete prompt using the existing method
+        return self.build_golden_enhanced_prompt(
+            context=context,
+            golden_examples=golden_examples,
+            methodology_blocks=methodology_blocks,
+            custom_rules=custom_rules
+        )
+    
+    def create_survey_generation_prompt(
+        self,
+        rfq_text: str,
+        context: Dict[str, Any],
+        golden_examples: List[Dict[str, Any]],
+        methodology_blocks: List[Dict[str, Any]],
+        custom_rules: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Create a survey generation prompt with RFQ text, context, and examples.
+        This is an alias for create_survey_prompt to maintain backward compatibility.
+        """
+        return self.create_survey_prompt(
+            rfq_text=rfq_text,
+            context=context,
+            golden_examples=golden_examples,
+            methodology_blocks=methodology_blocks,
+            custom_rules=custom_rules
+        )
+    
     def build_golden_enhanced_prompt(
         self,
         context: Dict[str, Any],
@@ -433,14 +481,9 @@ class PromptService:
         # Join all prompt parts into final prompt
         final_prompt = "\n".join(prompt_parts)
         
-        # Log the complete final prompt that will be sent to LLM
-        logger.info("=" * 100)
-        logger.info("🤖 COMPLETE FINAL PROMPT SENT TO LLM")
-        logger.info("=" * 100)
-        logger.info(final_prompt)
-        logger.info("=" * 100)
+        # Log prompt metadata without the actual content
+        logger.info("🤖 Final prompt generated for LLM")
         logger.info("📤 Prompt length: {} characters".format(len(final_prompt)))
-        logger.info("=" * 100)
         
         return final_prompt
     

@@ -33,6 +33,11 @@ class SurveyGenerationState(BaseModel):
     retry_count: int = 0
     max_retries: int = 2
     
+    # Human review state
+    pending_human_review: bool = False
+    system_prompt: Optional[str] = None
+    review_id: Optional[int] = None
+    
     error_message: Optional[str] = None
     
     class Config:

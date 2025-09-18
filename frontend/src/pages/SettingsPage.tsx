@@ -108,6 +108,18 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings') => {
+    if (view === 'survey') {
+      window.location.href = '/';
+    } else if (view === 'golden-examples') {
+      window.location.href = '/golden-examples';
+    } else if (view === 'rules') {
+      window.location.href = '/rules';
+    } else if (view === 'surveys') {
+      window.location.href = '/surveys';
+    }
+  };
+
   const resetToDefaults = () => {
     setSettings({
       evaluation_mode: 'single_call',
@@ -130,7 +142,7 @@ export const SettingsPage: React.FC = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-        <Sidebar currentView="settings" onViewChange={() => {}} />
+        <Sidebar currentView="settings" onViewChange={handleViewChange} />
         <div className={mainContentClasses}>
           <div className="flex items-center justify-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
@@ -143,7 +155,7 @@ export const SettingsPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
       <ToastContainer toasts={toasts} onRemove={removeToast} />
-      <Sidebar currentView="settings" onViewChange={() => {}} />
+      <Sidebar currentView="settings" onViewChange={handleViewChange} />
       
       <div className={mainContentClasses}>
         <div className="space-y-8">
@@ -344,7 +356,7 @@ export const SettingsPage: React.FC = () => {
               )}
             </div>
 
-            {/* Evaluation Mode (Simplified) */}
+            {/* Survey Evaluation Mode */}
             <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6">
               <h2 className="text-xl font-semibold text-gray-900 mb-6">Survey Evaluation</h2>
               
@@ -355,31 +367,88 @@ export const SettingsPage: React.FC = () => {
                     title: 'Single Call (Recommended)',
                     description: 'One comprehensive AI evaluation for all quality pillars. Fast and cost-effective.',
                     color: 'green',
-                    icon: <CheckCircleIcon className="w-6 h-6 text-green-600" />
+                    icon: <CheckCircleIcon className="w-6 h-6 text-green-600" />,
+                    pros: ['Fastest evaluation', 'Lower API costs', 'Consistent scoring'],
+                    cons: ['Less granular feedback']
+                  },
+                  {
+                    value: 'multiple_calls',
+                    title: 'Parallel Evaluation',
+                    description: 'Separate AI evaluations for each quality pillar running in parallel. More detailed analysis.',
+                    color: 'blue',
+                    icon: <CogIcon className="w-6 h-6 text-blue-600" />,
+                    pros: ['Detailed pillar feedback', 'Parallel processing', 'Specialized analysis'],
+                    cons: ['Higher API costs', 'Slightly slower']
                   }
                 ].map((mode) => (
                   <div
                     key={mode.value}
-                    className="border-2 border-green-200 bg-green-50 rounded-xl p-4"
+                    className={`border-2 rounded-xl p-4 cursor-pointer transition-all duration-200 ${
+                      settings.evaluation_mode === mode.value
+                        ? `border-${mode.color}-500 bg-${mode.color}-50`
+                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                    }`}
+                    onClick={() => setSettings({ ...settings, evaluation_mode: mode.value as any })}
                   >
-                    <div className="flex items-center space-x-3">
-                      <input
-                        type="radio"
-                        name="evaluation_mode"
-                        value={mode.value}
-                        checked={true}
-                        readOnly
-                        className="w-4 h-4 text-indigo-600"
-                      />
-                      {mode.icon}
-                      <div>
-                        <h3 className="text-lg font-medium text-gray-900">{mode.title}</h3>
-                        <p className="text-gray-600">{mode.description}</p>
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-3 mb-2">
+                          <input
+                            type="radio"
+                            name="evaluation_mode"
+                            value={mode.value}
+                            checked={settings.evaluation_mode === mode.value}
+                            onChange={() => setSettings({ ...settings, evaluation_mode: mode.value as any })}
+                            className="w-4 h-4 text-indigo-600"
+                          />
+                          {mode.icon}
+                          <h3 className="text-lg font-medium text-gray-900">{mode.title}</h3>
+                        </div>
+                        <p className="text-gray-600 mb-3 ml-7">{mode.description}</p>
+                        <div className="ml-7 grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                          <div>
+                            <p className="font-medium text-green-700 mb-1">Pros:</p>
+                            <ul className="text-green-600 space-y-1">
+                              {mode.pros.map((pro, idx) => (
+                                <li key={idx}>• {pro}</li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div>
+                            <p className="font-medium text-red-700 mb-1">Cons:</p>
+                            <ul className="text-red-600 space-y-1">
+                              {mode.cons.map((con, idx) => (
+                                <li key={idx}>• {con}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
+
+              {/* Parallel Processing Toggle */}
+              {settings.evaluation_mode === 'multiple_calls' && (
+                <div className="mt-6 p-4 bg-blue-50 rounded-xl">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-medium text-gray-900">Enable Parallel Processing</h3>
+                      <p className="text-gray-600">Run pillar evaluations simultaneously for faster results</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={settings.enable_parallel_processing}
+                        onChange={(e) => setSettings({ ...settings, enable_parallel_processing: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Information Panel */}

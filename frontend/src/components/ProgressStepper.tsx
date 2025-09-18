@@ -45,7 +45,7 @@ const SIMPLIFIED_STEPS: SimplifiedStep[] = [
     description: 'Assembling best practices and templates',
     icon: '🔗',
     color: 'purple',
-    originalSteps: ['matching_golden_examples', 'building_context'],
+    originalSteps: ['matching_golden_examples', 'planning_methodologies'],
     details: {
       title: 'Context Assembly & Template Matching',
       content: 'Finding the most relevant survey examples from our curated database and combining them with methodology blocks and industry best practices tailored to your research goals.',
@@ -58,13 +58,13 @@ const SIMPLIFIED_STEPS: SimplifiedStep[] = [
       estimatedTime: '45-90 seconds'
     }
   },
-  { 
-    key: 'human_review', 
-    label: 'Human Review', 
+  {
+    key: 'human_review',
+    label: 'Human Review',
     description: 'Expert validation of system prompts',
     icon: '👥',
     color: 'orange',
-    originalSteps: [], // This is a new step
+    originalSteps: ['human_review'], // Map backend step names
     conditional: true, // Only shown when prompt review is enabled
     details: {
       title: 'System Prompt Review & Approval',
@@ -148,7 +148,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
   onCancelGeneration,
   onShowSummary
 }) => {
-  const { workflow, currentSurvey } = useAppStore();
+  const { workflow, currentSurvey, activeReview } = useAppStore();
   const workflowStatus = workflow.status;
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
@@ -156,6 +156,33 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
   
   // Get settings to determine if human review step should be shown
   const [showHumanReview, setShowHumanReview] = useState(false);
+
+  // Determine if human review should be shown based on workflow state
+  useEffect(() => {
+    const shouldShowHumanReview = Boolean(
+      // There's an active review
+      !!activeReview ||
+      // Workflow is paused for human review
+      !!workflow.workflow_paused ||
+      // Current step is human_review
+      workflow.current_step === 'human_review' ||
+      // Current step includes review-related keywords
+      (workflow.current_step && (
+        workflow.current_step.includes('review') ||
+        workflow.current_step.includes('approval') ||
+        workflow.current_step.includes('human')
+      ))
+    );
+
+    console.log('🔍 [ProgressStepper] Human review check:', {
+      shouldShowHumanReview,
+      activeReview: !!activeReview,
+      workflowPaused: workflow.workflow_paused,
+      currentStep: workflow.current_step
+    });
+
+    setShowHumanReview(shouldShowHumanReview);
+  }, [activeReview, workflow.workflow_paused, workflow.current_step]);
   
   useEffect(() => {
     // Fetch settings to determine if human review is enabled
@@ -183,7 +210,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
   
   useEffect(() => {
     if (!workflow.current_step || enabledSteps.length === 0) return;
-    
+
     // Map original step names to simplified steps
     const currentStep = enabledSteps.findIndex(step => {
       if (workflow.current_step) {
@@ -191,38 +218,70 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
       }
       return false;
     });
-    
+
     if (currentStep !== -1) {
       setCurrentStepIndex(currentStep);
     }
-    
-    // Update completed steps based on progress
-    const progress = workflow.progress || 0;
+
+    // Update completed steps based on workflow state
     const completed = [];
-    
+
     if (workflowStatus === 'completed') {
       // All steps completed
       for (let i = 0; i < enabledSteps.length; i++) {
         completed.push(i);
       }
     } else {
-      // Calculate based on progress
+      // Only mark steps as completed if they are actually finished
+      // This is more conservative and accurate than progress-based completion
       for (let i = 0; i < enabledSteps.length; i++) {
-        const stepProgress = ((i + 1) / enabledSteps.length) * 100;
-        if (progress >= stepProgress) {
-          completed.push(i);
+        const step = enabledSteps[i];
+        
+        // Check if this step is actually completed based on workflow state
+        if (workflow.current_step) {
+          // If current step is past this step's original steps, mark as completed
+          const stepIsCompleted = step.originalSteps.some(originalStep => {
+            // Check if we've moved past this step
+            return workflow.current_step && 
+                   (workflow.current_step.includes('completed') || 
+                    workflow.current_step.includes('finished') ||
+                    // If current step is in a later step's originalSteps
+                    enabledSteps.slice(i + 1).some(laterStep => 
+                      laterStep.originalSteps.includes(workflow.current_step!)
+                    ));
+          });
+          
+          if (stepIsCompleted) {
+            completed.push(i);
+          }
         }
       }
     }
-    
+
     setCompletedSteps(completed);
   }, [workflow.current_step, workflow.progress, workflowStatus, enabledSteps]);
+
+  // Handle automatic completion actions
+  useEffect(() => {
+    if (workflowStatus === 'completed' && currentSurvey) {
+      console.log('🎉 [ProgressStepper] Workflow completed, triggering automatic actions');
+
+      // Small delay to let the UI update, then trigger completion action
+      const timer = setTimeout(() => {
+        console.log('🔍 [ProgressStepper] Auto-triggering onShowSurvey due to completion');
+        onShowSurvey?.();
+      }, 2000); // 2 second delay to show completion state
+
+      return () => clearTimeout(timer);
+    }
+  }, [workflowStatus, currentSurvey, onShowSurvey]);
   
   const getStepStatus = (index: number) => {
     if (workflowStatus === 'completed') return 'completed';
     if (completedSteps.includes(index)) return 'completed';
     if (index === currentStepIndex) return 'current';
-    if (index < currentStepIndex) return 'completed';
+    // Only mark previous steps as completed if they are actually finished
+    // Don't auto-complete steps just because they come before current step
     return 'pending';
   };
 
@@ -245,7 +304,15 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
   };
 
   const currentDetails = getCurrentStepDetails();
-  const isHumanReviewActive = enabledSteps[currentStepIndex]?.key === 'human_review';
+  const isHumanReviewActive =
+    enabledSteps[currentStepIndex]?.key === 'human_review' ||
+    !!activeReview ||
+    !!workflow.workflow_paused ||
+    (workflow.current_step && (
+      workflow.current_step.includes('review') ||
+      workflow.current_step.includes('human') ||
+      workflow.current_step === 'human_review'
+    ));
   
   return (
     <div className="h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
@@ -384,6 +451,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
               {isHumanReviewActive ? (
                 <HumanReviewPanel 
                   isActive={true}
+                  workflowId={workflow.workflow_id}
                   surveyId={currentSurvey?.survey_id}
                 />
               ) : currentDetails ? (
@@ -416,25 +484,42 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900 mb-4">Current Tasks</h3>
                     <div className="space-y-3">
-                      {currentDetails.subTasks.map((task, index) => (
-                        <div key={index} className="flex items-center space-x-3 p-3 bg-white rounded-lg border border-gray-200">
-                          <div className="flex-shrink-0">
-                            {workflowStatus === 'completed' || index < 2 ? (
-                              <CheckIcon className="w-5 h-5 text-green-500" />
-                            ) : index === 2 ? (
-                              <div className="w-5 h-5 border-2 border-blue-500 rounded-full border-t-transparent animate-spin"></div>
-                            ) : (
-                              <div className="w-5 h-5 rounded-full border-2 border-gray-300"></div>
-                            )}
+                      {currentDetails.subTasks.map((task, index) => {
+                        // Calculate task status based on workflow progress and current step
+                        const isCompleted = workflow.status === 'completed' || 
+                          (workflow.current_step && 
+                           workflow.current_step.includes('completed') && 
+                           index < currentDetails.subTasks.length - 1);
+                        
+                        // For the current step, show the first sub-task as in progress
+                        // This is simpler and more reliable than trying to map progress to specific sub-tasks
+                        const isInProgress = !isCompleted && 
+                          workflow.status !== 'completed' && 
+                          workflow.status !== 'idle' &&
+                          index === 0; // Show first sub-task as in progress for current step
+                        
+                        // const isPending = !isCompleted && !isInProgress;
+
+                        return (
+                          <div key={index} className="flex items-center space-x-3 p-3 bg-white rounded-lg border border-gray-200">
+                            <div className="flex-shrink-0">
+                              {isCompleted ? (
+                                <CheckIcon className="w-5 h-5 text-green-500" />
+                              ) : isInProgress ? (
+                                <div className="w-5 h-5 border-2 border-blue-500 rounded-full border-t-transparent animate-spin"></div>
+                              ) : (
+                                <div className="w-5 h-5 rounded-full border-2 border-gray-300"></div>
+                              )}
+                            </div>
+                            <span className={`text-sm ${
+                              isCompleted ? 'text-green-700' : 
+                              isInProgress ? 'text-blue-700' : 'text-gray-500'
+                            }`}>
+                              {task}
+                            </span>
                           </div>
-                          <span className={`text-sm ${
-                            workflowStatus === 'completed' || index < 2 ? 'text-green-700' : 
-                            index === 2 ? 'text-blue-700' : 'text-gray-500'
-                          }`}>
-                            {task}
-                          </span>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
 

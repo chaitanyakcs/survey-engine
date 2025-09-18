@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { CheckCircleIcon, XCircleIcon, InformationCircleIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
-export type ToastType = 'success' | 'error' | 'info';
+export type ToastType = 'success' | 'error' | 'info' | 'warning';
 
 export interface ToastMessage {
   id: string;
@@ -46,6 +46,8 @@ const Toast: React.FC<ToastProps> = ({ toast, onRemove }) => {
         return <XCircleIcon className="w-5 h-5 text-red-600" />;
       case 'info':
         return <InformationCircleIcon className="w-5 h-5 text-gray-600" />;
+      case 'warning':
+        return <XCircleIcon className="w-5 h-5 text-yellow-600" />;
     }
   };
 
@@ -57,6 +59,8 @@ const Toast: React.FC<ToastProps> = ({ toast, onRemove }) => {
         return 'bg-white border-l-4 border-l-red-600';
       case 'info':
         return 'bg-white border-l-4 border-l-gray-600';
+      case 'warning':
+        return 'bg-white border-l-4 border-l-yellow-600';
     }
   };
 

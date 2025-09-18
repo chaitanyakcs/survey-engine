@@ -24,8 +24,16 @@ echo -e "${BLUE}🚀 Starting Survey Engine...${NC}"
 check_database() {
     echo -e "${YELLOW}🔍 Checking database connection...${NC}"
     
+    # Set default DATABASE_URL if not provided
+    if [ -z "$DATABASE_URL" ]; then
+        echo -e "${YELLOW}⚠️  No DATABASE_URL found, using default local development settings${NC}"
+        export DATABASE_URL="postgresql://survey_engine:development_password@127.0.0.1:5433/survey_engine_db"
+        export REDIS_URL="redis://127.0.0.1:6379"
+    fi
+    
     # Try to connect to database
-    if python3 -c "
+    echo -e "${BLUE}🔍 Testing connection to: $DATABASE_URL${NC}"
+    if DATABASE_URL="$DATABASE_URL" python3 -c "
 import os
 import psycopg2
 from urllib.parse import urlparse
@@ -37,6 +45,7 @@ try:
         exit(1)
     
     parsed = urlparse(url)
+    print(f'Connecting to: {parsed.hostname}:{parsed.port} database: {parsed.path[1:]} user: {parsed.username}')
     conn = psycopg2.connect(
         host=parsed.hostname,
         port=parsed.port,
@@ -53,6 +62,8 @@ except Exception as e:
         echo -e "${GREEN}✅ Database connection successful${NC}"
     else
         echo -e "${RED}❌ Database connection failed${NC}"
+        echo -e "${YELLOW}💡 Make sure Docker containers are running:${NC}"
+        echo -e "${YELLOW}   docker-compose -f docker-compose.dev.yml up -d postgres redis${NC}"
         exit 1
     fi
 }
@@ -71,7 +82,7 @@ run_migrations() {
     for migration in $(ls $DB_MIGRATIONS_DIR/*.sql | sort); do
         echo -e "${BLUE}📝 Running migration: $(basename $migration)${NC}"
         
-        if psql "$DATABASE_URL" -f "$migration"; then
+        if PGPASSWORD=$(echo "$DATABASE_URL" | sed -n 's/.*:\([^@]*\)@.*/\1/p') psql "$DATABASE_URL" -f "$migration"; then
             echo -e "${GREEN}✅ Migration $(basename $migration) completed${NC}"
         else
             echo -e "${RED}❌ Migration $(basename $migration) failed${NC}"
@@ -87,7 +98,7 @@ seed_database() {
     echo -e "${YELLOW}🌱 Seeding database with rules...${NC}"
     
     if [ -f "$SEED_SCRIPT" ]; then
-        if python3 "$SEED_SCRIPT"; then
+        if DATABASE_URL="$DATABASE_URL" python3 "$SEED_SCRIPT"; then
             echo -e "${GREEN}✅ Database seeding completed${NC}"
         else
             echo -e "${RED}❌ Database seeding failed${NC}"
@@ -109,13 +120,60 @@ start_application() {
         echo -e "${BLUE}   - FastAPI will run on port $FASTAPI_PORT${NC}"
         
         # Start the consolidated application
-        ./start.sh consolidated
+        DATABASE_URL="$DATABASE_URL" REDIS_URL="$REDIS_URL" ./start.sh consolidated
     else
         echo -e "${BLUE}🏠 Starting in development mode${NC}"
         
-        # For local development, just start FastAPI
+        # For local development, start both nginx and FastAPI
+        echo -e "${BLUE}   - Nginx will run on port 4321${NC}"
         echo -e "${BLUE}   - FastAPI will run on port $FASTAPI_PORT${NC}"
-        ./start.sh fastapi
+        echo -e "${BLUE}   - Frontend will be served by nginx from build directory${NC}"
+        
+        # Check if frontend is built
+        if [ ! -d "frontend/build" ]; then
+            echo -e "${YELLOW}⚠️  Frontend not built, building now...${NC}"
+            cd frontend && npm run build && cd ..
+        fi
+        
+        # Start FastAPI in background
+        echo -e "${YELLOW}🔄 Starting FastAPI server...${NC}"
+        DATABASE_URL="$DATABASE_URL" REDIS_URL="$REDIS_URL" python3 -m uvicorn src.main:app --host 0.0.0.0 --port $FASTAPI_PORT --reload &
+        FASTAPI_PID=$!
+        
+        # Wait for FastAPI to be ready
+        echo -e "${YELLOW}⏳ Waiting for FastAPI to be ready...${NC}"
+        sleep 5
+        
+        # Start nginx
+        echo -e "${YELLOW}🔄 Starting nginx...${NC}"
+        /opt/homebrew/opt/nginx/bin/nginx -c "$(pwd)/nginx-local.conf" -g "daemon off;" &
+        NGINX_PID=$!
+        
+        echo -e "${GREEN}✅ Services started successfully!${NC}"
+        echo -e "${GREEN}   - Frontend: http://localhost:4321${NC}"
+        echo -e "${GREEN}   - API: http://localhost:4321/api${NC}"
+        echo -e "${GREEN}   - WebSocket: ws://localhost:4321/ws${NC}"
+        echo -e "${YELLOW}Press Ctrl+C to stop all services${NC}"
+        
+        # Function to handle shutdown
+        cleanup() {
+            echo -e "\n${YELLOW}🛑 Shutting down services...${NC}"
+            if [ ! -z "$NGINX_PID" ]; then
+                kill $NGINX_PID 2>/dev/null || true
+                echo -e "${GREEN}✅ Nginx stopped${NC}"
+            fi
+            if [ ! -z "$FASTAPI_PID" ]; then
+                kill $FASTAPI_PID 2>/dev/null || true
+                echo -e "${GREEN}✅ FastAPI stopped${NC}"
+            fi
+            exit 0
+        }
+        
+        # Set up signal handlers
+        trap cleanup SIGTERM SIGINT
+        
+        # Wait for any process to exit
+        wait $NGINX_PID $FASTAPI_PID
     fi
 }
 

@@ -42,6 +42,7 @@ from src.database import GoldenRFQSurveyPair, RFQ, Survey
 # Import API routers
 from src.api import annotations
 from src.api.rules import router as rules_router
+from src.api.human_reviews import router as human_reviews_router
 
 # Initialize embedding model lazily
 embedding_model = None
@@ -73,6 +74,7 @@ app.add_middleware(
 # Include API routers
 app.include_router(annotations.router, prefix="/api/v1")
 app.include_router(rules_router, prefix="/api/v1")
+app.include_router(human_reviews_router)
 
 class RFQSubmissionRequest(BaseModel):
     title: Optional[str] = None
@@ -447,9 +449,23 @@ async def execute_workflow_async(workflow_id: str, workflow_data: dict):
             "message": "Survey generation completed successfully!"
         })
         
-        # Don't clean up workflow data immediately - let the client disconnect gracefully
-        # The client should disconnect after receiving the completion message
-        logger.info(f"✅ [WebSocket] Workflow completed for workflow_id={workflow_id}, waiting for client to disconnect gracefully")
+        # Close the WebSocket connection after a short delay to allow client to process the completion message
+        logger.info(f"✅ [WebSocket] Workflow completed for workflow_id={workflow_id}, closing connection in 3 seconds")
+        await asyncio.sleep(3)  # Give client time to process completion message
+        
+        # Close the WebSocket connection
+        if workflow_id in manager.active_connections:
+            websocket = manager.active_connections[workflow_id]
+            try:
+                await websocket.close(code=1000, reason="Workflow completed")
+                logger.info(f"🔌 [WebSocket] Connection closed for workflow_id={workflow_id}")
+            except Exception as close_error:
+                logger.warning(f"⚠️ [WebSocket] Error closing connection for workflow_id={workflow_id}: {close_error}")
+        
+        # Clean up workflow data
+        if workflow_id in workflows:
+            del workflows[workflow_id]
+            logger.info(f"🧹 [WebSocket] Cleaned up workflow data for workflow_id={workflow_id}")
             
     except Exception as e:
         logger.error(f"❌ [WebSocket] Workflow execution failed for workflow_id={workflow_id}: {str(e)}", exc_info=True)
@@ -457,6 +473,20 @@ async def execute_workflow_async(workflow_id: str, workflow_data: dict):
             "type": "error",
             "message": f"Workflow execution failed: {str(e)}"
         })
+        
+        # Close the WebSocket connection on error as well
+        if workflow_id in manager.active_connections:
+            websocket = manager.active_connections[workflow_id]
+            try:
+                await websocket.close(code=1011, reason="Workflow failed")
+                logger.info(f"🔌 [WebSocket] Connection closed due to error for workflow_id={workflow_id}")
+            except Exception as close_error:
+                logger.warning(f"⚠️ [WebSocket] Error closing connection for workflow_id={workflow_id}: {close_error}")
+        
+        # Clean up workflow data
+        if workflow_id in workflows:
+            del workflows[workflow_id]
+            logger.info(f"🧹 [WebSocket] Cleaned up workflow data for workflow_id={workflow_id}")
     finally:
         db.close()
 

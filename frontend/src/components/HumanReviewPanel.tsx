@@ -10,72 +10,48 @@ import {
   CalendarIcon,
   ChatBubbleLeftRightIcon
 } from '@heroicons/react/24/solid';
-
-interface ReviewData {
-  id: string;
-  prompt: string;
-  rfq_content: string;
-  generated_at: string;
-  status: 'pending' | 'approved' | 'rejected' | 'in_review';
-  reviewer?: string;
-  review_notes?: string;
-  reviewed_at?: string;
-  estimated_completion?: string;
-}
+import { useAppStore } from '../store/useAppStore';
+import { PendingReview, ReviewDecision } from '../types';
 
 interface HumanReviewPanelProps {
   isActive: boolean;
+  workflowId?: string;
   surveyId?: string;
 }
 
 export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({ 
   isActive, 
+  workflowId,
   surveyId 
 }) => {
-  const [reviewData, setReviewData] = useState<ReviewData | null>(null);
+  const { 
+    activeReview, 
+    fetchReviewByWorkflow, 
+    submitReviewDecision, 
+    workflow 
+  } = useAppStore();
+  
   const [loading, setLoading] = useState(true);
   const [reviewNotes, setReviewNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showFullPrompt, setShowFullPrompt] = useState(false);
 
   useEffect(() => {
-    if (isActive && surveyId) {
+    if (isActive && (workflowId || workflow.workflow_id)) {
       fetchReviewData();
     }
-  }, [isActive, surveyId]);
+  }, [isActive, workflowId, workflow.workflow_id]);
 
   const fetchReviewData = async () => {
     setLoading(true);
     try {
-      // Mock data for now - replace with actual API call
-      const mockData: ReviewData = {
-        id: 'review-123',
-        prompt: `You are an expert survey methodologist tasked with creating a comprehensive customer satisfaction survey for a mid-sized e-commerce company. The survey should focus on:
-
-1. Overall satisfaction with the shopping experience
-2. Product quality and variety assessment
-3. Website usability and navigation
-4. Customer service interactions
-5. Shipping and delivery experience
-6. Return and refund process evaluation
-7. Likelihood to recommend to others
-
-Please ensure the survey:
-- Uses a mix of question types (Likert scales, multiple choice, open-ended)
-- Maintains respondent engagement (10-12 minutes max)
-- Follows survey methodology best practices
-- Avoids leading or biased questions
-- Includes demographic questions for segmentation
-- Provides actionable insights for business improvement
-
-Target audience: Online shoppers aged 25-55 who have made at least one purchase in the last 6 months.`,
-        rfq_content: 'Customer satisfaction survey for e-commerce platform focusing on user experience, product quality, and service effectiveness.',
-        generated_at: new Date().toISOString(),
-        status: 'pending',
-        estimated_completion: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString() // 2 hours from now
-      };
+      const targetWorkflowId = workflowId || workflow.workflow_id;
+      if (!targetWorkflowId) {
+        setLoading(false);
+        return;
+      }
       
-      setReviewData(mockData);
+      await fetchReviewByWorkflow(targetWorkflowId);
     } catch (error) {
       console.error('Failed to fetch review data:', error);
     } finally {
@@ -84,20 +60,18 @@ Target audience: Online shoppers aged 25-55 who have made at least one purchase 
   };
 
   const handleApprove = async () => {
-    if (!reviewData) return;
+    if (!activeReview) return;
     
     setSubmitting(true);
     try {
-      // API call to approve the prompt
-      console.log('Approving prompt with notes:', reviewNotes);
+      const decision: ReviewDecision = {
+        decision: 'approve',
+        notes: reviewNotes,
+        reason: 'Prompt meets quality standards and methodology requirements'
+      };
       
-      setReviewData({
-        ...reviewData,
-        status: 'approved',
-        reviewer: 'Dr. Sarah Mitchell',
-        review_notes: reviewNotes,
-        reviewed_at: new Date().toISOString()
-      });
+      await submitReviewDecision(activeReview.id, decision);
+      setReviewNotes(''); // Clear notes after submission
     } catch (error) {
       console.error('Failed to approve prompt:', error);
     } finally {
@@ -106,20 +80,18 @@ Target audience: Online shoppers aged 25-55 who have made at least one purchase 
   };
 
   const handleReject = async () => {
-    if (!reviewData) return;
+    if (!activeReview) return;
     
     setSubmitting(true);
     try {
-      // API call to reject the prompt
-      console.log('Rejecting prompt with notes:', reviewNotes);
+      const decision: ReviewDecision = {
+        decision: 'reject',
+        notes: reviewNotes,
+        reason: 'Prompt requires revision to meet quality standards'
+      };
       
-      setReviewData({
-        ...reviewData,
-        status: 'rejected',
-        reviewer: 'Dr. Sarah Mitchell',
-        review_notes: reviewNotes,
-        reviewed_at: new Date().toISOString()
-      });
+      await submitReviewDecision(activeReview.id, decision);
+      setReviewNotes(''); // Clear notes after submission
     } catch (error) {
       console.error('Failed to reject prompt:', error);
     } finally {
@@ -160,7 +132,7 @@ Target audience: Online shoppers aged 25-55 who have made at least one purchase 
     );
   }
 
-  if (!reviewData) {
+  if (!activeReview) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
@@ -178,9 +150,9 @@ Target audience: Online shoppers aged 25-55 who have made at least one purchase 
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-2xl font-bold text-gray-900">System Prompt Review</h2>
-          <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(reviewData.status)}`}>
-            {getStatusIcon(reviewData.status)}
-            <span className="ml-2 capitalize">{reviewData.status.replace('_', ' ')}</span>
+          <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(activeReview.review_status)}`}>
+            {getStatusIcon(activeReview.review_status)}
+            <span className="ml-2 capitalize">{activeReview.review_status.replace('_', ' ')}</span>
           </div>
         </div>
         
@@ -188,12 +160,12 @@ Target audience: Online shoppers aged 25-55 who have made at least one purchase 
         <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
           <div className="flex items-center">
             <CalendarIcon className="w-4 h-4 mr-2" />
-            Generated: {new Date(reviewData.generated_at).toLocaleString()}
+            Generated: {new Date(activeReview.created_at).toLocaleString()}
           </div>
-          {reviewData.estimated_completion && (
+          {activeReview.review_deadline && (
             <div className="flex items-center">
               <ClockIcon className="w-4 h-4 mr-2" />
-              Est. Completion: {new Date(reviewData.estimated_completion).toLocaleString()}
+              Deadline: {new Date(activeReview.review_deadline).toLocaleString()}
             </div>
           )}
         </div>
@@ -205,7 +177,7 @@ Target audience: Online shoppers aged 25-55 who have made at least one purchase 
           <DocumentTextIcon className="w-5 h-5 mr-2" />
           Original Request Context
         </h3>
-        <p className="text-blue-800 text-sm leading-relaxed">{reviewData.rfq_content}</p>
+        <p className="text-blue-800 text-sm leading-relaxed">{activeReview.original_rfq}</p>
       </div>
 
       {/* Generated Prompt */}
@@ -226,7 +198,7 @@ Target audience: Online shoppers aged 25-55 who have made at least one purchase 
         </div>
         <div className="p-4">
           <div className={`text-gray-800 text-sm leading-relaxed whitespace-pre-wrap ${!showFullPrompt ? 'line-clamp-6' : ''}`}>
-            {showFullPrompt ? reviewData.prompt : reviewData.prompt.substring(0, 300) + '...'}
+            {showFullPrompt ? activeReview.prompt_data : activeReview.prompt_data.substring(0, 300) + '...'}
           </div>
         </div>
       </div>
@@ -256,7 +228,7 @@ Target audience: Online shoppers aged 25-55 who have made at least one purchase 
       </div>
 
       {/* Review Notes */}
-      {(reviewData.status === 'pending' || reviewData.status === 'in_review') && (
+      {(activeReview.review_status === 'pending' || activeReview.review_status === 'in_review') && (
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Review Notes (Optional)
@@ -272,23 +244,23 @@ Target audience: Online shoppers aged 25-55 who have made at least one purchase 
       )}
 
       {/* Existing Review (if completed) */}
-      {(reviewData.status === 'approved' || reviewData.status === 'rejected') && reviewData.reviewer && (
+      {(activeReview.review_status === 'approved' || activeReview.review_status === 'rejected') && activeReview.reviewer_id && (
         <div className="bg-gray-50 rounded-xl p-4">
           <div className="flex items-center mb-3">
             <UserIcon className="w-5 h-5 text-gray-600 mr-2" />
-            <span className="font-medium text-gray-900">Review by {reviewData.reviewer}</span>
+            <span className="font-medium text-gray-900">Review by {activeReview.reviewer_id}</span>
             <span className="text-gray-500 text-sm ml-2">
-              • {new Date(reviewData.reviewed_at!).toLocaleString()}
+              • {new Date(activeReview.updated_at).toLocaleString()}
             </span>
           </div>
-          {reviewData.review_notes && (
-            <p className="text-gray-700 text-sm leading-relaxed">{reviewData.review_notes}</p>
+          {activeReview.reviewer_notes && (
+            <p className="text-gray-700 text-sm leading-relaxed">{activeReview.reviewer_notes}</p>
           )}
         </div>
       )}
 
       {/* Action Buttons */}
-      {(reviewData.status === 'pending' || reviewData.status === 'in_review') && (
+      {(activeReview.review_status === 'pending' || activeReview.review_status === 'in_review') && (
         <div className="flex space-x-4 pt-4 border-t border-gray-200">
           <button
             onClick={handleReject}
@@ -310,7 +282,7 @@ Target audience: Online shoppers aged 25-55 who have made at least one purchase 
       )}
 
       {/* Success State */}
-      {reviewData.status === 'approved' && (
+      {activeReview.review_status === 'approved' && (
         <div className="bg-green-50 border border-green-200 rounded-xl p-4">
           <div className="flex items-center">
             <CheckCircleIcon className="w-6 h-6 text-green-600 mr-3" />
@@ -323,7 +295,7 @@ Target audience: Online shoppers aged 25-55 who have made at least one purchase 
       )}
 
       {/* Rejection State */}
-      {reviewData.status === 'rejected' && (
+      {activeReview.review_status === 'rejected' && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4">
           <div className="flex items-center">
             <XCircleIcon className="w-6 h-6 text-red-600 mr-3" />

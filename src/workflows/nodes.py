@@ -297,10 +297,214 @@ class GoldenValidatorNode:
             }
 
 
+class HumanPromptReviewNode:
+    def __init__(self, db: Session):
+        self.db = db
+        import logging
+        self.logger = logging.getLogger(__name__)
+
+    async def __call__(self, state: SurveyGenerationState) -> Dict[str, Any]:
+        """
+        Handle human prompt review workflow with robust error handling and resource management
+        """
+        # Set strict timeout for the entire operation
+        import asyncio
+        from contextlib import asynccontextmanager
+
+        async def _execute_with_timeout():
+            try:
+                # Import here to avoid circular imports
+                from src.services.prompt_service import PromptService
+                from src.database.models import HumanReview
+
+                self.logger.info("🔍 [HumanPromptReviewNode] Starting human prompt review...")
+
+                # Get settings from the settings API
+                enable_prompt_review = False
+                prompt_review_mode = 'disabled'
+
+                try:
+                    # Get settings from database
+                    from src.services.settings_service import SettingsService
+                    from src.database import get_db
+                    
+                    # Get a fresh database connection
+                    fresh_db = next(get_db())
+                    settings_service = SettingsService(fresh_db)
+                    settings = settings_service.get_evaluation_settings()
+                    
+                    enable_prompt_review = settings.get('enable_prompt_review', False)
+                    prompt_review_mode = settings.get('prompt_review_mode', 'disabled')
+                    self.logger.info(f"🔍 [HumanPromptReviewNode] Settings: enable={enable_prompt_review}, mode={prompt_review_mode}")
+                    
+                    # Close the database connection
+                    fresh_db.close()
+
+                except Exception as e:
+                    self.logger.warning(f"⚠️ [HumanPromptReviewNode] Settings fetch failed: {e}, using defaults")
+                    enable_prompt_review = False
+                    prompt_review_mode = 'disabled'
+
+                # Fast path: if human review is disabled, return immediately
+                if not enable_prompt_review or prompt_review_mode == 'disabled':
+                    self.logger.info("🔄 [HumanPromptReviewNode] Human review disabled, skipping...")
+                    return {
+                        "prompt_approved": True,
+                        "pending_human_review": False,
+                        "error_message": None
+                    }
+
+                # Human review is enabled - proceed with review logic
+                self.logger.info("🔍 [HumanPromptReviewNode] Human review enabled, creating review...")
+
+                # Generate the system prompt with timeout protection
+                try:
+                    prompt_service = PromptService()
+                    system_prompt = prompt_service.create_survey_generation_prompt(
+                        rfq_text=state.rfq_text,
+                        context=state.context or {},
+                        golden_examples=state.golden_examples or [],
+                        methodology_blocks=state.methodology_blocks or []
+                    )
+                except Exception as e:
+                    self.logger.error(f"❌ [HumanPromptReviewNode] Prompt generation failed: {e}")
+                    # Fail open - continue without review
+                    return {
+                        "prompt_approved": True,
+                        "pending_human_review": False,
+                        "error_message": f"Prompt generation failed: {str(e)}"
+                    }
+
+                # Check existing reviews with fresh DB connection
+                review_db = None
+                try:
+                    review_db = next(get_db())
+                    existing_review = review_db.query(HumanReview).filter(
+                        HumanReview.workflow_id == state.workflow_id
+                    ).first()
+
+                    if existing_review:
+                        self.logger.info(f"📋 [HumanPromptReviewNode] Found existing review: {existing_review.review_status}")
+
+                        if existing_review.review_status == 'approved':
+                            return {
+                                "prompt_approved": True,
+                                "pending_human_review": False,
+                                "review_id": existing_review.id,
+                                "error_message": None
+                            }
+                        elif existing_review.review_status == 'rejected':
+                            return {
+                                "prompt_approved": False,
+                                "pending_human_review": False,
+                                "review_id": existing_review.id,
+                                "error_message": "System prompt was rejected by human reviewer"
+                            }
+                        elif existing_review.review_status in ['pending', 'in_review']:
+                            if prompt_review_mode == 'blocking':
+                                return {
+                                    "prompt_approved": False,
+                                    "pending_human_review": True,
+                                    "review_id": existing_review.id,
+                                    "workflow_paused": True,
+                                    "error_message": None
+                                }
+                            else:
+                                return {
+                                    "prompt_approved": True,
+                                    "pending_human_review": False,
+                                    "review_id": existing_review.id,
+                                    "error_message": None
+                                }
+
+                    # Create new review with proper transaction management
+                    review = HumanReview(
+                        workflow_id=state.workflow_id,
+                        survey_id=str(state.survey_id) if state.survey_id else None,
+                        prompt_data=system_prompt[:10000],  # Truncate to avoid memory issues
+                        original_rfq=state.rfq_text[:5000] if state.rfq_text else "",  # Truncate
+                        review_status='pending'
+                    )
+
+                    review_db.add(review)
+                    review_db.commit()
+                    review_db.refresh(review)
+
+                    self.logger.info(f"✅ [HumanPromptReviewNode] Review created with ID: {review.id}")
+
+                    # Return based on review mode
+                    if prompt_review_mode == 'blocking':
+                        return {
+                            "prompt_approved": False,
+                            "pending_human_review": True,
+                            "review_id": review.id,
+                            "workflow_paused": True,
+                            "error_message": None
+                        }
+                    else:
+                        return {
+                            "prompt_approved": True,
+                            "pending_human_review": False,
+                            "review_id": review.id,
+                            "error_message": None
+                        }
+
+                except Exception as e:
+                    self.logger.error(f"❌ [HumanPromptReviewNode] Review creation failed: {e}")
+                    # Always rollback on error
+                    if review_db:
+                        try:
+                            review_db.rollback()
+                        except:
+                            pass
+                    # Fail open
+                    return {
+                        "prompt_approved": True,
+                        "pending_human_review": False,
+                        "error_message": f"Review creation failed: {str(e)}"
+                    }
+                finally:
+                    # Always clean up
+                    if review_db:
+                        try:
+                            review_db.close()
+                        except Exception as e:
+                            self.logger.warning(f"⚠️ [HumanPromptReviewNode] Failed to close review DB: {e}")
+
+            except Exception as e:
+                self.logger.error(f"❌ [HumanPromptReviewNode] Unexpected error: {str(e)}", exc_info=True)
+                # Always fail open to prevent blocking
+                return {
+                    "prompt_approved": True,
+                    "pending_human_review": False,
+                    "error_message": f"Unexpected error: {str(e)}"
+                }
+
+        # Execute with strict timeout
+        try:
+            return await asyncio.wait_for(_execute_with_timeout(), timeout=10.0)
+        except asyncio.TimeoutError:
+            self.logger.error("❌ [HumanPromptReviewNode] Operation timed out after 10 seconds")
+            # Fail open on timeout
+            return {
+                "prompt_approved": True,
+                "pending_human_review": False,
+                "error_message": "Human review node timed out"
+            }
+        except Exception as e:
+            self.logger.error(f"❌ [HumanPromptReviewNode] Critical error: {str(e)}", exc_info=True)
+            # Always fail open
+            return {
+                "prompt_approved": True,
+                "pending_human_review": False,
+                "error_message": f"Critical error: {str(e)}"
+            }
+
+
 class ResearcherNode:
     def __init__(self, db: Session):
         self.db = db
-    
+
     async def __call__(self, state: SurveyGenerationState) -> Dict[str, Any]:
         """
         Human review interface with golden benchmarks displayed
@@ -308,7 +512,7 @@ class ResearcherNode:
         try:
             # TODO: Implement human review interface
             # For now, just mark as ready for human review
-            
+
             review_data = {
                 "survey": state.generated_survey,
                 "validation_results": state.validation_results,
@@ -316,12 +520,12 @@ class ResearcherNode:
                 "golden_benchmarks": state.golden_examples,
                 "status": "ready_for_review"
             }
-            
+
             return {
                 "review_data": review_data,
                 "error_message": None
             }
-            
+
         except Exception as e:
             return {
                 "error_message": f"Human review setup failed: {str(e)}"

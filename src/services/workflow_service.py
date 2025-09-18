@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from src.database import RFQ, Survey
-from src.workflows import create_workflow, SurveyGenerationState
+from src.workflows.state import SurveyGenerationState
+from src.workflows.workflow import create_workflow
 from src.services.embedding_service import EmbeddingService
 from src.services.websocket_client import WebSocketNotificationService
 from src.config import settings
@@ -8,8 +9,41 @@ from typing import Optional
 from uuid import uuid4
 from pydantic import BaseModel
 import logging
+import asyncio
+import time
+from contextlib import asynccontextmanager
 
 logger = logging.getLogger(__name__)
+
+
+class CircuitBreaker:
+    """Simple circuit breaker to prevent cascading failures"""
+    def __init__(self, failure_threshold=5, timeout=60):
+        self.failure_threshold = failure_threshold
+        self.timeout = timeout
+        self.failure_count = 0
+        self.last_failure_time = None
+        self.state = 'closed'  # closed, open, half-open
+
+    def call(self, func, *args, **kwargs):
+        if self.state == 'open':
+            if time.time() - self.last_failure_time > self.timeout:
+                self.state = 'half-open'
+            else:
+                raise Exception("Circuit breaker is open")
+
+        try:
+            result = func(*args, **kwargs)
+            if self.state == 'half-open':
+                self.state = 'closed'
+                self.failure_count = 0
+            return result
+        except Exception as e:
+            self.failure_count += 1
+            self.last_failure_time = time.time()
+            if self.failure_count >= self.failure_threshold:
+                self.state = 'open'
+            raise
 
 
 class WorkflowResult(BaseModel):
@@ -25,19 +59,31 @@ class WorkflowService:
         try:
             self.db = db
             logger.info("🔧 [WorkflowService] Database session assigned successfully")
-            
+
+            # Initialize circuit breaker for workflow execution
+            self.circuit_breaker = CircuitBreaker(failure_threshold=3, timeout=30)
+            logger.info("🔧 [WorkflowService] Circuit breaker initialized")
+
+            # Track active workflows to prevent resource exhaustion
+            self.active_workflows = set()
+            self.max_concurrent_workflows = 10
+
             logger.info("🔧 [WorkflowService] Creating embedding service")
             self.embedding_service = EmbeddingService()
             logger.info("✅ [WorkflowService] EmbeddingService created successfully")
-            
+
             logger.info("🔧 [WorkflowService] Creating WebSocket notification service")
             self.ws_client = WebSocketNotificationService(connection_manager)
             logger.info("✅ [WorkflowService] WebSocketNotificationService created successfully")
-            
+
             logger.info("🔧 [WorkflowService] Creating LangGraph workflow")
-            self.workflow = create_workflow(db, connection_manager)
-            logger.info("✅ [WorkflowService] LangGraph workflow created successfully")
-            
+            try:
+                self.workflow = create_workflow(db, connection_manager)
+                logger.info("✅ [WorkflowService] LangGraph workflow created successfully")
+            except Exception as workflow_error:
+                logger.error(f"❌ [WorkflowService] Failed to create workflow: {str(workflow_error)}", exc_info=True)
+                raise Exception(f"Workflow creation failed: {str(workflow_error)}")
+
             logger.info("✅ [WorkflowService] Workflow service initialized successfully")
         except Exception as e:
             logger.error(f"❌ [WorkflowService] Failed to initialize workflow service: {str(e)}", exc_info=True)
@@ -72,6 +118,24 @@ class WorkflowService:
                     logger.error(f"❌ [WorkflowService] Failed to create new DB session: {str(new_session_error)}")
                     return False
     
+    @asynccontextmanager
+    async def _workflow_isolation(self, workflow_id: str):
+        """Context manager for isolated workflow execution with resource limits"""
+        # Check if we're at max capacity
+        if len(self.active_workflows) >= self.max_concurrent_workflows:
+            raise Exception(f"Maximum concurrent workflows ({self.max_concurrent_workflows}) reached")
+
+        # Add to active workflows
+        self.active_workflows.add(workflow_id)
+        logger.info(f"🔄 [WorkflowService] Workflow {workflow_id} started. Active: {len(self.active_workflows)}")
+
+        try:
+            yield
+        finally:
+            # Always remove from active workflows
+            self.active_workflows.discard(workflow_id)
+            logger.info(f"🔄 [WorkflowService] Workflow {workflow_id} finished. Active: {len(self.active_workflows)}")
+
     async def process_rfq(
         self,
         title: Optional[str],
@@ -83,20 +147,71 @@ class WorkflowService:
         survey_id: Optional[str] = None
     ) -> WorkflowResult:
         """
-        Process RFQ through the complete LangGraph workflow
+        Process RFQ through the complete LangGraph workflow with robust isolation
         """
+        if not workflow_id:
+            workflow_id = f"workflow-{uuid4()}"
+
         logger.info(f"📝 [WorkflowService] Starting RFQ processing: title='{title}', description_length={len(description)}")
-        
+
+        # Use workflow isolation with timeout
+        async with self._workflow_isolation(workflow_id):
+            try:
+                # Set overall timeout for workflow processing
+                return await asyncio.wait_for(
+                    self._execute_workflow_with_circuit_breaker(
+                        title, description, product_category, target_segment,
+                        research_goal, workflow_id, survey_id
+                    ),
+                    timeout=600.0  # 10 minute timeout
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"❌ [WorkflowService] Workflow {workflow_id} timed out after 10 minutes")
+                # Send failure notification
+                try:
+                    await self.ws_client.send_progress_update(workflow_id, {
+                        "type": "error",
+                        "message": "Workflow timed out after 10 minutes",
+                        "error": "timeout"
+                    })
+                except Exception:
+                    pass
+                raise Exception("Workflow execution timed out")
+            except Exception as e:
+                logger.error(f"❌ [WorkflowService] Workflow {workflow_id} failed: {str(e)}")
+                # Send failure notification
+                try:
+                    await self.ws_client.send_progress_update(workflow_id, {
+                        "type": "error",
+                        "message": f"Workflow failed: {str(e)}",
+                        "error": "execution_failed"
+                    })
+                except Exception:
+                    pass
+                raise
+
+    async def _execute_workflow_with_circuit_breaker(
+        self,
+        title: Optional[str],
+        description: str,
+        product_category: Optional[str],
+        target_segment: Optional[str],
+        research_goal: Optional[str],
+        workflow_id: str,
+        survey_id: Optional[str]
+    ) -> WorkflowResult:
+        """Execute workflow with circuit breaker protection"""
+
         # Get existing survey record (created by RFQ API)
         if not survey_id:
             raise Exception("Survey ID is required for workflow processing")
-            
+
         logger.info(f"🔍 [WorkflowService] Looking up existing survey: {survey_id}")
         try:
             survey = self.db.query(Survey).filter(Survey.id == survey_id).first()
             if not survey:
                 raise Exception(f"Survey not found with ID: {survey_id}")
-            
+
             # Get the associated RFQ
             rfq = self.db.query(RFQ).filter(RFQ.id == survey.rfq_id).first()
             if not rfq:
@@ -129,6 +244,10 @@ class WorkflowService:
         logger.info(f"📋 [WorkflowService] Workflow state initialized: workflow_id={initial_state.workflow_id}, survey_id={initial_state.survey_id}")
         
         try:
+            # Check if workflow is properly initialized
+            if not hasattr(self, 'workflow') or self.workflow is None:
+                raise Exception("Workflow not properly initialized - missing workflow attribute")
+            
             # Send initial progress update
             logger.info("📡 [WorkflowService] Sending initial progress update via WebSocket")
             try:
@@ -220,20 +339,28 @@ class WorkflowService:
                 status=survey.status
             )
             
-            # Send 100% completion progress update
-            await self.ws_client.send_progress_update(initial_state.workflow_id, {
-                "type": "progress",
-                "step": "completed",
-                "percent": 100,
-                "message": "Survey generation completed successfully!"
-            })
+            # Check if workflow is paused for human review
+            is_paused_for_review = final_state.get("pending_human_review", False) or final_state.get("workflow_paused", False)
             
-            # Send completion notification
-            await self.ws_client.notify_workflow_completion(
-                initial_state.workflow_id,
-                str(survey.id),
-                survey.status
-            )
+            if is_paused_for_review:
+                logger.info(f"⏸️ [WorkflowService] Workflow paused for human review - not sending completion message")
+                logger.info(f"📊 [WorkflowService] Pending human review: {final_state.get('pending_human_review', False)}")
+                logger.info(f"📊 [WorkflowService] Workflow paused: {final_state.get('workflow_paused', False)}")
+            else:
+                # Send 100% completion progress update
+                await self.ws_client.send_progress_update(initial_state.workflow_id, {
+                    "type": "progress",
+                    "step": "completed",
+                    "percent": 100,
+                    "message": "Survey generation completed successfully!"
+                })
+                
+                # Send completion notification
+                await self.ws_client.notify_workflow_completion(
+                    initial_state.workflow_id,
+                    str(survey.id),
+                    survey.status
+                )
             
             logger.info(f"🎉 [WorkflowService] Workflow processing completed successfully: {result.model_dump()}")
             return result

@@ -235,3 +235,51 @@ class SystemPromptAudit(Base):
         Index('idx_system_prompt_audit_created_at', 'created_at'),
         Index('idx_system_prompt_audit_prompt_type', 'prompt_type'),
     )
+
+
+class HumanReview(Base):
+    """Model for storing human review state for prompt reviews"""
+    __tablename__ = "human_reviews"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    workflow_id = Column(String(255), nullable=False, unique=True)
+    survey_id = Column(String(255), nullable=True)
+    review_status = Column(String(50), nullable=False, default='pending')
+    prompt_data = Column(Text, nullable=False)
+    original_rfq = Column(Text, nullable=False)
+    reviewer_id = Column(String(255), nullable=True)
+    review_deadline = Column(DateTime(timezone=True), nullable=True)
+    reviewer_notes = Column(Text, nullable=True)
+    approval_reason = Column(Text, nullable=True)
+    rejection_reason = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # Indexes for efficient querying
+    __table_args__ = (
+        Index('idx_human_reviews_workflow_id', 'workflow_id'),
+        Index('idx_human_reviews_status', 'review_status'),
+        Index('idx_human_reviews_reviewer_id', 'reviewer_id'),
+        Index('idx_human_reviews_created_at', 'created_at'),
+        CheckConstraint(
+            "review_status IN ('pending', 'in_progress', 'approved', 'rejected', 'expired')",
+            name='check_review_status'
+        ),
+    )
+
+class Settings(Base):
+    """Settings table for storing application configuration"""
+    __tablename__ = "settings"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    setting_key = Column(String(100), unique=True, nullable=False, index=True)
+    setting_value = Column(JSONB, nullable=False)
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+    
+    __table_args__ = (
+        Index('idx_settings_key', 'setting_key'),
+        Index('idx_settings_active', 'is_active'),
+    )

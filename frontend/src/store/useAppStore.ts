@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { AppStore, RFQRequest, WorkflowState, ProgressMessage, GoldenExampleRequest, ToastMessage, SurveyAnnotations, getQuestionCount } from '../types';
+import { AppStore, RFQRequest, WorkflowState, ProgressMessage, GoldenExampleRequest, ToastMessage, SurveyAnnotations, getQuestionCount, PendingReview, ReviewDecision } from '../types';
 import { apiService } from '../services/api';
 
 // Utility function to generate unique IDs
@@ -64,6 +64,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
   removeToast: (id) => set((state) => ({
     toasts: state.toasts.filter(toast => toast.id !== id)
   })),
+
+  // Human Review State
+  pendingReviews: [],
+  activeReview: undefined,
+  setPendingReviews: (reviews) => set({ pendingReviews: reviews }),
+  setActiveReview: (review) => set({ activeReview: review }),
 
   // WebSocket connection  
   websocket: undefined as WebSocket | undefined,
@@ -182,15 +188,77 @@ export const useAppStore = create<AppStore>((set, get) => ({
             percent: message.percent,
             message: message.message
           });
-          set((state) => ({
-            workflow: {
-              ...state.workflow,
+
+          // Check if this is actually a completion message disguised as progress
+          if (message.step === 'completed' && message.percent === 100) {
+            console.log('🎉 [WebSocket] Progress completion detected, updating workflow status to completed');
+
+            set((state) => ({
+              workflow: {
+                ...state.workflow,
+                status: 'completed',
+                current_step: message.step,
+                progress: message.percent,
+                message: message.message
+              }
+            }));
+
+            // Show success toast for progress-based completion
+            get().addToast({
+              type: 'success',
+              title: '🎉 Survey Complete!',
+              message: 'Your professional survey is ready to collect insights!',
+              duration: 8000
+            });
+
+            console.log('✅ [Frontend] Workflow marked as completed via progress message');
+          } else {
+            // Normal progress update
+            const newWorkflowState = {
               current_step: message.step,
               progress: message.percent,
               message: message.message
+            };
+            set((state) => ({
+              workflow: {
+                ...state.workflow,
+                ...newWorkflowState
+              }
+            }));
+          }
+
+          // Persist workflow state for recovery
+          const currentState = get().workflow;
+          if (currentState.workflow_id) {
+            get().persistWorkflowState(currentState.workflow_id, currentState);
+          }
+
+          console.log('✅ [Frontend] Progress state updated');
+        } else if (message.type === 'human_review_required') {
+          console.log('🛑 [WebSocket] Human review required:', message);
+          
+          // Update workflow state to show human review is needed
+          set((state) => ({
+            workflow: {
+              ...state.workflow,
+              status: 'paused',
+              current_step: message.step,
+              progress: message.percent,
+              message: message.message,
+              workflow_paused: message.workflow_paused || true,
+              review_id: message.review_id
             }
           }));
-          console.log('✅ [Frontend] Progress state updated');
+          
+          // Show notification that human review is needed
+          get().addToast({
+            type: 'warning',
+            title: '🛑 Human Review Required',
+            message: 'Please review the AI-generated prompt before survey generation continues.',
+            duration: 10000
+          });
+          
+          console.log('✅ [Frontend] Human review state updated');
         } else if (message.type === 'completed') {
           console.log('🎉 [WebSocket] Workflow completed:', message);
           
@@ -650,6 +718,215 @@ export const useAppStore = create<AppStore>((set, get) => ({
         message: 'Failed to load annotations.',
         duration: 5000
       });
+    }
+  },
+
+  // Human Review Actions
+  checkPendingReviews: async () => {
+    try {
+      const response = await fetch('/api/v1/reviews/pending');
+      if (!response.ok) throw new Error('Failed to fetch pending reviews');
+      
+      const data = await response.json();
+      get().setPendingReviews(data.reviews);
+      
+      return data;
+    } catch (error) {
+      console.error('Failed to check pending reviews:', error);
+      get().addToast({
+        type: 'error',
+        title: 'Review Error',
+        message: 'Failed to check for pending reviews',
+        duration: 5000
+      });
+    }
+  },
+
+  fetchReviewByWorkflow: async (workflowId: string): Promise<PendingReview | null> => {
+    try {
+      const response = await fetch(`/api/v1/reviews/workflow/${workflowId}`);
+      if (response.status === 404) {
+        return null; // No review found
+      }
+      if (!response.ok) throw new Error('Failed to fetch review');
+      
+      const review = await response.json();
+      return review;
+    } catch (error) {
+      console.error('Failed to fetch review by workflow:', error);
+      return null;
+    }
+  },
+
+  submitReviewDecision: async (reviewId: number, decision: ReviewDecision) => {
+    try {
+      const response = await fetch(`/api/v1/reviews/${reviewId}/decision`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(decision)
+      });
+      
+      if (!response.ok) throw new Error('Failed to submit review decision');
+      
+      const result = await response.json();
+      
+      // Show success toast
+      get().addToast({
+        type: 'success',
+        title: `Review ${decision.decision}d`,
+        message: result.message,
+        duration: 4000
+      });
+      
+      // Update local state
+      get().setActiveReview(undefined);
+      get().checkPendingReviews(); // Refresh pending reviews
+      
+      return result;
+    } catch (error) {
+      console.error('Failed to submit review decision:', error);
+      get().addToast({
+        type: 'error',
+        title: 'Review Error',
+        message: 'Failed to submit review decision. Please try again.',
+        duration: 5000
+      });
+      throw error;
+    }
+  },
+
+  resumeReview: async (reviewId: number) => {
+    try {
+      // Update review status to in_progress
+      const response = await fetch(`/api/v1/reviews/${reviewId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ review_status: 'in_progress' })
+      });
+      
+      if (!response.ok) throw new Error('Failed to resume review');
+      
+      const review = await response.json();
+      get().setActiveReview(review);
+      
+      // Navigate to review interface
+      window.history.pushState({}, '', `/review/${reviewId}`);
+      
+    } catch (error) {
+      console.error('Failed to resume review:', error);
+      get().addToast({
+        type: 'error',
+        title: 'Resume Error',
+        message: 'Failed to resume review. Please try again.',
+        duration: 5000
+      });
+    }
+  },
+
+  persistWorkflowState: (workflowId: string, state: any) => {
+    // Persist critical workflow state to localStorage for recovery
+    const persistState = {
+      workflow_id: workflowId,
+      survey_id: state.survey_id,
+      status: state.status,
+      current_step: state.current_step,
+      progress: state.progress,
+      timestamp: Date.now()
+    };
+    
+    try {
+      localStorage.setItem('survey_workflow_state', JSON.stringify(persistState));
+      console.log('💾 [Store] Workflow state persisted to localStorage');
+    } catch (error) {
+      console.error('Failed to persist workflow state:', error);
+    }
+  },
+
+  resetWorkflow: () => {
+    console.log('🔄 [Store] Resetting workflow to idle state');
+
+    // Clear workflow state
+    set((state) => ({
+      workflow: { status: 'idle' },
+      currentSurvey: undefined,
+      rfqInput: {
+        title: '',
+        description: '',
+        product_category: '',
+        target_segment: '',
+        research_goal: ''
+      }
+    }));
+
+    // Clear persisted state
+    localStorage.removeItem('survey_workflow_state');
+
+    // Disconnect any active WebSocket
+    get().disconnectWebSocket();
+
+    console.log('✅ [Store] Workflow reset completed');
+  },
+
+  recoverWorkflowState: async () => {
+    try {
+      // Check localStorage for interrupted workflows
+      const persistedState = localStorage.getItem('survey_workflow_state');
+      if (persistedState) {
+        const state = JSON.parse(persistedState);
+        const hoursSinceUpdate = (Date.now() - state.timestamp) / (1000 * 60 * 60);
+
+        // Only recover if less than 24 hours old
+        if (hoursSinceUpdate < 24) {
+          console.log('🔄 [Store] Recovering workflow state:', state);
+
+          // Check if there's a pending review for this workflow
+          try {
+            const review = await get().fetchReviewByWorkflow(state.workflow_id);
+            if (review && review.review_status === 'pending') {
+              get().setActiveReview(review);
+
+              // Show recovery notification
+              get().addToast({
+                type: 'info',
+                title: '⏳ Review Found',
+                message: 'You have a pending survey prompt review. Click to resume.',
+                duration: 8000
+              });
+            }
+          } catch (reviewError) {
+            console.log('🔍 [Store] No pending review found for workflow:', state.workflow_id);
+          }
+
+          // Only restore workflow state if it's not completed or if we're on a page that should show it
+          const currentPath = window.location.pathname;
+          const shouldRestoreWorkflow = 
+            state.status === 'in_progress' || 
+            state.status === 'started' ||
+            (state.status === 'completed' && (currentPath === '/' || currentPath.startsWith('/summary/')));
+
+          if (shouldRestoreWorkflow) {
+            get().setWorkflowState(state);
+
+            // Try to reconnect WebSocket if workflow was in progress
+            if (state.status === 'in_progress' && state.workflow_id) {
+              get().connectWebSocket(state.workflow_id);
+            }
+          } else {
+            // Clean up completed workflows that shouldn't be restored
+            console.log('🧹 [Store] Cleaning up completed workflow state for non-generator page');
+            localStorage.removeItem('survey_workflow_state');
+          }
+        } else {
+          // Clean up old state
+          localStorage.removeItem('survey_workflow_state');
+        }
+      }
+
+      // Check for pending reviews
+      await get().checkPendingReviews();
+
+    } catch (error) {
+      console.error('Failed to recover workflow state:', error);
     }
   }
 }));
