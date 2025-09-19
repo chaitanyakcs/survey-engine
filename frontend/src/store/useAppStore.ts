@@ -1115,20 +1115,76 @@ export const useAppStore = create<AppStore>((set, get) => ({
   // Enhanced RFQ Actions
   submitEnhancedRFQ: async (rfq: EnhancedRFQRequest) => {
     try {
-      // Convert enhanced RFQ to legacy format for backend compatibility
-      const legacyRfq: RFQRequest = {
+      // Import the enhanced text converter
+      const { createEnhancedDescription } = await import('../utils/enhancedRfqConverter');
+
+      // Create enriched description that combines original text with structured data
+      const enhancedDescription = createEnhancedDescription(rfq);
+
+      // Convert enhanced RFQ to format that includes both enriched text and structured data
+      const enhancedRfqPayload = {
         title: rfq.title,
-        description: rfq.description,
+        description: enhancedDescription, // 🎯 Key change: Use enriched description instead of basic description
         product_category: rfq.product_category,
         target_segment: rfq.target_audience?.primary_segment || rfq.target_segment,
-        research_goal: rfq.research_goal
+        research_goal: rfq.research_goal,
+        enhanced_rfq_data: rfq // 🎯 Send the full structured data for storage and analytics
       };
 
-      // Use existing submitRFQ logic
-      await get().submitRFQ(legacyRfq);
+      console.log('🚀 [Enhanced RFQ] Submitting with enriched description and structured data:', {
+        originalLength: rfq.description?.length || 0,
+        enhancedLength: enhancedDescription.length,
+        hasObjectives: (rfq.objectives?.length || 0) > 0,
+        hasConstraints: (rfq.constraints?.length || 0) > 0,
+        hasStakeholders: (rfq.stakeholders?.length || 0) > 0,
+        structuredDataSize: JSON.stringify(rfq).length
+      });
 
-      // Store enhanced RFQ data for future reference
-      localStorage.setItem('enhanced_rfq_data', JSON.stringify(rfq));
+      // Send enhanced payload directly to API to bypass legacy submitRFQ conversion
+      const response = await fetch('/api/v1/rfq/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(enhancedRfqPayload),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to submit enhanced RFQ: ${response.statusText}`);
+      }
+
+      const responseData = await response.json();
+
+      // Update workflow state with response
+      set((state) => ({
+        workflow: {
+          ...state.workflow,
+          workflow_id: responseData.workflow_id,
+          survey_id: responseData.survey_id,
+          status: 'in_progress',
+          progress: 5,
+          current_step: 'initializing_workflow',
+          message: 'Starting enhanced survey generation workflow...'
+        }
+      }));
+
+      // Show info toast that enhanced generation has started
+      get().addToast({
+        type: 'info',
+        title: 'Enhanced Survey Generation Started',
+        message: 'Your enhanced survey is being generated with your objectives, constraints, and stakeholder requirements!',
+        duration: 5000
+      });
+
+      // Connect to WebSocket for progress updates
+      get().connectWebSocket(responseData.workflow_id);
+
+      // Store enhanced RFQ data for future reference and analytics
+      localStorage.setItem('enhanced_rfq_data', JSON.stringify({
+        ...rfq,
+        enhanced_description: enhancedDescription,
+        submission_timestamp: new Date().toISOString()
+      }));
 
     } catch (error) {
       console.error('Failed to submit enhanced RFQ:', error);

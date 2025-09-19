@@ -18,6 +18,7 @@ class RFQSubmissionRequest(BaseModel):
     product_category: Optional[str] = None
     target_segment: Optional[str] = None
     research_goal: Optional[str] = None
+    enhanced_rfq_data: Optional[dict] = None  # Optional structured Enhanced RFQ data
 
 
 class RFQSubmissionResponse(BaseModel):
@@ -46,12 +47,19 @@ async def submit_rfq(
         
         # Create RFQ record
         logger.info("💾 [RFQ API] Creating RFQ database record")
+
+        # Check if this is an enhanced RFQ submission
+        is_enhanced_rfq = request.enhanced_rfq_data is not None
+        if is_enhanced_rfq:
+            logger.info(f"🎯 [RFQ API] Enhanced RFQ detected with structured data: objectives={len(request.enhanced_rfq_data.get('objectives', []))}, constraints={len(request.enhanced_rfq_data.get('constraints', []))}")
+
         rfq = RFQ(
             title=request.title,
             description=request.description,
             product_category=request.product_category,
             target_segment=request.target_segment,
-            research_goal=request.research_goal
+            research_goal=request.research_goal,
+            enhanced_rfq_data=request.enhanced_rfq_data  # Store structured data for analytics
         )
         db.add(rfq)
         db.commit()

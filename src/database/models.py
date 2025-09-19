@@ -36,6 +36,7 @@ class RFQ(Base):
     target_segment = Column(Text)
     research_goal = Column(Text)
     embedding = Column(Vector(384))
+    enhanced_rfq_data = Column(JSONB)  # Store structured Enhanced RFQ data for analytics and future features
     created_at = Column(DateTime, default=func.now())
 
     surveys = relationship("Survey", back_populates="rfq")
