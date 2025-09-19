@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import { AppStore, RFQRequest, WorkflowState, ProgressMessage, GoldenExampleRequest, ToastMessage, SurveyAnnotations, getQuestionCount, PendingReview, ReviewDecision } from '../types';
+import { AppStore, RFQRequest, EnhancedRFQRequest, RFQTemplate, RFQQualityAssessment, WorkflowState, ProgressMessage, GoldenExampleRequest, ToastMessage, SurveyAnnotations, getQuestionCount, PendingReview, ReviewDecision } from '../types';
 import { apiService } from '../services/api';
+import { rfqTemplateService } from '../services/RFQTemplateService';
 
 // Utility function to generate unique IDs
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -14,10 +15,72 @@ export const useAppStore = create<AppStore>((set, get) => ({
     target_segment: '',
     research_goal: ''
   },
-  
+
   setRFQInput: (input) => set((state) => ({
     rfqInput: { ...state.rfqInput, ...input }
   })),
+
+  // Enhanced RFQ State
+  enhancedRfq: {
+    title: '',
+    description: '',
+    objectives: [],
+    constraints: [],
+    stakeholders: [],
+    success_metrics: [],
+    generation_config: {
+      creativity_level: 'balanced',
+      length_preference: 'standard',
+      complexity_level: 'intermediate',
+      include_validation_questions: true,
+      enable_adaptive_routing: false
+    }
+  },
+
+  setEnhancedRfq: (input) => set((state) => {
+    // Use spread operator to create completely new object without mutations
+    return {
+      enhancedRfq: {
+        ...state.enhancedRfq,
+        ...input,
+        // Handle nested objects specifically to prevent mutations
+        ...(input.context && {
+          context: {
+            ...state.enhancedRfq.context,
+            ...input.context
+          }
+        }),
+        ...(input.target_audience && {
+          target_audience: {
+            ...state.enhancedRfq.target_audience,
+            ...input.target_audience
+          }
+        }),
+        ...(input.methodologies && {
+          methodologies: {
+            ...state.enhancedRfq.methodologies,
+            ...input.methodologies
+          }
+        }),
+        ...(input.generation_config && {
+          generation_config: {
+            ...state.enhancedRfq.generation_config,
+            ...input.generation_config
+          }
+        })
+      }
+    };
+  }),
+
+  // RFQ Templates State
+  rfqTemplates: [],
+  setRfqTemplates: (templates) => set({ rfqTemplates: templates }),
+  selectedTemplate: undefined,
+  setSelectedTemplate: (template) => set({ selectedTemplate: template }),
+
+  // RFQ Quality Assessment State
+  rfqAssessment: undefined,
+  setRfqAssessment: (assessment) => set({ rfqAssessment: assessment }),
 
   // Workflow State
   workflow: {
@@ -53,6 +116,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
   // Toast State
   toasts: [],
   addToast: (toast) => {
+    // Check for existing toasts with the same title and type to prevent duplicates
+    const existingToast = get().toasts.find(t => 
+      t.title === toast.title && 
+      t.type === toast.type && 
+      t.message === toast.message
+    );
+    
+    if (existingToast) {
+      console.log('🔄 [Store] Toast already exists, skipping duplicate:', toast.title);
+      return;
+    }
+    
     const newToast: ToastMessage = {
       ...toast,
       id: generateId()
@@ -78,19 +153,42 @@ export const useAppStore = create<AppStore>((set, get) => ({
   // Actions
   submitRFQ: async (rfq: RFQRequest) => {
     try {
-      // Clear any existing survey data when starting new RFQ
-      set({ currentSurvey: undefined });
-      
+      // Prevent multiple simultaneous workflows
+      const currentWorkflow = get().workflow;
+      if (currentWorkflow.status === 'started' || currentWorkflow.status === 'in_progress') {
+        console.warn('⚠️ [Store] Workflow already in progress, ignoring duplicate submission');
+        get().addToast({
+          type: 'warning',
+          title: 'Generation in Progress',
+          message: 'A survey is already being generated. Please wait for it to complete.',
+          duration: 5000
+        });
+        return;
+      }
+
+      // Clear any existing survey data and stale workflow state
+      set({
+        currentSurvey: undefined,
+        workflow: {
+          status: 'idle'
+        }
+      });
+
+      // Clear any persisted workflow state to prevent conflicts
+      localStorage.removeItem('survey_workflow_state');
+
       // Set initial progress state
       set((state) => ({
-        workflow: { 
-          ...state.workflow, 
+        workflow: {
+          ...state.workflow,
           status: 'started',
           progress: 0,
           current_step: 'initializing',
           message: 'Submitting request and preparing workflow...'
         }
       }));
+
+      console.log('🚀 [Store] Starting new workflow submission');
 
       const response = await apiService.submitRFQ(rfq);
       
@@ -181,6 +279,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
       ws.onmessage = (event) => {
         const message: ProgressMessage = JSON.parse(event.data);
         console.log('🔔 [Frontend] WebSocket message received:', message);
+        console.log('🔍 [Frontend] Message type:', message.type);
+        console.log('🔍 [Frontend] Message step:', message.step);
+        console.log('🔍 [Frontend] Message percent:', message.percent);
+        console.log('🔍 [Frontend] Message workflow_paused:', message.workflow_paused);
+        console.log('🔍 [Frontend] Message pending_human_review:', message.pending_human_review);
         
         if (message.type === 'progress') {
           console.log('📊 [Frontend] Progress update received:', {
@@ -202,6 +305,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
                 message: message.message
               }
             }));
+
+            // Clear persisted workflow state since completion is successful
+            localStorage.removeItem('survey_workflow_state');
 
             // Show success toast for progress-based completion
             get().addToast({
@@ -237,6 +343,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
         } else if (message.type === 'human_review_required') {
           console.log('🛑 [WebSocket] Human review required:', message);
           
+          // Check if we already have a human review in progress to prevent duplicates
+          const currentState = get();
+          if (currentState.workflow.status === 'paused' && currentState.workflow.pending_human_review) {
+            console.log('🔄 [Frontend] Human review already in progress, skipping duplicate message');
+            return;
+          }
+          
+          console.log('🔍 [Frontend] Setting workflow status to paused');
+
           // Update workflow state to show human review is needed
           set((state) => ({
             workflow: {
@@ -246,11 +361,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
               progress: message.percent,
               message: message.message,
               workflow_paused: message.workflow_paused || true,
-              review_id: message.review_id
+              pending_human_review: true,
+              review_id: message.review_id,
+              system_prompt: message.system_prompt,
+              prompt_approved: false
             }
           }));
           
-          // Show notification that human review is needed
+          // Show notification that human review is needed (only once)
           get().addToast({
             type: 'warning',
             title: '🛑 Human Review Required',
@@ -259,6 +377,25 @@ export const useAppStore = create<AppStore>((set, get) => ({
           });
           
           console.log('✅ [Frontend] Human review state updated');
+          console.log('🔍 [Frontend] Current workflow state after update:', get().workflow);
+        } else if (message.type === 'workflow_resuming') {
+          console.log('🔄 [WebSocket] Workflow resuming:', message);
+          
+          // Update workflow state to show it's resuming
+          set((state) => ({
+            workflow: {
+              ...state.workflow,
+              status: 'in_progress',
+              current_step: message.step,
+              progress: message.percent,
+              message: message.message,
+              workflow_paused: message.workflow_paused || false,
+              pending_human_review: message.pending_human_review || false,
+              prompt_approved: true
+            }
+          }));
+          
+          console.log('✅ [Frontend] Workflow resuming state updated');
         } else if (message.type === 'completed') {
           console.log('🎉 [WebSocket] Workflow completed:', message);
           
@@ -278,6 +415,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
               survey_id: message.survey_id
             }
           }));
+
+          // Clear persisted workflow state since completion is successful
+          localStorage.removeItem('survey_workflow_state');
           
           console.log('🔄 [WebSocket] Workflow status updated to completed, survey_id:', message.survey_id);
           
@@ -744,16 +884,25 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   fetchReviewByWorkflow: async (workflowId: string): Promise<PendingReview | null> => {
     try {
+      console.log('🔍 [Store] Fetching review for workflow:', workflowId);
       const response = await fetch(`/api/v1/reviews/workflow/${workflowId}`);
+      console.log('📡 [Store] Review API response status:', response.status);
+      
       if (response.status === 404) {
+        console.log('⚠️ [Store] No review found for workflow:', workflowId);
         return null; // No review found
       }
-      if (!response.ok) throw new Error('Failed to fetch review');
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ [Store] Review API error:', response.status, errorText);
+        throw new Error(`Failed to fetch review: ${response.status} ${errorText}`);
+      }
       
       const review = await response.json();
+      console.log('✅ [Store] Review data received:', review);
       return review;
     } catch (error) {
-      console.error('Failed to fetch review by workflow:', error);
+      console.error('❌ [Store] Failed to fetch review by workflow:', error);
       return null;
     }
   },
@@ -777,6 +926,39 @@ export const useAppStore = create<AppStore>((set, get) => ({
         message: result.message,
         duration: 4000
       });
+      
+      // If approved, handle workflow resumption
+      if (decision.decision === 'approve') {
+        const currentWorkflow = get().workflow;
+        const currentReview = get().activeReview;
+        
+        if (currentWorkflow.workflow_id && currentReview) {
+          console.log('🔄 [Frontend] Review approved, resuming workflow...');
+          
+          // Update workflow state to show it's resuming
+          get().setWorkflowState({
+            status: 'in_progress',
+            current_step: 'resuming_generation',
+            progress: 60,
+            message: 'Human review approved - resuming survey generation...',
+            workflow_paused: false,
+            pending_human_review: false,
+            prompt_approved: true,
+            system_prompt: undefined  // Clear the prompt since it's approved
+          });
+          
+          // The backend will send a workflow_resuming message when it actually resumes
+          // No need to manually reconnect WebSocket
+          
+          // Show info toast about resumption
+          get().addToast({
+            type: 'info',
+            title: '🔄 Workflow Resuming',
+            message: 'Survey generation will continue automatically...',
+            duration: 6000
+          });
+        }
+      }
       
       // Update local state
       get().setActiveReview(undefined);
@@ -927,6 +1109,64 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     } catch (error) {
       console.error('Failed to recover workflow state:', error);
+    }
+  },
+
+  // Enhanced RFQ Actions
+  submitEnhancedRFQ: async (rfq: EnhancedRFQRequest) => {
+    try {
+      // Convert enhanced RFQ to legacy format for backend compatibility
+      const legacyRfq: RFQRequest = {
+        title: rfq.title,
+        description: rfq.description,
+        product_category: rfq.product_category,
+        target_segment: rfq.target_audience?.primary_segment || rfq.target_segment,
+        research_goal: rfq.research_goal
+      };
+
+      // Use existing submitRFQ logic
+      await get().submitRFQ(legacyRfq);
+
+      // Store enhanced RFQ data for future reference
+      localStorage.setItem('enhanced_rfq_data', JSON.stringify(rfq));
+
+    } catch (error) {
+      console.error('Failed to submit enhanced RFQ:', error);
+      throw error;
+    }
+  },
+
+  fetchRfqTemplates: async () => {
+    try {
+      const templates = await rfqTemplateService.getTemplates();
+      get().setRfqTemplates(templates);
+    } catch (error) {
+      console.error('Failed to fetch RFQ templates:', error);
+      get().addToast({
+        type: 'error',
+        title: 'Template Error',
+        message: 'Failed to load RFQ templates',
+        duration: 5000
+      });
+    }
+  },
+
+  assessRfqQuality: async (rfq: EnhancedRFQRequest) => {
+    try {
+      const assessment = await rfqTemplateService.assessQuality(rfq);
+      get().setRfqAssessment(assessment);
+    } catch (error) {
+      console.error('Failed to assess RFQ quality:', error);
+    }
+  },
+
+  generateRfqSuggestions: async (partialRfq: Partial<EnhancedRFQRequest>): Promise<string[]> => {
+    try {
+      const suggestions = await rfqTemplateService.generateSuggestions(partialRfq);
+      return suggestions;
+    } catch (error) {
+      console.error('Failed to generate RFQ suggestions:', error);
+      return [];
     }
   }
 }));

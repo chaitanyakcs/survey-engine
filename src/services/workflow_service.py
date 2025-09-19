@@ -4,6 +4,7 @@ from src.workflows.state import SurveyGenerationState
 from src.workflows.workflow import create_workflow
 from src.services.embedding_service import EmbeddingService
 from src.services.websocket_client import WebSocketNotificationService
+from src.services.workflow_state_service import WorkflowStateService
 from src.config import settings
 from typing import Optional
 from uuid import uuid4
@@ -67,6 +68,10 @@ class WorkflowService:
             # Track active workflows to prevent resource exhaustion
             self.active_workflows = set()
             self.max_concurrent_workflows = 10
+            
+            # Initialize workflow state service
+            self.state_service = WorkflowStateService(db)
+            logger.info("✅ [WorkflowService] WorkflowStateService created successfully")
 
             logger.info("🔧 [WorkflowService] Creating embedding service")
             self.embedding_service = EmbeddingService()
@@ -79,7 +84,8 @@ class WorkflowService:
             logger.info("🔧 [WorkflowService] Creating LangGraph workflow")
             try:
                 self.workflow = create_workflow(db, connection_manager)
-                logger.info("✅ [WorkflowService] LangGraph workflow created successfully")
+                logger.info(f"✅ [WorkflowService] LangGraph workflow created successfully: {type(self.workflow)}")
+                logger.info(f"✅ [WorkflowService] Workflow has ainvoke method: {hasattr(self.workflow, 'ainvoke')}")
             except Exception as workflow_error:
                 logger.error(f"❌ [WorkflowService] Failed to create workflow: {str(workflow_error)}", exc_info=True)
                 raise Exception(f"Workflow creation failed: {str(workflow_error)}")
@@ -87,6 +93,21 @@ class WorkflowService:
             logger.info("✅ [WorkflowService] Workflow service initialized successfully")
         except Exception as e:
             logger.error(f"❌ [WorkflowService] Failed to initialize workflow service: {str(e)}", exc_info=True)
+            # Set workflow to None to indicate initialization failed
+            self.workflow = None
+            raise e
+    
+    def _ensure_workflow_initialized(self):
+        """Ensure workflow is properly initialized, reinitialize if needed"""
+        if not hasattr(self, 'workflow') or self.workflow is None:
+            logger.warning("⚠️ [WorkflowService] Workflow not initialized, attempting to reinitialize...")
+            try:
+                from src.workflows.workflow import create_workflow
+                self.workflow = create_workflow(self.db, None)
+                logger.info("✅ [WorkflowService] Workflow reinitialized successfully")
+            except Exception as e:
+                logger.error(f"❌ [WorkflowService] Failed to reinitialize workflow: {str(e)}")
+                raise Exception(f"Workflow reinitialization failed: {str(e)}")
     
     def _ensure_healthy_db_session(self):
         """Ensure we have a healthy database session after any transaction errors"""
@@ -244,9 +265,9 @@ class WorkflowService:
         logger.info(f"📋 [WorkflowService] Workflow state initialized: workflow_id={initial_state.workflow_id}, survey_id={initial_state.survey_id}")
         
         try:
-            # Check if workflow is properly initialized
-            if not hasattr(self, 'workflow') or self.workflow is None:
-                raise Exception("Workflow not properly initialized - missing workflow attribute")
+            # Ensure workflow is properly initialized
+            self._ensure_workflow_initialized()
+            logger.info(f"✅ [WorkflowService] Workflow is properly initialized: {type(self.workflow)}")
             
             # Send initial progress update
             logger.info("📡 [WorkflowService] Sending initial progress update via WebSocket")
@@ -264,16 +285,65 @@ class WorkflowService:
             
             # Execute workflow
             logger.info("🚀 [WorkflowService] Starting LangGraph workflow execution")
-            final_state = await self.workflow.ainvoke(initial_state)
-            logger.info(f"✅ [WorkflowService] Workflow execution completed. Final state keys: {list(final_state.keys()) if isinstance(final_state, dict) else 'not dict'}")
+            logger.info(f"🔍 [WorkflowService] Initial state before execution: {initial_state.model_dump()}")
             
-            # Send completion progress update
-            await self.ws_client.send_progress_update(initial_state.workflow_id, {
-                "type": "progress", 
-                "step": "finalizing",
-                "percent": 95,
-                "message": "Processing results and finalizing survey..."
-            })
+            try:
+                final_state = await self.workflow.ainvoke(initial_state)
+                logger.info(f"✅ [WorkflowService] Workflow execution completed. Final state keys: {list(final_state.keys()) if isinstance(final_state, dict) else 'not dict'}")
+                logger.info(f"🔍 [WorkflowService] Final state details: {final_state}")
+                
+                # Check if workflow was paused
+                if isinstance(final_state, dict):
+                    workflow_paused = final_state.get('workflow_paused', False)
+                    pending_human_review = final_state.get('pending_human_review', False)
+                    logger.info(f"🔍 [WorkflowService] Final state - workflow_paused: {workflow_paused}")
+                    logger.info(f"🔍 [WorkflowService] Final state - pending_human_review: {pending_human_review}")
+                    
+            except Exception as e:
+                if "WORKFLOW_PAUSED_FOR_HUMAN_REVIEW" in str(e):
+                    logger.info("⏸️ [WorkflowService] Workflow paused for human review as expected")
+                    # Send human review required message
+                    await self.ws_client.send_progress_update(workflow_id, {
+                        "type": "human_review_required",
+                        "step": "human_review",
+                        "percent": 50,
+                        "message": "Waiting for human review of system prompt...",
+                        "workflow_paused": True,
+                        "pending_human_review": True
+                    })
+                    
+                    # Return a paused result
+                    return WorkflowResult(
+                        survey_id=survey_id,
+                        status="paused",
+                        estimated_completion_time=0,  # Will be updated when resumed
+                        golden_examples_used=0  # Will be updated when resumed
+                    )
+                else:
+                    # Re-raise other exceptions
+                    raise
+            
+            # Save workflow state for potential resumption
+            if isinstance(final_state, dict):
+                # Convert dict back to SurveyGenerationState for saving
+                try:
+                    state_for_saving = SurveyGenerationState(**final_state)
+                    self.state_service.save_workflow_state(state_for_saving)
+                    logger.info("💾 [WorkflowService] Workflow state saved for potential resumption")
+                except Exception as save_error:
+                    logger.warning(f"⚠️ [WorkflowService] Failed to save workflow state: {str(save_error)} - continuing anyway")
+            
+            # Check if workflow was paused for human review before sending completion message
+            if isinstance(final_state, dict) and (final_state.get('workflow_paused') or final_state.get('pending_human_review')):
+                logger.info("⏸️ [WorkflowService] Workflow paused for human review - not sending finalizing message")
+            else:
+                # Send completion progress update only if workflow completed normally
+                await self.ws_client.send_progress_update(initial_state.workflow_id, {
+                    "type": "progress", 
+                    "step": "finalizing",
+                    "percent": 95,
+                    "message": "Processing results and finalizing survey..."
+                })
             
             # Update survey with results (final_state is a dict from LangGraph)
             logger.info("💾 [WorkflowService] Updating survey record with workflow results")
@@ -374,4 +444,164 @@ class WorkflowService:
             # Send error notification
             await self.ws_client.notify_workflow_error(initial_state.workflow_id, str(e))
             
+            raise
+    
+    async def execute_workflow_from_generation(self, initial_state: SurveyGenerationState, workflow_id: str, survey_id: str, ws_client: WebSocketNotificationService):
+        """Execute workflow starting from generation step using the same service instances for consistency"""
+        try:
+            logger.info(f"🚀 [WorkflowService] Starting workflow execution from generation step for {workflow_id}")
+
+            # Update the state to mark that human review has been approved
+            initial_state.pending_human_review = False
+            initial_state.workflow_paused = False
+            initial_state.prompt_approved = True
+
+            # Send progress update
+            try:
+                await ws_client.send_progress_update(workflow_id, {
+                    "type": "workflow_resuming",
+                    "step": "resuming_from_human_review",
+                    "percent": 55,
+                    "message": "Human review approved - resuming workflow..."
+                })
+            except Exception as ws_error:
+                logger.warning(f"⚠️ [WorkflowService] Failed to send progress update: {str(ws_error)}")
+
+            # CRITICAL FIX: Use the same node instances as the main workflow to ensure consistency
+            # Create nodes with the same database session and configuration as the main workflow
+            from src.workflows.nodes import GeneratorAgent, GoldenValidatorNode
+
+            # Use the same database session as the main workflow service
+            generator = GeneratorAgent(self.db)
+            validator = GoldenValidatorNode(self.db)
+
+            # Send progress update for generation
+            try:
+                await ws_client.send_progress_update(workflow_id, {
+                    "type": "progress",
+                    "step": "generating_questions",
+                    "percent": 60,
+                    "message": "Creating questions and generating survey content..."
+                })
+            except Exception as ws_error:
+                logger.warning(f"⚠️ [WorkflowService] Failed to send generation progress update: {str(ws_error)}")
+
+            # Execute generation step directly using the same service configuration
+            logger.info("🚀 [WorkflowService] Starting direct generation execution with consistent services")
+            try:
+                generation_result = await generator(initial_state)
+                logger.info(f"✅ [WorkflowService] Generation completed. Result keys: {list(generation_result.keys()) if isinstance(generation_result, dict) else 'not dict'}")
+            except Exception as gen_error:
+                logger.error(f"❌ [WorkflowService] Generation step failed: {str(gen_error)}", exc_info=True)
+                # Send error notification
+                await ws_client.send_progress_update(workflow_id, {
+                    "type": "error",
+                    "message": f"Survey generation failed: {str(gen_error)}"
+                })
+                raise gen_error
+
+            # Update the state with generation results
+            if isinstance(generation_result, dict):
+                for key, value in generation_result.items():
+                    if hasattr(initial_state, key):
+                        setattr(initial_state, key, value)
+
+            # Send progress update for validation
+            try:
+                await ws_client.send_progress_update(workflow_id, {
+                    "type": "progress",
+                    "step": "validation_scoring",
+                    "percent": 80,
+                    "message": "Running comprehensive evaluations and quality assessments..."
+                })
+            except Exception as ws_error:
+                logger.warning(f"⚠️ [WorkflowService] Failed to send validation progress update: {str(ws_error)}")
+
+            # Execute validation step directly
+            logger.info("🚀 [WorkflowService] Starting direct validation execution")
+            try:
+                validation_result = await validator(initial_state)
+                logger.info(f"✅ [WorkflowService] Validation completed. Result keys: {list(validation_result.keys()) if isinstance(validation_result, dict) else 'not dict'}")
+            except Exception as val_error:
+                logger.error(f"❌ [WorkflowService] Validation step failed: {str(val_error)}", exc_info=True)
+                # Send error notification
+                await ws_client.send_progress_update(workflow_id, {
+                    "type": "error",
+                    "message": f"Survey validation failed: {str(val_error)}"
+                })
+                raise val_error
+
+            # Update the state with validation results
+            if isinstance(validation_result, dict):
+                for key, value in validation_result.items():
+                    if hasattr(initial_state, key):
+                        setattr(initial_state, key, value)
+
+            # Update survey with final results - use the same logic as the main workflow
+            try:
+                from src.database.models import Survey
+
+                # Ensure we have a healthy database session
+                if not self._ensure_healthy_db_session():
+                    raise Exception("Failed to establish healthy database session")
+
+                survey = self.db.query(Survey).filter(Survey.id == survey_id).first()
+                if survey:
+                    # Refresh to get latest data
+                    self.db.refresh(survey)
+
+                    # Use the same update logic as the main workflow
+                    survey.raw_output = generation_result.get("raw_survey")
+                    survey.final_output = generation_result.get("generated_survey")
+                    survey.golden_similarity_score = validation_result.get("golden_similarity_score")
+                    survey.used_golden_examples = initial_state.used_golden_examples
+                    survey.pillar_scores = generation_result.get("pillar_scores")
+                    survey.status = "validated" if validation_result.get("quality_gate_passed", False) else "draft"
+
+                    self.db.commit()
+                    logger.info(f"✅ [WorkflowService] Survey updated from resumed workflow: status={survey.status}")
+                    logger.info(f"✅ [WorkflowService] Pillar scores stored: {survey.pillar_scores is not None}")
+                else:
+                    logger.warning(f"⚠️ [WorkflowService] Survey not found for update: {survey_id}")
+            except Exception as e:
+                logger.error(f"❌ [WorkflowService] Failed to update survey from resumed workflow: {str(e)}")
+                self.db.rollback()
+                # Don't fail the entire operation for database update issues
+
+            # Send completion message
+            try:
+                await ws_client.send_progress_update(workflow_id, {
+                    "type": "completed",
+                    "step": "completed",
+                    "percent": 100,
+                    "message": "Survey generation completed successfully!",
+                    "survey_id": survey_id
+                })
+            except Exception as ws_error:
+                logger.warning(f"⚠️ [WorkflowService] Failed to send completion message: {str(ws_error)}")
+
+            logger.info(f"✅ [WorkflowService] Resumed workflow execution completed successfully: {workflow_id}")
+
+        except Exception as e:
+            logger.error(f"❌ [WorkflowService] Resumed workflow execution failed: {str(e)}", exc_info=True)
+
+            # Update survey status to failed
+            try:
+                from src.database.models import Survey
+                survey = self.db.query(Survey).filter(Survey.id == survey_id).first()
+                if survey:
+                    survey.status = "failed"
+                    self.db.commit()
+                    logger.info(f"✅ [WorkflowService] Survey status updated to failed: {survey_id}")
+            except Exception as status_error:
+                logger.error(f"❌ [WorkflowService] Failed to update survey status to failed: {str(status_error)}")
+
+            # Send error notification
+            try:
+                await ws_client.send_progress_update(workflow_id, {
+                    "type": "error",
+                    "message": f"Failed to resume workflow: {str(e)}"
+                })
+            except Exception as ws_error:
+                logger.warning(f"⚠️ [WorkflowService] Failed to send error notification: {str(ws_error)}")
             raise Exception(f"Workflow execution failed: {str(e)}")

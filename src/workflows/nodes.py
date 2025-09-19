@@ -434,20 +434,24 @@ class HumanPromptReviewNode:
 
                     # Return based on review mode
                     if prompt_review_mode == 'blocking':
-                        return {
+                        result = {
                             "prompt_approved": False,
                             "pending_human_review": True,
                             "review_id": review.id,
                             "workflow_paused": True,
                             "error_message": None
                         }
+                        self.logger.info(f"🔍 [HumanPromptReviewNode] BLOCKING mode - returning: {result}")
+                        return result
                     else:
-                        return {
+                        result = {
                             "prompt_approved": True,
                             "pending_human_review": False,
                             "review_id": review.id,
                             "error_message": None
                         }
+                        self.logger.info(f"🔍 [HumanPromptReviewNode] NON-BLOCKING mode - returning: {result}")
+                        return result
 
                 except Exception as e:
                     self.logger.error(f"❌ [HumanPromptReviewNode] Review creation failed: {e}")

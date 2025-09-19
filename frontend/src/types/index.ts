@@ -8,7 +8,116 @@ export const getQuestionCount = (survey: Survey): number => {
   return survey.questions?.length || 0;
 };
 
-// Core API Types
+// Enhanced RFQ Types
+export interface RFQObjective {
+  id: string;
+  title: string;
+  description: string;
+  priority: 'high' | 'medium' | 'low';
+  methodology_suggestions?: string[];
+}
+
+export interface RFQConstraint {
+  id: string;
+  type: 'budget' | 'timeline' | 'sample_size' | 'methodology' | 'custom';
+  description: string;
+  value?: string | number;
+}
+
+export interface RFQStakeholder {
+  id: string;
+  role: string;
+  requirements: string;
+  decision_influence: 'high' | 'medium' | 'low';
+}
+
+export interface RFQSuccess {
+  id: string;
+  metric: string;
+  description: string;
+  measurement: string;
+}
+
+export interface RFQTemplate {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  use_cases: string[];
+  estimated_completion: number;
+  complexity: 'simple' | 'moderate' | 'complex';
+  template_data: Partial<EnhancedRFQRequest>;
+}
+
+export interface RFQQualityAssessment {
+  overall_score: number;
+  clarity_score: number;
+  specificity_score: number;
+  methodology_alignment: number;
+  completeness_score: number;
+  recommendations: string[];
+  confidence_indicators: {
+    objectives_clear: boolean;
+    target_defined: boolean;
+    methodology_appropriate: boolean;
+    constraints_realistic: boolean;
+  };
+}
+
+export interface EnhancedRFQRequest {
+  // Basic Information
+  title?: string;
+  description: string;
+
+  // Legacy fields for backward compatibility
+  product_category?: string;
+  target_segment?: string;
+  research_goal?: string;
+
+  // Enhanced Structure
+  context?: {
+    business_background?: string;
+    market_situation?: string;
+    decision_timeline?: string;
+  };
+
+  objectives?: RFQObjective[];
+
+  target_audience?: {
+    primary_segment?: string;
+    secondary_segments?: string[];
+    demographics?: Record<string, any>;
+    size_estimate?: number;
+    accessibility_notes?: string;
+  };
+
+  methodologies?: {
+    preferred?: string[];
+    excluded?: string[];
+    requirements?: string[];
+  };
+
+  constraints?: RFQConstraint[];
+  stakeholders?: RFQStakeholder[];
+  success_metrics?: RFQSuccess[];
+
+  // AI Configuration
+  generation_config?: {
+    creativity_level?: 'conservative' | 'balanced' | 'innovative';
+    length_preference?: 'concise' | 'standard' | 'comprehensive';
+    complexity_level?: 'basic' | 'intermediate' | 'advanced';
+    include_validation_questions?: boolean;
+    enable_adaptive_routing?: boolean;
+  };
+
+  // Meta Information
+  estimated_budget?: string;
+  expected_timeline?: string;
+  approval_requirements?: string[];
+  template_used?: string;
+}
+
+// Core API Types (Legacy compatibility)
 export interface RFQRequest {
   title?: string;
   description: string;
@@ -106,7 +215,7 @@ export interface SurveyMetadata {
 
 // WebSocket Progress Types
 export interface ProgressMessage {
-  type: 'progress' | 'completed' | 'error' | 'human_review_required';
+  type: 'progress' | 'completed' | 'error' | 'human_review_required' | 'workflow_resuming';
   step?: string;
   percent?: number;
   message?: string;
@@ -114,6 +223,9 @@ export interface ProgressMessage {
   status?: string;
   workflow_paused?: boolean;
   review_id?: number;
+  system_prompt?: string;
+  pending_human_review?: boolean;
+  prompt_approved?: boolean;
 }
 
 // UI State Types
@@ -126,6 +238,10 @@ export interface WorkflowState {
   message?: string;
   error?: string;
   workflow_paused?: boolean;
+  pending_human_review?: boolean;
+  review_id?: number;
+  system_prompt?: string;
+  prompt_approved?: boolean;
 }
 
 // Golden Examples Types
@@ -249,6 +365,20 @@ export interface AppStore {
   // RFQ Input
   rfqInput: RFQRequest;
   setRFQInput: (input: Partial<RFQRequest>) => void;
+
+  // Enhanced RFQ State
+  enhancedRfq: EnhancedRFQRequest;
+  setEnhancedRfq: (input: Partial<EnhancedRFQRequest>) => void;
+
+  // RFQ Templates
+  rfqTemplates: RFQTemplate[];
+  setRfqTemplates: (templates: RFQTemplate[]) => void;
+  selectedTemplate?: RFQTemplate;
+  setSelectedTemplate: (template?: RFQTemplate) => void;
+
+  // RFQ Quality Assessment
+  rfqAssessment?: RFQQualityAssessment;
+  setRfqAssessment: (assessment?: RFQQualityAssessment) => void;
   
   // Workflow State
   workflow: WorkflowState;
@@ -283,9 +413,15 @@ export interface AppStore {
   
   // Actions
   submitRFQ: (rfq: RFQRequest) => Promise<void>;
+  submitEnhancedRFQ: (rfq: EnhancedRFQRequest) => Promise<void>;
   fetchSurvey: (surveyId: string) => Promise<void>;
   connectWebSocket: (workflowId: string) => void;
   disconnectWebSocket: () => void;
+
+  // Enhanced RFQ Actions
+  fetchRfqTemplates: () => Promise<void>;
+  assessRfqQuality: (rfq: EnhancedRFQRequest) => Promise<void>;
+  generateRfqSuggestions: (partialRfq: Partial<EnhancedRFQRequest>) => Promise<string[]>;
   
   // Golden Examples Actions
   fetchGoldenExamples: () => Promise<void>;

@@ -122,7 +122,7 @@ const SIMPLIFIED_STEPS: SimplifiedStep[] = [
     description: 'Your professional survey is ready',
     icon: '🎉',
     color: 'emerald',
-    originalSteps: ['finalizing', 'completed'],
+    originalSteps: ['completed'],
     details: {
       title: 'Survey Ready for Deployment',
       content: 'Your survey has been successfully generated and evaluated. It\'s now ready for deployment to your target audience with comprehensive quality scores and recommendations.',
@@ -163,15 +163,9 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
       // There's an active review
       !!activeReview ||
       // Workflow is paused for human review
-      !!workflow.workflow_paused ||
-      // Current step is human_review
-      workflow.current_step === 'human_review' ||
-      // Current step includes review-related keywords
-      (workflow.current_step && (
-        workflow.current_step.includes('review') ||
-        workflow.current_step.includes('approval') ||
-        workflow.current_step.includes('human')
-      ))
+      (!!workflow.workflow_paused && workflow.current_step === 'human_review') ||
+      // Current step is specifically human_review
+      workflow.current_step === 'human_review'
     );
 
     console.log('🔍 [ProgressStepper] Human review check:', {
@@ -219,8 +213,32 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
       return false;
     });
 
-    if (currentStep !== -1) {
-      setCurrentStepIndex(currentStep);
+    // If we can't find the current step in enabled steps, try to map it manually
+    let mappedStep = currentStep;
+    if (currentStep === -1 && workflow.current_step) {
+      // Map specific workflow steps to simplified steps
+      if (['initializing_workflow', 'parsing_rfq', 'generating_embeddings', 'rfq_parsed'].includes(workflow.current_step)) {
+        mappedStep = 0; // preparing_request
+      } else if (['matching_golden_examples', 'planning_methodologies'].includes(workflow.current_step)) {
+        mappedStep = 1; // building_context
+      } else if (workflow.current_step === 'human_review') {
+        mappedStep = 2; // human_review
+      } else if (['generating', 'validating', 'finalizing', 'resuming_generation'].includes(workflow.current_step)) {
+        mappedStep = 3; // generating_survey
+      } else if (['completed', 'finished'].includes(workflow.current_step)) {
+        mappedStep = 4; // survey_complete
+      }
+    }
+
+    console.log('🔍 [ProgressStepper] Step calculation:', {
+      currentStep,
+      mappedStep,
+      workflowStep: workflow.current_step,
+      enabledSteps: enabledSteps.map(s => ({ key: s.key, originalSteps: s.originalSteps }))
+    });
+
+    if (mappedStep !== -1) {
+      setCurrentStepIndex(mappedStep);
     }
 
     // Update completed steps based on workflow state
@@ -232,14 +250,23 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
         completed.push(i);
       }
     } else {
-      // Only mark steps as completed if they are actually finished
-      // This is more conservative and accurate than progress-based completion
+      // Mark steps as completed based on workflow progress
       for (let i = 0; i < enabledSteps.length; i++) {
         const step = enabledSteps[i];
         
-        // Check if this step is actually completed based on workflow state
-        if (workflow.current_step) {
-          // If current step is past this step's original steps, mark as completed
+        // If we're at human review step, only mark previous steps as completed
+        if (workflow.current_step === 'human_review' || workflow.workflow_paused) {
+          // Only mark steps BEFORE human review as completed
+          if (i < mappedStep) {
+            completed.push(i);
+          }
+        } else if (['generating', 'validating', 'resuming_generation'].includes(workflow.current_step)) {
+          // If we're at generation/validation step (after human review), mark all previous steps as completed
+          if (i < mappedStep) {
+            completed.push(i);
+          }
+        } else if (workflow.current_step) {
+          // Check if this step is actually completed based on workflow state
           const stepIsCompleted = step.originalSteps.some(originalStep => {
             // Check if we've moved past this step
             return workflow.current_step && 
@@ -257,6 +284,14 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
         }
       }
     }
+
+    console.log('🔍 [ProgressStepper] Completed steps calculation:', {
+      currentStep,
+      mappedStep,
+      completed,
+      workflowStep: workflow.current_step,
+      workflowPaused: workflow.workflow_paused
+    });
 
     setCompletedSteps(completed);
   }, [workflow.current_step, workflow.progress, workflowStatus, enabledSteps]);

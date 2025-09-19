@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { RFQEditor } from '../components/RFQEditor';
+import { EnhancedRFQApp } from '../components/EnhancedRFQApp';
 import { ProgressStepper } from '../components/ProgressStepper';
+import { HumanReviewPanel } from '../components/HumanReviewPanel';
 import { Sidebar } from '../components/Sidebar';
 import { ToastContainer } from '../components/Toast';
 import { useSidebarLayout } from '../hooks/useSidebarLayout';
@@ -9,6 +11,7 @@ import { useSidebarLayout } from '../hooks/useSidebarLayout';
 export const SurveyGeneratorPage: React.FC = () => {
   const { workflow, currentSurvey, toasts, removeToast, addToast, resetWorkflow } = useAppStore();
   const [currentView, setCurrentView] = useState<'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings'>('survey');
+  const [useEnhancedRFQ, setUseEnhancedRFQ] = useState<boolean>(false);
   const { mainContentClasses } = useSidebarLayout();
 
   // Debug logging
@@ -126,7 +129,44 @@ export const SurveyGeneratorPage: React.FC = () => {
           <>
             {/* RFQ Input Phase */}
             {workflow.status === 'idle' && (
-              <RFQEditor />
+              <div>
+                {/* RFQ Interface Toggle */}
+                <div className="max-w-4xl mx-auto px-4 mb-6">
+                  <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-4 shadow-lg">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="font-semibold text-gray-900">Survey Builder Mode</h3>
+                        <p className="text-sm text-gray-600">Choose between quick setup or comprehensive requirements builder</p>
+                      </div>
+                      <div className="flex items-center space-x-3">
+                        <button
+                          onClick={() => setUseEnhancedRFQ(false)}
+                          className={`px-6 py-3 rounded-xl font-medium transition-all duration-200 ${
+                            !useEnhancedRFQ
+                              ? 'bg-blue-500 text-white shadow-lg'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          🚀 Quick Mode
+                        </button>
+                        <button
+                          onClick={() => setUseEnhancedRFQ(true)}
+                          className={`px-6 py-3 rounded-xl font-medium transition-all duration-200 ${
+                            useEnhancedRFQ
+                              ? 'bg-gradient-to-r from-purple-500 to-blue-500 text-white shadow-lg'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          ✨ Enhanced Mode
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* RFQ Interface */}
+                {useEnhancedRFQ ? <EnhancedRFQApp /> : <RFQEditor />}
+              </div>
             )}
 
             {/* Generation Progress Phase */}
@@ -139,6 +179,37 @@ export const SurveyGeneratorPage: React.FC = () => {
                 
                 <div className="max-w-4xl mx-auto px-4">
                   <ProgressStepper 
+                    onShowSurvey={() => {
+                      if (currentSurvey?.survey_id) {
+                        console.log('🔍 [SurveyGeneratorPage] Navigating to surveys section with survey ID:', currentSurvey.survey_id);
+                        window.location.href = `/surveys?id=${currentSurvey.survey_id}`;
+                      }
+                    }}
+                    onShowSummary={() => {
+                      if (currentSurvey?.survey_id) {
+                        console.log('🔍 [SurveyGeneratorPage] Navigating to summary with survey ID:', currentSurvey.survey_id);
+                        window.location.href = `/summary/${currentSurvey.survey_id}`;
+                      }
+                    }}
+                    onCancelGeneration={() => {
+                      console.log('🔄 [SurveyGeneratorPage] Canceling generation');
+                      resetWorkflow();
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Human Review Phase */}
+            {workflow.status === 'paused' && (
+              <div>
+                <div className="max-w-6xl mx-auto px-4 mb-8 text-center">
+                  <h2 className="text-xl font-semibold text-black mb-2">Human Review Required</h2>
+                  <p className="text-gray-600">Please review the AI-generated system prompt before survey generation continues.</p>
+                </div>
+
+                <div className="max-w-6xl mx-auto px-4">
+                  <ProgressStepper
                     onShowSurvey={() => {
                       if (currentSurvey?.survey_id) {
                         console.log('🔍 [SurveyGeneratorPage] Navigating to surveys section with survey ID:', currentSurvey.survey_id);

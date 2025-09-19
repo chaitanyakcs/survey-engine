@@ -267,6 +267,25 @@ class HumanReview(Base):
         ),
     )
 
+class WorkflowState(Base):
+    """Model for storing workflow state for resumption"""
+    __tablename__ = "workflow_states"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    workflow_id = Column(String(255), nullable=False, unique=True)
+    survey_id = Column(String(255), nullable=True)
+    state_data = Column(Text, nullable=False)  # JSON serialized state
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # Indexes for efficient querying
+    __table_args__ = (
+        Index('idx_workflow_states_workflow_id', 'workflow_id'),
+        Index('idx_workflow_states_survey_id', 'survey_id'),
+        Index('idx_workflow_states_created_at', 'created_at'),
+    )
+
+
 class Settings(Base):
     """Settings table for storing application configuration"""
     __tablename__ = "settings"

@@ -35,9 +35,11 @@ class SurveyGenerationState(BaseModel):
     
     # Human review state
     pending_human_review: bool = False
+    workflow_paused: bool = False
+    prompt_approved: bool = False
     system_prompt: Optional[str] = None
     review_id: Optional[int] = None
-    
+
     error_message: Optional[str] = None
     
     class Config:

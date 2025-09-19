@@ -248,53 +248,188 @@ def resume_review(
         )
 
 
+def _validate_workflow_resume(workflow_id: str, db: Session) -> bool:
+    """Validate that a workflow can be safely resumed"""
+    try:
+        from src.database.models import Survey, RFQ, HumanReview
+        
+        # Check if workflow_id format is valid
+        if not workflow_id.startswith('survey-gen-'):
+            logger.error(f"❌ [HumanReview] Invalid workflow_id format: {workflow_id}")
+            return False
+        
+        # First, find the human review to get the survey_id
+        review = db.query(HumanReview).filter(HumanReview.workflow_id == workflow_id).first()
+        if not review:
+            logger.error(f"❌ [HumanReview] No human review found for workflow {workflow_id}")
+            return False
+        
+        if review.review_status != 'approved':
+            logger.error(f"❌ [HumanReview] Human review is not approved: {review.review_status}")
+            return False
+        
+        # Use the survey_id from the review record instead of extracting from workflow_id
+        if not review.survey_id:
+            logger.error(f"❌ [HumanReview] No survey_id in review record for workflow {workflow_id}")
+            return False
+        
+        # Convert survey_id string to UUID for database lookup
+        import uuid
+        try:
+            survey_uuid_obj = uuid.UUID(review.survey_id)
+            survey = db.query(Survey).filter(Survey.id == survey_uuid_obj).first()
+        except ValueError:
+            logger.error(f"❌ [HumanReview] Invalid survey_id format in review: {review.survey_id}")
+            return False
+        
+        if not survey:
+            logger.error(f"❌ [HumanReview] No survey found with ID {review.survey_id} for workflow {workflow_id}")
+            return False
+        
+        # Check if survey is in a resumable state
+        if survey.status not in ['draft', 'pending', 'started']:
+            logger.error(f"❌ [HumanReview] Survey {survey.id} is in non-resumable state: {survey.status}")
+            return False
+        
+        # Check if RFQ exists
+        rfq = db.query(RFQ).filter(RFQ.id == survey.rfq_id).first()
+        if not rfq:
+            logger.error(f"❌ [HumanReview] No RFQ found for survey {survey.id}")
+            return False
+        
+        logger.info(f"✅ [HumanReview] Workflow validation passed for {workflow_id} (survey: {survey.id})")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ [HumanReview] Workflow validation failed: {str(e)}")
+        return False
+
+
 async def resume_paused_workflow(workflow_id: str, db: Session):
     """Resume a paused workflow after human review approval"""
     try:
         logger.info(f"🔄 [HumanReview] Resuming workflow: {workflow_id}")
+        
+        # Validate workflow can be resumed
+        if not _validate_workflow_resume(workflow_id, db):
+            raise Exception("Workflow validation failed - cannot resume")
 
         # Import workflow service to resume the workflow
         from src.services.workflow_service import WorkflowService
         from src.workflows.state import SurveyGenerationState
-        from src.database.models import Survey
+        from src.database.models import Survey, RFQ
+        from src.services.websocket_client import WebSocketNotificationService
 
-        # Find the survey associated with this workflow
-        # Extract survey_id from workflow_id (format: survey-gen-{uuid})
+        # Find the survey associated with this workflow using the review record
         if workflow_id.startswith('survey-gen-'):
-            survey_uuid = workflow_id.replace('survey-gen-', '')
-
-            # Try to find survey by the UUID part
-            survey = db.query(Survey).filter(Survey.id.contains(survey_uuid)).first()
+            # Get the review record to find the survey_id
+            review = db.query(HumanReview).filter(HumanReview.workflow_id == workflow_id).first()
+            if not review or not review.survey_id:
+                logger.error(f"❌ [HumanReview] No review or survey_id found for workflow {workflow_id}")
+                return
+            
+            # Convert survey_id string to UUID for database lookup
+            import uuid
+            try:
+                survey_uuid_obj = uuid.UUID(review.survey_id)
+                survey = db.query(Survey).filter(Survey.id == survey_uuid_obj).first()
+            except ValueError:
+                logger.error(f"❌ [HumanReview] Invalid survey_id format in review: {review.survey_id}")
+                return
 
             if survey:
                 logger.info(f"📊 [HumanReview] Found survey {survey.id} for workflow {workflow_id}")
 
-                # Create a minimal workflow service to continue from generation step
-                workflow_service = WorkflowService(db)
+                # Get the RFQ data
+                rfq = db.query(RFQ).filter(RFQ.id == survey.rfq_id).first()
+                if not rfq:
+                    logger.error(f"❌ [HumanReview] No RFQ found for survey {survey.id}")
+                    return
 
-                # Create a new state continuing from the generation step
-                state = SurveyGenerationState(
-                    workflow_id=workflow_id,
-                    survey_id=str(survey.id),
-                    rfq_id=str(survey.rfq_id),
-                    # The workflow will continue from generate step since review was approved
-                    status='in_progress'
-                )
+                # Send notification that workflow is resuming
+                from src.main import manager  # Import the connection manager
+                ws_client = WebSocketNotificationService(manager)
+                await ws_client.send_progress_update(workflow_id, {
+                    "type": "progress",
+                    "step": "resuming_generation",
+                    "percent": 60,
+                    "message": "Human review approved - resuming survey generation..."
+                })
 
-                # Continue workflow in background
-                asyncio.create_task(
-                    workflow_service._execute_workflow_with_circuit_breaker(
-                        title=survey.rfq.title if hasattr(survey, 'rfq') else None,
-                        description=survey.rfq.description if hasattr(survey, 'rfq') else "",
-                        product_category=survey.rfq.product_category if hasattr(survey, 'rfq') else None,
-                        target_segment=survey.rfq.target_segment if hasattr(survey, 'rfq') else None,
-                        research_goal=survey.rfq.research_goal if hasattr(survey, 'rfq') else None,
+                # Try to load saved workflow state first
+                from src.services.workflow_state_service import WorkflowStateService
+                state_service = WorkflowStateService(db)
+                saved_state = state_service.load_workflow_state(workflow_id)
+                
+                if saved_state:
+                    logger.info(f"📂 [HumanReview] Loaded saved workflow state for {workflow_id}")
+                    # Update the saved state to skip human review and continue from generation
+                    saved_state.pending_human_review = False
+                    saved_state.workflow_paused = False
+                    # Mark that human review is already completed
+                    saved_state.review_id = None
+                    initial_state = saved_state
+                else:
+                    logger.info(f"📝 [HumanReview] No saved state found, creating new state for {workflow_id}")
+                    # Create a new workflow state that will skip human review
+                    initial_state = SurveyGenerationState(
                         workflow_id=workflow_id,
-                        survey_id=str(survey.id)
+                        survey_id=str(survey.id),
+                        rfq_id=str(survey.rfq_id),
+                        rfq_text=rfq.description,
+                        rfq_title=rfq.title,
+                        product_category=rfq.product_category,
+                        target_segment=rfq.target_segment,
+                        research_goal=rfq.research_goal,
+                        # Mark that human review is already approved - this will skip human review
+                        pending_human_review=False,
+                        workflow_paused=False,
+                        review_id=None
                     )
-                )
 
-                logger.info(f"✅ [HumanReview] Workflow {workflow_id} resumed successfully")
+                # Instead of restarting the entire workflow, directly execute the remaining steps
+                # This avoids going through the human review step again
+                try:
+                    # Use the workflow service to execute from generation step
+                    from src.services.workflow_service import WorkflowService
+                    workflow_service = WorkflowService(db, manager)
+                    
+                    # Send notification that workflow is about to resume
+                    await ws_client.send_progress_update(workflow_id, {
+                        "type": "workflow_resuming",
+                        "step": "resuming_generation",
+                        "percent": 60,
+                        "message": "Human review approved - resuming survey generation...",
+                        "workflow_paused": False,
+                        "pending_human_review": False
+                    })
+
+                    # Execute the remaining workflow steps directly
+                    asyncio.create_task(
+                        workflow_service.execute_workflow_from_generation(
+                            initial_state, 
+                            workflow_id, 
+                            str(survey.id),
+                            ws_client
+                        )
+                    )
+
+                    logger.info(f"✅ [HumanReview] Workflow {workflow_id} resumed successfully")
+                    
+                except Exception as workflow_error:
+                    logger.error(f"❌ [HumanReview] Failed to create workflow service: {str(workflow_error)}")
+                    
+                    # Send error notification
+                    await ws_client.send_progress_update(workflow_id, {
+                        "type": "error",
+                        "message": f"Failed to resume workflow: {str(workflow_error)}"
+                    })
+                    
+                    # Update survey status to failed
+                    survey.status = "failed"
+                    db.commit()
+                    
+                    raise Exception(f"Workflow resume failed: {str(workflow_error)}")
             else:
                 logger.warning(f"⚠️ [HumanReview] No survey found for workflow {workflow_id}")
         else:
@@ -302,6 +437,55 @@ async def resume_paused_workflow(workflow_id: str, db: Session):
 
     except Exception as e:
         logger.error(f"❌ [HumanReview] Failed to resume workflow {workflow_id}: {str(e)}")
+
+
+# Removed duplicate _execute_workflow_from_generation function - now using workflow_service.execute_workflow_from_generation
+
+
+async def _execute_workflow_with_error_handling(workflow_service, initial_state, workflow_id: str, survey_id: str, ws_client, db):
+    """Execute workflow with comprehensive error handling and recovery"""
+    try:
+        logger.info(f"🚀 [HumanReview] Starting workflow execution with error handling for {workflow_id}")
+        
+        # Execute the workflow
+        result = await workflow_service._execute_workflow_with_circuit_breaker(
+            title=initial_state.rfq_title,
+            description=initial_state.rfq_text,
+            product_category=initial_state.product_category,
+            target_segment=initial_state.target_segment,
+            research_goal=initial_state.research_goal,
+            workflow_id=workflow_id,
+            survey_id=survey_id
+        )
+        
+        logger.info(f"✅ [HumanReview] Workflow execution completed successfully for {workflow_id}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"❌ [HumanReview] Workflow execution failed for {workflow_id}: {str(e)}")
+        
+        # Send error notification to frontend
+        try:
+            await ws_client.send_progress_update(workflow_id, {
+                "type": "error",
+                "message": f"Survey generation failed: {str(e)}"
+            })
+        except Exception as ws_error:
+            logger.error(f"❌ [HumanReview] Failed to send error notification: {str(ws_error)}")
+        
+        # Update survey status to failed
+        try:
+            from src.database.models import Survey
+            survey = db.query(Survey).filter(Survey.id == survey_id).first()
+            if survey:
+                survey.status = "failed"
+                db.commit()
+                logger.info(f"📊 [HumanReview] Updated survey {survey_id} status to failed")
+        except Exception as db_error:
+            logger.error(f"❌ [HumanReview] Failed to update survey status: {str(db_error)}")
+        
+        # Re-raise the original exception
+        raise e
 
 
 async def cancel_paused_workflow(workflow_id: str, db: Session, reason: Optional[str] = None):
@@ -313,8 +497,20 @@ async def cancel_paused_workflow(workflow_id: str, db: Session, reason: Optional
         from src.database.models import Survey
 
         if workflow_id.startswith('survey-gen-'):
-            survey_uuid = workflow_id.replace('survey-gen-', '')
-            survey = db.query(Survey).filter(Survey.id.contains(survey_uuid)).first()
+            # Get the review record to find the survey_id
+            review = db.query(HumanReview).filter(HumanReview.workflow_id == workflow_id).first()
+            if not review or not review.survey_id:
+                logger.error(f"❌ [HumanReview] No review or survey_id found for workflow {workflow_id}")
+                return
+            
+            # Convert survey_id string to UUID for database lookup
+            import uuid
+            try:
+                survey_uuid_obj = uuid.UUID(review.survey_id)
+                survey = db.query(Survey).filter(Survey.id == survey_uuid_obj).first()
+            except ValueError:
+                logger.error(f"❌ [HumanReview] Invalid survey_id format in review: {review.survey_id}")
+                return
 
             if survey:
                 survey.status = "failed"
