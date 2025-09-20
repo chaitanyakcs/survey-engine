@@ -33,6 +33,12 @@ class EvaluationLLMClient:
     def __init__(self):
         self.replicate_available = REPLICATE_AVAILABLE
         self.replicate_token = os.getenv("REPLICATE_API_TOKEN", "")
+        # Read evaluation model from main app settings if available
+        try:
+            from src.config.settings import settings as app_settings
+            self.model = getattr(app_settings, 'generation_model', 'openai/gpt-4o-mini')
+        except Exception:
+            self.model = 'openai/gpt-4o-mini'
         
         if self.replicate_available and self.replicate_token:
             replicate.api_token = self.replicate_token
@@ -72,7 +78,7 @@ class EvaluationLLMClient:
             # Use the same model as survey generation for consistency
             response = await asyncio.to_thread(
                 replicate.run,
-                "openai/gpt-4-turbo:3e8baf1de76fe5b3cabe7adf9a60a4ce82ff1a61a22e5c8a4c14f9a36b2e6e90",
+                self.model,
                 input={
                     "prompt": prompt,
                     "max_tokens": max_tokens,
@@ -92,7 +98,7 @@ class EvaluationLLMClient:
             return LLMResponse(
                 content=content.strip(),
                 success=True,
-                metadata={"model": "gpt-4-turbo", "tokens": max_tokens}
+                metadata={"model": self.model, "tokens": max_tokens}
             )
             
         except Exception as e:

@@ -37,9 +37,11 @@ class RFQ(Base):
     research_goal = Column(Text)
     embedding = Column(Vector(384))
     enhanced_rfq_data = Column(JSONB)  # Store structured Enhanced RFQ data for analytics and future features
+    document_upload_id = Column(UUID(as_uuid=True), ForeignKey("document_uploads.id"))  # Optional reference to source document
     created_at = Column(DateTime, default=func.now())
 
     surveys = relationship("Survey", back_populates="rfq")
+    document_upload = relationship("DocumentUpload", back_populates="rfqs")
 
 
 class Survey(Base):
@@ -290,7 +292,7 @@ class WorkflowState(Base):
 class Settings(Base):
     """Settings table for storing application configuration"""
     __tablename__ = "settings"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     setting_key = Column(String(100), unique=True, nullable=False, index=True)
     setting_value = Column(JSONB, nullable=False)
@@ -298,8 +300,203 @@ class Settings(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
-    
+
     __table_args__ = (
         Index('idx_settings_key', 'setting_key'),
         Index('idx_settings_active', 'is_active'),
+    )
+
+
+class DocumentUpload(Base):
+    """Model for tracking uploaded documents for RFQ analysis"""
+    __tablename__ = "document_uploads"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    filename = Column(String(255), nullable=False)
+    original_filename = Column(String(255), nullable=False)
+    file_size = Column(Integer, nullable=False)
+    content_type = Column(String(100))
+    upload_timestamp = Column(DateTime(timezone=True), default=func.now())
+    processing_status = Column(
+        String(50),
+        CheckConstraint("processing_status IN ('pending', 'processing', 'completed', 'failed')"),
+        default='pending',
+        nullable=False
+    )
+    analysis_result = Column(JSONB)
+    error_message = Column(Text)
+    created_at = Column(DateTime(timezone=True), default=func.now())
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
+
+    # Relationships
+    rfqs = relationship("RFQ", back_populates="document_upload")
+    document_rfq_mappings = relationship("DocumentRFQMapping", back_populates="document_upload")
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_document_uploads_status', 'processing_status'),
+        Index('idx_document_uploads_timestamp', 'upload_timestamp'),
+        Index('idx_document_uploads_filename', 'original_filename'),
+    )
+
+
+class DocumentRFQMapping(Base):
+    """Model for tracking how documents are mapped to RFQs"""
+    __tablename__ = "document_rfq_mappings"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    document_id = Column(UUID(as_uuid=True), ForeignKey("document_uploads.id"), nullable=False)
+    rfq_id = Column(UUID(as_uuid=True), ForeignKey("rfqs.id"), nullable=False)
+    mapping_data = Column(JSONB, nullable=False)
+    confidence_score = Column(DECIMAL(3, 2), default=0.0)
+    fields_mapped = Column(JSONB)  # Track which fields were mapped and with what confidence
+    user_corrections = Column(JSONB)  # Track user corrections to improve future mappings
+    created_at = Column(DateTime(timezone=True), default=func.now())
+
+    # Relationships
+    document_upload = relationship("DocumentUpload", back_populates="document_rfq_mappings")
+    rfq = relationship("RFQ")
+
+    # Constraints and indexes
+    __table_args__ = (
+        Index('idx_document_rfq_mappings_document_id', 'document_id'),
+        Index('idx_document_rfq_mappings_rfq_id', 'rfq_id'),
+        Index('idx_document_rfq_mappings_confidence', 'confidence_score'),
+        # Ensure each document can only be mapped to an RFQ once
+        Index('idx_document_rfq_mappings_unique', 'document_id', 'rfq_id', unique=True),
+    )
+
+
+class LLMAudit(Base):
+    """Comprehensive audit table for all LLM interactions across the system"""
+    __tablename__ = "llm_audit"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    
+    # Core identification
+    interaction_id = Column(String(255), nullable=False)  # Unique identifier for this LLM interaction
+    parent_workflow_id = Column(String(255))  # Optional parent workflow ID
+    parent_survey_id = Column(String(255))  # Optional parent survey ID
+    parent_rfq_id = Column(UUID(as_uuid=True))  # Optional parent RFQ ID
+    
+    # LLM Configuration
+    model_name = Column(String(100), nullable=False)  # e.g., "openai/gpt-4o-mini", "meta/llama-2-70b-chat"
+    model_provider = Column(String(50), nullable=False)  # e.g., "openai", "replicate", "anthropic"
+    model_version = Column(String(50))  # Specific version if available
+    
+    # Purpose and Context
+    purpose = Column(String(100), nullable=False)  # e.g., "survey_generation", "evaluation", "field_extraction"
+    sub_purpose = Column(String(100))  # e.g., "content_validity", "methodological_rigor", "rfq_parsing"
+    context_type = Column(String(50))  # e.g., "generation", "evaluation", "validation", "analysis"
+    
+    # Input/Output
+    input_prompt = Column(Text, nullable=False)  # The actual prompt sent to LLM
+    input_tokens = Column(Integer)  # Number of input tokens
+    output_content = Column(Text)  # The response content from LLM
+    output_tokens = Column(Integer)  # Number of output tokens
+    
+    # Hyperparameters (configurable)
+    temperature = Column(DECIMAL(3, 2))  # 0.0 to 2.0
+    top_p = Column(DECIMAL(3, 2))  # 0.0 to 1.0
+    max_tokens = Column(Integer)
+    frequency_penalty = Column(DECIMAL(3, 2))  # -2.0 to 2.0
+    presence_penalty = Column(DECIMAL(3, 2))  # -2.0 to 2.0
+    stop_sequences = Column(JSONB)  # Array of stop sequences
+    
+    # Performance Metrics
+    response_time_ms = Column(Integer)  # Response time in milliseconds
+    cost_usd = Column(DECIMAL(10, 6))  # Cost in USD if available
+    success = Column(Boolean, nullable=False, default=True)
+    error_message = Column(Text)  # Error message if failed
+    
+    # Metadata
+    interaction_metadata = Column(JSONB)  # Additional context-specific metadata
+    tags = Column(JSONB)  # Searchable tags for categorization
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_llm_audit_interaction_id', 'interaction_id'),
+        Index('idx_llm_audit_parent_workflow_id', 'parent_workflow_id'),
+        Index('idx_llm_audit_parent_survey_id', 'parent_survey_id'),
+        Index('idx_llm_audit_parent_rfq_id', 'parent_rfq_id'),
+        Index('idx_llm_audit_model_name', 'model_name'),
+        Index('idx_llm_audit_purpose', 'purpose'),
+        Index('idx_llm_audit_context_type', 'context_type'),
+        Index('idx_llm_audit_created_at', 'created_at'),
+        Index('idx_llm_audit_success', 'success'),
+        Index('idx_llm_audit_cost_usd', 'cost_usd'),
+    )
+
+
+class LLMHyperparameterConfig(Base):
+    """Configuration table for LLM hyperparameters by purpose"""
+    __tablename__ = "llm_hyperparameter_configs"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    
+    # Configuration identification
+    config_name = Column(String(100), nullable=False, unique=True)  # e.g., "survey_generation_default"
+    purpose = Column(String(100), nullable=False)  # e.g., "survey_generation", "evaluation"
+    sub_purpose = Column(String(100))  # e.g., "content_validity", "methodological_rigor"
+    
+    # Hyperparameters
+    temperature = Column(DECIMAL(3, 2), default=0.7)
+    top_p = Column(DECIMAL(3, 2), default=0.9)
+    max_tokens = Column(Integer, default=4000)
+    frequency_penalty = Column(DECIMAL(3, 2), default=0.0)
+    presence_penalty = Column(DECIMAL(3, 2), default=0.0)
+    stop_sequences = Column(JSONB, default='[]')  # Array of stop sequences
+    
+    # Model preferences
+    preferred_models = Column(JSONB, default='[]')  # Array of preferred model names
+    fallback_models = Column(JSONB, default='[]')  # Array of fallback model names
+    
+    # Configuration metadata
+    description = Column(Text)
+    is_active = Column(Boolean, default=True)
+    is_default = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_llm_hyperparameter_configs_purpose', 'purpose'),
+        Index('idx_llm_hyperparameter_configs_sub_purpose', 'sub_purpose'),
+        Index('idx_llm_hyperparameter_configs_is_active', 'is_active'),
+        Index('idx_llm_hyperparameter_configs_is_default', 'is_default'),
+    )
+
+
+class LLMPromptTemplate(Base):
+    """Template table for LLM prompts by purpose"""
+    __tablename__ = "llm_prompt_templates"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    
+    # Template identification
+    template_name = Column(String(100), nullable=False, unique=True)  # e.g., "survey_generation_base"
+    purpose = Column(String(100), nullable=False)  # e.g., "survey_generation", "evaluation"
+    sub_purpose = Column(String(100))  # e.g., "content_validity", "methodological_rigor"
+    
+    # Template content
+    system_prompt_template = Column(Text, nullable=False)  # Template with placeholders
+    user_prompt_template = Column(Text)  # Optional user prompt template
+    template_variables = Column(JSONB, default='{}')  # Available template variables
+    
+    # Template metadata
+    description = Column(Text)
+    version = Column(String(20), default='1.0')
+    is_active = Column(Boolean, default=True)
+    is_default = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_llm_prompt_templates_purpose', 'purpose'),
+        Index('idx_llm_prompt_templates_sub_purpose', 'sub_purpose'),
+        Index('idx_llm_prompt_templates_is_active', 'is_active'),
+        Index('idx_llm_prompt_templates_is_default', 'is_default'),
     )

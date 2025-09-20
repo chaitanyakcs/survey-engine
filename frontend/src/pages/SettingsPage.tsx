@@ -3,12 +3,14 @@ import { Sidebar } from '../components/Sidebar';
 import { useSidebarLayout } from '../hooks/useSidebarLayout';
 import { ToastContainer } from '../components/Toast';
 import { useAppStore } from '../store/useAppStore';
+import LLMAuditDashboard from '../components/LLMAuditDashboard';
 import { 
   CogIcon, 
   CheckCircleIcon,
   InformationCircleIcon,
   UserIcon,
-  ClockIcon
+  ClockIcon,
+  ChartBarIcon
 } from '@heroicons/react/24/outline';
 
 interface EvaluationSettings {
@@ -26,11 +28,22 @@ interface EvaluationSettings {
   require_approval_for_generation: boolean;
   auto_approve_trusted_prompts: boolean;
   prompt_review_timeout_hours: number;
+  // Model configuration
+  generation_model: string;
+  evaluation_model: string;
+  embedding_model: string;
+}
+
+interface RFQParsingSettings {
+  auto_apply_threshold: number;
+  parsing_model: string;
 }
 
 export const SettingsPage: React.FC = () => {
   const { toasts, removeToast, addToast } = useAppStore();
   const { mainContentClasses } = useSidebarLayout();
+  
+  const [showLLMAuditDashboard, setShowLLMAuditDashboard] = useState(false);
   
   const [settings, setSettings] = useState<EvaluationSettings>({
     evaluation_mode: 'single_call',
@@ -46,14 +59,27 @@ export const SettingsPage: React.FC = () => {
     prompt_review_mode: 'disabled',
     require_approval_for_generation: false,
     auto_approve_trusted_prompts: false,
-    prompt_review_timeout_hours: 24
+    prompt_review_timeout_hours: 24,
+    generation_model: 'openai/gpt-5',
+    evaluation_model: 'openai/gpt-5',
+    embedding_model: 'all-MiniLM-L6-v2'
   });
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [rfqParsing, setRfqParsing] = useState<RFQParsingSettings>({ auto_apply_threshold: 0.8, parsing_model: 'openai/gpt-4o-mini' });
+  const [rfqModels, setRfqModels] = useState<string[]>([]);
+  const [generationModels, setGenerationModels] = useState<string[]>([]);
+  const [evaluationModels, setEvaluationModels] = useState<string[]>([]);
+  const [embeddingModels, setEmbeddingModels] = useState<string[]>([]);
 
   useEffect(() => {
     fetchSettings();
+    fetchRfqParsingSettings();
+    fetchRfqModels();
+    fetchGenerationModels();
+    fetchEvaluationModels();
+    fetchEmbeddingModels();
   }, []);
 
   const fetchSettings = async () => {
@@ -108,6 +134,80 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  const fetchRfqParsingSettings = async () => {
+    try {
+      const response = await fetch('/api/v1/settings/rfq-parsing');
+      if (response.ok) {
+        const data = await response.json();
+        setRfqParsing(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch RFQ parsing settings:', error);
+    }
+  };
+
+  const saveRfqParsingSettings = async () => {
+    try {
+      const response = await fetch('/api/v1/settings/rfq-parsing', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(rfqParsing)
+      });
+      if (!response.ok) throw new Error('Failed to save RFQ parsing settings');
+      addToast({ type: 'success', title: 'Settings Saved', message: 'RFQ parsing settings updated', duration: 3000 });
+    } catch (error) {
+      addToast({ type: 'error', title: 'Save Failed', message: 'Failed to save RFQ parsing settings', duration: 5000 });
+    }
+  };
+
+  const fetchRfqModels = async () => {
+    try {
+      const response = await fetch('/api/v1/settings/rfq-parsing/models');
+      if (response.ok) {
+        const data = await response.json();
+        setRfqModels(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch RFQ models:', error);
+    }
+  };
+
+  const fetchGenerationModels = async () => {
+    try {
+      const response = await fetch('/api/v1/settings/generation/models');
+      if (response.ok) {
+        const data = await response.json();
+        setGenerationModels(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch generation models:', error);
+    }
+  };
+
+  const fetchEvaluationModels = async () => {
+    try {
+      const response = await fetch('/api/v1/settings/evaluation/models');
+      if (response.ok) {
+        const data = await response.json();
+        setEvaluationModels(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch evaluation models:', error);
+    }
+  };
+
+  const fetchEmbeddingModels = async () => {
+    try {
+      const response = await fetch('/api/v1/settings/embedding/models');
+      if (response.ok) {
+        const data = await response.json();
+        setEmbeddingModels(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch embedding models:', error);
+    }
+  };
+
   const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings') => {
     if (view === 'survey') {
       window.location.href = '/';
@@ -135,7 +235,12 @@ export const SettingsPage: React.FC = () => {
       prompt_review_mode: 'disabled',
       require_approval_for_generation: false,
       auto_approve_trusted_prompts: false,
-      prompt_review_timeout_hours: 24
+      prompt_review_timeout_hours: 24,
+      
+      // Model configuration
+      generation_model: 'openai/gpt-4o-mini',
+      evaluation_model: 'openai/gpt-4o-mini',
+      embedding_model: 'sentence-transformers/all-MiniLM-L6-v2'
     });
   };
 
@@ -172,6 +277,13 @@ export const SettingsPage: React.FC = () => {
                 </div>
                 <div className="flex space-x-3">
                   <button
+                    onClick={() => setShowLLMAuditDashboard(true)}
+                    className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors flex items-center space-x-2"
+                  >
+                    <ChartBarIcon className="w-4 h-4" />
+                    <span>LLM Audit</span>
+                  </button>
+                  <button
                     onClick={resetToDefaults}
                     className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
                   >
@@ -190,6 +302,118 @@ export const SettingsPage: React.FC = () => {
           </header>
 
           <div className="p-6 space-y-8">
+            {/* Model Configuration */}
+            <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6">
+              <div className="flex items-center space-x-3 mb-6">
+                <CogIcon className="w-6 h-6 text-indigo-600" />
+                <h2 className="text-xl font-semibold text-gray-900">Model Configuration</h2>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Generation Model */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Survey Generation Model</label>
+                  <select
+                    value={settings.generation_model}
+                    onChange={(e) => setSettings({ ...settings, generation_model: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    {generationModels.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">Used for generating surveys in workflows.</p>
+                </div>
+
+                {/* Evaluation Model */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Evaluation Model</label>
+                  <select
+                    value={settings.evaluation_model}
+                    onChange={(e) => setSettings({ ...settings, evaluation_model: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    {evaluationModels.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">Used by pillar evaluators.</p>
+                </div>
+
+                {/* Embedding Model */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Embedding Model</label>
+                  <select
+                    value={settings.embedding_model}
+                    onChange={(e) => setSettings({ ...settings, embedding_model: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    {embeddingModels.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">Used for semantic retrieval and similarity.</p>
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end">
+                <button
+                  onClick={saveSettings}
+                  disabled={saving}
+                  className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {saving ? 'Saving...' : 'Save Model Settings'}
+                </button>
+              </div>
+            </div>
+            {/* RFQ Parsing Settings */}
+            <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6">
+              <div className="flex items-center space-x-3 mb-6">
+                <CogIcon className="w-6 h-6 text-indigo-600" />
+                <h2 className="text-xl font-semibold text-gray-900">RFQ Parsing Settings</h2>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Auto-apply threshold */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Auto-apply Threshold (0-1)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={rfqParsing.auto_apply_threshold}
+                    onChange={(e) => setRfqParsing({ ...rfqParsing, auto_apply_threshold: Number(e.target.value) })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Fields with confidence ≥ threshold are auto-filled.</p>
+                </div>
+
+                {/* Parsing Model */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">LLM Model for Parsing</label>
+                  <select
+                    value={rfqParsing.parsing_model}
+                    onChange={(e) => setRfqParsing({ ...rfqParsing, parsing_model: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    {rfqModels.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">Top models fetched from Replicate.</p>
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end">
+                <button
+                  onClick={saveRfqParsingSettings}
+                  className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                >
+                  Save RFQ Parsing Settings
+                </button>
+              </div>
+            </div>
             {/* Human Prompt Review Settings */}
             <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6">
               <div className="flex items-center space-x-3 mb-6">
@@ -468,6 +692,11 @@ export const SettingsPage: React.FC = () => {
           </div>
         </div>
       </div>
+      
+      {/* LLM Audit Dashboard Modal */}
+      {showLLMAuditDashboard && (
+        <LLMAuditDashboard onClose={() => setShowLLMAuditDashboard(false)} />
+      )}
     </div>
   );
 };

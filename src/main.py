@@ -1,6 +1,6 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from src.api import rfq_router, survey_router, golden_router, analytics_router, rules_router, utils_router, field_extraction_router, pillar_scores_router, human_reviews_router, annotations, system_prompt_audit, settings as settings_router
+from src.api import rfq_router, survey_router, golden_router, analytics_router, rules_router, utils_router, field_extraction_router, pillar_scores_router, human_reviews_router, annotations, system_prompt_audit, settings as settings_router, llm_audit
 from src.config import settings
 import logging
 import asyncio
@@ -81,6 +81,7 @@ app.include_router(pillar_scores_router, prefix="/api/v1")
 app.include_router(human_reviews_router, prefix="/api/v1")
 app.include_router(annotations.router, prefix="/api/v1")
 app.include_router(system_prompt_audit.router)
+app.include_router(llm_audit.router)
 app.include_router(settings_router.router, prefix="/api/v1")
 
 

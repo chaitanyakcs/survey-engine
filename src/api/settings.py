@@ -7,8 +7,9 @@ from sqlalchemy.orm import Session
 from src.database import get_db
 from src.services.settings_service import SettingsService
 from pydantic import BaseModel
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import logging
+from src.config.settings import settings as app_settings
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,14 @@ class EvaluationSettings(BaseModel):
     require_approval_for_generation: bool = False
     auto_approve_trusted_prompts: bool = False
     prompt_review_timeout_hours: int = 24
+    # Model configuration
+    generation_model: str = app_settings.generation_model
+    evaluation_model: str = app_settings.generation_model
+    embedding_model: str = app_settings.embedding_model
+
+class RFQParsingSettings(BaseModel):
+    auto_apply_threshold: float = 0.8
+    parsing_model: str = "openai/gpt-4o-mini"
 
 class CostMetrics(BaseModel):
     daily_cost: float
@@ -61,6 +70,94 @@ async def get_evaluation_settings(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"❌ [Settings API] Failed to retrieve settings: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@router.get("/rfq-parsing", response_model=RFQParsingSettings)
+async def get_rfq_parsing_settings(db: Session = Depends(get_db)):
+    """Get current RFQ parsing settings"""
+    try:
+        settings_service = SettingsService(db)
+        settings = settings_service.get_rfq_parsing_settings()
+        return RFQParsingSettings(**settings)
+    except Exception as e:
+        logger.error(f"❌ [Settings API] Failed to retrieve RFQ parsing settings: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@router.put("/rfq-parsing", response_model=RFQParsingSettings)
+async def update_rfq_parsing_settings(settings: RFQParsingSettings, db: Session = Depends(get_db)):
+    """Update RFQ parsing settings"""
+    try:
+        if settings.auto_apply_threshold < 0 or settings.auto_apply_threshold > 1:
+            raise HTTPException(status_code=400, detail="auto_apply_threshold must be between 0 and 1")
+        settings_service = SettingsService(db)
+        success = settings_service.update_rfq_parsing_settings(settings.dict())
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update RFQ parsing settings")
+        updated = settings_service.get_rfq_parsing_settings()
+        return RFQParsingSettings(**updated)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [Settings API] Failed to update RFQ parsing settings: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@router.get("/rfq-parsing/models", response_model=List[str])
+async def list_rfq_models():
+    """Return top 3 suitable LLMs for RFQ parsing (from Replicate)."""
+    try:
+        import replicate
+        # Simple curated shortlist; could be dynamic via Replicate API search
+        candidates = [
+            "openai/gpt-5",
+            "openai/gpt-4o-mini",
+            "meta/llama-3.1-70b-instruct",
+            "mistralai/mistral-large"
+        ]
+        return candidates[:3]
+    except Exception as e:
+        logger.error(f"❌ [Settings API] Failed to list models: {str(e)}")
+        # Fallback static list
+        return ["openai/gpt-5", "openai/gpt-4o-mini", "meta/llama-3.1-70b-instruct", "mistralai/mistral-large"]
+
+@router.get("/generation/models", response_model=List[str])
+async def list_generation_models():
+    """Return suitable LLMs for survey generation."""
+    try:
+        return [
+            "openai/gpt-5",
+            "openai/gpt-4o-mini",
+            "meta/llama-3.1-70b-instruct",
+            "mistralai/mistral-large"
+        ]
+    except Exception as e:
+        logger.error(f"❌ [Settings API] Failed to list generation models: {str(e)}")
+        return [app_settings.generation_model]
+
+@router.get("/evaluation/models", response_model=List[str])
+async def list_evaluation_models():
+    """Return suitable LLMs for evaluation."""
+    try:
+        return [
+            "openai/gpt-5",
+            "openai/gpt-4o-mini",
+            "meta/llama-3.1-70b-instruct",
+            "mistralai/mistral-large"
+        ]
+    except Exception as e:
+        logger.error(f"❌ [Settings API] Failed to list evaluation models: {str(e)}")
+        return [app_settings.generation_model]
+
+@router.get("/embedding/models", response_model=List[str])
+async def list_embedding_models():
+    """Return supported embedding models."""
+    try:
+        return [
+            "all-MiniLM-L6-v2",
+            "all-mpnet-base-v2",
+            "sentence-transformers/e5-large-v2"
+        ]
+    except Exception as e:
+        logger.error(f"❌ [Settings API] Failed to list embedding models: {str(e)}")
+        return [app_settings.embedding_model]
 
 @router.put("/evaluation", response_model=EvaluationSettings)
 async def update_evaluation_settings(settings: EvaluationSettings, db: Session = Depends(get_db)):

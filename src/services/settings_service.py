@@ -5,6 +5,7 @@ Settings Service - Handle database operations for application settings
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from src.database.models import Settings
+from src.config.settings import settings as app_settings
 from typing import Dict, Any, Optional
 import logging
 import json
@@ -77,7 +78,11 @@ class SettingsService:
             "prompt_review_mode": "disabled",
             "require_approval_for_generation": False,
             "auto_approve_trusted_prompts": False,
-            "prompt_review_timeout_hours": 24
+            "prompt_review_timeout_hours": 24,
+            # Model configuration (overridable via UI)
+            "generation_model": app_settings.generation_model,
+            "evaluation_model": app_settings.generation_model,
+            "embedding_model": app_settings.embedding_model
         }
         
         try:
@@ -100,7 +105,9 @@ class SettingsService:
                 "enable_ab_testing", "cost_threshold_daily", "cost_threshold_monthly",
                 "fallback_mode", "enable_prompt_review", "prompt_review_mode",
                 "require_approval_for_generation", "auto_approve_trusted_prompts",
-                "prompt_review_timeout_hours"
+                "prompt_review_timeout_hours",
+                # Model configuration keys
+                "generation_model", "evaluation_model", "embedding_model"
             ]
             
             for key in required_keys:
@@ -162,4 +169,48 @@ class SettingsService:
             
         except Exception as e:
             logger.error(f"❌ [SettingsService] Failed to reset settings: {e}")
+            return False
+
+    # ---------------- RFQ Parsing Settings ----------------
+    def get_rfq_parsing_settings(self) -> Dict[str, Any]:
+        """Get RFQ parsing settings (threshold and model)."""
+        default_settings = {
+            "auto_apply_threshold": 0.8,
+            "parsing_model": "openai/gpt-4o-mini"
+        }
+        try:
+            settings = self.get_setting("rfq_parsing_settings", default_settings)
+            for key, default_value in default_settings.items():
+                if key not in settings:
+                    settings[key] = default_value
+            return settings
+        except Exception as e:
+            logger.error(f"❌ [SettingsService] Failed to get RFQ parsing settings: {e}")
+            return default_settings
+
+    def update_rfq_parsing_settings(self, settings: Dict[str, Any]) -> bool:
+        """Update RFQ parsing settings."""
+        try:
+            # Validate
+            if "auto_apply_threshold" not in settings:
+                logger.error("❌ [SettingsService] Missing auto_apply_threshold")
+                return False
+            threshold = settings["auto_apply_threshold"]
+            if not isinstance(threshold, (int, float)) or threshold < 0 or threshold > 1:
+                logger.error(f"❌ [SettingsService] Invalid auto_apply_threshold: {threshold}")
+                return False
+            if "parsing_model" not in settings or not isinstance(settings["parsing_model"], str):
+                logger.error("❌ [SettingsService] Invalid parsing_model")
+                return False
+
+            success = self.set_setting(
+                "rfq_parsing_settings",
+                settings,
+                "RFQ parsing settings (auto-apply threshold and model)"
+            )
+            if success:
+                logger.info("✅ [SettingsService] RFQ parsing settings updated successfully")
+            return success
+        except Exception as e:
+            logger.error(f"❌ [SettingsService] Failed to update RFQ parsing settings: {e}")
             return False

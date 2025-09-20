@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { AppStore, RFQRequest, EnhancedRFQRequest, RFQTemplate, RFQQualityAssessment, WorkflowState, ProgressMessage, GoldenExampleRequest, ToastMessage, SurveyAnnotations, getQuestionCount, PendingReview, ReviewDecision } from '../types';
+import { AppStore, RFQRequest, EnhancedRFQRequest, RFQTemplate, RFQQualityAssessment, WorkflowState, ProgressMessage, GoldenExampleRequest, ToastMessage, SurveyAnnotations, getQuestionCount, PendingReview, ReviewDecision, DocumentContent, DocumentAnalysis, RFQFieldMapping, DocumentAnalysisResponse } from '../types';
 import { apiService } from '../services/api';
 import { rfqTemplateService } from '../services/RFQTemplateService';
 
@@ -146,7 +146,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
   setPendingReviews: (reviews) => set({ pendingReviews: reviews }),
   setActiveReview: (review) => set({ activeReview: review }),
 
-  // WebSocket connection  
+  // Document Upload State
+  documentContent: undefined,
+  documentAnalysis: undefined,
+  fieldMappings: [],
+  isDocumentProcessing: false,
+  documentUploadError: undefined,
+
+  // WebSocket connection
   websocket: undefined as WebSocket | undefined,
 
 
@@ -1224,5 +1231,377 @@ export const useAppStore = create<AppStore>((set, get) => ({
       console.error('Failed to generate RFQ suggestions:', error);
       return [];
     }
+  },
+
+  // Document Upload Actions
+  uploadDocument: async (file: File): Promise<DocumentAnalysisResponse> => {
+    set({ isDocumentProcessing: true, documentUploadError: undefined });
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/v1/rfq/upload-document', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `Upload failed: ${response.statusText}`);
+      }
+
+      const result: DocumentAnalysisResponse = await response.json();
+
+      // Dynamic confidence thresholds per field type for better auto-acceptance
+      const fieldConfidenceThresholds: Record<string, number> = {
+        title: 0.95,           // High threshold - titles must be very accurate
+        description: 0.75,     // Lower threshold - descriptions can be edited easily
+        product_category: 0.85, // Medium-high threshold - categories are important
+        target_segment: 0.80,   // Medium threshold - segments can be refined
+        research_goal: 0.70,    // Lower threshold - goals are often iterative
+        objectives: 0.70,       // Lower threshold - objectives can be refined
+        constraints: 0.65,      // Lowest threshold - constraints are often incomplete in docs
+        deliverables: 0.75,     // Medium threshold - deliverables are important but editable
+        timeline: 0.80,         // Medium threshold - timelines need accuracy
+        budget: 0.90           // High threshold - budget must be very accurate
+      };
+
+      const incomingMappings = result.rfq_analysis.field_mappings || [];
+      const autoAccepted = incomingMappings.map(m => {
+        const threshold = fieldConfidenceThresholds[m.field] || 0.80; // Default fallback
+        return m.confidence >= threshold ? { ...m, user_action: 'accepted' as const } : m;
+      });
+
+      // Update store with analysis results and auto-accepted mappings
+      set({
+        documentContent: result.document_content,
+        documentAnalysis: result.rfq_analysis,
+        fieldMappings: autoAccepted,
+        isDocumentProcessing: false
+      });
+
+      // Auto-apply accepted mappings immediately
+      const acceptedCount = autoAccepted.filter(m => m.user_action === 'accepted').length;
+      if (acceptedCount > 0) {
+        // Apply mappings immediately using the accepted mappings
+        const rfqUpdates = get().buildRFQUpdatesFromMappings(autoAccepted.filter(m => m.user_action === 'accepted'));
+        get().setEnhancedRfq(rfqUpdates);
+
+        get().addToast({
+          type: 'success',
+          title: 'Auto-filled from Document',
+          message: `Applied ${acceptedCount} high-confidence fields (dynamic thresholds). Review in the sections below.`,
+          duration: 6000
+        });
+      }
+
+      return result;
+    } catch (error) {
+      let errorMessage = error instanceof Error ? error.message : 'Document upload failed';
+
+      // Enhance error messages with user guidance
+      if (errorMessage.includes('AI service not configured')) {
+        errorMessage = 'AI service is not configured. Please contact support to enable document processing.';
+      } else if (errorMessage.includes('timeout')) {
+        errorMessage = 'Document processing timed out. Try uploading a smaller document or try again later.';
+      } else if (errorMessage.includes('Network error') || errorMessage.includes('fetch')) {
+        errorMessage = 'Network error. Please check your internet connection and try again.';
+      } else if (errorMessage.includes('413') || errorMessage.includes('too large')) {
+        errorMessage = 'File is too large. Please upload a document smaller than 10MB.';
+      } else if (errorMessage.includes('400') || errorMessage.includes('Bad Request')) {
+        errorMessage = 'Invalid file format. Please upload a valid DOCX document.';
+      } else if (errorMessage.includes('500') || errorMessage.includes('Internal Server Error')) {
+        errorMessage = 'Server error. The service is temporarily unavailable. Please try again in a few minutes.';
+      }
+
+      set({
+        documentUploadError: errorMessage,
+        isDocumentProcessing: false
+      });
+      throw new Error(errorMessage);
+    }
+  },
+
+  analyzeText: async (text: string, filename = 'text_input.txt'): Promise<DocumentAnalysisResponse> => {
+    set({ isDocumentProcessing: true, documentUploadError: undefined });
+
+    try {
+      const response = await fetch('/api/v1/rfq/analyze-text', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text, filename }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `Text analysis failed: ${response.statusText}`);
+      }
+
+      const result: DocumentAnalysisResponse = await response.json();
+
+      // Dynamic confidence thresholds per field type for better auto-acceptance
+      const fieldConfidenceThresholds: Record<string, number> = {
+        title: 0.95,           // High threshold - titles must be very accurate
+        description: 0.75,     // Lower threshold - descriptions can be edited easily
+        product_category: 0.85, // Medium-high threshold - categories are important
+        target_segment: 0.80,   // Medium threshold - segments can be refined
+        research_goal: 0.70,    // Lower threshold - goals are often iterative
+        objectives: 0.70,       // Lower threshold - objectives can be refined
+        constraints: 0.65,      // Lowest threshold - constraints are often incomplete in docs
+        deliverables: 0.75,     // Medium threshold - deliverables are important but editable
+        timeline: 0.80,         // Medium threshold - timelines need accuracy
+        budget: 0.90           // High threshold - budget must be very accurate
+      };
+
+      const incomingMappings = result.rfq_analysis.field_mappings || [];
+      const autoAccepted = incomingMappings.map(m => {
+        const threshold = fieldConfidenceThresholds[m.field] || 0.80; // Default fallback
+        return m.confidence >= threshold ? { ...m, user_action: 'accepted' as const } : m;
+      });
+
+      // Update store with analysis results and auto-accepted mappings
+      set({
+        documentContent: result.document_content,
+        documentAnalysis: result.rfq_analysis,
+        fieldMappings: autoAccepted,
+        isDocumentProcessing: false
+      });
+
+      // Auto-apply if we have accepted mappings
+      if (autoAccepted.some(m => m.user_action === 'accepted')) {
+        get().applyDocumentMappings();
+        get().addToast({
+          type: 'success',
+          title: 'Auto-filled from Text',
+          message: `Applied ${autoAccepted.filter(m => m.user_action === 'accepted').length} high-confidence fields (dynamic thresholds).`,
+          duration: 5000
+        });
+      }
+
+      return result;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Text analysis failed';
+      set({
+        documentUploadError: errorMessage,
+        isDocumentProcessing: false
+      });
+      throw error;
+    }
+  },
+
+  acceptFieldMapping: (field: string, value: any) => {
+    set((state) => ({
+      fieldMappings: state.fieldMappings.map(mapping =>
+        mapping.field === field
+          ? { ...mapping, user_action: 'accepted' as const }
+          : mapping
+      )
+    }));
+  },
+
+  rejectFieldMapping: (field: string) => {
+    set((state) => ({
+      fieldMappings: state.fieldMappings.map(mapping =>
+        mapping.field === field
+          ? { ...mapping, user_action: 'rejected' as const }
+          : mapping
+      )
+    }));
+  },
+
+  editFieldMapping: (field: string, value: any) => {
+    set((state) => ({
+      fieldMappings: state.fieldMappings.map(mapping =>
+        mapping.field === field
+          ? { ...mapping, value, user_action: 'edited' as const }
+          : mapping
+      )
+    }));
+  },
+
+  clearDocumentData: () => {
+    set({
+      documentContent: undefined,
+      documentAnalysis: undefined,
+      fieldMappings: [],
+      documentUploadError: undefined
+    });
+  },
+
+  // Helper function to build RFQ updates from field mappings
+  buildRFQUpdatesFromMappings: (mappings: RFQFieldMapping[]): Partial<EnhancedRFQRequest> => {
+    const rfqUpdates: Partial<EnhancedRFQRequest> = {};
+
+    mappings.forEach(mapping => {
+      const value = mapping.value;
+
+      switch (mapping.field) {
+        case 'title':
+          rfqUpdates.title = value;
+          break;
+        case 'description':
+          rfqUpdates.description = value;
+          break;
+        case 'product_category':
+          rfqUpdates.product_category = value;
+          break;
+        case 'target_segment':
+        case 'primary_segment':
+          if (!rfqUpdates.target_audience) rfqUpdates.target_audience = {};
+          rfqUpdates.target_audience.primary_segment = value;
+          break;
+        case 'research_goal':
+          rfqUpdates.research_goal = value;
+          break;
+        case 'estimated_budget':
+          rfqUpdates.estimated_budget = value;
+          break;
+        case 'expected_timeline':
+          rfqUpdates.expected_timeline = value;
+          break;
+        case 'objectives':
+          if (Array.isArray(value)) {
+            rfqUpdates.objectives = value.map((obj, index) => ({
+              id: `obj-${index}`,
+              title: typeof obj === 'string' ? obj : obj.title || obj.description || `Objective ${index + 1}`,
+              description: typeof obj === 'string' ? obj : obj.description || '',
+              priority: typeof obj === 'string' ? 'medium' : obj.priority || 'medium',
+              methodology_suggestions: typeof obj === 'string' ? [] : obj.methodology_suggestions || []
+            }));
+          } else if (typeof value === 'string') {
+            rfqUpdates.objectives = [{
+              id: 'obj-1',
+              title: value,
+              description: value,
+              priority: 'medium',
+              methodology_suggestions: []
+            }];
+          }
+          break;
+        case 'constraints':
+          if (Array.isArray(value)) {
+            rfqUpdates.constraints = value.map((constraint, index) => ({
+              id: `const-${index}`,
+              type: typeof constraint === 'string' ? 'custom' : constraint.type || 'custom',
+              description: typeof constraint === 'string' ? constraint : constraint.description || '',
+              value: typeof constraint === 'string' ? undefined : constraint.value
+            }));
+          } else if (typeof value === 'string') {
+            rfqUpdates.constraints = [{
+              id: 'const-1',
+              type: 'custom',
+              description: value
+            }];
+          }
+          break;
+        case 'stakeholders':
+          if (Array.isArray(value)) {
+            rfqUpdates.stakeholders = value.map((stakeholder, index) => ({
+              id: `stake-${index}`,
+              role: typeof stakeholder === 'string' ? 'stakeholder' : stakeholder.role || 'stakeholder',
+              requirements: typeof stakeholder === 'string' ? stakeholder : (stakeholder.requirements || stakeholder.name || ''),
+              decision_influence: typeof stakeholder === 'string' ? 'medium' : stakeholder.decision_influence || 'medium'
+            }));
+          } else if (typeof value === 'string') {
+            rfqUpdates.stakeholders = [{
+              id: 'stake-1',
+              role: 'stakeholder',
+              requirements: value,
+              decision_influence: 'medium'
+            }];
+          }
+          break;
+        case 'business_background':
+          if (!rfqUpdates.context) rfqUpdates.context = {};
+          rfqUpdates.context.business_background = value;
+          break;
+        case 'market_situation':
+          if (!rfqUpdates.context) rfqUpdates.context = {};
+          rfqUpdates.context.market_situation = value;
+          break;
+        case 'decision_timeline':
+          if (!rfqUpdates.context) rfqUpdates.context = {};
+          rfqUpdates.context.decision_timeline = value;
+          break;
+        case 'methodologies':
+        case 'preferred_methodologies':
+          if (!rfqUpdates.methodologies) rfqUpdates.methodologies = {};
+          if (Array.isArray(value)) {
+            rfqUpdates.methodologies.preferred = value;
+          } else if (typeof value === 'string') {
+            rfqUpdates.methodologies.preferred = [value];
+          }
+          break;
+        case 'excluded_methodologies':
+          if (!rfqUpdates.methodologies) rfqUpdates.methodologies = {};
+          if (Array.isArray(value)) {
+            rfqUpdates.methodologies.excluded = value;
+          } else if (typeof value === 'string') {
+            rfqUpdates.methodologies.excluded = [value];
+          }
+          break;
+        case 'target_audience':
+        case 'demographics':
+          if (!rfqUpdates.target_audience) rfqUpdates.target_audience = {};
+          if (typeof value === 'object' && value !== null) {
+            Object.assign(rfqUpdates.target_audience, value);
+          }
+          break;
+        case 'sample_size':
+          if (!rfqUpdates.target_audience) rfqUpdates.target_audience = {};
+          rfqUpdates.target_audience.size_estimate = typeof value === 'number' ? value : parseInt(value) || undefined;
+          break;
+        default:
+          console.log('Unhandled field mapping:', mapping.field, value);
+      }
+    });
+
+    // Add document source information if we have document content
+    const state = get();
+    if (state.documentContent) {
+      rfqUpdates.document_source = {
+        type: 'upload',
+        filename: state.documentContent.filename,
+        upload_id: state.documentContent.filename
+      };
+    }
+
+    return rfqUpdates;
+  },
+
+  applyDocumentMappings: () => {
+    const state = get();
+    const acceptedMappings = state.fieldMappings.filter(
+      mapping => mapping.user_action === 'accepted' || mapping.user_action === 'edited'
+    );
+
+    if (acceptedMappings.length === 0) {
+      get().addToast({
+        type: 'warning',
+        title: 'No Mappings Selected',
+        message: 'Please accept or edit at least one field mapping before applying.',
+        duration: 4000
+      });
+      return;
+    }
+
+    // Use the helper function to build updates
+    const rfqUpdates = get().buildRFQUpdatesFromMappings(acceptedMappings);
+
+    // Apply updates to Enhanced RFQ
+    get().setEnhancedRfq(rfqUpdates);
+
+    // Show success toast
+    get().addToast({
+      type: 'success',
+      title: 'Document Data Applied',
+      message: `Applied ${acceptedMappings.length} field mappings to your RFQ.`,
+      duration: 5000
+    });
+
+    console.log('Applied document mappings:', rfqUpdates);
   }
 }));

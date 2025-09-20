@@ -7,9 +7,12 @@ import {
   RFQStakeholder,
   RFQSuccess,
   RFQTemplate,
-  RFQQualityAssessment
+  RFQQualityAssessment,
+  DocumentAnalysisResponse
 } from '../types';
 import { v4 as uuidv4 } from 'uuid';
+import { DocumentUpload } from './DocumentUpload';
+import { DocumentAnalysisPreview } from './DocumentAnalysisPreview';
 
 interface EnhancedRFQEditorProps {
   onPreview?: () => void;
@@ -30,10 +33,24 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
     fetchRfqTemplates,
     assessRfqQuality,
     generateRfqSuggestions,
-    workflow
+    workflow,
+    // Document upload state and actions
+    documentContent,
+    documentAnalysis,
+    fieldMappings,
+    isDocumentProcessing,
+    documentUploadError,
+    uploadDocument,
+    analyzeText,
+    acceptFieldMapping,
+    rejectFieldMapping,
+    editFieldMapping,
+    clearDocumentData,
+    applyDocumentMappings,
+    addToast
   } = useAppStore();
 
-  const [currentSection, setCurrentSection] = useState<string>('basics');
+  const [currentSection, setCurrentSection] = useState<string>('document');
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
 
@@ -209,6 +226,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
   };
 
   const sections = [
+    { id: 'document', title: 'Upload Brief', icon: '📄', description: 'Upload research brief' },
     { id: 'basics', title: 'Basics', icon: '📋', description: 'Core information' },
     { id: 'context', title: 'Context', icon: '🏢', description: 'Business background' },
     { id: 'objectives', title: 'Objectives', icon: '🎯', description: 'Research goals' },
@@ -223,9 +241,8 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
-      <div className="max-w-7xl mx-auto p-6">
-
-        {/* Header with Progress */}
+      <div className="max-w-7xl mx-auto px-6 py-6">
+        {/* Header */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-6">
             <div>
@@ -246,25 +263,36 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
             )}
           </div>
 
-          {/* Section Navigation */}
-          <div className="flex space-x-1 bg-white/70 backdrop-blur-sm rounded-2xl p-2 shadow-lg">
-            {sections.map((section) => (
-              <button
-                key={section.id}
-                onClick={() => setCurrentSection(section.id)}
-                className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 ${
-                  currentSection === section.id
-                    ? 'bg-blue-500 text-white shadow-lg'
-                    : 'text-gray-600 hover:bg-blue-50 hover:text-blue-700'
-                }`}
-              >
-                <span className="text-lg">{section.icon}</span>
-                <div className="text-left">
-                  <div className="font-medium">{section.title}</div>
-                  <div className="text-xs opacity-75">{section.description}</div>
-                </div>
-              </button>
-            ))}
+          {/* Progress Bar */}
+          <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-4 shadow-lg">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-medium text-gray-700">Progress</span>
+              <span className="text-sm text-gray-500">
+                {sections.findIndex(s => s.id === currentSection) + 1} of {sections.length}
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div 
+                className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${((sections.findIndex(s => s.id === currentSection) + 1) / sections.length) * 100}%` }}
+              ></div>
+            </div>
+            <div className="flex justify-between mt-2">
+              {sections.map((section, index) => (
+                <button
+                  key={section.id}
+                  onClick={() => setCurrentSection(section.id)}
+                  className={`flex flex-col items-center space-y-1 p-2 rounded-lg transition-all duration-200 ${
+                    currentSection === section.id
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <span className="text-lg">{section.icon}</span>
+                  <span className="text-xs font-medium">{section.title}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -315,7 +343,62 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                 </div>
               )}
 
-              {/* Section Content */}
+              {/* Section Content - Auto-fill only (no approval UI) */}
+              {currentSection === 'document' && (
+                <div className="space-y-6">
+                  <h2 className="text-2xl font-bold text-gray-900 flex items-center">
+                    <span className="text-3xl mr-3">📄</span>
+                    Upload Research Brief
+                  </h2>
+
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
+                    <div className="flex items-start space-x-3">
+                      <div className="text-blue-500 text-2xl">💡</div>
+                      <div>
+                        <h3 className="font-semibold text-blue-900 mb-2">Automatic Auto-Fill</h3>
+                        <p className="text-blue-800 text-sm">
+                          Upload a DOCX research brief and we’ll automatically populate your RFQ with all high-confidence (≥ 80%) fields. You can edit any field in the RFQ sections.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Document Upload Component */}
+                  <DocumentUpload
+                    onDocumentAnalyzed={(response: DocumentAnalysisResponse) => {
+                      const acceptedCount = response.rfq_analysis.field_mappings?.filter(m => (m as any).user_action === 'accepted').length || 0;
+
+                      if (acceptedCount > 0) {
+                        addToast({
+                          type: 'success',
+                          title: 'Auto-filled Successfully',
+                          message: `Applied ${acceptedCount} high-confidence fields. Review the populated data in the sections below.`,
+                          duration: 6000
+                        });
+                      } else {
+                        addToast({
+                          type: 'info',
+                          title: 'Document Analyzed',
+                          message: 'Document processed but no high-confidence fields found. Check the document or fill manually.',
+                          duration: 5000
+                        });
+                      }
+
+                      // Navigate to basics section to see the populated data
+                      setTimeout(() => setCurrentSection('basics'), 1000);
+                    }}
+                    onError={(error: string) => {
+                      addToast({
+                        type: 'error',
+                        title: 'Upload Failed',
+                        message: error,
+                        duration: 8000
+                      });
+                    }}
+                  />
+                </div>
+              )}
+
               {currentSection === 'basics' && (
                 <div className="space-y-6">
                   <h2 className="text-2xl font-bold text-gray-900 flex items-center">
@@ -328,13 +411,23 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                       <label className="block text-sm font-semibold text-gray-800 mb-3">
                         Project Title
                       </label>
-                      <input
-                        type="text"
-                        value={enhancedRfq.title || ''}
-                        onChange={(e) => setEnhancedRfq({ ...enhancedRfq, title: e.target.value })}
-                        placeholder="Enter your research project title"
-                        className="w-full px-4 py-4 bg-white/80 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300"
-                      />
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={enhancedRfq.title || ''}
+                          onChange={(e) => setEnhancedRfq({ ...enhancedRfq, title: e.target.value })}
+                          placeholder="Enter your research project title"
+                          className={`w-full px-4 py-4 bg-white/80 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 ${
+                            enhancedRfq.document_source && enhancedRfq.title ? 'bg-blue-50/50 border-blue-200' : ''
+                          }`}
+                        />
+                        {enhancedRfq.document_source && enhancedRfq.title && (
+                          <div className="absolute right-4 top-4 text-blue-500 text-sm flex items-center space-x-1">
+                            <span>📄</span>
+                            <span className="text-xs text-blue-600">Auto-filled</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <div>
@@ -355,13 +448,23 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                     <label className="block text-sm font-semibold text-gray-800 mb-3">
                       Research Description
                     </label>
-                    <textarea
-                      value={enhancedRfq.description}
-                      onChange={(e) => setEnhancedRfq({ ...enhancedRfq, description: e.target.value })}
-                      placeholder="Describe your research needs, goals, and any specific requirements..."
-                      rows={8}
-                      className="w-full px-6 py-6 bg-white/80 border border-gray-200 rounded-3xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 resize-none"
-                    />
+                    <div className="relative">
+                      <textarea
+                        value={enhancedRfq.description}
+                        onChange={(e) => setEnhancedRfq({ ...enhancedRfq, description: e.target.value })}
+                        placeholder="Describe your research needs, goals, and any specific requirements..."
+                        rows={8}
+                        className={`w-full px-6 py-6 bg-white/80 border border-gray-200 rounded-3xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 resize-none ${
+                          enhancedRfq.document_source && enhancedRfq.description ? 'bg-blue-50/50 border-blue-200' : ''
+                        }`}
+                      />
+                      {enhancedRfq.document_source && enhancedRfq.description && (
+                        <div className="absolute right-4 top-4 text-blue-500 text-sm flex items-center space-x-1">
+                          <span>📄</span>
+                          <span className="text-xs text-blue-600">Auto-filled</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -932,35 +1035,6 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                 </div>
               )}
 
-              {/* Navigation */}
-              <div className="flex justify-between mt-8 pt-6 border-t border-gray-200">
-                <button
-                  onClick={() => {
-                    const currentIndex = sections.findIndex(s => s.id === currentSection);
-                    if (currentIndex > 0) {
-                      setCurrentSection(sections[currentIndex - 1].id);
-                    }
-                  }}
-                  disabled={currentSection === sections[0].id}
-                  className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Previous
-                </button>
-
-                <button
-                  onClick={() => {
-                    const currentIndex = sections.findIndex(s => s.id === currentSection);
-                    if (currentIndex < sections.length - 1) {
-                      setCurrentSection(sections[currentIndex + 1].id);
-                    } else if (onPreview) {
-                      onPreview();
-                    }
-                  }}
-                  className="px-6 py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors"
-                >
-                  {currentSection === sections[sections.length - 1].id ? 'Generate Preview' : 'Next'}
-                </button>
-              </div>
             </div>
           </div>
 
@@ -975,6 +1049,16 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                   AI Assistant
                 </h3>
                 <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+              </div>
+
+              {/* Current Section Info */}
+              <div className="mb-6 p-4 bg-blue-50 rounded-2xl">
+                <h4 className="font-semibold text-blue-900 mb-2">
+                  {sections.find(s => s.id === currentSection)?.title}
+                </h4>
+                <p className="text-sm text-blue-800">
+                  {sections.find(s => s.id === currentSection)?.description}
+                </p>
               </div>
 
               {/* Quality Assessment */}
@@ -1022,31 +1106,33 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                 </div>
               </div>
 
-              {/* Progress Indicator */}
-              <div className="mb-6">
-                <h4 className="font-semibold text-gray-800 mb-3">Completion Progress</h4>
-                <div className="space-y-2">
-                  {sections.map((section) => {
-                    const isComplete = section.id === 'basics' ?
-                      enhancedRfq.title && enhancedRfq.description :
-                      section.id === 'objectives' ?
-                      enhancedRfq.objectives && enhancedRfq.objectives.length > 0 :
-                      false;
-
-                    return (
-                      <div key={section.id} className="flex items-center space-x-3">
-                        <div className={`w-4 h-4 rounded-full ${
-                          isComplete ? 'bg-green-400' : 'bg-gray-200'
-                        }`}></div>
-                        <span className={`text-sm ${
-                          currentSection === section.id ? 'font-medium text-blue-600' : 'text-gray-600'
-                        }`}>
-                          {section.title}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
+              {/* Quick Actions */}
+              <div className="space-y-3">
+                <button
+                  onClick={() => {
+                    const currentIndex = sections.findIndex(s => s.id === currentSection);
+                    if (currentIndex > 0) {
+                      setCurrentSection(sections[currentIndex - 1].id);
+                    }
+                  }}
+                  disabled={currentSection === sections[0].id}
+                  className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                >
+                  ← Previous Section
+                </button>
+                <button
+                  onClick={() => {
+                    const currentIndex = sections.findIndex(s => s.id === currentSection);
+                    if (currentIndex < sections.length - 1) {
+                      setCurrentSection(sections[currentIndex + 1].id);
+                    } else if (onPreview) {
+                      onPreview();
+                    }
+                  }}
+                  className="w-full px-4 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors text-sm"
+                >
+                  {currentSection === sections[sections.length - 1].id ? 'Generate Preview' : 'Next Section →'}
+                </button>
               </div>
             </div>
           </div>

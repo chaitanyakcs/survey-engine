@@ -20,7 +20,7 @@ class DocumentParsingError(Exception):
 
 class DocumentParser:
     """Service for parsing DOCX documents and converting to survey JSON."""
-    
+
     def __init__(self):
         if not settings.replicate_api_token:
             error_info = get_api_configuration_error()
@@ -325,6 +325,291 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                 logger.error(f"❌ [Document Parser] Minimal response creation also failed: {str(e2)}")
                 raise DocumentParsingError(f"Generated JSON validation failed: {str(e)}")
     
+    def create_rfq_extraction_prompt(self, document_text: str) -> str:
+        """Create the system prompt for RFQ-specific data extraction."""
+
+        prompt = f"""You are an expert research consultant. Extract RFQ (Request for Quotation) information from the following document and convert it to structured data.
+
+DOCUMENT TEXT:
+{document_text}
+
+FIELD PRIORITIZATION (extract in this order of importance):
+CRITICAL FIELDS (highest priority - extract first):
+1. title - The main title or subject of the RFQ (usually in headers or at the beginning)
+2. description - Core description of what research is needed (often the largest text block)
+3. objectives - Specific research objectives or goals (look for numbered lists, bullet points)
+
+HIGH PRIORITY FIELDS:
+4. research_goal - Overall purpose of the research (business questions to answer)
+5. target_segment - Target audience or demographics (age groups, income levels, behaviors)
+6. product_category - The product/service being researched (explicit mentions or context clues)
+
+MEDIUM PRIORITY FIELDS:
+7. constraints - Budget, timeline, methodology constraints (look for "must", "cannot", "within")
+8. deliverables - Expected outputs (reports, presentations, data files)
+9. timeline - Project deadlines or milestones
+
+FIELD-SPECIFIC EXTRACTION GUIDANCE:
+
+TITLE (Critical):
+- Look for: Document headers, subject lines, "Title:", "Project:", bold/capitalized text at top
+- Patterns: "Research Study on X", "X Market Research", "Study: Y", "RFQ for Z"
+- Extract: Clean, concise title without formatting artifacts
+- If missing: Create descriptive title from main research topic
+
+DESCRIPTION (Critical):
+- Look for: Introduction sections, overview paragraphs, executive summaries
+- Patterns: "We need to...", "This research will...", "The purpose is...", "Objective: To..."
+- Extract: Comprehensive description of research needs and scope
+- If missing: Synthesize from objectives and context clues
+
+OBJECTIVES (Critical):
+- Look for: Numbered lists, bullet points, "Objectives:", "Goals:", "We want to understand:"
+- Patterns: "Objective 1:", "- Understand...", "Key questions:", "Research goals include:"
+- Extract: Each objective as separate item, maintain specificity
+- If missing: Infer from business questions and success metrics
+
+RESEARCH_GOAL (High):
+- Look for: Business context, problem statements, "Why" sections
+- Patterns: "Business challenge:", "We need this data to...", "Decision support for..."
+- Extract: Overall business purpose driving the research
+
+TARGET_SEGMENT (High):
+- Look for: Demographics, audience descriptions, "Target:", "Participants:"
+- Patterns: "Ages 25-45", "Income >$50k", "Users of X", "B2B decision makers"
+- Extract: Specific demographic and behavioral criteria
+
+PRODUCT_CATEGORY (High):
+- Look for: Product mentions, industry context, subject matter
+- Patterns: "Product X", "Service Y", industry-specific terminology
+- Extract: Core product/service being researched
+
+CONSTRAINTS (Medium):
+- Look for: Budget sections, timeline statements, methodology restrictions
+- Patterns: "Budget: $X", "Must complete by...", "Cannot exceed...", "No more than X participants"
+- Extract: Specific limitations and requirements
+- Only extract if explicitly stated with high confidence
+
+DELIVERABLES (Medium):
+- Look for: Output requirements, report specifications, "Deliverables:" sections
+- Patterns: "Final report", "PowerPoint presentation", "Raw data files", "Dashboard"
+- Extract: Expected outputs and formats
+- Only extract if clearly specified
+
+TIMELINE (Medium):
+- Look for: Dates, deadlines, project phases, "Timeline:" sections
+- Patterns: "Due by [date]", "Phase 1: [timeframe]", "Complete within X weeks"
+- Extract: Key dates and milestones
+- Only extract if specific dates/timeframes mentioned
+
+EXTRACTION STRATEGY:
+1. First scan for CRITICAL FIELDS using field-specific patterns above
+2. Look for explicit section headers that match field types
+3. Identify numbered/bulleted lists that may contain objectives or constraints
+4. Use field-specific language patterns for targeted extraction
+5. For missing CRITICAL FIELDS, be more aggressive - synthesize from available context
+6. For MEDIUM PRIORITY fields, only extract if confidence >0.7 and clear evidence exists
+
+CONFIDENCE SCORING GUIDELINES:
+- 0.9-1.0: Explicit mention with clear mapping (exact field labels or unambiguous content)
+- 0.7-0.8: Strong contextual evidence (business language patterns, section positioning)
+- 0.5-0.6: Reasonable inference from surrounding context
+- 0.3-0.4: Weak inference or partial information
+- 0.0-0.2: Speculative or very uncertain
+
+INSTRUCTIONS:
+1. Extract the following RFQ components following the prioritization above:
+   - Research objectives and goals (CRITICAL)
+   - Business context and background (HIGH)
+   - Target audience and demographics (HIGH)
+   - Constraints (budget, timeline, sample size, methodology) (MEDIUM)
+   - Stakeholder requirements
+   - Success metrics
+   - Preferred or excluded methodologies
+
+2. Structure the output as JSON with the following schema:
+   - confidence: number (0.0-1.0) - how confident you are in the extraction
+   - identified_sections: object with potential matches for each RFQ component
+   - extracted_entities: object with lists of identified entities (stakeholders, industries, etc.)
+   - field_mappings: array of specific field mappings with confidence scores
+
+3. For each field mapping, include:
+   - field: the RFQ field name (prioritized as above)
+   - value: the extracted value
+   - confidence: extraction confidence (0.0-1.0)
+   - source: the text snippet this was extracted from
+   - reasoning: why this text maps to this field
+   - priority: field priority level (critical/high/medium)
+
+EXPECTED JSON STRUCTURE:
+{{
+  "confidence": 0.85,
+  "identified_sections": {{
+    "objectives": {{
+      "confidence": 0.9,
+      "source_text": "extracted text snippet",
+      "source_section": "section where found",
+      "extracted_data": ["objective 1", "objective 2"]
+    }},
+    "business_context": {{ ... }},
+    "target_audience": {{ ... }},
+    "constraints": {{ ... }},
+    "methodologies": {{ ... }}
+  }},
+  "extracted_entities": {{
+    "stakeholders": ["decision maker", "end user"],
+    "industries": ["technology", "healthcare"],
+    "research_types": ["market research", "pricing study"],
+    "methodologies": ["van westendorp", "conjoint analysis"]
+  }},
+  "field_mappings": [
+    {{
+      "field": "title",
+      "value": "Product Feature Research Study",
+      "confidence": 0.95,
+      "source": "Title: Product Feature Research Study",
+      "reasoning": "Clear title in document header",
+      "priority": "critical"
+    }},
+    {{
+      "field": "description",
+      "value": "Research to understand customer preferences for new product features",
+      "confidence": 0.85,
+      "source": "We need to understand what features customers value most...",
+      "reasoning": "Main research description in introduction",
+      "priority": "critical"
+    }}
+  ]
+}}
+
+IMPORTANT:
+- Return ONLY valid JSON, no explanations or additional text
+- Use null for missing or unclear information
+- Be conservative with confidence scores
+- Include source text snippets for traceability
+"""
+        return prompt
+
+    async def extract_rfq_data(self, document_text: str) -> Dict[str, Any]:
+        """Extract RFQ-specific data from document text using LLM."""
+        logger.info(f"🎯 [Document Parser] Starting RFQ data extraction")
+        try:
+            prompt = self.create_rfq_extraction_prompt(document_text)
+            logger.info(f"📝 [Document Parser] Created RFQ extraction prompt, length: {len(prompt)} chars")
+
+            logger.info(f"🚀 [Document Parser] Calling Replicate API for RFQ extraction")
+            output = await replicate.async_run(
+                self.model,
+                input={
+                    "prompt": prompt,
+                    "temperature": 0.1,
+                    "max_tokens": 3000,
+                    "system_prompt": "You are an expert at extracting structured information from research documents. Return only valid JSON that matches the exact schema provided."
+                }
+            )
+
+            # Process the response
+            if hasattr(output, '__iter__') and not isinstance(output, str):
+                json_content = "".join(str(chunk) for chunk in output).strip()
+            else:
+                json_content = str(output).strip()
+
+            logger.info(f"✅ [Document Parser] RFQ extraction response received, length: {len(json_content)} chars")
+
+            # Parse and validate JSON
+            try:
+                rfq_data = json.loads(json_content)
+                logger.info(f"✅ [Document Parser] RFQ data parsing successful")
+                return rfq_data
+            except json.JSONDecodeError as e:
+                logger.warning(f"⚠️ [Document Parser] Invalid JSON in RFQ extraction: {str(e)}")
+                # Try to extract JSON like in the original method
+                import re
+                start = json_content.find('{')
+                end = json_content.rfind('}') + 1
+                if start != -1 and end != 0:
+                    extracted_json = json_content[start:end]
+                    try:
+                        rfq_data = json.loads(extracted_json)
+                        logger.info(f"✅ [Document Parser] RFQ JSON extraction successful")
+                        return rfq_data
+                    except json.JSONDecodeError:
+                        pass
+
+                # Return fallback structure
+                logger.warning(f"⚠️ [Document Parser] Returning fallback RFQ structure")
+                return {
+                    "confidence": 0.1,
+                    "identified_sections": {},
+                    "extracted_entities": {
+                        "stakeholders": [],
+                        "industries": [],
+                        "research_types": [],
+                        "methodologies": []
+                    },
+                    "field_mappings": [],
+                    "parsing_error": f"JSON parsing failed: {str(e)}"
+                }
+
+        except Exception as e:
+            logger.error(f"❌ [Document Parser] Failed to extract RFQ data: {str(e)}", exc_info=True)
+            return {
+                "confidence": 0.0,
+                "identified_sections": {},
+                "extracted_entities": {
+                    "stakeholders": [],
+                    "industries": [],
+                    "research_types": [],
+                    "methodologies": []
+                },
+                "field_mappings": [],
+                "extraction_error": f"RFQ extraction failed: {str(e)}"
+            }
+
+    async def parse_document_for_rfq(self, docx_content: bytes, filename: str = None) -> Dict[str, Any]:
+        """Parse DOCX document specifically for RFQ data extraction."""
+        logger.info(f"🎯 [Document Parser] Starting RFQ-specific document parsing")
+        try:
+            # Extract text from DOCX
+            logger.info(f"📄 [Document Parser] Extracting text from DOCX")
+            document_text = self.extract_text_from_docx(docx_content)
+
+            if not document_text.strip():
+                logger.error(f"❌ [Document Parser] No text content found in document")
+                raise DocumentParsingError("No text content found in document")
+
+            logger.info(f"✅ [Document Parser] Text extraction successful, length: {len(document_text)} chars")
+
+            # Extract RFQ-specific data
+            logger.info(f"🎯 [Document Parser] Extracting RFQ data from text")
+            rfq_data = await self.extract_rfq_data(document_text)
+            logger.info(f"✅ [Document Parser] RFQ data extraction completed")
+
+            # Structure the response for frontend consumption
+            result = {
+                "document_content": {
+                    "raw_text": document_text,
+                    "filename": filename,
+                    "word_count": len(document_text.split()),
+                    "extraction_timestamp": "2024-01-01T00:00:00Z"
+                },
+                "rfq_analysis": rfq_data,
+                "processing_status": "completed",
+                "errors": []
+            }
+
+            logger.info(f"🎉 [Document Parser] RFQ document parsing completed successfully")
+            logger.info(f"📊 [Document Parser] Extraction confidence: {rfq_data.get('confidence', 0)}")
+            logger.info(f"📊 [Document Parser] Field mappings found: {len(rfq_data.get('field_mappings', []))}")
+
+            return result
+
+        except DocumentParsingError:
+            raise
+        except Exception as e:
+            logger.error(f"❌ [Document Parser] Unexpected error during RFQ document parsing: {str(e)}", exc_info=True)
+            raise DocumentParsingError(f"Unexpected error: {str(e)}")
+
     async def parse_document(self, docx_content: bytes) -> Dict[str, Any]:
         """Main method to parse DOCX document and return validated JSON."""
         logger.info(f"🤖 [Document Parser] Starting main document parsing process")
@@ -332,33 +617,33 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
             # Extract text from DOCX
             logger.info(f"📄 [Document Parser] Extracting text from DOCX")
             document_text = self.extract_text_from_docx(docx_content)
-            
+
             if not document_text.strip():
                 logger.error(f"❌ [Document Parser] No text content found in document")
                 raise DocumentParsingError("No text content found in document")
-            
+
             logger.info(f"✅ [Document Parser] Text extraction successful, length: {len(document_text)} chars")
-            
+
             # Convert to JSON using LLM
             logger.info(f"🤖 [Document Parser] Converting text to JSON using LLM")
             survey_json = await self.convert_to_json(document_text)
             logger.info(f"✅ [Document Parser] LLM conversion completed")
-            
+
             # Validate the JSON
             logger.info(f"🔍 [Document Parser] Validating survey JSON structure")
             validated_survey = self.validate_survey_json(survey_json)
             logger.info(f"✅ [Document Parser] JSON validation successful")
-            
+
             # Log final survey structure
             logger.info(f"📊 [Document Parser] Final survey structure: {list(validated_survey.keys()) if isinstance(validated_survey, dict) else 'Not a dict'}")
             if isinstance(validated_survey, dict):
                 logger.info(f"📊 [Document Parser] Survey title: {validated_survey.get('title', 'No title')}")
                 logger.info(f"📊 [Document Parser] Questions count: {len(validated_survey.get('questions', []))}")
                 logger.info(f"📊 [Document Parser] Confidence score: {validated_survey.get('confidence_score', 'No score')}")
-            
+
             logger.info(f"🎉 [Document Parser] Document parsing completed successfully")
             return validated_survey
-            
+
         except DocumentParsingError:
             raise
         except Exception as e:

@@ -115,6 +115,10 @@ export interface EnhancedRFQRequest {
   expected_timeline?: string;
   approval_requirements?: string[];
   template_used?: string;
+
+  // Document Integration
+  document_upload_id?: string;
+  document_source?: DocumentSource;
 }
 
 // Core API Types (Legacy compatibility)
@@ -360,6 +364,78 @@ export interface PendingReviewsSummary {
   reviews: PendingReview[];
 }
 
+// Document Integration Types
+export interface DocumentContent {
+  raw_text: string;
+  filename: string;
+  word_count: number;
+  extraction_timestamp: string;
+  file_size?: number;
+  content_type?: string;
+}
+
+export interface DocumentSource {
+  type: 'upload' | 'paste';
+  filename: string;
+  upload_id?: string;
+}
+
+export interface DocumentAnalysis {
+  confidence: number;
+  identified_sections: {
+    objectives?: SectionMatch;
+    business_context?: SectionMatch;
+    target_audience?: SectionMatch;
+    constraints?: SectionMatch;
+    methodologies?: SectionMatch;
+    stakeholders?: SectionMatch;
+    success_metrics?: SectionMatch;
+  };
+  extracted_entities: {
+    stakeholders: string[];
+    industries: string[];
+    research_types: string[];
+    methodologies: string[];
+  };
+  field_mappings: RFQFieldMapping[];
+  processing_error?: string;
+  extraction_error?: string;
+}
+
+export interface SectionMatch {
+  confidence: number;
+  source_text: string;
+  source_section: string;
+  extracted_data: any;
+  reasoning: string;
+}
+
+export interface RFQFieldMapping {
+  field: keyof EnhancedRFQRequest | string;
+  value: any;
+  confidence: number;
+  source: string;
+  reasoning: string;
+  needs_review: boolean;
+  suggestions?: string[];
+  user_action?: 'accepted' | 'rejected' | 'edited';
+  original_value?: any;
+}
+
+export interface DocumentAnalysisResponse {
+  document_content: DocumentContent;
+  rfq_analysis: DocumentAnalysis;
+  processing_status: 'completed' | 'error' | 'processing';
+  errors: string[];
+}
+
+export interface DocumentUploadProgress {
+  stage: 'uploading' | 'parsing' | 'analyzing' | 'mapping' | 'completed' | 'error';
+  progress: number;
+  message: string;
+  error?: string;
+}
+
 // Store Types
 export interface AppStore {
   // RFQ Input
@@ -447,4 +523,21 @@ export interface AppStore {
   persistWorkflowState: (workflowId: string, state: any) => void;
   recoverWorkflowState: () => Promise<void>;
   resetWorkflow: () => void;
+
+  // Document Upload State
+  documentContent?: DocumentContent;
+  documentAnalysis?: DocumentAnalysis;
+  fieldMappings: RFQFieldMapping[];
+  isDocumentProcessing: boolean;
+  documentUploadError?: string;
+
+  // Document Upload Actions
+  uploadDocument: (file: File) => Promise<DocumentAnalysisResponse>;
+  analyzeText: (text: string, filename?: string) => Promise<DocumentAnalysisResponse>;
+  acceptFieldMapping: (field: string, value: any) => void;
+  rejectFieldMapping: (field: string) => void;
+  editFieldMapping: (field: string, value: any) => void;
+  clearDocumentData: () => void;
+  applyDocumentMappings: () => void;
+  buildRFQUpdatesFromMappings: (mappings: RFQFieldMapping[]) => Partial<EnhancedRFQRequest>;
 }

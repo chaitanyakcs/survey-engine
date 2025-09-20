@@ -131,7 +131,7 @@ export const SurveyGeneratorPage: React.FC = () => {
             {workflow.status === 'idle' && (
               <div>
                 {/* RFQ Interface Toggle */}
-                <div className="max-w-4xl mx-auto px-4 mb-6">
+                <div className="px-6 mb-4">
                   <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-4 shadow-lg">
                     <div className="flex items-center justify-between">
                       <div>
@@ -172,12 +172,12 @@ export const SurveyGeneratorPage: React.FC = () => {
             {/* Generation Progress Phase */}
             {(workflow.status === 'started' || workflow.status === 'in_progress') && (
               <div>
-                <div className="max-w-4xl mx-auto px-4 mb-8 text-center">
+                <div className="px-6 mb-6 text-center">
                   <h2 className="text-xl font-semibold text-black mb-2">Generating Your Survey</h2>
                   <p className="text-gray-600">Our AI is creating your survey using advanced methodologies and best practices.</p>
                 </div>
                 
-                <div className="max-w-4xl mx-auto px-4">
+                <div className="px-6">
                   <ProgressStepper 
                     onShowSurvey={() => {
                       if (currentSurvey?.survey_id) {
@@ -203,12 +203,12 @@ export const SurveyGeneratorPage: React.FC = () => {
             {/* Human Review Phase */}
             {workflow.status === 'paused' && (
               <div>
-                <div className="max-w-6xl mx-auto px-4 mb-8 text-center">
+                <div className="px-6 mb-6 text-center">
                   <h2 className="text-xl font-semibold text-black mb-2">Human Review Required</h2>
                   <p className="text-gray-600">Please review the AI-generated system prompt before survey generation continues.</p>
                 </div>
 
-                <div className="max-w-6xl mx-auto px-4">
+                <div className="px-6">
                   <ProgressStepper
                     onShowSurvey={() => {
                       if (currentSurvey?.survey_id) {
@@ -234,7 +234,7 @@ export const SurveyGeneratorPage: React.FC = () => {
             {/* Survey Completed Phase */}
             {workflow.status === 'completed' && (
               <div>
-                <div className="max-w-6xl mx-auto px-4 mb-8 text-center">
+                <div className="px-6 mb-6 text-center">
                   <div className="mb-6">
                     <div className="w-16 h-16 bg-gradient-to-r from-emerald-500 to-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
                       <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -305,7 +305,7 @@ export const SurveyGeneratorPage: React.FC = () => {
                   </div>
                   
                   {/* Success Stats */}
-                  <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto">
+                  <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4 px-6">
                     <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 text-center">
                       <div className="text-2xl font-bold text-blue-600">✓</div>
                       <div className="text-sm font-medium text-blue-800 mt-1">Quality Assured</div>
@@ -330,7 +330,7 @@ export const SurveyGeneratorPage: React.FC = () => {
 
             {/* Error State */}
             {workflow.status === 'failed' && (
-              <div className="max-w-4xl mx-auto px-4 text-center">
+              <div className="px-6 text-center">
                 <div className="bg-red-50 border border-red-200 rounded-lg p-6">
                   <div className="flex items-center justify-center mb-4">
                     <svg className="w-12 h-12 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">

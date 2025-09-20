@@ -30,6 +30,11 @@ from sqlalchemy.orm import Session
 import replicate
 import json
 import logging
+import uuid
+import time
+
+from src.utils.llm_audit_decorator import audit_llm_call, LLMAuditContext
+from src.services.llm_audit_service import LLMAuditService
 
 logger = logging.getLogger(__name__)
 
@@ -127,102 +132,148 @@ class GenerationService:
             logger.info(f"🌐 [GenerationService] Model: {self.model}")
             logger.info(f"🌐 [GenerationService] API token set: {bool(replicate.api_token)}")
             
-            try:
-                output = await replicate.async_run(
-                    self.model,
-                    input={
-                        "prompt": prompt,
-                        "temperature": 0.7,
-                        "max_tokens": 4000,
-                        "top_p": 0.9
-                    }
-                )
-            except Exception as api_error:
-                logger.error(f"❌ [GenerationService] API call failed: {str(api_error)}")
-                logger.error(f"❌ [GenerationService] API error type: {type(api_error)}")
-                
-                # Check if it's an authentication error
-                if "authentication" in str(api_error).lower() or "unauthorized" in str(api_error).lower():
-                    error_info = get_api_configuration_error()
-                    raise UserFriendlyError(
-                        message=error_info["message"],
-                        technical_details=str(api_error),
-                        action_required="Configure AI service provider (Replicate or OpenAI)"
+            # Create audit context for this LLM interaction
+            interaction_id = f"survey_generation_{uuid.uuid4().hex[:8]}"
+            audit_service = LLMAuditService(self.db_session)
+            
+            async with LLMAuditContext(
+                audit_service=audit_service,
+                interaction_id=interaction_id,
+                model_name=self.model,
+                model_provider="replicate",
+                purpose="survey_generation",
+                input_prompt=prompt,
+                context_type="generation",
+                parent_workflow_id=context.get('workflow_id'),
+                parent_survey_id=context.get('survey_id'),
+                parent_rfq_id=context.get('rfq_id'),
+                hyperparameters={
+                    "temperature": 0.7,
+                    "max_tokens": 4000,
+                    "top_p": 0.9,
+                    "frequency_penalty": 0.0,
+                    "presence_penalty": 0.0
+                },
+                metadata={
+                    'golden_examples_count': len(golden_examples) if golden_examples else 0,
+                    'methodology_blocks_count': len(methodology_blocks) if methodology_blocks else 0,
+                    'custom_rules_count': len(custom_rules.get('rules', [])) if custom_rules else 0,
+                    'context_keys': list(context.keys()) if context else []
+                },
+                tags=["survey", "generation", "replicate"]
+            ) as audit_context:
+                try:
+                    start_time = time.time()
+                    output = await replicate.async_run(
+                        self.model,
+                        input={
+                            "prompt": prompt,
+                            "temperature": 0.7,
+                            "max_tokens": 4000,
+                            "top_p": 0.9
+                        }
                     )
+                    response_time_ms = int((time.time() - start_time) * 1000)
+                    
+                    # Set output and metrics in audit context
+                    if isinstance(output, list):
+                        output_content = "".join(output)
+                    else:
+                        output_content = str(output)
+                    
+                    audit_context.set_output(
+                        output_content=output_content,
+                        input_tokens=len(prompt.split()),  # Rough estimate
+                        output_tokens=len(output_content.split()),  # Rough estimate
+                        cost_usd=None  # Replicate doesn't provide cost info in response
+                    )
+                    
+                except Exception as api_error:
+                    logger.error(f"❌ [GenerationService] API call failed: {str(api_error)}")
+                    logger.error(f"❌ [GenerationService] API error type: {type(api_error)}")
+                    
+                    # Check if it's an authentication error
+                    if "authentication" in str(api_error).lower() or "unauthorized" in str(api_error).lower():
+                        error_info = get_api_configuration_error()
+                        raise UserFriendlyError(
+                            message=error_info["message"],
+                            technical_details=str(api_error),
+                            action_required="Configure AI service provider (Replicate or OpenAI)"
+                        )
+                    else:
+                        raise Exception(f"API call failed: {str(api_error)}")
+            
+                logger.info(f"✅ [GenerationService] Received response from {self.model}")
+                logger.info(f"📊 [GenerationService] Response type: {type(output)}")
+                logger.info(f"📊 [GenerationService] Response content: {str(output)[:200]}...")
+                
+                # Handle different output formats from Replicate
+                if isinstance(output, list):
+                    survey_text = "".join(output)
+                    logger.info(f"📝 [GenerationService] Joined list response, length: {len(survey_text)}")
                 else:
-                    raise Exception(f"API call failed: {str(api_error)}")
-            
-            logger.info(f"✅ [GenerationService] Received response from {self.model}")
-            logger.info(f"📊 [GenerationService] Response type: {type(output)}")
-            logger.info(f"📊 [GenerationService] Response content: {str(output)[:200]}...")
-            
-            # Handle different output formats from Replicate
-            if isinstance(output, list):
-                survey_text = "".join(output)
-                logger.info(f"📝 [GenerationService] Joined list response, length: {len(survey_text)}")
-            else:
-                survey_text = str(output)
-                logger.info(f"📝 [GenerationService] String response, length: {len(survey_text)}")
-            
-            logger.info(f"📊 [GenerationService] Final response length: {len(survey_text)} characters")
-            logger.info(f"📊 [GenerationService] Response preview: {survey_text[:500]}...")
+                    survey_text = str(output)
+                    logger.info(f"📝 [GenerationService] String response, length: {len(survey_text)}")
+                
+                logger.info(f"📊 [GenerationService] Final response length: {len(survey_text)} characters")
+                logger.info(f"📊 [GenerationService] Response preview: {survey_text[:500]}...")
 
-            # Log detailed JSON object count for debugging
-            opening_braces = survey_text.count('{')
-            closing_braces = survey_text.count('}')
-            logger.info(f"🔍 [GenerationService] JSON structure analysis:")
-            logger.info(f"🔍 [GenerationService] - Opening braces {{ : {opening_braces}")
-            logger.info(f"🔍 [GenerationService] - Closing braces }} : {closing_braces}")
-            logger.info(f"🔍 [GenerationService] - Brace balance: {opening_braces - closing_braces}")
+                # Log detailed JSON object count for debugging
+                opening_braces = survey_text.count('{')
+                closing_braces = survey_text.count('}')
+                logger.info(f"🔍 [GenerationService] JSON structure analysis:")
+                logger.info(f"🔍 [GenerationService] - Opening braces {{ : {opening_braces}")
+                logger.info(f"🔍 [GenerationService] - Closing braces }} : {closing_braces}")
+                logger.info(f"🔍 [GenerationService] - Brace balance: {opening_braces - closing_braces}")
 
-            # Count potential question objects
-            import re
-            id_text_pairs = len([m for m in re.finditer(r'"id"[^}]*"text"', survey_text)])
-            text_id_pairs = len([m for m in re.finditer(r'"text"[^}]*"id"', survey_text)])
-            logger.info(f"🔍 [GenerationService] - Potential question patterns: {id_text_pairs + text_id_pairs}")
+                # Count potential question objects
+                import re
+                id_text_pairs = len([m for m in re.finditer(r'"id"[^}]*"text"', survey_text)])
+                text_id_pairs = len([m for m in re.finditer(r'"text"[^}]*"id"', survey_text)])
+                logger.info(f"🔍 [GenerationService] - Potential question patterns: {id_text_pairs + text_id_pairs}")
 
-            # Track question extraction metrics
-            self._log_question_extraction_metrics(survey_text)
+                # Track question extraction metrics
+                self._log_question_extraction_metrics(survey_text)
 
-            # Log the full response for debugging (but truncate if too long)
-            if len(survey_text) > 2000:
-                logger.info(f"🔍 [GenerationService] Full LLM response (truncated): {survey_text[:2000]}...")
-                logger.info(f"🔍 [GenerationService] Response end: ...{survey_text[-500:]}")
-            else:
-                logger.info(f"🔍 [GenerationService] Full LLM response: {survey_text}")
-            
-            # Check if response is empty or too short
-            if not survey_text or len(survey_text.strip()) < 10:
-                logger.error("❌ [GenerationService] Empty or very short response from API")
-                logger.error(f"❌ [GenerationService] Response content: '{survey_text}'")
-                raise Exception("API returned empty or invalid response. Please check your API configuration and try again.")
-            
-            logger.info("🔍 [GenerationService] Extracting survey JSON...")
-            survey_json = self._extract_survey_json(survey_text)
-            
-            # Evaluate survey using advanced pillar evaluation
-            logger.info("🏛️ [GenerationService] Evaluating survey using advanced chain-of-thought evaluation...")
-            pillar_scores = await self._evaluate_with_advanced_system(survey_json, context.get('rfq_text', ''))
-            
-            final_question_count = get_questions_count(survey_json)
-            logger.info(f"🎉 [GenerationService] Successfully generated survey with {final_question_count} questions")
-            logger.info(f"🎉 [GenerationService] Survey keys: {list(survey_json.keys())}")
-            logger.info(f"🏛️ [GenerationService] Pillar adherence score: {pillar_scores['overall_grade']} ({pillar_scores['weighted_score']:.1%})")
+                # Log the full response for debugging (but truncate if too long)
+                if len(survey_text) > 2000:
+                    logger.info(f"🔍 [GenerationService] Full LLM response (truncated): {survey_text[:2000]}...")
+                    logger.info(f"🔍 [GenerationService] Response end: ...{survey_text[-500:]}")
+                else:
+                    logger.info(f"🔍 [GenerationService] Full LLM response: {survey_text}")
+                
+                # Check if response is empty or too short
+                if not survey_text or len(survey_text.strip()) < 10:
+                    logger.error("❌ [GenerationService] Empty or very short response from API")
+                    logger.error(f"❌ [GenerationService] Response content: '{survey_text}'")
+                    raise Exception("API returned empty or invalid response. Please check your API configuration and try again.")
+                
+                logger.info("🔍 [GenerationService] Extracting survey JSON...")
+                survey_json = self._extract_survey_json(survey_text)
+                
+                # Evaluate survey using advanced pillar evaluation
+                logger.info("🏛️ [GenerationService] Evaluating survey using advanced chain-of-thought evaluation...")
+                pillar_scores = await self._evaluate_with_advanced_system(survey_json, context.get('rfq_text', ''))
+                
+                final_question_count = get_questions_count(survey_json)
+                logger.info(f"🎉 [GenerationService] Successfully generated survey with {final_question_count} questions")
+                logger.info(f"🎉 [GenerationService] Survey keys: {list(survey_json.keys())}")
+                logger.info(f"🏛️ [GenerationService] Pillar adherence score: {pillar_scores['overall_grade']} ({pillar_scores['weighted_score']:.1%})")
 
-            # Log final extraction summary
-            self._log_final_extraction_summary(survey_json, survey_text)
-            
-            return {
-                "survey": survey_json,
-                "pillar_scores": {
-                    "overall_grade": pillar_scores["overall_grade"],
-                    "weighted_score": pillar_scores["weighted_score"],
-                    "total_score": pillar_scores["total_score"],
-                    "summary": pillar_scores["summary"],
-                    "pillar_breakdown": pillar_scores["pillar_breakdown"],
-                    "recommendations": pillar_scores["recommendations"]
+                # Log final extraction summary
+                self._log_final_extraction_summary(survey_json, survey_text)
+                
+                return {
+                    "survey": survey_json,
+                    "pillar_scores": {
+                        "overall_grade": pillar_scores["overall_grade"],
+                        "weighted_score": pillar_scores["weighted_score"],
+                        "total_score": pillar_scores["total_score"],
+                        "summary": pillar_scores["summary"],
+                        "pillar_breakdown": pillar_scores["pillar_breakdown"],
+                        "recommendations": pillar_scores["recommendations"]
+                    }
                 }
-            }
             
         except UserFriendlyError as e:
             logger.error(f"❌ [GenerationService] UserFriendlyError: {e.message}")

@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from src.database import get_db, RFQ, Survey
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Dict, Any
 from uuid import uuid4
 import logging
 import asyncio
@@ -25,6 +25,18 @@ class RFQSubmissionResponse(BaseModel):
     workflow_id: str
     survey_id: str
     status: str
+
+
+class DocumentAnalysisRequest(BaseModel):
+    filename: str
+    content_type: str
+
+
+class DocumentAnalysisResponse(BaseModel):
+    document_content: Dict[str, Any]
+    rfq_analysis: Dict[str, Any]
+    processing_status: str
+    errors: list
 
 
 @router.post("/", response_model=RFQSubmissionResponse)
@@ -68,10 +80,22 @@ async def submit_rfq(
         
         # Create initial survey record
         logger.info("💾 [RFQ API] Creating initial Survey database record")
+        # Choose model version from evaluation settings (DB), fallback to app settings
+        try:
+            from src.services.settings_service import SettingsService
+            settings_service = SettingsService(db)
+            eval_settings = settings_service.get_evaluation_settings()
+            model_version_value = eval_settings.get('generation_model')
+        except Exception:
+            model_version_value = None
+        if not model_version_value:
+            from src.config.settings import settings as app_settings
+            model_version_value = app_settings.generation_model
+
         survey = Survey(
             rfq_id=rfq.id,
             status="started",
-            model_version="gpt-4o-mini"  # Default model
+            model_version=model_version_value
         )
         db.add(survey)
         db.commit()
@@ -158,6 +182,210 @@ async def process_rfq_workflow_async(
         )
         
         logger.info(f"✅ [Async Workflow] Workflow completed successfully: {result.status}")
-        
+
     except Exception as e:
         logger.error(f"❌ [Async Workflow] Workflow failed: {str(e)}", exc_info=True)
+
+
+@router.post("/upload-document", response_model=DocumentAnalysisResponse)
+async def upload_and_analyze_document(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+) -> DocumentAnalysisResponse:
+    """
+    Upload and analyze a DOCX document for RFQ data extraction
+    Returns: document content, RFQ analysis, and field mappings
+    """
+    logger.info(f"📄 [RFQ API] Received document upload: filename='{file.filename}', content_type='{file.content_type}'")
+
+    try:
+        # Validate file type
+        if not file.filename or not file.filename.lower().endswith('.docx'):
+            raise HTTPException(
+                status_code=400,
+                detail="Only DOCX files are supported. Please upload a Microsoft Word document."
+            )
+
+        if file.content_type and not file.content_type.startswith('application/'):
+            logger.warning(f"⚠️ [RFQ API] Unexpected content type: {file.content_type}")
+
+        # Read file content
+        logger.info(f"📖 [RFQ API] Reading file content")
+        file_content = await file.read()
+
+        if len(file_content) == 0:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+        if len(file_content) > 10 * 1024 * 1024:  # 10MB limit
+            raise HTTPException(status_code=400, detail="File too large. Maximum size is 10MB")
+
+        logger.info(f"✅ [RFQ API] File read successfully, size: {len(file_content)} bytes")
+
+        # Parse document using enhanced document parser
+        logger.info(f"🤖 [RFQ API] Starting document analysis")
+        from src.services.document_parser import document_parser
+
+        analysis_result = await document_parser.parse_document_for_rfq(
+            docx_content=file_content,
+            filename=file.filename
+        )
+
+        logger.info(f"✅ [RFQ API] Document analysis completed")
+        logger.info(f"📊 [RFQ API] Analysis confidence: {analysis_result.get('rfq_analysis', {}).get('confidence', 0)}")
+        logger.info(f"📊 [RFQ API] Field mappings: {len(analysis_result.get('rfq_analysis', {}).get('field_mappings', []))}")
+
+        # Create response
+        response = DocumentAnalysisResponse(
+            document_content=analysis_result.get("document_content", {}),
+            rfq_analysis=analysis_result.get("rfq_analysis", {}),
+            processing_status=analysis_result.get("processing_status", "completed"),
+            errors=analysis_result.get("errors", [])
+        )
+
+        logger.info(f"🎉 [RFQ API] Document upload and analysis completed successfully")
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [RFQ API] Failed to process document upload: {str(e)}", exc_info=True)
+
+        # Determine specific error type for better user feedback
+        error_message = "Document processing failed"
+        if "REPLICATE_API_TOKEN" in str(e):
+            error_message = "AI service not configured. Please contact support."
+        elif "timeout" in str(e).lower():
+            error_message = "Document processing timed out. Please try again or use a smaller document."
+        elif "connection" in str(e).lower():
+            error_message = "Network error. Please check your connection and try again."
+        elif "json" in str(e).lower():
+            error_message = "AI service returned invalid response. Please try again."
+        else:
+            error_message = f"Processing error: {str(e)}"
+
+        # Return error response instead of throwing exception
+        error_response = DocumentAnalysisResponse(
+            document_content={
+                "filename": file.filename or "unknown",
+                "error": "Failed to process document",
+                "word_count": 0,
+                "extraction_timestamp": "2024-01-01T00:00:00Z"
+            },
+            rfq_analysis={
+                "confidence": 0.0,
+                "identified_sections": {},
+                "extracted_entities": {
+                    "stakeholders": [],
+                    "industries": [],
+                    "research_types": [],
+                    "methodologies": []
+                },
+                "field_mappings": [],
+                "processing_error": error_message
+            },
+            processing_status="error",
+            errors=[error_message]
+        )
+
+        return error_response
+
+
+@router.post("/analyze-text", response_model=DocumentAnalysisResponse)
+async def analyze_text_for_rfq(
+    text: str,
+    filename: str = "text_input.txt",
+    db: Session = Depends(get_db)
+) -> DocumentAnalysisResponse:
+    """
+    Analyze plain text for RFQ data extraction (alternative to document upload)
+    Returns: RFQ analysis and field mappings from text
+    """
+    logger.info(f"📝 [RFQ API] Received text analysis request: length={len(text)} chars")
+
+    try:
+        if not text or len(text.strip()) < 10:
+            raise HTTPException(status_code=400, detail="Text is too short. Please provide more detailed content.")
+
+        if len(text) > 50000:  # 50k character limit
+            raise HTTPException(status_code=400, detail="Text too long. Maximum length is 50,000 characters.")
+
+        logger.info(f"✅ [RFQ API] Text validation passed")
+
+        # Analyze text using document parser
+        logger.info(f"🤖 [RFQ API] Starting text analysis")
+        from src.services.document_parser import document_parser
+
+        rfq_data = await document_parser.extract_rfq_data(text)
+
+        # Structure response
+        analysis_result = {
+            "document_content": {
+                "raw_text": text,
+                "filename": filename,
+                "word_count": len(text.split()),
+                "extraction_timestamp": "2024-01-01T00:00:00Z"
+            },
+            "rfq_analysis": rfq_data,
+            "processing_status": "completed",
+            "errors": []
+        }
+
+        logger.info(f"✅ [RFQ API] Text analysis completed")
+        logger.info(f"📊 [RFQ API] Analysis confidence: {rfq_data.get('confidence', 0)}")
+        logger.info(f"📊 [RFQ API] Field mappings: {len(rfq_data.get('field_mappings', []))}")
+
+        # Create response
+        response = DocumentAnalysisResponse(
+            document_content=analysis_result["document_content"],
+            rfq_analysis=analysis_result["rfq_analysis"],
+            processing_status=analysis_result["processing_status"],
+            errors=analysis_result["errors"]
+        )
+
+        logger.info(f"🎉 [RFQ API] Text analysis completed successfully")
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [RFQ API] Failed to analyze text: {str(e)}", exc_info=True)
+
+        # Determine specific error type for better user feedback
+        error_message = "Text analysis failed"
+        if "REPLICATE_API_TOKEN" in str(e):
+            error_message = "AI service not configured. Please contact support."
+        elif "timeout" in str(e).lower():
+            error_message = "Text analysis timed out. Please try with shorter text or try again."
+        elif "connection" in str(e).lower():
+            error_message = "Network error. Please check your connection and try again."
+        elif "json" in str(e).lower():
+            error_message = "AI service returned invalid response. Please try again."
+        else:
+            error_message = f"Analysis error: {str(e)}"
+
+        # Return error response
+        error_response = DocumentAnalysisResponse(
+            document_content={
+                "filename": filename,
+                "error": "Failed to analyze text",
+                "raw_text": text[:100] + "..." if len(text) > 100 else text,
+                "word_count": len(text.split()),
+                "extraction_timestamp": "2024-01-01T00:00:00Z"
+            },
+            rfq_analysis={
+                "confidence": 0.0,
+                "identified_sections": {},
+                "extracted_entities": {
+                    "stakeholders": [],
+                    "industries": [],
+                    "research_types": [],
+                    "methodologies": []
+                },
+                "field_mappings": [],
+                "processing_error": error_message
+            },
+            processing_status="error",
+            errors=[error_message]
+        )
+
+        return error_response
