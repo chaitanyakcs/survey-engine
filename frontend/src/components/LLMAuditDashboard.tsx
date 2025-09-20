@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
   ChartBarIcon, 
-  CurrencyDollarIcon, 
   ClockIcon, 
   CheckCircleIcon, 
   XCircleIcon,
@@ -59,7 +58,7 @@ interface LLMAuditDashboardProps {
 
 const LLMAuditDashboard: React.FC<LLMAuditDashboardProps> = ({ onClose }) => {
   const [auditRecords, setAuditRecords] = useState<LLMAuditRecord[]>([]);
-  const [costSummary, setCostSummary] = useState<CostSummary | null>(null);
+  // const [costSummary, setCostSummary] = useState<CostSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedRecord, setSelectedRecord] = useState<LLMAuditRecord | null>(null);
   const [filters, setFilters] = useState({
@@ -90,10 +89,10 @@ const LLMAuditDashboard: React.FC<LLMAuditDashboardProps> = ({ onClose }) => {
       const recordsData = await recordsResponse.json();
       setAuditRecords(recordsData.records || []);
 
-      // Fetch cost summary
-      const costResponse = await fetch('/api/v1/llm-audit/cost-summary');
-      const costData = await costResponse.json();
-      setCostSummary(costData);
+      // Fetch cost summary - disabled for now
+      // const costResponse = await fetch('/api/v1/llm-audit/cost-summary');
+      // const costData = await costResponse.json();
+      // setCostSummary(costData);
     } catch (error) {
       console.error('Failed to fetch audit data:', error);
     } finally {
@@ -101,13 +100,6 @@ const LLMAuditDashboard: React.FC<LLMAuditDashboardProps> = ({ onClose }) => {
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 4
-    }).format(amount);
-  };
 
   const formatDuration = (ms: number) => {
     if (ms < 1000) return `${ms}ms`;
@@ -153,66 +145,68 @@ const LLMAuditDashboard: React.FC<LLMAuditDashboardProps> = ({ onClose }) => {
         </div>
 
         <div className="flex h-[calc(90vh-120px)]">
-          {/* Sidebar - Cost Summary */}
+          {/* Sidebar - Summary (Cost hidden for now) */}
           <div className="w-80 border-r border-gray-200 p-6 overflow-y-auto">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Cost Summary</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Summary</h3>
             
-            {costSummary && (
-              <div className="space-y-4">
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-600">Total Cost</span>
-                    <span className="text-2xl font-bold text-gray-900">
-                      {formatCurrency(costSummary.total_cost_usd)}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-600">Total Interactions</span>
-                    <span className="text-xl font-semibold text-gray-900">
-                      {costSummary.total_interactions}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-600">Success Rate</span>
-                    <span className="text-xl font-semibold text-green-600">
-                      {(costSummary.success_rate * 100).toFixed(1)}%
-                    </span>
-                  </div>
-                </div>
-
-                {/* Cost by Purpose */}
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Cost by Purpose</h4>
-                  <div className="space-y-2">
-                    {costSummary.cost_by_purpose.map((item, index) => (
-                      <div key={index} className="flex justify-between text-sm">
-                        <span className="text-gray-600">{item.purpose}</span>
-                        <span className="font-medium">{formatCurrency(item.total_cost_usd)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Cost by Model */}
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Cost by Model</h4>
-                  <div className="space-y-2">
-                    {costSummary.cost_by_model.map((item, index) => (
-                      <div key={index} className="flex justify-between text-sm">
-                        <span className="text-gray-600 truncate">{item.model_name}</span>
-                        <span className="font-medium">{formatCurrency(item.total_cost_usd)}</span>
-                      </div>
-                    ))}
-                  </div>
+            <div className="space-y-4">
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-600">Total Interactions</span>
+                  <span className="text-xl font-semibold text-gray-900">
+                    {auditRecords.length}
+                  </span>
                 </div>
               </div>
-            )}
+
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-600">Successful</span>
+                  <span className="text-xl font-semibold text-green-600">
+                    {auditRecords.filter(r => r.success).length}
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-600">Failed</span>
+                  <span className="text-xl font-semibold text-red-600">
+                    {auditRecords.filter(r => !r.success).length}
+                  </span>
+                </div>
+              </div>
+
+              {/* Purposes */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-900 mb-2">By Purpose</h4>
+                <div className="space-y-2">
+                  {Array.from(new Set(auditRecords.map(r => r.purpose))).map((purpose, index) => (
+                    <div key={index} className="flex justify-between text-sm">
+                      <span className="text-gray-600">{purpose}</span>
+                      <span className="font-medium">
+                        {auditRecords.filter(r => r.purpose === purpose).length}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Models */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-900 mb-2">By Model</h4>
+                <div className="space-y-2">
+                  {Array.from(new Set(auditRecords.map(r => r.model_name))).map((model, index) => (
+                    <div key={index} className="flex justify-between text-sm">
+                      <span className="text-gray-600 truncate">{model}</span>
+                      <span className="font-medium">
+                        {auditRecords.filter(r => r.model_name === model).length}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Main Content - Audit Records */}
@@ -271,9 +265,6 @@ const LLMAuditDashboard: React.FC<LLMAuditDashboardProps> = ({ onClose }) => {
                       Status
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Cost
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Duration
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -316,9 +307,6 @@ const LLMAuditDashboard: React.FC<LLMAuditDashboardProps> = ({ onClose }) => {
                             <span className="text-sm">Failed</span>
                           </div>
                         )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {record.cost_usd ? formatCurrency(record.cost_usd) : 'N/A'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {record.response_time_ms ? formatDuration(record.response_time_ms) : 'N/A'}
@@ -401,7 +389,6 @@ const LLMAuditDashboard: React.FC<LLMAuditDashboardProps> = ({ onClose }) => {
                     <h4 className="font-semibold text-gray-900 mb-2">Performance</h4>
                     <div className="space-y-2 text-sm">
                       <div><span className="font-medium">Response Time:</span> {selectedRecord.response_time_ms ? formatDuration(selectedRecord.response_time_ms) : 'N/A'}</div>
-                      <div><span className="font-medium">Cost:</span> {selectedRecord.cost_usd ? formatCurrency(selectedRecord.cost_usd) : 'N/A'}</div>
                       <div><span className="font-medium">Input Tokens:</span> {selectedRecord.input_tokens || 'N/A'}</div>
                       <div><span className="font-medium">Output Tokens:</span> {selectedRecord.output_tokens || 'N/A'}</div>
                     </div>

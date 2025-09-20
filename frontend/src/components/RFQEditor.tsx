@@ -97,12 +97,12 @@ export const RFQEditor: React.FC = () => {
   const isLoading = workflow.status === 'started' || workflow.status === 'in_progress';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-yellow-50 to-amber-100 relative overflow-hidden">
       {/* Background Elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-blue-400/20 to-purple-600/20 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-br from-indigo-400/20 to-pink-600/20 rounded-full blur-3xl animate-pulse" style={{animationDelay: '1s'}}></div>
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-br from-cyan-400/10 to-blue-600/10 rounded-full blur-3xl animate-pulse" style={{animationDelay: '2s'}}></div>
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-yellow-400/20 to-amber-600/20 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-br from-amber-400/20 to-orange-600/20 rounded-full blur-3xl animate-pulse" style={{animationDelay: '1s'}}></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-br from-yellow-400/10 to-amber-600/10 rounded-full blur-3xl animate-pulse" style={{animationDelay: '2s'}}></div>
       </div>
 
       <div className="relative w-full p-4 lg:p-6">
@@ -117,7 +117,7 @@ export const RFQEditor: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="group">
                     <label className="block text-sm font-semibold text-gray-800 mb-3 flex items-center">
-                      <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                      <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
                       Survey Title
                     </label>
                     <div className="relative">
@@ -126,22 +126,22 @@ export const RFQEditor: React.FC = () => {
                         value={rfqInput.title || ''}
                         onChange={(e) => setRFQInput({ title: e.target.value })}
                         placeholder="Market Research Study"
-                        className="w-full px-4 py-4 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 shadow-lg hover:shadow-xl group-hover:shadow-xl text-gray-900 placeholder-gray-400"
+                        className="w-full px-4 py-4 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-2xl focus:ring-4 focus:ring-yellow-500/20 focus:border-yellow-500 transition-all duration-300 shadow-lg hover:shadow-xl group-hover:shadow-xl text-gray-900 placeholder-gray-400"
                       />
-                      <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-blue-500/10 to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
+                      <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-yellow-500/10 to-amber-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
                     </div>
                   </div>
                   
                   <div className="group">
                     <label className="block text-sm font-semibold text-gray-800 mb-3 flex items-center">
-                      <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                      <span className="w-2 h-2 bg-amber-500 rounded-full mr-2"></span>
                       Product Category
                     </label>
                     <div className="relative">
                       <select
                         value={rfqInput.product_category || ''}
                         onChange={(e) => setRFQInput({ product_category: e.target.value })}
-                        className="w-full px-4 py-4 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-2xl focus:ring-4 focus:ring-green-500/20 focus:border-green-500 transition-all duration-300 shadow-lg hover:shadow-xl group-hover:shadow-xl text-gray-900 appearance-none cursor-pointer"
+                        className="w-full px-4 py-4 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-2xl focus:ring-4 focus:ring-amber-500/20 focus:border-amber-500 transition-all duration-300 shadow-lg hover:shadow-xl group-hover:shadow-xl text-gray-900 appearance-none cursor-pointer"
                       >
                         <option value="">Select category...</option>
                         <option value="electronics">Electronics</option>
@@ -157,7 +157,7 @@ export const RFQEditor: React.FC = () => {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                         </svg>
                       </div>
-                      <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-green-500/10 to-blue-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
+                      <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-amber-500/10 to-yellow-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
                     </div>
                   </div>
                 </div>
@@ -165,14 +165,14 @@ export const RFQEditor: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="group">
                     <label className="block text-sm font-semibold text-gray-800 mb-3 flex items-center">
-                      <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
+                      <span className="w-2 h-2 bg-orange-500 rounded-full mr-2"></span>
                       Target Segment
                     </label>
                     <div className="relative">
                       <select
                         value={rfqInput.target_segment || ''}
                         onChange={(e) => setRFQInput({ target_segment: e.target.value })}
-                        className="w-full px-4 py-4 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-2xl focus:ring-4 focus:ring-purple-500/20 focus:border-purple-500 transition-all duration-300 shadow-lg hover:shadow-xl group-hover:shadow-xl text-gray-900 appearance-none cursor-pointer"
+                        className="w-full px-4 py-4 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-2xl focus:ring-4 focus:ring-orange-500/20 focus:border-orange-500 transition-all duration-300 shadow-lg hover:shadow-xl group-hover:shadow-xl text-gray-900 appearance-none cursor-pointer"
                       >
                         <option value="">Select segment...</option>
                         <option value="B2B decision makers">B2B Decision Makers</option>
@@ -186,7 +186,7 @@ export const RFQEditor: React.FC = () => {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                         </svg>
                       </div>
-                      <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-500/10 to-pink-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
+                      <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-orange-500/10 to-amber-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
                     </div>
                   </div>
                   
@@ -213,7 +213,7 @@ export const RFQEditor: React.FC = () => {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                         </svg>
                       </div>
-                      <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-indigo-500/10 to-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
+                      <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-yellow-500/10 to-amber-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
                     </div>
                   </div>
                 </div>
@@ -237,7 +237,7 @@ export const RFQEditor: React.FC = () => {
 
                   {/* Document Upload Section - Always visible */}
                   <div className="space-y-4">
-                    <div className="border-2 border-dashed border-gray-300 rounded-2xl p-6 text-center hover:border-blue-400 transition-colors duration-200">
+                    <div className="border-2 border-dashed border-gray-300 rounded-2xl p-6 text-center hover:border-yellow-400 transition-colors duration-200">
                       <input
                         type="file"
                         accept=".docx"
@@ -251,14 +251,14 @@ export const RFQEditor: React.FC = () => {
                         className={`cursor-pointer ${isUploading ? 'cursor-not-allowed opacity-50' : ''}`}
                       >
                         <div className="space-y-3">
-                          <div className="mx-auto w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                          <div className="mx-auto w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
                             {isUploading ? (
-                              <svg className="animate-spin w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24">
+                              <svg className="animate-spin w-6 h-6 text-yellow-600" fill="none" viewBox="0 0 24 24">
                                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                               </svg>
                             ) : (
-                              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                               </svg>
                             )}
@@ -279,12 +279,12 @@ export const RFQEditor: React.FC = () => {
                     {uploadStatus !== 'idle' && (
                       <div className={`p-4 rounded-xl ${
                         uploadStatus === 'success' 
-                          ? 'bg-green-50 border border-green-200' 
+                          ? 'bg-amber-50 border border-amber-200' 
                           : 'bg-red-50 border border-red-200'
                       }`}>
                         <div className="flex items-center space-x-3">
                           <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
-                            uploadStatus === 'success' ? 'bg-green-500' : 'bg-red-500'
+                            uploadStatus === 'success' ? 'bg-amber-500' : 'bg-red-500'
                           }`}>
                             {uploadStatus === 'success' ? (
                               <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -297,7 +297,7 @@ export const RFQEditor: React.FC = () => {
                             )}
                           </div>
                           <p className={`text-sm font-medium ${
-                            uploadStatus === 'success' ? 'text-green-800' : 'text-red-800'
+                            uploadStatus === 'success' ? 'text-amber-800' : 'text-red-800'
                           }`}>
                             {uploadMessage}
                           </p>
@@ -327,16 +327,16 @@ export const RFQEditor: React.FC = () => {
                     </div>
                   </div>
                   
-                  <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl p-4 border border-blue-100">
+                  <div className="bg-gradient-to-r from-yellow-50 to-amber-50 rounded-2xl p-4 border border-yellow-100">
                     <div className="flex items-start space-x-3">
-                      <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <div className="w-5 h-5 bg-yellow-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                         <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-blue-900 mb-1">Pro Tip</p>
-                        <p className="text-sm text-blue-800">
+                        <p className="text-sm font-medium text-yellow-900 mb-1">Pro Tip</p>
+                        <p className="text-sm text-yellow-800">
                           Be specific about methodologies (Van Westendorp, conjoint analysis, MaxDiff, etc.) and research objectives for better survey generation.
                         </p>
                       </div>
@@ -353,7 +353,7 @@ export const RFQEditor: React.FC = () => {
                       group relative w-full py-6 px-8 rounded-3xl font-bold text-lg transition-all duration-300 transform
                       ${isLoading || !rfqInput.description.trim()
                         ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                        : 'bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600 text-white shadow-2xl hover:shadow-3xl hover:scale-105 active:scale-95'
+                        : 'bg-gradient-to-r from-yellow-600 via-amber-600 to-yellow-600 text-white shadow-2xl hover:shadow-3xl hover:scale-105 active:scale-95'
                       }
                     `}
                   >
@@ -381,7 +381,7 @@ export const RFQEditor: React.FC = () => {
                     
                     {/* Animated background gradient */}
                     {!isLoading && rfqInput.description.trim() && (
-                      <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-purple-600 via-blue-600 to-purple-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                      <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-amber-600 via-yellow-600 to-amber-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                     )}
                   </button>
                 </div>
@@ -396,29 +396,29 @@ export const RFQEditor: React.FC = () => {
               <div className="bg-white/60 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/30 p-4 lg:p-6 relative overflow-hidden">
                 {/* Animated background pattern */}
                 <div className="absolute inset-0 opacity-10">
-                  <div className="absolute top-0 left-0 w-32 h-32 bg-gradient-to-br from-cyan-400 to-blue-600 rounded-full blur-2xl animate-pulse"></div>
-                  <div className="absolute bottom-0 right-0 w-24 h-24 bg-gradient-to-br from-purple-400 to-pink-600 rounded-full blur-2xl animate-pulse" style={{animationDelay: '1s'}}></div>
+                  <div className="absolute top-0 left-0 w-32 h-32 bg-gradient-to-br from-yellow-400 to-amber-600 rounded-full blur-2xl animate-pulse"></div>
+                  <div className="absolute bottom-0 right-0 w-24 h-24 bg-gradient-to-br from-amber-400 to-orange-600 rounded-full blur-2xl animate-pulse" style={{animationDelay: '1s'}}></div>
                 </div>
                 
                 <div className="relative z-10">
                   {/* Header */}
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-xl font-bold text-gray-900 flex items-center">
-                      <div className="w-8 h-8 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-2xl mr-3 flex items-center justify-center">
+                      <div className="w-8 h-8 bg-gradient-to-r from-yellow-500 to-amber-600 rounded-2xl mr-3 flex items-center justify-center">
                         <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                         </svg>
                       </div>
                       AI Intelligence
                     </h3>
-                    <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+                    <div className="w-3 h-3 bg-amber-400 rounded-full animate-pulse"></div>
                   </div>
                   
                   {/* Methodologies Section */}
                   <div className="space-y-4">
                     <div className="group">
                       <div className="flex items-center mb-3">
-                        <div className="w-6 h-6 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg mr-3 flex items-center justify-center">
+                        <div className="w-6 h-6 bg-gradient-to-r from-yellow-500 to-amber-600 rounded-lg mr-3 flex items-center justify-center">
                           <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
                           </svg>
@@ -426,12 +426,12 @@ export const RFQEditor: React.FC = () => {
                         <h4 className="font-semibold text-gray-800">Pricing Methodologies</h4>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <span className="inline-flex items-center px-3 py-2 bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border border-blue-200/50 text-blue-700 font-medium rounded-xl text-xs hover:shadow-lg transition-all duration-300 cursor-pointer group-hover:scale-105">
-                          <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                        <span className="inline-flex items-center px-3 py-2 bg-gradient-to-r from-yellow-500/10 to-amber-500/10 border border-yellow-200/50 text-yellow-700 font-medium rounded-xl text-xs hover:shadow-lg transition-all duration-300 cursor-pointer group-hover:scale-105">
+                          <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
                           Van Westendorp PSM
                         </span>
-                        <span className="inline-flex items-center px-3 py-2 bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-200/50 text-green-700 font-medium rounded-xl text-xs hover:shadow-lg transition-all duration-300 cursor-pointer group-hover:scale-105">
-                          <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                        <span className="inline-flex items-center px-3 py-2 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-200/50 text-amber-700 font-medium rounded-xl text-xs hover:shadow-lg transition-all duration-300 cursor-pointer group-hover:scale-105">
+                          <span className="w-2 h-2 bg-amber-500 rounded-full mr-2"></span>
                           Gabor-Granger
                         </span>
                       </div>
@@ -439,7 +439,7 @@ export const RFQEditor: React.FC = () => {
                     
                     <div className="group">
                       <div className="flex items-center mb-3">
-                        <div className="w-6 h-6 bg-gradient-to-r from-purple-500 to-pink-600 rounded-lg mr-3 flex items-center justify-center">
+                        <div className="w-6 h-6 bg-gradient-to-r from-orange-500 to-amber-600 rounded-lg mr-3 flex items-center justify-center">
                           <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
                           </svg>
@@ -447,8 +447,8 @@ export const RFQEditor: React.FC = () => {
                         <h4 className="font-semibold text-gray-800">Feature Analysis</h4>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <span className="inline-flex items-center px-3 py-2 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-200/50 text-purple-700 font-medium rounded-xl text-xs hover:shadow-lg transition-all duration-300 cursor-pointer group-hover:scale-105">
-                          <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
+                        <span className="inline-flex items-center px-3 py-2 bg-gradient-to-r from-orange-500/10 to-amber-500/10 border border-orange-200/50 text-orange-700 font-medium rounded-xl text-xs hover:shadow-lg transition-all duration-300 cursor-pointer group-hover:scale-105">
+                          <span className="w-2 h-2 bg-orange-500 rounded-full mr-2"></span>
                           Choice Conjoint
                         </span>
                         <span className="inline-flex items-center px-3 py-2 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-200/50 text-amber-700 font-medium rounded-xl text-xs hover:shadow-lg transition-all duration-300 cursor-pointer group-hover:scale-105">
@@ -471,13 +471,13 @@ export const RFQEditor: React.FC = () => {
                       
                       <div className="space-y-3">
                         <div className="group relative bg-white/80 backdrop-blur-sm border border-white/40 rounded-2xl p-4 hover:shadow-xl transition-all duration-300 cursor-pointer">
-                          <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-blue-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                          <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-yellow-500/5 to-amber-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                           <div className="relative z-10">
                             <div className="flex items-center justify-between mb-2">
-                              <h5 className="font-bold text-sm text-gray-800 group-hover:text-blue-900 transition-colors duration-300">Healthcare Technology Pricing</h5>
+                              <h5 className="font-bold text-sm text-gray-800 group-hover:text-yellow-900 transition-colors duration-300">Healthcare Technology Pricing</h5>
                               <div className="flex items-center space-x-1">
                                 <div className="w-2 h-2 bg-emerald-400 rounded-full"></div>
-                                <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                                <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
                               </div>
                             </div>
                             <p className="text-xs text-gray-600 flex items-center">
@@ -490,13 +490,13 @@ export const RFQEditor: React.FC = () => {
                         </div>
                         
                         <div className="group relative bg-white/80 backdrop-blur-sm border border-white/40 rounded-2xl p-4 hover:shadow-xl transition-all duration-300 cursor-pointer">
-                          <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-500/5 to-pink-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                          <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-orange-500/5 to-amber-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                           <div className="relative z-10">
                             <div className="flex items-center justify-between mb-2">
-                              <h5 className="font-bold text-sm text-gray-800 group-hover:text-purple-900 transition-colors duration-300">B2B SaaS Feature Analysis</h5>
+                              <h5 className="font-bold text-sm text-gray-800 group-hover:text-orange-900 transition-colors duration-300">B2B SaaS Feature Analysis</h5>
                               <div className="flex items-center space-x-1">
-                                <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
-                                <div className="w-2 h-2 bg-pink-400 rounded-full"></div>
+                                <div className="w-2 h-2 bg-orange-400 rounded-full"></div>
+                                <div className="w-2 h-2 bg-amber-400 rounded-full"></div>
                               </div>
                             </div>
                             <p className="text-xs text-gray-600 flex items-center">

@@ -214,6 +214,7 @@ class DocumentParseResponse(BaseModel):
 @router.post("/parse-document", response_model=DocumentParseResponse)
 async def parse_document(
     file: UploadFile = File(...),
+    db: Session = Depends(get_db)
 ):
     """
     Parse a DOCX document and convert it to survey JSON using LLM.
@@ -236,7 +237,9 @@ async def parse_document(
         logger.info(f"✅ [Document Parse] File read successfully, size: {len(file_content)} bytes")
         
         logger.info(f"🤖 [Document Parse] Starting LLM parsing for: {file.filename}")
-        # Parse document using LLM
+        # Parse document using LLM with database session for audit
+        from src.services.document_parser import DocumentParser
+        document_parser = DocumentParser(db_session=db)
         survey_data = await document_parser.parse_document(file_content)
         logger.info(f"✅ [Document Parse] LLM parsing completed for: {file.filename}")
         

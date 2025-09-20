@@ -1,11 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import {
-  EnhancedRFQRequest,
-  DocumentAnalysisResponse
-} from '../types';
 import { DocumentUpload } from './DocumentUpload';
-import { DocumentAnalysisPreview } from './DocumentAnalysisPreview';
+
+// Animated sprinkle component
+const AnimatedSprinkle: React.FC<{ className?: string }> = ({ className = "" }) => (
+  <span 
+    className={`inline-block text-yellow-600 text-xs animate-pulse hover:animate-bounce ${className}`} 
+    title="Auto-filled from document"
+  >
+    ✨
+  </span>
+);
 
 // Helper component for form fields with auto-fill indicators
 const FormField: React.FC<{
@@ -25,11 +30,7 @@ const FormField: React.FC<{
     <div>
       <label className="block text-sm font-semibold text-gray-800 mb-3 flex items-center space-x-2">
         <span>{label}</span>
-        {isAutoFilled && (
-          <span className="text-yellow-600 text-xs" title="Auto-filled from document">
-            ✨
-          </span>
-        )}
+        {isAutoFilled && <AnimatedSprinkle />}
       </label>
       <div className="relative">
         {type === 'textarea' ? (
@@ -68,23 +69,20 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
     setEnhancedRfq,
     workflow,
     // Document upload state and actions
-    documentContent,
-    documentAnalysis,
     fieldMappings,
-    isDocumentProcessing,
-    documentUploadError,
-    uploadDocument,
-    analyzeText,
-    acceptFieldMapping,
-    rejectFieldMapping,
-    editFieldMapping,
-    clearDocumentData,
-    applyDocumentMappings,
     addToast,
     // State persistence
     restoreEnhancedRfqState,
     clearEnhancedRfqState
   } = useAppStore();
+
+  // Helper function to check if a field was actually auto-filled from document
+  const isFieldAutoFilled = (fieldPath: string): boolean => {
+    return fieldMappings.some(mapping => 
+      mapping.field === fieldPath && 
+      mapping.user_action === 'accepted'
+    );
+  };
 
   const [currentSection, setCurrentSection] = useState<string>('document');
 
@@ -270,7 +268,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                       </h2>
                       {enhancedRfq.document_source && (
                         <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-2 flex items-center space-x-2">
-                          <span className="text-yellow-600">📄</span>
+                          <AnimatedSprinkle className="text-lg" />
                           <span className="text-sm text-yellow-800 font-medium">Auto-filled from document</span>
                         </div>
                       )}
@@ -298,7 +296,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                         onChange={(value) => setEnhancedRfq({ ...enhancedRfq, title: value })}
                         placeholder="Enter your research project title"
                         type="text"
-                        isAutoFilled={!!(enhancedRfq.document_source && enhancedRfq.title)}
+                        isAutoFilled={isFieldAutoFilled('title')}
                       />
 
                       <FormField
@@ -308,7 +306,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                         placeholder="Brief overview of the research project..."
                         type="textarea"
                         rows={4}
-                        isAutoFilled={!!(enhancedRfq.document_source && enhancedRfq.description)}
+                        isAutoFilled={isFieldAutoFilled('description')}
                       />
                     </div>
 
@@ -327,7 +325,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                       placeholder="Provide background on your company, product, and any relevant research history that influences this study design..."
                       type="textarea"
                       rows={6}
-                      isAutoFilled={!!(enhancedRfq.document_source && enhancedRfq.business_context?.company_product_background)}
+                      isAutoFilled={isFieldAutoFilled('business_context.company_product_background')}
                     />
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -346,7 +344,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                         placeholder="What business challenge or question needs to be addressed?"
                         type="textarea"
                         rows={4}
-                        isAutoFilled={!!(enhancedRfq.document_source && enhancedRfq.business_context?.business_problem)}
+                        isAutoFilled={isFieldAutoFilled('business_context.business_problem')}
                       />
 
                       <FormField
@@ -364,7 +362,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                         placeholder="What does the business want to achieve from this research?"
                         type="textarea"
                         rows={4}
-                        isAutoFilled={!!(enhancedRfq.document_source && enhancedRfq.business_context?.business_objective)}
+                        isAutoFilled={isFieldAutoFilled('business_context.business_objective')}
                       />
                     </div>
                   </div>
@@ -379,67 +377,41 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                     </h2>
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-800 mb-3">
-                          Research Audience
-                        </label>
-                        <div className="relative">
-                          <textarea
-                            value={enhancedRfq.research_objectives?.research_audience || ''}
-                            onChange={(e) => setEnhancedRfq({
-                              ...enhancedRfq,
-                              research_objectives: {
-                                ...enhancedRfq.research_objectives,
-                                research_audience: e.target.value,
-                                success_criteria: enhancedRfq.research_objectives?.success_criteria || '',
-                                key_research_questions: enhancedRfq.research_objectives?.key_research_questions || []
-                              }
-                            })}
-                            placeholder="Describe respondent type, demographics, targeted segments..."
-                            rows={4}
-                            className={`w-full px-4 py-4 bg-white border border-gray-200 rounded-2xl focus:ring-4 focus:ring-yellow-500/20 focus:border-yellow-500 transition-all duration-300 resize-none ${
-                              enhancedRfq.document_source && enhancedRfq.research_objectives?.research_audience ? 'bg-yellow-50 border-yellow-200' : ''
-                            }`}
-                          />
-                          {enhancedRfq.document_source && enhancedRfq.research_objectives?.research_audience && (
-                            <div className="absolute right-4 top-4 text-yellow-600 text-sm flex items-center space-x-1">
-                              <span>📄</span>
-                              <span className="text-xs text-yellow-700">Auto-filled</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                      <FormField
+                        label="Research Audience"
+                        value={enhancedRfq.research_objectives?.research_audience || ''}
+                        onChange={(value) => setEnhancedRfq({
+                          ...enhancedRfq,
+                          research_objectives: {
+                            ...enhancedRfq.research_objectives,
+                            research_audience: value,
+                            success_criteria: enhancedRfq.research_objectives?.success_criteria || '',
+                            key_research_questions: enhancedRfq.research_objectives?.key_research_questions || []
+                          }
+                        })}
+                        placeholder="Describe respondent type, demographics, targeted segments..."
+                        type="textarea"
+                        rows={4}
+                        isAutoFilled={isFieldAutoFilled('research_objectives.research_audience')}
+                      />
 
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-800 mb-3">
-                          Success Criteria
-                        </label>
-                        <div className="relative">
-                          <textarea
-                            value={enhancedRfq.research_objectives?.success_criteria || ''}
-                            onChange={(e) => setEnhancedRfq({
-                              ...enhancedRfq,
-                              research_objectives: {
-                                ...enhancedRfq.research_objectives,
-                                research_audience: enhancedRfq.research_objectives?.research_audience || '',
-                                success_criteria: e.target.value,
-                                key_research_questions: enhancedRfq.research_objectives?.key_research_questions || []
-                              }
-                            })}
-                            placeholder="What defines success for this research? What decisions will flow from this?"
-                            rows={4}
-                            className={`w-full px-4 py-4 bg-white border border-gray-200 rounded-2xl focus:ring-4 focus:ring-yellow-500/20 focus:border-yellow-500 transition-all duration-300 resize-none ${
-                              enhancedRfq.document_source && enhancedRfq.research_objectives?.success_criteria ? 'bg-yellow-50 border-yellow-200' : ''
-                            }`}
-                          />
-                          {enhancedRfq.document_source && enhancedRfq.research_objectives?.success_criteria && (
-                            <div className="absolute right-4 top-4 text-yellow-600 text-sm flex items-center space-x-1">
-                              <span>📄</span>
-                              <span className="text-xs text-yellow-700">Auto-filled</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                      <FormField
+                        label="Success Criteria"
+                        value={enhancedRfq.research_objectives?.success_criteria || ''}
+                        onChange={(value) => setEnhancedRfq({
+                          ...enhancedRfq,
+                          research_objectives: {
+                            ...enhancedRfq.research_objectives,
+                            research_audience: enhancedRfq.research_objectives?.research_audience || '',
+                            success_criteria: value,
+                            key_research_questions: enhancedRfq.research_objectives?.key_research_questions || []
+                          }
+                        })}
+                        placeholder="What defines success for this research? What decisions will flow from this?"
+                        type="textarea"
+                        rows={4}
+                        isAutoFilled={isFieldAutoFilled('research_objectives.success_criteria')}
+                      />
                     </div>
 
                     <div>
@@ -528,65 +500,39 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                       </div>
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-800 mb-3">
-                        Stimuli Details
-                      </label>
-                      <div className="relative">
-                        <textarea
-                          value={enhancedRfq.methodology?.stimuli_details || ''}
-                          onChange={(e) => setEnhancedRfq({
-                            ...enhancedRfq,
-                            methodology: {
-                              ...enhancedRfq.methodology,
-                              primary_method: enhancedRfq.methodology?.primary_method || 'basic_survey',
-                              stimuli_details: e.target.value
-                            }
-                          })}
-                          placeholder="Describe concepts, price ranges, features to test, or other stimuli details..."
-                          rows={4}
-                          className={`w-full px-4 py-4 bg-white border border-gray-200 rounded-2xl focus:ring-4 focus:ring-yellow-500/20 focus:border-yellow-500 transition-all duration-300 resize-none ${
-                            enhancedRfq.document_source && enhancedRfq.methodology?.stimuli_details ? 'bg-yellow-50 border-yellow-200' : ''
-                          }`}
-                        />
-                        {enhancedRfq.document_source && enhancedRfq.methodology?.stimuli_details && (
-                          <div className="absolute right-4 top-4 text-yellow-600 text-sm flex items-center space-x-1">
-                            <span>📄</span>
-                            <span className="text-xs text-yellow-700">Auto-filled</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    <FormField
+                      label="Stimuli Details"
+                      value={enhancedRfq.methodology?.stimuli_details || ''}
+                      onChange={(value) => setEnhancedRfq({
+                        ...enhancedRfq,
+                        methodology: {
+                          ...enhancedRfq.methodology,
+                          primary_method: enhancedRfq.methodology?.primary_method || 'basic_survey',
+                          stimuli_details: value
+                        }
+                      })}
+                      placeholder="Describe concepts, price ranges, features to test, or other stimuli details..."
+                      type="textarea"
+                      rows={4}
+                      isAutoFilled={isFieldAutoFilled('methodology.stimuli_details')}
+                    />
 
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-800 mb-3">
-                        Methodology Requirements
-                      </label>
-                      <div className="relative">
-                        <textarea
-                          value={enhancedRfq.methodology?.methodology_requirements || ''}
-                          onChange={(e) => setEnhancedRfq({
-                            ...enhancedRfq,
-                            methodology: {
-                              ...enhancedRfq.methodology,
-                              primary_method: enhancedRfq.methodology?.primary_method || 'basic_survey',
-                              methodology_requirements: e.target.value
-                            }
-                          })}
-                          placeholder="Any specific methodology requirements, constraints, or considerations..."
-                          rows={3}
-                          className={`w-full px-4 py-4 bg-white border border-gray-200 rounded-2xl focus:ring-4 focus:ring-yellow-500/20 focus:border-yellow-500 transition-all duration-300 resize-none ${
-                            enhancedRfq.document_source && enhancedRfq.methodology?.methodology_requirements ? 'bg-yellow-50 border-yellow-200' : ''
-                          }`}
-                        />
-                        {enhancedRfq.document_source && enhancedRfq.methodology?.methodology_requirements && (
-                          <div className="absolute right-4 top-4 text-yellow-600 text-sm flex items-center space-x-1">
-                            <span>📄</span>
-                            <span className="text-xs text-yellow-700">Auto-filled</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    <FormField
+                      label="Methodology Requirements"
+                      value={enhancedRfq.methodology?.methodology_requirements || ''}
+                      onChange={(value) => setEnhancedRfq({
+                        ...enhancedRfq,
+                        methodology: {
+                          ...enhancedRfq.methodology,
+                          primary_method: enhancedRfq.methodology?.primary_method || 'basic_survey',
+                          methodology_requirements: value
+                        }
+                      })}
+                      placeholder="Any specific methodology requirements, constraints, or considerations..."
+                      type="textarea"
+                      rows={3}
+                      isAutoFilled={isFieldAutoFilled('methodology.methodology_requirements')}
+                    />
                   </div>
                 )}
 
@@ -598,36 +544,23 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                       Survey Requirements
                     </h2>
 
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-800 mb-3">
-                        Sample Plan
-                      </label>
-                      <div className="relative">
-                        <textarea
-                          value={enhancedRfq.survey_requirements?.sample_plan || ''}
-                          onChange={(e) => setEnhancedRfq({
-                            ...enhancedRfq,
-                            survey_requirements: {
-                              ...enhancedRfq.survey_requirements,
-                              sample_plan: e.target.value,
-                              required_sections: enhancedRfq.survey_requirements?.required_sections || [],
-                              must_have_questions: enhancedRfq.survey_requirements?.must_have_questions || []
-                            }
-                          })}
-                          placeholder="Include sample structure, LOI, recruiting criteria, target sample size..."
-                          rows={4}
-                          className={`w-full px-4 py-4 bg-white border border-gray-200 rounded-2xl focus:ring-4 focus:ring-yellow-500/20 focus:border-yellow-500 transition-all duration-300 resize-none ${
-                            enhancedRfq.document_source && enhancedRfq.survey_requirements?.sample_plan ? 'bg-yellow-50 border-yellow-200' : ''
-                          }`}
-                        />
-                        {enhancedRfq.document_source && enhancedRfq.survey_requirements?.sample_plan && (
-                          <div className="absolute right-4 top-4 text-yellow-600 text-sm flex items-center space-x-1">
-                            <span>📄</span>
-                            <span className="text-xs text-yellow-700">Auto-filled</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    <FormField
+                      label="Sample Plan"
+                      value={enhancedRfq.survey_requirements?.sample_plan || ''}
+                      onChange={(value) => setEnhancedRfq({
+                        ...enhancedRfq,
+                        survey_requirements: {
+                          ...enhancedRfq.survey_requirements,
+                          sample_plan: value,
+                          required_sections: enhancedRfq.survey_requirements?.required_sections || [],
+                          must_have_questions: enhancedRfq.survey_requirements?.must_have_questions || []
+                        }
+                      })}
+                      placeholder="Include sample structure, LOI, recruiting criteria, target sample size..."
+                      type="textarea"
+                      rows={4}
+                      isAutoFilled={isFieldAutoFilled('survey_requirements.sample_plan')}
+                    />
 
                     <div>
                       <label className="block text-sm font-semibold text-gray-800 mb-3">
@@ -665,94 +598,55 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                       </div>
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-800 mb-3">
-                        Must-Have Questions
-                      </label>
-                      <div className="relative">
-                        <textarea
-                          value={(enhancedRfq.survey_requirements?.must_have_questions || []).join('\n')}
-                          onChange={(e) => setEnhancedRfq({
-                            ...enhancedRfq,
-                            survey_requirements: {
-                              ...enhancedRfq.survey_requirements,
-                              sample_plan: enhancedRfq.survey_requirements?.sample_plan || '',
-                              required_sections: enhancedRfq.survey_requirements?.required_sections || [],
-                              must_have_questions: e.target.value.split('\n').filter(q => q.trim())
-                            }
-                          })}
-                          placeholder="List must-have questions (one per line)..."
-                          rows={4}
-                          className={`w-full px-4 py-4 bg-white border border-gray-200 rounded-2xl focus:ring-4 focus:ring-yellow-500/20 focus:border-yellow-500 transition-all duration-300 resize-none ${
-                            enhancedRfq.document_source && enhancedRfq.survey_requirements?.must_have_questions?.length ? 'bg-yellow-50 border-yellow-200' : ''
-                          }`}
-                        />
-                        {enhancedRfq.document_source && enhancedRfq.survey_requirements?.must_have_questions?.length && (
-                          <div className="absolute right-4 top-4 text-yellow-600 text-sm flex items-center space-x-1">
-                            <span>📄</span>
-                            <span className="text-xs text-yellow-700">Auto-filled</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    <FormField
+                      label="Must-Have Questions"
+                      value={(enhancedRfq.survey_requirements?.must_have_questions || []).join('\n')}
+                      onChange={(value) => setEnhancedRfq({
+                        ...enhancedRfq,
+                        survey_requirements: {
+                          ...enhancedRfq.survey_requirements,
+                          sample_plan: enhancedRfq.survey_requirements?.sample_plan || '',
+                          required_sections: enhancedRfq.survey_requirements?.required_sections || [],
+                          must_have_questions: value.split('\n').filter(q => q.trim())
+                        }
+                      })}
+                      placeholder="List must-have questions (one per line)..."
+                      type="textarea"
+                      rows={4}
+                      isAutoFilled={isFieldAutoFilled('survey_requirements.must_have_questions')}
+                    />
 
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-800 mb-3">
-                        Screener Requirements
-                      </label>
-                      <div className="relative">
-                        <textarea
-                          value={enhancedRfq.survey_requirements?.screener_requirements || ''}
-                          onChange={(e) => setEnhancedRfq({
-                            ...enhancedRfq,
-                            survey_requirements: {
-                              ...enhancedRfq.survey_requirements,
-                              sample_plan: enhancedRfq.survey_requirements?.sample_plan || '',
-                              required_sections: enhancedRfq.survey_requirements?.required_sections || [],
-                              must_have_questions: enhancedRfq.survey_requirements?.must_have_questions || [],
-                              screener_requirements: e.target.value
-                            }
-                          })}
-                          placeholder="Screener and respondent tagging rules, piping logic..."
-                          rows={3}
-                          className={`w-full px-4 py-4 bg-white border border-gray-200 rounded-2xl focus:ring-4 focus:ring-yellow-500/20 focus:border-yellow-500 transition-all duration-300 resize-none ${
-                            enhancedRfq.document_source && enhancedRfq.survey_requirements?.screener_requirements ? 'bg-yellow-50 border-yellow-200' : ''
-                          }`}
-                        />
-                        {enhancedRfq.document_source && enhancedRfq.survey_requirements?.screener_requirements && (
-                          <div className="absolute right-4 top-4 text-yellow-600 text-sm flex items-center space-x-1">
-                            <span>📄</span>
-                            <span className="text-xs text-yellow-700">Auto-filled</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    <FormField
+                      label="Screener Requirements"
+                      value={enhancedRfq.survey_requirements?.screener_requirements || ''}
+                      onChange={(value) => setEnhancedRfq({
+                        ...enhancedRfq,
+                        survey_requirements: {
+                          ...enhancedRfq.survey_requirements,
+                          sample_plan: enhancedRfq.survey_requirements?.sample_plan || '',
+                          required_sections: enhancedRfq.survey_requirements?.required_sections || [],
+                          must_have_questions: enhancedRfq.survey_requirements?.must_have_questions || [],
+                          screener_requirements: value
+                        }
+                      })}
+                      placeholder="Screener and respondent tagging rules, piping logic..."
+                      type="textarea"
+                      rows={3}
+                      isAutoFilled={isFieldAutoFilled('survey_requirements.screener_requirements')}
+                    />
 
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-800 mb-3">
-                        Rules & Definitions
-                      </label>
-                      <div className="relative">
-                        <textarea
-                          value={enhancedRfq.rules_and_definitions || ''}
-                          onChange={(e) => setEnhancedRfq({
-                            ...enhancedRfq,
-                            rules_and_definitions: e.target.value
-                          })}
-                          placeholder="Rules, definitions, jargon feed, special terms..."
-                          rows={3}
-                          className={`w-full px-4 py-4 bg-white border border-gray-200 rounded-2xl focus:ring-4 focus:ring-yellow-500/20 focus:border-yellow-500 transition-all duration-300 resize-none ${
-                            enhancedRfq.document_source && enhancedRfq.rules_and_definitions ? 'bg-yellow-50 border-yellow-200' : ''
-                          }`}
-                        />
-                        {enhancedRfq.document_source && enhancedRfq.rules_and_definitions && (
-                          <div className="absolute right-4 top-4 text-yellow-600 text-sm flex items-center space-x-1">
-                            <span>📄</span>
-                            <span className="text-xs text-yellow-700">Auto-filled</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    <FormField
+                      label="Rules & Definitions"
+                      value={enhancedRfq.rules_and_definitions || ''}
+                      onChange={(value) => setEnhancedRfq({
+                        ...enhancedRfq,
+                        rules_and_definitions: value
+                      })}
+                      placeholder="Rules, definitions, jargon feed, special terms..."
+                      type="textarea"
+                      rows={3}
+                      isAutoFilled={isFieldAutoFilled('rules_and_definitions')}
+                    />
                   </div>
                 )}
 

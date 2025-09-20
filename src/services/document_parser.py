@@ -139,47 +139,61 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
             interaction_id = f"document_parsing_{uuid.uuid4().hex[:8]}"
             audit_service = LLMAuditService(self.db_session) if self.db_session else None
             
-            if audit_service:
-                async with LLMAuditContext(
-                    audit_service=audit_service,
-                    interaction_id=interaction_id,
-                    model_name=self.model,
-                    model_provider="replicate",
-                    purpose="document_parsing",
-                    input_prompt=prompt,
-                    sub_purpose="survey_conversion",
-                    context_type="document",
-                    hyperparameters={
-                        "temperature": 0.1,
-                        "max_tokens": 4000
-                    },
-                    metadata={
-                        "document_length": len(document_text),
-                        "prompt_length": len(prompt)
-                    },
-                    tags=["document_parsing", "survey_conversion"]
-                ) as audit_context:
-                    logger.info(f"🚀 [Document Parser] Calling Replicate API with auditing")
-                    start_time = time.time()
+            # Try to use audit service, but don't let audit failures break the core functionality
+            try:
+                if audit_service:
+                    async with LLMAuditContext(
+                        audit_service=audit_service,
+                        interaction_id=interaction_id,
+                        model_name=self.model,
+                        model_provider="replicate",
+                        purpose="document_parsing",
+                        input_prompt=prompt,
+                        sub_purpose="survey_conversion",
+                        context_type="document",
+                        hyperparameters={
+                            "temperature": 0.1,
+                            "max_tokens": 4000
+                        },
+                        metadata={
+                            "document_length": len(document_text),
+                            "prompt_length": len(prompt)
+                        },
+                        tags=["document_parsing", "survey_conversion"]
+                    ) as audit_context:
+                        logger.info(f"🚀 [Document Parser] Calling Replicate API with auditing")
+                        start_time = time.time()
+                        output = await replicate.async_run(
+                            self.model,
+                            input={
+                                "prompt": prompt,
+                                "temperature": 0.1,
+                                "max_tokens": 4000,
+                                "system_prompt": "You are a document parser. Parse the provided document into the exact JSON structure below. Be literal and strict: your output MUST be valid JSON, no prose, no backticks, no explanations, nothing else.\n\nCRITICAL: Your response must be valid JSON that can be parsed by json.loads().\n\nTop-level JSON shape required:\n{\n  \"raw_output\": { ...full extracted content and minimal normalization... },\n  \"final_output\": { ...cleaned, normalized, validated survey schema... }\n}\n\nMANDATORY STRUCTURE:\n1. \"raw_output\" must contain:\n   - \"document_text\": the full original text (unchanged)\n   - \"extraction_timestamp\": ISO 8601 timestamp\n   - \"source_file\": filename if provided, null otherwise\n   - \"error\": null (unless there was a blocking issue)\n\n2. \"final_output\" must contain:\n   - \"title\": string (required, cannot be null)\n   - \"description\": string or null\n   - \"metadata\": object with quality_score, estimated_time, methodology_tags, target_responses, source_file\n   - \"questions\": array (required, cannot be null, can be empty)\n   - \"parsing_issues\": array of strings\n\n3. Each question in \"questions\" must have:\n   - \"id\": string (q1, q2, q3...)\n   - \"text\": string (required)\n   - \"type\": string (one of: multiple_choice, scale, text, ranking, matrix, date, numeric, file_upload, boolean, unknown)\n   - \"options\": array of strings (empty for free text)\n   - \"required\": boolean\n   - \"validation\": string or null\n   - \"methodology\": string or null\n   - \"routing\": object or null\n\nRULES:\n1. ALWAYS return valid JSON - if you cannot parse something, include it as \"unknown\" type question\n2. Assign sequential IDs: q1, q2, q3...\n3. For multiple choice: put options in \"options\" array\n4. For scales: use \"type\":\"scale\" and put scale labels in \"options\"\n5. For matrices: use \"type\":\"matrix\" with validation \"matrix_per_brand:BrandA|BrandB\"\n6. For Van Westendorp: use \"methodology\":\"van_westendorp\"\n7. For MaxDiff: use \"type\":\"ranking\" with \"methodology\":\"maxdiff\"\n8. For Conjoint: use \"methodology\":\"conjoint\"\n9. Set \"required\": true for most questions, false for optional\n10. Use validation tokens: single_select, multi_select_min_1_max_3, currency_usd_min_1_max_1000, etc.\n\nEXAMPLE OUTPUT:\n{\n  \"raw_output\": {\n    \"document_text\": \"[full document text here]\",\n    \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n    \"source_file\": null,\n    \"error\": null\n  },\n  \"final_output\": {\n    \"title\": \"Customer Satisfaction Survey\",\n    \"description\": \"Survey to measure customer satisfaction\",\n    \"metadata\": {\n      \"quality_score\": 0.9,\n      \"estimated_time\": 10,\n      \"methodology_tags\": [\"satisfaction\", \"nps\"],\n      \"target_responses\": 100,\n      \"source_file\": null\n    },\n    \"questions\": [\n      {\n        \"id\": \"q1\",\n        \"text\": \"How satisfied are you with our service?\",\n        \"type\": \"scale\",\n        \"options\": [\"Very Dissatisfied\", \"Dissatisfied\", \"Neutral\", \"Satisfied\", \"Very Satisfied\"],\n        \"required\": true,\n        \"validation\": \"single_select\",\n        \"methodology\": \"satisfaction\",\n        \"routing\": null\n      }\n    ],\n    \"parsing_issues\": []\n  }\n}\n\nNow parse the document and return ONLY the JSON structure above."
+                            }
+                        )
+                        
+                        # Process the output and set audit context
+                        response_time_ms = int((time.time() - start_time) * 1000)
+                        audit_context.set_output(
+                            output_content=str(output)
+                        )
+                else:
+                    # Fallback without auditing
+                    logger.info(f"🚀 [Document Parser] Calling Replicate API without auditing")
                     output = await replicate.async_run(
                         self.model,
                         input={
-                            "prompt": prompt,
-                            "temperature": 0.1,
-                            "max_tokens": 4000,
-                            "system_prompt": "You are a document parser. Parse the provided document into the exact JSON structure below. Be literal and strict: your output MUST be valid JSON, no prose, no backticks, no explanations, nothing else.\n\nCRITICAL: Your response must be valid JSON that can be parsed by json.loads().\n\nTop-level JSON shape required:\n{\n  \"raw_output\": { ...full extracted content and minimal normalization... },\n  \"final_output\": { ...cleaned, normalized, validated survey schema... }\n}\n\nMANDATORY STRUCTURE:\n1. \"raw_output\" must contain:\n   - \"document_text\": the full original text (unchanged)\n   - \"extraction_timestamp\": ISO 8601 timestamp\n   - \"source_file\": filename if provided, null otherwise\n   - \"error\": null (unless there was a blocking issue)\n\n2. \"final_output\" must contain:\n   - \"title\": string (required, cannot be null)\n   - \"description\": string or null\n   - \"metadata\": object with quality_score, estimated_time, methodology_tags, target_responses, source_file\n   - \"questions\": array (required, cannot be null, can be empty)\n   - \"parsing_issues\": array of strings\n\n3. Each question in \"questions\" must have:\n   - \"id\": string (q1, q2, q3...)\n   - \"text\": string (required)\n   - \"type\": string (one of: multiple_choice, scale, text, ranking, matrix, date, numeric, file_upload, boolean, unknown)\n   - \"options\": array of strings (empty for free text)\n   - \"required\": boolean\n   - \"validation\": string or null\n   - \"methodology\": string or null\n   - \"routing\": object or null\n\nRULES:\n1. ALWAYS return valid JSON - if you cannot parse something, include it as \"unknown\" type question\n2. Assign sequential IDs: q1, q2, q3...\n3. For multiple choice: put options in \"options\" array\n4. For scales: use \"type\":\"scale\" and put scale labels in \"options\"\n5. For matrices: use \"type\":\"matrix\" with validation \"matrix_per_brand:BrandA|BrandB\"\n6. For Van Westendorp: use \"methodology\":\"van_westendorp\"\n7. For MaxDiff: use \"type\":\"ranking\" with \"methodology\":\"maxdiff\"\n8. For Conjoint: use \"methodology\":\"conjoint\"\n9. Set \"required\": true for most questions, false for optional\n10. Use validation tokens: single_select, multi_select_min_1_max_3, currency_usd_min_1_max_1000, etc.\n\nEXAMPLE OUTPUT:\n{\n  \"raw_output\": {\n    \"document_text\": \"[full document text here]\",\n    \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n    \"source_file\": null,\n    \"error\": null\n  },\n  \"final_output\": {\n    \"title\": \"Customer Satisfaction Survey\",\n    \"description\": \"Survey to measure customer satisfaction\",\n    \"metadata\": {\n      \"quality_score\": 0.9,\n      \"estimated_time\": 10,\n      \"methodology_tags\": [\"satisfaction\", \"nps\"],\n      \"target_responses\": 100,\n      \"source_file\": null\n    },\n    \"questions\": [\n      {\n        \"id\": \"q1\",\n        \"text\": \"How satisfied are you with our service?\",\n        \"type\": \"scale\",\n        \"options\": [\"Very Dissatisfied\", \"Dissatisfied\", \"Neutral\", \"Satisfied\", \"Very Satisfied\"],\n        \"required\": true,\n        \"validation\": \"single_select\",\n        \"methodology\": \"satisfaction\",\n        \"routing\": null\n      }\n    ],\n    \"parsing_issues\": []\n  }\n}\n\nNow parse the document and return ONLY the JSON structure above."
-                        }
-                    )
-                    
-                    # Process the output and set audit context
-                    response_time_ms = int((time.time() - start_time) * 1000)
-                    audit_context.set_output(
-                        output_content=str(output),
-                        response_time_ms=response_time_ms
-                    )
-            else:
-                # Fallback without auditing
-                logger.info(f"🚀 [Document Parser] Calling Replicate API without auditing")
+                        "prompt": prompt,
+                        "temperature": 0.1,
+                        "max_tokens": 4000,
+                        "system_prompt": "You are a document parser. Parse the provided document into the exact JSON structure below. Be literal and strict: your output MUST be valid JSON, no prose, no backticks, no explanations, nothing else.\n\nCRITICAL: Your response must be valid JSON that can be parsed by json.loads().\n\nTop-level JSON shape required:\n{\n  \"raw_output\": { ...full extracted content and minimal normalization... },\n  \"final_output\": { ...cleaned, normalized, validated survey schema... }\n}\n\nMANDATORY STRUCTURE:\n1. \"raw_output\" must contain:\n   - \"document_text\": the full original text (unchanged)\n   - \"extraction_timestamp\": ISO 8601 timestamp\n   - \"source_file\": filename if provided, null otherwise\n   - \"error\": null (unless there was a blocking issue)\n\n2. \"final_output\" must contain:\n   - \"title\": string (required, cannot be null)\n   - \"description\": string or null\n   - \"metadata\": object with quality_score, estimated_time, methodology_tags, target_responses, source_file\n   - \"questions\": array (required, cannot be null, can be empty)\n   - \"parsing_issues\": array of strings\n\n3. Each question in \"questions\" must have:\n   - \"id\": string (q1, q2, q3...)\n   - \"text\": string (required)\n   - \"type\": string (one of: multiple_choice, scale, text, ranking, matrix, date, numeric, file_upload, boolean, unknown)\n   - \"options\": array of strings (empty for free text)\n   - \"required\": boolean\n   - \"validation\": string or null\n   - \"methodology\": string or null\n   - \"routing\": object or null\n\nRULES:\n1. ALWAYS return valid JSON - if you cannot parse something, include it as \"unknown\" type question\n2. Assign sequential IDs: q1, q2, q3...\n3. For multiple choice: put options in \"options\" array\n4. For scales: use \"type\":\"scale\" and put scale labels in \"options\"\n5. For matrices: use \"type\":\"matrix\" with validation \"matrix_per_brand:BrandA|BrandB\"\n6. For Van Westendorp: use \"methodology\":\"van_westendorp\"\n7. For MaxDiff: use \"type\":\"ranking\" with \"methodology\":\"maxdiff\"\n8. For Conjoint: use \"methodology\":\"conjoint\"\n9. Set \"required\": true for most questions, false for optional\n10. Use validation tokens: single_select, multi_select_min_1_max_3, currency_usd_min_1_max_1000, etc.\n\nEXAMPLE OUTPUT:\n{\n  \"raw_output\": {\n    \"document_text\": \"[full document text here]\",\n    \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n    \"source_file\": null,\n    \"error\": null\n  },\n  \"final_output\": {\n    \"title\": \"Customer Satisfaction Survey\",\n    \"description\": \"Survey to measure customer satisfaction\",\n    \"metadata\": {\n      \"quality_score\": 0.9,\n      \"estimated_time\": 10,\n      \"methodology_tags\": [\"satisfaction\", \"nps\"],\n      \"target_responses\": 100,\n      \"source_file\": null\n    },\n    \"questions\": [\n      {\n        \"id\": \"q1\",\n        \"text\": \"How satisfied are you with our service?\",\n        \"type\": \"scale\",\n        \"options\": [\"Very Dissatisfied\", \"Dissatisfied\", \"Neutral\", \"Satisfied\", \"Very Satisfied\"],\n        \"required\": true,\n        \"validation\": \"single_select\",\n        \"methodology\": \"satisfaction\",\n        \"routing\": null\n      }\n    ],\n    \"parsing_issues\": []\n  }\n}\n\nNow parse the document and return ONLY the JSON structure above."
+                    }
+                )
+            except Exception as audit_error:
+                # If audit fails, log the error but continue with core functionality
+                logger.warning(f"⚠️ [Document Parser] Audit system failed, continuing without audit: {str(audit_error)}")
+                logger.info(f"🚀 [Document Parser] Calling Replicate API without auditing (audit failed)")
                 output = await replicate.async_run(
                     self.model,
                     input={
@@ -398,58 +412,58 @@ MEDIUM PRIORITY FIELDS:
 8. deliverables - Expected outputs (reports, presentations, data files)
 9. timeline - Project deadlines or milestones
 
-FIELD-SPECIFIC EXTRACTION GUIDANCE:
+SIMPLIFIED FIELD-SPECIFIC EXTRACTION GUIDANCE:
+
+CRITICAL FIELDS (extract with high confidence):
 
 TITLE (Critical):
-- Look for: Document headers, subject lines, "Title:", "Project:", bold/capitalized text at top
-- Patterns: "Research Study on X", "X Market Research", "Study: Y", "RFQ for Z"
-- Extract: Clean, concise title without formatting artifacts
-- If missing: Create descriptive title from main research topic
+- Keywords: "title", "project", "study", "research", headers, bold text
+- Patterns: "Research Study", "Market Research", "RFQ:", document title
+- Confidence threshold: 0.90
+- Strategy: Extract from document headers, subject lines, first prominent text
 
 DESCRIPTION (Critical):
-- Look for: Introduction sections, overview paragraphs, executive summaries
-- Patterns: "We need to...", "This research will...", "The purpose is...", "Objective: To..."
-- Extract: Comprehensive description of research needs and scope
-- If missing: Synthesize from objectives and context clues
+- Keywords: "overview", "description", "purpose", "objective", "we need"
+- Patterns: Introduction paragraphs, executive summary text
+- Confidence threshold: 0.85
+- Strategy: Extract comprehensive overview paragraphs
 
-OBJECTIVES (Critical):
-- Look for: Numbered lists, bullet points, "Objectives:", "Goals:", "We want to understand:"
-- Patterns: "Objective 1:", "- Understand...", "Key questions:", "Research goals include:"
-- Extract: Each objective as separate item, maintain specificity
-- If missing: Infer from business questions and success metrics
+COMPANY_PRODUCT_BACKGROUND (Critical):
+- Keywords: "company", "background", "business", "product", "about us"
+- Patterns: "Company background", "Business context", "About [company]"
+- Confidence threshold: 0.85
+- Strategy: Extract company and product context paragraphs
 
-RESEARCH_GOAL (High):
-- Look for: Business context, problem statements, "Why" sections
-- Patterns: "Business challenge:", "We need this data to...", "Decision support for..."
-- Extract: Overall business purpose driving the research
+BUSINESS_PROBLEM (High):
+- Keywords: "problem", "challenge", "issue", "need", "goal"
+- Patterns: "Business challenge", "We need to", "The problem is"
+- Confidence threshold: 0.80
+- Strategy: Extract problem statement sentences
 
-TARGET_SEGMENT (High):
-- Look for: Demographics, audience descriptions, "Target:", "Participants:"
-- Patterns: "Ages 25-45", "Income >$50k", "Users of X", "B2B decision makers"
-- Extract: Specific demographic and behavioral criteria
+BUSINESS_OBJECTIVE (High):
+- Keywords: "objective", "goal", "achieve", "outcome", "want to"
+- Patterns: "Business objective", "We want to achieve", "The goal is"
+- Confidence threshold: 0.80
+- Strategy: Extract objective statements
 
-PRODUCT_CATEGORY (High):
-- Look for: Product mentions, industry context, subject matter
-- Patterns: "Product X", "Service Y", industry-specific terminology
-- Extract: Core product/service being researched
+METHODOLOGY DETECTION (High):
+- Van Westendorp: "van westendorp", "price sensitivity", "too cheap", "too expensive"
+- Gabor Granger: "gabor granger", "price acceptance", "purchase intent"
+- Conjoint: "conjoint", "trade-off", "choice task", "feature importance"
+- Confidence threshold: 0.90
+- Strategy: Keyword-based methodology detection
 
-CONSTRAINTS (Medium):
-- Look for: Budget sections, timeline statements, methodology restrictions
-- Patterns: "Budget: $X", "Must complete by...", "Cannot exceed...", "No more than X participants"
-- Extract: Specific limitations and requirements
-- Only extract if explicitly stated with high confidence
+RESEARCH_AUDIENCE (Medium):
+- Keywords: "audience", "target", "respondents", "participants", "demographics"
+- Patterns: "Target audience", "Respondent profile", demographic descriptions
+- Confidence threshold: 0.75
+- Strategy: Extract audience descriptions
 
-DELIVERABLES (Medium):
-- Look for: Output requirements, report specifications, "Deliverables:" sections
-- Patterns: "Final report", "PowerPoint presentation", "Raw data files", "Dashboard"
-- Extract: Expected outputs and formats
-- Only extract if clearly specified
-
-TIMELINE (Medium):
-- Look for: Dates, deadlines, project phases, "Timeline:" sections
-- Patterns: "Due by [date]", "Phase 1: [timeframe]", "Complete within X weeks"
-- Extract: Key dates and milestones
-- Only extract if specific dates/timeframes mentioned
+SAMPLE_PLAN (Medium):
+- Keywords: "sample", "LOI", "length of interview", "recruiting", "n="
+- Patterns: "Sample size", "LOI: X minutes", "Recruit X participants"
+- Confidence threshold: 0.75
+- Strategy: Extract sampling specifications
 
 EXTRACTION STRATEGY:
 1. First scan for CRITICAL FIELDS using field-specific patterns above
@@ -527,6 +541,38 @@ EXPECTED JSON STRUCTURE:
       "source": "We need to understand what features customers value most...",
       "reasoning": "Main research description in introduction",
       "priority": "critical"
+    }},
+    {{
+      "field": "company_product_background",
+      "value": "TechCorp is a leading software company developing productivity tools for small businesses.",
+      "confidence": 0.80,
+      "source": "About TechCorp: We are a leading software company...",
+      "reasoning": "Company background section with clear business context",
+      "priority": "critical"
+    }},
+    {{
+      "field": "business_problem",
+      "value": "Need to prioritize which features to develop for next product release",
+      "confidence": 0.85,
+      "source": "The challenge we face is determining which features...",
+      "reasoning": "Clear problem statement in business context",
+      "priority": "high"
+    }},
+    {{
+      "field": "primary_method",
+      "value": "conjoint",
+      "confidence": 0.90,
+      "source": "We want to use conjoint analysis to understand feature trade-offs",
+      "reasoning": "Explicit mention of conjoint analysis methodology",
+      "priority": "high"
+    }},
+    {{
+      "field": "research_audience",
+      "value": "Small business owners, 25-50 years old, currently using productivity software",
+      "confidence": 0.75,
+      "source": "Target participants: small business owners aged 25-50...",
+      "reasoning": "Clear demographic and behavioral criteria",
+      "priority": "medium"
     }}
   ]
 }}
@@ -550,28 +596,48 @@ IMPORTANT:
             interaction_id = f"rfq_extraction_{uuid.uuid4().hex[:8]}"
             audit_service = LLMAuditService(self.db_session) if self.db_session else None
             
-            if audit_service:
-                async with LLMAuditContext(
-                    audit_service=audit_service,
-                    interaction_id=interaction_id,
-                    model_name=self.model,
-                    model_provider="replicate",
-                    purpose="document_parsing",
-                    input_prompt=prompt,
-                    sub_purpose="rfq_extraction",
-                    context_type="document",
-                    hyperparameters={
-                        "temperature": 0.1,
-                        "max_tokens": 3000
-                    },
-                    metadata={
-                        "document_length": len(document_text),
-                        "prompt_length": len(prompt)
-                    },
-                    tags=["document_parsing", "rfq_extraction"]
-                ) as audit_context:
-                    logger.info(f"🚀 [Document Parser] Calling Replicate API for RFQ extraction with auditing")
-                    start_time = time.time()
+            # Try to use audit service, but don't let audit failures break the core functionality
+            try:
+                if audit_service:
+                    async with LLMAuditContext(
+                        audit_service=audit_service,
+                        interaction_id=interaction_id,
+                        model_name=self.model,
+                        model_provider="replicate",
+                        purpose="document_parsing",
+                        input_prompt=prompt,
+                        sub_purpose="rfq_extraction",
+                        context_type="document",
+                        hyperparameters={
+                            "temperature": 0.1,
+                            "max_tokens": 3000
+                        },
+                        metadata={
+                            "document_length": len(document_text),
+                            "prompt_length": len(prompt)
+                        },
+                        tags=["document_parsing", "rfq_extraction"]
+                    ) as audit_context:
+                        logger.info(f"🚀 [Document Parser] Calling Replicate API for RFQ extraction with auditing")
+                        start_time = time.time()
+                        output = await replicate.async_run(
+                            self.model,
+                            input={
+                                "prompt": prompt,
+                                "temperature": 0.1,
+                                "max_tokens": 3000,
+                                "system_prompt": "You are an expert at extracting structured information from research documents. Return only valid JSON that matches the exact schema provided."
+                            }
+                        )
+                        
+                        # Process the output and set audit context
+                        response_time_ms = int((time.time() - start_time) * 1000)
+                        audit_context.set_output(
+                            output_content=str(output)
+                        )
+                else:
+                    # Fallback without auditing
+                    logger.info(f"🚀 [Document Parser] Calling Replicate API for RFQ extraction without auditing")
                     output = await replicate.async_run(
                         self.model,
                         input={
@@ -581,16 +647,10 @@ IMPORTANT:
                             "system_prompt": "You are an expert at extracting structured information from research documents. Return only valid JSON that matches the exact schema provided."
                         }
                     )
-                    
-                    # Process the output and set audit context
-                    response_time_ms = int((time.time() - start_time) * 1000)
-                    audit_context.set_output(
-                        output_content=str(output),
-                        response_time_ms=response_time_ms
-                    )
-            else:
-                # Fallback without auditing
-                logger.info(f"🚀 [Document Parser] Calling Replicate API for RFQ extraction without auditing")
+            except Exception as audit_error:
+                # If audit fails, log the error but continue with core functionality
+                logger.warning(f"⚠️ [Document Parser] Audit system failed, continuing without audit: {str(audit_error)}")
+                logger.info(f"🚀 [Document Parser] Calling Replicate API for RFQ extraction without auditing (audit failed)")
                 output = await replicate.async_run(
                     self.model,
                     input={
@@ -608,11 +668,13 @@ IMPORTANT:
                 json_content = str(output).strip()
 
             logger.info(f"✅ [Document Parser] RFQ extraction response received, length: {len(json_content)} chars")
+            logger.info(f"🔍 [Document Parser] Raw LLM response: {json_content[:500]}...")
 
             # Parse and validate JSON
             try:
                 rfq_data = json.loads(json_content)
                 logger.info(f"✅ [Document Parser] RFQ data parsing successful")
+                logger.info(f"🔍 [Document Parser] Parsed data keys: {list(rfq_data.keys())}")
                 return rfq_data
             except json.JSONDecodeError as e:
                 logger.warning(f"⚠️ [Document Parser] Invalid JSON in RFQ extraction: {str(e)}")

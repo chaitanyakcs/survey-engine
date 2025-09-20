@@ -190,12 +190,26 @@ export const SurveysPage: React.FC = () => {
   const handleBulkDelete = async () => {
     if (selectedSurveys.size === 0) return;
     
+    console.log('🗑️ [SurveysPage] Starting bulk delete for surveys:', Array.from(selectedSurveys));
+    
     try {
-      const deletePromises = Array.from(selectedSurveys).map(surveyId =>
-        fetch(`/api/v1/survey/${surveyId}`, { method: 'DELETE' })
-      );
+      const deletePromises = Array.from(selectedSurveys).map(async (surveyId) => {
+        console.log(`🗑️ [SurveysPage] Deleting survey: ${surveyId}`);
+        const response = await fetch(`/api/v1/survey/${surveyId}`, { method: 'DELETE' });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`❌ [SurveysPage] Failed to delete survey ${surveyId}:`, response.status, errorText);
+          throw new Error(`Failed to delete survey ${surveyId}: ${response.status} ${errorText}`);
+        }
+        
+        console.log(`✅ [SurveysPage] Successfully deleted survey: ${surveyId}`);
+        return response;
+      });
       
       await Promise.all(deletePromises);
+      
+      console.log('✅ [SurveysPage] All surveys deleted successfully');
       
       setSurveys(prev => prev.filter(s => !selectedSurveys.has(s.id)));
       if (selectedSurvey && selectedSurveys.has(selectedSurvey.id)) {
@@ -203,7 +217,17 @@ export const SurveysPage: React.FC = () => {
       }
       setSelectedSurveys(new Set());
       setIsMultiSelectMode(false);
+      
+      // Show success message
+      addToast({
+        type: 'success',
+        title: 'Surveys Deleted',
+        message: `Successfully deleted ${selectedSurveys.size} survey(s)`,
+        duration: 3000
+      });
+      
     } catch (err) {
+      console.error('❌ [SurveysPage] Bulk delete failed:', err);
       setError(err instanceof Error ? err.message : 'Failed to delete surveys');
     }
   };
@@ -587,6 +611,31 @@ export const SurveysPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="space-y-3">
+                  {/* Error Display */}
+                  {error && (
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center flex-shrink-0">
+                          <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-red-900">Error</p>
+                          <p className="text-sm text-red-800">{error}</p>
+                        </div>
+                        <button
+                          onClick={() => setError(null)}
+                          className="ml-auto text-red-400 hover:text-red-600"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  
                   {filteredSurveys.map((survey) => (
                     <div
                       key={survey.id}

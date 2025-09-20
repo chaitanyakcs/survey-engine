@@ -189,18 +189,7 @@ class AdvancedContentValidityEvaluator:
         
         try:
             if self.llm_client:
-                # Store evaluation prompt in audit table
-                await self._store_evaluation_prompt_audit(
-                    prompt=prompt,
-                    prompt_type="content_validity_objective_extraction",
-                    evaluation_context={
-                        "survey_id": survey_id,
-                        "rfq_id": rfq_id,
-                        "rfq_text_length": len(rfq_text),
-                        "rules_context_length": len(rules_context),
-                        "evaluation_step": "objective_extraction"
-                    }
-                )
+                # Evaluation prompt is now automatically logged via LLMAuditContext decorator
                 
                 response = await self.llm_client.analyze(prompt, max_tokens=1500)
                 if response.success:
@@ -486,32 +475,3 @@ class AdvancedContentValidityEvaluator:
         
         return objectives
     
-    async def _store_evaluation_prompt_audit(self, prompt: str, prompt_type: str, evaluation_context: Dict[str, Any]) -> None:
-        """
-        Store evaluation prompt in audit table
-        """
-        try:
-            if not self.db_session:
-                print("⚠️ No database session available for evaluation prompt audit")
-                return
-            
-            # Import here to avoid circular imports
-            from src.services.generation_service import GenerationService
-            
-            # Get survey_id and rfq_id from context if available
-            survey_id = evaluation_context.get('survey_id', 'unknown')
-            rfq_id = evaluation_context.get('rfq_id')
-            
-            await GenerationService.store_evaluation_prompt_audit(
-                db_session=self.db_session,
-                survey_id=survey_id,
-                rfq_id=rfq_id,
-                system_prompt=prompt,
-                prompt_type=prompt_type,
-                model_version="gpt-4o-mini",  # Default model for evaluations
-                evaluation_context=evaluation_context
-            )
-            
-        except Exception as e:
-            print(f"❌ Failed to store evaluation prompt audit: {str(e)}")
-            # Don't raise exception to avoid breaking evaluation flow

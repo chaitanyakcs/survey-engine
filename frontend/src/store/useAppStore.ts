@@ -1059,11 +1059,41 @@ export const useAppStore = create<AppStore>((set, get) => ({
         product_category: '',
         target_segment: '',
         research_goal: ''
-      }
+      },
+      // Also clear Enhanced RFQ state
+      enhancedRfq: {
+        title: '',
+        description: '',
+        business_context: {
+          company_product_background: '',
+          business_problem: '',
+          business_objective: ''
+        },
+        research_objectives: {
+          research_audience: '',
+          success_criteria: '',
+          key_research_questions: []
+        },
+        methodology: {
+          primary_method: 'basic_survey'
+        },
+        survey_requirements: {
+          sample_plan: '',
+          required_sections: [],
+          must_have_questions: []
+        }
+      },
+      // Clear document-related state
+      documentContent: undefined,
+      documentAnalysis: undefined,
+      fieldMappings: [],
+      isDocumentProcessing: false,
+      documentUploadError: undefined
     }));
 
     // Clear persisted state
     localStorage.removeItem('survey_workflow_state');
+    localStorage.removeItem('enhanced_rfq_state');
 
     // Disconnect any active WebSocket
     get().disconnectWebSocket();

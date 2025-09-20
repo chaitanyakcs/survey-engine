@@ -61,18 +61,7 @@ class SingleCallEvaluator:
             # Build comprehensive prompt
             prompt = await self._build_comprehensive_prompt(survey, rfq_text, survey_id, rfq_id)
             
-            # Store prompt in audit system
-            await self._store_evaluation_prompt_audit(
-                prompt=prompt,
-                prompt_type="comprehensive_evaluation",
-                evaluation_context={
-                    "survey_id": survey_id,
-                    "rfq_id": rfq_id,
-                    "rfq_text_length": len(rfq_text),
-                    "survey_questions_count": len(extract_all_questions(survey)),
-                    "evaluation_mode": "single_call"
-                }
-            )
+            # Evaluation prompt is now automatically logged via LLMAuditContext decorator
             
             # Make single LLM call
             if self.llm_client:
@@ -348,33 +337,6 @@ RESPOND WITH JSON:
             }
         )
     
-    async def _store_evaluation_prompt_audit(self, prompt: str, prompt_type: str, evaluation_context: Dict[str, Any]) -> None:
-        """Store evaluation prompt in audit table"""
-        try:
-            if not self.db_session:
-                logger.warning("⚠️ No database session available for evaluation prompt audit")
-                return
-            
-            # Import here to avoid circular imports
-            from src.services.generation_service import GenerationService
-            
-            # Get survey_id and rfq_id from context if available
-            survey_id = evaluation_context.get('survey_id', 'unknown')
-            rfq_id = evaluation_context.get('rfq_id')
-            
-            await GenerationService.store_evaluation_prompt_audit(
-                db_session=self.db_session,
-                survey_id=survey_id,
-                rfq_id=rfq_id,
-                system_prompt=prompt,
-                prompt_type=prompt_type,
-                model_version="gpt-4o-mini",  # Default model for evaluations
-                evaluation_context=evaluation_context
-            )
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to store evaluation prompt audit: {str(e)}")
-            # Don't raise exception to avoid breaking evaluation flow
 
 def extract_all_questions(survey: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Extract all questions from survey structure"""

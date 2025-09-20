@@ -94,7 +94,7 @@ async def _evaluate_with_advanced_system(survey_data: Dict[str, Any], rfq_text: 
     try:
         # Initialize LLM client for advanced evaluator
         from evaluations.llm_client import create_evaluation_llm_client
-        llm_client = create_evaluation_llm_client()
+        llm_client = create_evaluation_llm_client(db_session=db)
         
         # Choose evaluator based on settings
         if evaluation_mode == "single_call":

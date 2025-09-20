@@ -20,6 +20,95 @@ FASTAPI_PORT=${FASTAPI_PORT:-8000}
 
 echo -e "${BLUE}🚀 Starting Survey Engine...${NC}"
 
+# Function to kill existing processes
+kill_existing_processes() {
+    echo -e "${YELLOW}🛑 Checking for existing processes...${NC}"
+    
+    # Kill any existing nginx processes
+    if pgrep -f "nginx.*4321" > /dev/null; then
+        echo -e "${YELLOW}🔄 Killing existing nginx processes on port 4321...${NC}"
+        pkill -f "nginx.*4321" || true
+        sleep 2
+    fi
+    
+    # Kill any existing FastAPI processes on port 8000
+    if pgrep -f "uvicorn.*8000" > /dev/null; then
+        echo -e "${YELLOW}🔄 Killing existing FastAPI processes on port 8000...${NC}"
+        pkill -f "uvicorn.*8000" || true
+        sleep 2
+    fi
+    
+    # Kill any processes using port 4321
+    if lsof -ti:4321 > /dev/null 2>&1; then
+        echo -e "${YELLOW}🔄 Killing processes using port 4321...${NC}"
+        lsof -ti:4321 | xargs kill -9 2>/dev/null || true
+        sleep 2
+    fi
+    
+    # Kill any processes using port 8000
+    if lsof -ti:8000 > /dev/null 2>&1; then
+        echo -e "${YELLOW}🔄 Killing processes using port 8000...${NC}"
+        lsof -ti:8000 | xargs kill -9 2>/dev/null || true
+        sleep 2
+    fi
+    
+    echo -e "${GREEN}✅ Existing processes cleaned up${NC}"
+}
+
+# Function to check port availability
+check_port_availability() {
+    echo -e "${YELLOW}🔍 Checking port availability...${NC}"
+    
+    # Check port 4321
+    if lsof -ti:4321 > /dev/null 2>&1; then
+        echo -e "${RED}❌ Port 4321 is still in use${NC}"
+        echo -e "${YELLOW}💡 Try running: lsof -ti:4321 | xargs kill -9${NC}"
+        exit 1
+    fi
+    
+    # Check port 8000
+    if lsof -ti:8000 > /dev/null 2>&1; then
+        echo -e "${RED}❌ Port 8000 is still in use${NC}"
+        echo -e "${YELLOW}💡 Try running: lsof -ti:8000 | xargs kill -9${NC}"
+        exit 1
+    fi
+    
+    echo -e "${GREEN}✅ Ports 4321 and 8000 are available${NC}"
+}
+
+# Function to check environment variables
+check_environment() {
+    echo -e "${YELLOW}🔍 Checking environment configuration...${NC}"
+    
+    # Check if .env file exists
+    if [ ! -f ".env" ]; then
+        echo -e "${YELLOW}⚠️  No .env file found${NC}"
+        if [ -f ".env.example" ]; then
+            echo -e "${BLUE}💡 Copy .env.example to .env and configure your API tokens:${NC}"
+            echo -e "${CYAN}   cp .env.example .env${NC}"
+            echo -e "${CYAN}   nano .env${NC}"
+        else
+            echo -e "${BLUE}💡 Create a .env file with your API tokens:${NC}"
+            echo -e "${CYAN}   echo 'REPLICATE_API_TOKEN=your_token_here' > .env${NC}"
+        fi
+        echo -e "${YELLOW}⚠️  Continuing without API token - RFQ features will not work${NC}"
+    else
+        echo -e "${GREEN}✅ .env file found${NC}"
+        
+        # Check if REPLICATE_API_TOKEN is set
+        if [ -z "$REPLICATE_API_TOKEN" ]; then
+            echo -e "${YELLOW}⚠️  REPLICATE_API_TOKEN not set in environment${NC}"
+            echo -e "${BLUE}💡 Add REPLICATE_API_TOKEN to your .env file:${NC}"
+            echo -e "${CYAN}   echo 'REPLICATE_API_TOKEN=your_token_here' >> .env${NC}"
+            echo -e "${YELLOW}⚠️  RFQ features will not work without this token${NC}"
+        else
+            echo -e "${GREEN}✅ REPLICATE_API_TOKEN is configured${NC}"
+        fi
+    fi
+    
+    echo -e "${BLUE}📋 Environment check completed${NC}"
+}
+
 # Function to check if database is ready
 check_database() {
     echo -e "${YELLOW}🔍 Checking database connection...${NC}"
@@ -33,7 +122,7 @@ check_database() {
     
     # Try to connect to database
     echo -e "${BLUE}🔍 Testing connection to: $DATABASE_URL${NC}"
-    if DATABASE_URL="$DATABASE_URL" python3 -c "
+    if DATABASE_URL="$DATABASE_URL" uv run python3 -c "
 import os
 import psycopg2
 from urllib.parse import urlparse
@@ -98,7 +187,7 @@ seed_database() {
     echo -e "${YELLOW}🌱 Seeding database with rules...${NC}"
     
     if [ -f "$SEED_SCRIPT" ]; then
-        if DATABASE_URL="$DATABASE_URL" python3 "$SEED_SCRIPT"; then
+        if DATABASE_URL="$DATABASE_URL" uv run python3 "$SEED_SCRIPT"; then
             echo -e "${GREEN}✅ Database seeding completed${NC}"
         else
             echo -e "${RED}❌ Database seeding failed${NC}"
@@ -135,9 +224,9 @@ start_application() {
             cd frontend && npm run build && cd ..
         fi
         
-        # Start FastAPI in background
-        echo -e "${YELLOW}🔄 Starting FastAPI server...${NC}"
-        DATABASE_URL="$DATABASE_URL" REDIS_URL="$REDIS_URL" python3 -m uvicorn src.main:app --host 0.0.0.0 --port $FASTAPI_PORT --reload &
+        # Start FastAPI in background using uv
+        echo -e "${YELLOW}🔄 Starting FastAPI server with uv...${NC}"
+        DATABASE_URL="$DATABASE_URL" REDIS_URL="$REDIS_URL" uv run uvicorn src.main:app --host 0.0.0.0 --port $FASTAPI_PORT --reload &
         FASTAPI_PID=$!
         
         # Wait for FastAPI to be ready
@@ -146,7 +235,7 @@ start_application() {
         
         # Start nginx
         echo -e "${YELLOW}🔄 Starting nginx...${NC}"
-        /opt/homebrew/opt/nginx/bin/nginx -c "$(pwd)/nginx-local.conf" -g "daemon off;" &
+        nginx -c "$(pwd)/nginx-local.conf" -g "daemon off;" &
         NGINX_PID=$!
         
         echo -e "${GREEN}✅ Services started successfully!${NC}"
@@ -158,14 +247,28 @@ start_application() {
         # Function to handle shutdown
         cleanup() {
             echo -e "\n${YELLOW}🛑 Shutting down services...${NC}"
+            
+            # Kill by PID if available
             if [ ! -z "$NGINX_PID" ]; then
                 kill $NGINX_PID 2>/dev/null || true
-                echo -e "${GREEN}✅ Nginx stopped${NC}"
+                echo -e "${GREEN}✅ Nginx stopped (PID: $NGINX_PID)${NC}"
             fi
             if [ ! -z "$FASTAPI_PID" ]; then
                 kill $FASTAPI_PID 2>/dev/null || true
-                echo -e "${GREEN}✅ FastAPI stopped${NC}"
+                echo -e "${GREEN}✅ FastAPI stopped (PID: $FASTAPI_PID)${NC}"
             fi
+            
+            # Force kill any remaining processes on our ports
+            if lsof -ti:4321 > /dev/null 2>&1; then
+                echo -e "${YELLOW}🔄 Force killing remaining processes on port 4321...${NC}"
+                lsof -ti:4321 | xargs kill -9 2>/dev/null || true
+            fi
+            if lsof -ti:8000 > /dev/null 2>&1; then
+                echo -e "${YELLOW}🔄 Force killing remaining processes on port 8000...${NC}"
+                lsof -ti:8000 | xargs kill -9 2>/dev/null || true
+            fi
+            
+            echo -e "${GREEN}✅ All services stopped${NC}"
             exit 0
         }
         
@@ -181,7 +284,7 @@ start_application() {
 preload_models() {
     echo -e "${YELLOW}🧠 Preloading ML models...${NC}"
     
-    if python3 -c "
+    if uv run python3 -c "
 import sys
 sys.path.append('src')
 from src.services.embedding_service import EmbeddingService
@@ -190,7 +293,7 @@ import asyncio
 async def preload():
     try:
         service = EmbeddingService()
-        await service.preload_models()
+        await service.preload_model()
         print('Models preloaded successfully')
     except Exception as e:
         print(f'Model preloading failed: {e}')
@@ -210,19 +313,34 @@ main() {
     echo -e "${BLUE}🎯 Survey Engine Startup Sequence${NC}"
     echo -e "${BLUE}================================${NC}"
     
-    # Step 1: Check database connection
+    # Step 1: Load environment variables
+    if [ -f ".env" ]; then
+        echo -e "${BLUE}📄 Loading environment variables from .env${NC}"
+        export $(grep -v '^#' .env | xargs)
+    fi
+    
+    # Step 2: Kill existing processes
+    kill_existing_processes
+    
+    # Step 3: Check port availability
+    check_port_availability
+    
+    # Step 4: Check environment configuration
+    check_environment
+    
+    # Step 5: Check database connection
     check_database
     
-    # Step 2: Run migrations
+    # Step 6: Run migrations
     run_migrations
     
-    # Step 3: Seed database
+    # Step 7: Seed database
     seed_database
     
-    # Step 4: Preload models (in background)
+    # Step 8: Preload models (in background)
     preload_models &
     
-    # Step 5: Start application
+    # Step 9: Start application
     start_application
 }
 
@@ -242,16 +360,35 @@ case "${1:-startup}" in
     "preload")
         preload_models
         ;;
+    "kill")
+        kill_existing_processes
+        ;;
+    "setup-env")
+        if [ -f ".env.example" ]; then
+            if [ ! -f ".env" ]; then
+                cp .env.example .env
+                echo -e "${GREEN}✅ Created .env file from .env.example${NC}"
+                echo -e "${YELLOW}⚠️  Please edit .env and add your REPLICATE_API_TOKEN${NC}"
+                echo -e "${CYAN}   nano .env${NC}"
+            else
+                echo -e "${YELLOW}⚠️  .env file already exists${NC}"
+            fi
+        else
+            echo -e "${RED}❌ .env.example file not found${NC}"
+        fi
+        ;;
     "help")
         echo "Survey Engine Startup Script"
         echo "Usage: $0 [command]"
         echo ""
         echo "Commands:"
-        echo "  startup  - Full startup sequence (default)"
-        echo "  migrate  - Run database migrations only"
-        echo "  seed     - Seed database only"
-        echo "  preload  - Preload ML models only"
-        echo "  help     - Show this help message"
+        echo "  startup    - Full startup sequence (default)"
+        echo "  migrate    - Run database migrations only"
+        echo "  seed       - Seed database only"
+        echo "  preload    - Preload ML models only"
+        echo "  kill       - Kill existing processes on ports 4321 and 8000"
+        echo "  setup-env  - Create .env file from .env.example template"
+        echo "  help       - Show this help message"
         ;;
     *)
         echo -e "${RED}❌ Unknown command: $1${NC}"

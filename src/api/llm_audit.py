@@ -197,7 +197,7 @@ async def get_llm_interactions(
                 presence_penalty=float(record.presence_penalty) if record.presence_penalty else None,
                 stop_sequences=record.stop_sequences,
                 response_time_ms=record.response_time_ms,
-                cost_usd=float(record.cost_usd) if record.cost_usd else None,
+                cost_usd=None,  # Hidden for now
                 success=record.success,
                 error_message=record.error_message,
                 interaction_metadata=record.interaction_metadata,
@@ -253,7 +253,7 @@ async def get_llm_interaction(
             presence_penalty=float(record.presence_penalty) if record.presence_penalty else None,
             stop_sequences=record.stop_sequences,
             response_time_ms=record.response_time_ms,
-            cost_usd=float(record.cost_usd) if record.cost_usd else None,
+            cost_usd=None,  # Hidden for now
             success=record.success,
             error_message=record.error_message,
             interaction_metadata=record.interaction_metadata,
@@ -277,17 +277,17 @@ async def get_cost_summary(
     model_name: Optional[str] = Query(None, description="Filter by model name"),
     db: Session = Depends(get_db)
 ):
-    """Get cost summary for LLM interactions"""
+    """Get cost summary for LLM interactions - Cost tracking disabled for now"""
     try:
-        audit_service = LLMAuditService(db)
-        cost_summary = await audit_service.get_cost_summary(
-            start_date=start_date,
-            end_date=end_date,
-            purpose=purpose,
-            model_name=model_name
+        # Return empty cost summary since cost tracking is disabled
+        return CostSummaryResponse(
+            total_cost_usd=0.0,
+            total_interactions=0,
+            successful_interactions=0,
+            success_rate=0.0,
+            cost_by_purpose=[],
+            cost_by_model=[]
         )
-        
-        return CostSummaryResponse(**cost_summary)
         
     except Exception as e:
         logger.error(f"❌ [LLM Audit API] Error getting cost summary: {str(e)}")

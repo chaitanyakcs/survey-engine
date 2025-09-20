@@ -223,7 +223,10 @@ async def upload_and_analyze_document(
 
         # Parse document using enhanced document parser
         logger.info(f"🤖 [RFQ API] Starting document analysis")
-        from src.services.document_parser import document_parser
+        from src.services.document_parser import DocumentParser
+        
+        # Create document parser with database session for audit
+        document_parser = DocumentParser(db_session=db)
 
         analysis_result = await document_parser.parse_document_for_rfq(
             docx_content=file_content,

@@ -9,7 +9,7 @@ import { ToastContainer } from '../components/Toast';
 import { useSidebarLayout } from '../hooks/useSidebarLayout';
 
 export const SurveyGeneratorPage: React.FC = () => {
-  const { workflow, currentSurvey, toasts, removeToast, addToast, resetWorkflow } = useAppStore();
+  const { workflow, currentSurvey, toasts, removeToast, addToast, resetWorkflow, clearEnhancedRfqState } = useAppStore();
   const [currentView, setCurrentView] = useState<'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings'>('survey');
   const [useEnhancedRFQ, setUseEnhancedRFQ] = useState<boolean>(false);
   const { mainContentClasses } = useSidebarLayout();
@@ -337,27 +337,52 @@ export const SurveyGeneratorPage: React.FC = () => {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   </div>
-                  <h2 className="text-lg font-semibold text-red-900 mb-2">Generation Failed</h2>
-                  <p className="text-red-700 mb-4">
+                  <h2 className="text-lg font-semibold text-red-900 mb-2">
+                    {workflow.error?.includes('rejection') ? 'Workflow Rejected' : 'Generation Failed'}
+                  </h2>
+                  <p className="text-red-700 mb-6">
                     {workflow.error || 'An error occurred during survey generation.'}
                   </p>
-                  <button
-                    onClick={() => {
-                      addToast({
-                        type: 'info',
-                        title: 'Restarting Generation',
-                        message: 'Resetting workflow to start a new survey generation.',
-                        duration: 3000
-                      });
-                      resetWorkflow();
-                    }}
-                    className="inline-flex items-center px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
-                  >
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    Try Again
-                  </button>
+                  <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                    <button
+                      onClick={() => {
+                        addToast({
+                          type: 'info',
+                          title: 'Restarting Generation',
+                          message: 'Resetting workflow to start a new survey generation.',
+                          duration: 3000
+                        });
+                        resetWorkflow();
+                      }}
+                      className="inline-flex items-center px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+                    >
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Try Again
+                    </button>
+                    <button
+                      onClick={() => {
+                        // Clear all state and go to home
+                        clearEnhancedRfqState();
+                        resetWorkflow();
+                        addToast({
+                          type: 'info',
+                          title: 'Returning to Home',
+                          message: 'All form data has been cleared. You can start fresh.',
+                          duration: 3000
+                        });
+                        // Navigate to home page
+                        window.location.href = '/';
+                      }}
+                      className="inline-flex items-center px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+                    >
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                      </svg>
+                      Go to Home
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

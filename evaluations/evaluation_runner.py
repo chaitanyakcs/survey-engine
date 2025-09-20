@@ -71,7 +71,7 @@ class EvaluationRunner:
         self.llm_client = None
         if LLM_CLIENT_AVAILABLE:
             try:
-                self.llm_client = create_evaluation_llm_client()
+                self.llm_client = create_evaluation_llm_client(db_session=self.db_session)
                 print("🤖 LLM client initialized for sophisticated evaluation")
             except Exception as e:
                 print(f"⚠️  Could not initialize LLM client: {e}")
