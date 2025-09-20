@@ -170,7 +170,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
     const getProgressColor = () => {
       if (uploadProgress.stage === 'error') return 'bg-red-500';
       if (uploadProgress.stage === 'completed') return 'bg-green-500';
-      return 'bg-blue-500';
+      return 'bg-yellow-500';
     };
 
     const getStageIcon = () => {
@@ -228,8 +228,8 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
         className={`
           relative border-2 border-dashed rounded-2xl p-8 text-center transition-all duration-200
           ${isDragOver
-            ? 'border-blue-400 bg-blue-50'
-            : 'border-gray-300 bg-gray-50 hover:border-blue-300 hover:bg-blue-50'
+            ? 'border-yellow-400 bg-yellow-50'
+            : 'border-gray-300 bg-gray-50 hover:border-yellow-300 hover:bg-yellow-50'
           }
           ${(isUploading || isDocumentProcessing) ? 'pointer-events-none opacity-75' : 'cursor-pointer'}
         `}
@@ -253,7 +253,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
             {!isUploading && (
               <p className="text-gray-500 text-sm">
                 Drag and drop your DOCX file here, or{' '}
-                <span className="text-blue-600 font-medium">click to browse</span>
+                <span className="text-yellow-600 font-medium">click to browse</span>
               </p>
             )}
           </div>
@@ -269,7 +269,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
                 <span>Maximum file size: 10MB</span>
               </div>
               <div className="flex items-center space-x-2">
-                <span className="text-blue-600">🤖</span>
+                <span className="text-yellow-600">🤖</span>
                 <span>AI-powered extraction of objectives, constraints, and requirements</span>
               </div>
             </div>

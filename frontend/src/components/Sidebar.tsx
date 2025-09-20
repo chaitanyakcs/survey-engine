@@ -69,28 +69,28 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) =
 
       {/* Sidebar */}
       <div className={`
-        fixed top-0 left-0 h-full bg-white border-r border-gray-300 z-50 transition-all duration-300 ease-in-out
+        fixed top-0 left-0 h-full bg-gray-800 border-r border-gray-700 z-50 transition-all duration-300 ease-in-out
         ${isCollapsed ? 'w-16' : 'w-64'}
         lg:translate-x-0 ${isCollapsed ? 'lg:w-16' : 'lg:w-64'}
       `}>
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+        <div className="flex items-center justify-between p-4 border-b border-gray-700">
           {!isCollapsed && (
             <div className="flex-1">
-              <h1 className="text-lg font-bold text-gray-900 truncate">Survey Engine</h1>
-              <p className="text-xs text-gray-500 truncate">AI-Powered Surveys</p>
+              <h1 className="text-lg font-bold text-white truncate">Survey Engine</h1>
+              <p className="text-xs text-gray-400 truncate">AI-Powered Surveys</p>
             </div>
           )}
           
           <button
             onClick={toggleSidebar}
-            className="p-2 rounded-md hover:bg-gray-100 transition-colors group relative"
+            className="p-2 rounded-md hover:bg-gray-700 transition-colors group relative"
             title={isCollapsed ? "Open sidebar" : "Close sidebar"}
           >
             {isCollapsed ? (
-              <Bars3BottomLeftIcon className="h-5 w-5 text-gray-600 group-hover:text-gray-900 transition-colors" />
+              <Bars3BottomLeftIcon className="h-5 w-5 text-gray-300 group-hover:text-white transition-colors" />
             ) : (
-              <XMarkIcon className="h-5 w-5 text-gray-600 group-hover:text-gray-900 transition-colors" />
+              <XMarkIcon className="h-5 w-5 text-gray-300 group-hover:text-white transition-colors" />
             )}
           </button>
         </div>
@@ -117,14 +117,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) =
                 className={`
                   group w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors
                   ${isActive 
-                    ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700' 
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    ? 'bg-yellow-500 text-white border-r-2 border-yellow-400' 
+                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
                   }
                 `}
               >
                 <Icon className={`
                   flex-shrink-0 h-5 w-5 mr-3
-                  ${isActive ? 'text-blue-700' : 'text-gray-400 group-hover:text-gray-500'}
+                  ${isActive ? 'text-white' : 'text-gray-400 group-hover:text-gray-300'}
                 `} />
                 {!isCollapsed && (
                   <span className="truncate">{item.name}</span>
@@ -141,9 +141,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) =
               <a
                 key={item.id}
                 href={item.href}
-                className="group flex items-center px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 rounded-md transition-colors"
+                className="group flex items-center px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white rounded-md transition-colors"
               >
-                <Icon className="flex-shrink-0 h-5 w-5 mr-3 text-gray-400 group-hover:text-gray-500" />
+                <Icon className="flex-shrink-0 h-5 w-5 mr-3 text-gray-400 group-hover:text-gray-300" />
                 {!isCollapsed && (
                   <span className="truncate">{item.name}</span>
                 )}
@@ -154,38 +154,38 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) =
 
         {/* Footer */}
         {!isCollapsed && (
-          <div className="p-4 border-t border-gray-200">
+          <div className="p-4 border-t border-gray-700">
             <div 
-              className="flex items-center cursor-pointer hover:bg-gray-50 rounded-lg p-2 transition-colors group relative"
+              className="flex items-center cursor-pointer hover:bg-gray-700 rounded-lg p-2 transition-colors group relative"
               onClick={() => setShowAIInfoModal(true)}
             >
-              <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 bg-gradient-to-r from-yellow-500 to-amber-600 rounded-lg flex items-center justify-center">
                 <DocumentTextIcon className="h-5 w-5 text-white" />
               </div>
               <div className="ml-3 flex-1">
                 <div className="flex items-center space-x-2">
-                  <p className="text-xs font-medium text-gray-900">AI Survey Engine</p>
-                  <InformationCircleIcon className="h-4 w-4 text-blue-500 group-hover:text-blue-600 transition-colors" />
+                  <p className="text-xs font-medium text-white">AI Survey Engine</p>
+                  <InformationCircleIcon className="h-4 w-4 text-yellow-400 group-hover:text-yellow-300 transition-colors" />
                 </div>
-                <p className="text-xs text-gray-500">v1.0.0 - Click to learn more</p>
+                <p className="text-xs text-gray-400">v1.0.0 - Click to learn more</p>
               </div>
               {/* Animated indicator */}
-              <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+              <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full animate-pulse"></div>
             </div>
           </div>
         )}
         
         {/* Collapsed footer */}
         {isCollapsed && (
-          <div className="p-4 border-t border-gray-200">
+          <div className="p-4 border-t border-gray-700">
             <div 
-              className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center cursor-pointer hover:bg-gradient-to-r hover:from-blue-600 hover:to-purple-700 transition-colors group relative mx-auto"
+              className="w-8 h-8 bg-gradient-to-r from-yellow-500 to-amber-600 rounded-lg flex items-center justify-center cursor-pointer hover:bg-gradient-to-r hover:from-yellow-600 hover:to-amber-700 transition-colors group relative mx-auto"
               onClick={() => setShowAIInfoModal(true)}
               title="AI Survey Engine - Click to learn more"
             >
               <DocumentTextIcon className="h-5 w-5 text-white" />
               {/* Animated indicator */}
-              <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+              <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full animate-pulse"></div>
             </div>
           </div>
         )}

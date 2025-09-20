@@ -93,7 +93,7 @@ export const SurveyGeneratorPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="min-h-screen bg-white flex">
       {/* Toast Container */}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
       
@@ -107,7 +107,7 @@ export const SurveyGeneratorPage: React.FC = () => {
           <div className="px-6 py-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-amber-600 rounded-xl flex items-center justify-center shadow-lg">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                   </svg>
@@ -153,7 +153,7 @@ export const SurveyGeneratorPage: React.FC = () => {
                           onClick={() => setUseEnhancedRFQ(true)}
                           className={`px-6 py-3 rounded-xl font-medium transition-all duration-200 ${
                             useEnhancedRFQ
-                              ? 'bg-gradient-to-r from-purple-500 to-blue-500 text-white shadow-lg'
+                              ? 'bg-gradient-to-r from-yellow-500 to-amber-500 text-white shadow-lg'
                               : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                           }`}
                         >
@@ -236,7 +236,7 @@ export const SurveyGeneratorPage: React.FC = () => {
               <div>
                 <div className="px-6 mb-6 text-center">
                   <div className="mb-6">
-                    <div className="w-16 h-16 bg-gradient-to-r from-emerald-500 to-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <div className="w-16 h-16 bg-gradient-to-r from-yellow-500 to-amber-500 rounded-full flex items-center justify-center mx-auto mb-4">
                       <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>
@@ -277,7 +277,7 @@ export const SurveyGeneratorPage: React.FC = () => {
                           window.location.href = `/surveys?id=${currentSurvey.survey_id}`;
                         }
                       }}
-                      className="inline-flex items-center px-10 py-5 bg-gradient-to-r from-emerald-600 to-green-600 text-white rounded-2xl font-bold text-xl shadow-2xl hover:shadow-emerald-300 transform hover:scale-105 transition-all duration-300"
+                      className="inline-flex items-center px-10 py-5 bg-gradient-to-r from-yellow-500 to-amber-500 text-white rounded-2xl font-bold text-xl shadow-2xl hover:shadow-yellow-300 transform hover:scale-105 transition-all duration-300"
                     >
                       <svg className="w-7 h-7 mr-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -306,20 +306,20 @@ export const SurveyGeneratorPage: React.FC = () => {
                   
                   {/* Success Stats */}
                   <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4 px-6">
-                    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 text-center">
-                      <div className="text-2xl font-bold text-blue-600">✓</div>
-                      <div className="text-sm font-medium text-blue-800 mt-1">Quality Assured</div>
-                      <div className="text-xs text-blue-600">5-pillar evaluation</div>
+                    <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl p-4 text-center">
+                      <div className="text-2xl font-bold text-yellow-600">✓</div>
+                      <div className="text-sm font-medium text-yellow-800 mt-1">Quality Assured</div>
+                      <div className="text-xs text-yellow-600">5-pillar evaluation</div>
                     </div>
-                    <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-4 text-center">
-                      <div className="text-2xl font-bold text-purple-600">🎯</div>
-                      <div className="text-sm font-medium text-purple-800 mt-1">Tailored</div>
-                      <div className="text-xs text-purple-600">To your needs</div>
+                    <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl p-4 text-center">
+                      <div className="text-2xl font-bold text-yellow-600">🎯</div>
+                      <div className="text-sm font-medium text-yellow-800 mt-1">Tailored</div>
+                      <div className="text-xs text-yellow-600">To your needs</div>
                     </div>
-                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4 text-center">
-                      <div className="text-2xl font-bold text-green-600">⚡</div>
-                      <div className="text-sm font-medium text-green-800 mt-1">Ready to Deploy</div>
-                      <div className="text-xs text-green-600">Start collecting data</div>
+                    <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl p-4 text-center">
+                      <div className="text-2xl font-bold text-yellow-600">⚡</div>
+                      <div className="text-sm font-medium text-yellow-800 mt-1">Ready to Deploy</div>
+                      <div className="text-xs text-yellow-600">Start collecting data</div>
                     </div>
                   </div>
                 </div>

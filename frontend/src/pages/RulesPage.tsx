@@ -194,7 +194,7 @@ export const RulesPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+      <div className="min-h-screen bg-white">
         <ToastContainer toasts={toasts} onRemove={removeToast} />
         <Sidebar currentView="rules" onViewChange={handleViewChange} />
         <div className={mainContentClasses}>
@@ -208,7 +208,7 @@ export const RulesPage: React.FC = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+      <div className="min-h-screen bg-white">
         <ToastContainer toasts={toasts} onRemove={removeToast} />
         <Sidebar currentView="rules" onViewChange={handleViewChange} />
         <div className={mainContentClasses}>
@@ -254,7 +254,7 @@ export const RulesPage: React.FC = () => {
             <div className="px-6 py-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-4">
-                  <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center shadow-lg">
+                  <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-amber-600 rounded-xl flex items-center justify-center shadow-lg">
                     <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
@@ -275,7 +275,7 @@ export const RulesPage: React.FC = () => {
             {/* Methodology Rules */}
             <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 overflow-hidden hover:shadow-xl transition-all duration-300">
               <div 
-                className="bg-gradient-to-r from-emerald-500 via-emerald-600 to-teal-600 px-6 py-6 text-white cursor-pointer"
+                className="bg-gradient-to-r from-yellow-500 via-amber-600 to-orange-600 px-6 py-6 text-white cursor-pointer"
                 onClick={() => toggleSection('methodology')}
               >
                 <div className="flex items-center justify-between">
@@ -328,7 +328,7 @@ export const RulesPage: React.FC = () => {
             {/* Quality Rules */}
             <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 overflow-hidden hover:shadow-xl transition-all duration-300">
               <div 
-                className="bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 px-6 py-6 text-white cursor-pointer"
+                className="bg-gradient-to-r from-yellow-500 via-amber-500 to-orange-500 px-6 py-6 text-white cursor-pointer"
                 onClick={() => toggleSection('quality')}
               >
                 <div className="flex items-center justify-between">
@@ -374,7 +374,7 @@ export const RulesPage: React.FC = () => {
             {/* System Prompt */}
             <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 overflow-hidden hover:shadow-xl transition-all duration-300">
               <div 
-                className="bg-gradient-to-r from-purple-500 via-purple-600 to-pink-600 px-6 py-6 text-white cursor-pointer"
+                className="bg-gradient-to-r from-yellow-500 via-amber-600 to-orange-600 px-6 py-6 text-white cursor-pointer"
                 onClick={() => toggleSection('systemPrompt')}
               >
                 <div className="flex items-center justify-between">

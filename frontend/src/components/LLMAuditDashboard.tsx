@@ -116,9 +116,9 @@ const LLMAuditDashboard: React.FC<LLMAuditDashboardProps> = ({ onClose }) => {
 
   const getPurposeColor = (purpose: string) => {
     const colors: Record<string, string> = {
-      'survey_generation': 'bg-blue-100 text-blue-800',
+      'survey_generation': 'bg-yellow-100 text-yellow-800',
       'evaluation': 'bg-green-100 text-green-800',
-      'field_extraction': 'bg-purple-100 text-purple-800',
+      'field_extraction': 'bg-amber-100 text-amber-800',
       'document_parsing': 'bg-orange-100 text-orange-800',
     };
     return colors[purpose] || 'bg-gray-100 text-gray-800';
@@ -128,7 +128,7 @@ const LLMAuditDashboard: React.FC<LLMAuditDashboardProps> = ({ onClose }) => {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div className="bg-white rounded-lg p-6">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-600 mx-auto"></div>
           <p className="mt-2 text-gray-600">Loading audit data...</p>
         </div>
       </div>
@@ -326,7 +326,7 @@ const LLMAuditDashboard: React.FC<LLMAuditDashboardProps> = ({ onClose }) => {
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <button
                           onClick={() => setSelectedRecord(record)}
-                          className="text-blue-600 hover:text-blue-900 flex items-center"
+                          className="text-yellow-600 hover:text-yellow-900 flex items-center"
                         >
                           <EyeIcon className="h-4 w-4 mr-1" />
                           View

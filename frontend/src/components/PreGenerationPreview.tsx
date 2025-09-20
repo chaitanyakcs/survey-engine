@@ -161,7 +161,7 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
   const overallConfidence = getOverallConfidence();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+    <div className="min-h-screen bg-white">
       <div className="max-w-6xl mx-auto p-6">
 
         {/* Header */}
@@ -263,36 +263,36 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                 </h2>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl">
+                  <div className="p-4 bg-gradient-to-r from-yellow-50 to-amber-50 rounded-2xl">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-blue-700">Completion Time</span>
+                      <span className="text-sm font-medium text-yellow-700">Completion Time</span>
                       <span className="text-lg">⏱️</span>
                     </div>
-                    <p className="text-2xl font-bold text-blue-900">{estimatedMetrics.estimated_duration}</p>
+                    <p className="text-2xl font-bold text-yellow-900">{estimatedMetrics.estimated_duration}</p>
                   </div>
 
-                  <div className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-2xl">
+                  <div className="p-4 bg-gradient-to-r from-yellow-50 to-amber-50 rounded-2xl">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-green-700">Estimated Cost</span>
+                      <span className="text-sm font-medium text-yellow-700">Estimated Cost</span>
                       <span className="text-lg">💰</span>
                     </div>
-                    <p className="text-2xl font-bold text-green-900">{estimatedMetrics.estimated_cost}</p>
+                    <p className="text-2xl font-bold text-yellow-900">{estimatedMetrics.estimated_cost}</p>
                   </div>
 
-                  <div className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl">
+                  <div className="p-4 bg-gradient-to-r from-yellow-50 to-amber-50 rounded-2xl">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-purple-700">Question Count</span>
+                      <span className="text-sm font-medium text-yellow-700">Question Count</span>
                       <span className="text-lg">❓</span>
                     </div>
-                    <p className="text-2xl font-bold text-purple-900">{estimatedMetrics.question_count_estimate}</p>
+                    <p className="text-2xl font-bold text-yellow-900">{estimatedMetrics.question_count_estimate}</p>
                   </div>
 
-                  <div className="p-4 bg-gradient-to-r from-orange-50 to-red-50 rounded-2xl">
+                  <div className="p-4 bg-gradient-to-r from-yellow-50 to-amber-50 rounded-2xl">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-orange-700">Sample Size</span>
+                      <span className="text-sm font-medium text-yellow-700">Sample Size</span>
                       <span className="text-lg">👥</span>
                     </div>
-                    <p className="text-2xl font-bold text-orange-900">{estimatedMetrics.sample_size_recommendation}</p>
+                    <p className="text-2xl font-bold text-yellow-900">{estimatedMetrics.sample_size_recommendation}</p>
                   </div>
                 </div>
 
@@ -333,7 +333,7 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                     className={`px-8 py-3 rounded-xl font-semibold transition-all duration-300 ${
                       isLoading || overallConfidence < 0.3
                         ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                        : 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:shadow-lg transform hover:scale-105'
+                        : 'bg-gradient-to-r from-yellow-600 to-amber-600 text-white hover:shadow-lg transform hover:scale-105'
                     }`}
                   >
                     {isLoading ? 'Generating...' : 'Generate Survey'}
@@ -355,7 +355,7 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
           <div className="xl:col-span-1">
             <div className="bg-white/60 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/30 p-6 sticky top-6">
               <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center">
-                <div className="w-8 h-8 bg-gradient-to-r from-green-500 to-emerald-500 rounded-2xl mr-3 flex items-center justify-center">
+                <div className="w-8 h-8 bg-gradient-to-r from-yellow-500 to-amber-500 rounded-2xl mr-3 flex items-center justify-center">
                   <span className="text-white">📈</span>
                 </div>
                 Confidence Indicators
@@ -363,7 +363,7 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
 
               <div className="space-y-4">
                 {confidenceIndicators.map((indicator) => (
-                  <div key={indicator.id} className="p-4 bg-gradient-to-r from-gray-50 to-white rounded-2xl border border-gray-100">
+                  <div key={indicator.id} className="p-4 bg-gradient-to-r from-yellow-50 to-amber-50 rounded-2xl border border-yellow-100">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center space-x-2">
                         <span className="text-lg">{indicator.icon}</span>
@@ -400,14 +400,14 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
               </div>
 
               {/* Overall Score */}
-              <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-blue-100">
+              <div className="mt-6 p-4 bg-gradient-to-r from-yellow-50 to-amber-50 rounded-2xl border border-yellow-100">
                 <div className="text-center">
-                  <p className="text-sm font-medium text-blue-700 mb-2">Overall Confidence</p>
+                  <p className="text-sm font-medium text-yellow-700 mb-2">Overall Confidence</p>
                   <div className="flex items-center justify-center space-x-3">
                     <div className={`w-6 h-6 rounded-full bg-${getConfidenceColor(overallConfidence)}-400`}></div>
-                    <span className="text-3xl font-bold text-blue-900">{Math.round(overallConfidence * 100)}%</span>
+                    <span className="text-3xl font-bold text-yellow-900">{Math.round(overallConfidence * 100)}%</span>
                   </div>
-                  <p className="text-sm text-blue-600 mt-2">{getConfidenceLabel(overallConfidence)}</p>
+                  <p className="text-sm text-yellow-600 mt-2">{getConfidenceLabel(overallConfidence)}</p>
                 </div>
               </div>
 

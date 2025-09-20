@@ -106,7 +106,7 @@ export const RFQEditor: React.FC = () => {
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-br from-cyan-400/10 to-blue-600/10 rounded-full blur-3xl animate-pulse" style={{animationDelay: '2s'}}></div>
       </div>
 
-      <div className="relative max-w-7xl mx-auto p-4 lg:p-6">
+      <div className="relative w-full p-4 lg:p-6">
 
         <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
           {/* Main Input Form */}
@@ -507,21 +507,6 @@ export const RFQEditor: React.FC = () => {
                               Choice Conjoint + Competitive
                             </p>
                           </div>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* AI Status Indicator */}
-                    <div className="mt-6 p-3 bg-gradient-to-r from-emerald-50 to-cyan-50 rounded-2xl border border-emerald-100">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-gradient-to-r from-emerald-500 to-cyan-500 rounded-full flex items-center justify-center">
-                          <svg className="w-4 h-4 text-white animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                          </svg>
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold text-emerald-900">AI Ready</p>
-                          <p className="text-xs text-emerald-700">Advanced algorithms standing by</p>
                         </div>
                       </div>
                     </div>

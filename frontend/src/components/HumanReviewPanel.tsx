@@ -146,7 +146,7 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending': return 'text-yellow-600 bg-yellow-50';
-      case 'in_review': return 'text-blue-600 bg-blue-50';
+      case 'in_review': return 'text-yellow-600 bg-yellow-50';
       case 'approved': return 'text-green-600 bg-green-50';
       case 'rejected': return 'text-red-600 bg-red-50';
       default: return 'text-gray-600 bg-gray-50';
@@ -167,7 +167,7 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
     return (
       <div className="space-y-6">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-600 mx-auto mb-4"></div>
           <h3 className="text-lg font-medium text-gray-900 mb-2">Loading Review Data</h3>
           {retryCount > 0 && (
             <p className="text-sm text-gray-600">
@@ -235,12 +235,12 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
       </div>
 
       {/* Original RFQ Context */}
-      <div className="bg-blue-50 rounded-lg p-3">
-        <h3 className="font-medium text-blue-900 mb-1 flex items-center text-sm">
+      <div className="bg-yellow-50 rounded-lg p-3">
+        <h3 className="font-medium text-yellow-900 mb-1 flex items-center text-sm">
           <DocumentTextIcon className="w-4 h-4 mr-1" />
           Original Request Context
         </h3>
-        <p className="text-blue-800 text-xs leading-relaxed">{activeReview.original_rfq}</p>
+        <p className="text-yellow-800 text-xs leading-relaxed">{activeReview.original_rfq}</p>
       </div>
 
       {/* Generated Prompt */}
@@ -252,7 +252,7 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
           </h3>
           <button
             onClick={() => setShowFullPrompt(!showFullPrompt)}
-            className="text-blue-600 hover:text-blue-800 text-xs font-medium"
+            className="text-yellow-600 hover:text-yellow-800 text-xs font-medium"
           >
             {showFullPrompt ? 'Show Less' : 'Show Full'}
           </button>
@@ -279,7 +279,7 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
             <div key={index} className="flex items-center space-x-2">
               <input
                 type="checkbox"
-                className="w-3 h-3 text-blue-600 rounded focus:ring-blue-500"
+                className="w-3 h-3 text-yellow-600 rounded focus:ring-yellow-500"
                 defaultChecked={false}
               />
               <span className="text-xs text-gray-700">{criteria}</span>
@@ -297,7 +297,7 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
           <textarea
             value={reviewNotes}
             onChange={(e) => setReviewNotes(e.target.value)}
-            className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none"
+            className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-yellow-500 focus:border-yellow-500 resize-none"
             rows={2}
             placeholder="Add comments or concerns..."
           />

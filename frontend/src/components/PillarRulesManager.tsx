@@ -22,13 +22,13 @@ const PILLAR_INFO = {
     name: 'Content Validity',
     description: 'Ensures survey questions directly address research objectives',
     weight: '20%',
-    color: 'from-blue-500 to-blue-600'
+    color: 'from-yellow-500 to-amber-600'
   },
   methodological_rigor: {
     name: 'Methodological Rigor',
     description: 'Validates adherence to research best practices and bias avoidance',
     weight: '25%',
-    color: 'from-emerald-500 to-emerald-600'
+    color: 'from-amber-500 to-orange-600'
   },
   clarity_comprehensibility: {
     name: 'Clarity & Comprehensibility',
@@ -40,20 +40,20 @@ const PILLAR_INFO = {
     name: 'Structural Coherence',
     description: 'Validates logical flow and organization of survey elements',
     weight: '20%',
-    color: 'from-purple-500 to-purple-600'
+    color: 'from-orange-500 to-red-600'
   },
   deployment_readiness: {
     name: 'Deployment Readiness',
     description: 'Assesses survey feasibility and implementation requirements',
     weight: '10%',
-    color: 'from-pink-500 to-pink-600'
+    color: 'from-yellow-500 to-amber-600'
   }
 };
 
 const PRIORITY_COLORS = {
   critical: { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-300', indicator: '🔴' },
   high: { bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300', indicator: '🟡' },
-  medium: { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-300', indicator: '🔵' },
+  medium: { bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-300', indicator: '🟡' },
   low: { bg: 'bg-gray-100', text: 'text-gray-800', border: 'border-gray-300', indicator: '⚪' }
 };
 

@@ -182,7 +182,7 @@ export const GoldenExampleEditPage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 flex">
+      <div className="min-h-screen bg-white flex">
         <Sidebar currentView="golden-examples" onViewChange={handleViewChange} />
         <div className={`flex-1 ${mainContentClasses} transition-all duration-300 ease-in-out flex items-center justify-center`}>
           <div className="flex flex-col items-center space-y-4">
@@ -196,7 +196,7 @@ export const GoldenExampleEditPage: React.FC = () => {
 
   if (!example) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 flex">
+      <div className="min-h-screen bg-white flex">
         <Sidebar currentView="golden-examples" onViewChange={handleViewChange} />
         <div className={`flex-1 ${mainContentClasses} transition-all duration-300 ease-in-out flex items-center justify-center`}>
           <div className="text-center">
@@ -232,7 +232,7 @@ export const GoldenExampleEditPage: React.FC = () => {
                 >
                   <ArrowLeftIcon className="h-6 w-6 group-hover:-translate-x-1 transition-transform" />
                 </button>
-                <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center shadow-lg">
+                <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-amber-600 rounded-xl flex items-center justify-center shadow-lg">
                   <DocumentTextIcon className="h-6 w-6 text-white" />
                 </div>
                 <div>
@@ -257,7 +257,7 @@ export const GoldenExampleEditPage: React.FC = () => {
                     </button>
                     <button
                       onClick={handleSave}
-                      className="px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 transition-all duration-200 flex items-center space-x-2 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                      className="px-6 py-3 bg-gradient-to-r from-yellow-600 to-amber-600 text-white rounded-xl hover:from-yellow-700 hover:to-amber-700 transition-all duration-200 flex items-center space-x-2 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
                     >
                       <CheckIcon className="h-4 w-4" />
                       <span>Save Changes</span>
@@ -266,7 +266,7 @@ export const GoldenExampleEditPage: React.FC = () => {
                 ) : (
                   <button
                     onClick={() => setIsEditing(true)}
-                    className="px-6 py-3 bg-gradient-to-r from-yellow-600 to-orange-600 text-white rounded-xl hover:from-yellow-700 hover:to-orange-700 transition-all duration-200 flex items-center space-x-2 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                    className="px-6 py-3 bg-gradient-to-r from-yellow-600 to-amber-600 text-white rounded-xl hover:from-yellow-700 hover:to-amber-700 transition-all duration-200 flex items-center space-x-2 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
                   >
                     <PencilIcon className="h-4 w-4" />
                     <span>Edit</span>
@@ -283,15 +283,15 @@ export const GoldenExampleEditPage: React.FC = () => {
             <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6 hover:shadow-xl transition-all duration-300">
               <h2 className="text-xl font-semibold text-gray-900 mb-6">Example Details</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4 border border-green-200">
-                  <label className="block text-sm font-medium text-green-700 mb-2">Quality Score</label>
-                  <div className="text-3xl font-bold text-green-600">
+                <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl p-4 border border-yellow-200">
+                  <label className="block text-sm font-medium text-yellow-700 mb-2">Quality Score</label>
+                  <div className="text-3xl font-bold text-yellow-600">
                     {example.quality_score.toFixed(2)}
                   </div>
                 </div>
-                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-200">
-                  <label className="block text-sm font-medium text-blue-700 mb-2">Usage Count</label>
-                  <div className="text-3xl font-bold text-blue-600">
+                <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl p-4 border border-yellow-200">
+                  <label className="block text-sm font-medium text-yellow-700 mb-2">Usage Count</label>
+                  <div className="text-3xl font-bold text-yellow-600">
                     {example.usage_count}
                   </div>
                 </div>

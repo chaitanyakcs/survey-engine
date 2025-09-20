@@ -246,7 +246,7 @@ export const SettingsPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+      <div className="min-h-screen bg-white">
         <Sidebar currentView="settings" onViewChange={handleViewChange} />
         <div className={mainContentClasses}>
           <div className="flex items-center justify-center h-64">
@@ -258,7 +258,7 @@ export const SettingsPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+    <div className="min-h-screen bg-white">
       <ToastContainer toasts={toasts} onRemove={removeToast} />
       <Sidebar currentView="settings" onViewChange={handleViewChange} />
       

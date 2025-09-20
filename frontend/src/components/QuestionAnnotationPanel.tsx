@@ -75,7 +75,7 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
   };
 
   return (
-    <div className="bg-gradient-to-br from-amber-50 to-yellow-50 border-2 border-amber-200 rounded-xl p-6 mt-4 shadow-lg">
+    <div className="bg-gradient-to-br from-yellow-50 to-amber-50 border-2 border-yellow-200 rounded-xl p-6 mt-4 shadow-lg">
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div className="flex items-center space-x-3">

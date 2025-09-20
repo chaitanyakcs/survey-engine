@@ -28,8 +28,8 @@ export const SurveyGenerationSummary: React.FC<SurveyGenerationSummaryProps> = (
   const getGradeColor = (grade: string) => {
     switch (grade) {
       case 'A': return 'bg-green-100 text-green-800';
-      case 'B': return 'bg-blue-100 text-blue-800';
-      case 'C': return 'bg-yellow-100 text-yellow-800';
+      case 'B': return 'bg-yellow-100 text-yellow-800';
+      case 'C': return 'bg-amber-100 text-amber-800';
       case 'D': return 'bg-orange-100 text-orange-800';
       case 'F': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
@@ -38,18 +38,18 @@ export const SurveyGenerationSummary: React.FC<SurveyGenerationSummaryProps> = (
 
   const getScoreColor = (score: number) => {
     if (score >= 0.9) return 'text-green-600';
-    if (score >= 0.8) return 'text-blue-600';
-    if (score >= 0.7) return 'text-yellow-600';
+    if (score >= 0.8) return 'text-yellow-600';
+    if (score >= 0.7) return 'text-amber-600';
     if (score >= 0.6) return 'text-orange-600';
     return 'text-red-600';
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-emerald-50">
+    <div className="min-h-screen bg-white">
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-blue-500 to-emerald-500 rounded-full mb-6">
+          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-yellow-500 to-amber-500 rounded-full mb-6">
             <ChartBarIcon className="w-10 h-10 text-white" />
           </div>
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
@@ -167,8 +167,8 @@ export const SurveyGenerationSummary: React.FC<SurveyGenerationSummaryProps> = (
                         <div 
                           className={`h-2 rounded-full transition-all duration-300 ${
                             pillar.score >= 0.9 ? 'bg-green-500' :
-                            pillar.score >= 0.8 ? 'bg-blue-500' :
-                            pillar.score >= 0.7 ? 'bg-yellow-500' :
+                            pillar.score >= 0.8 ? 'bg-yellow-500' :
+                            pillar.score >= 0.7 ? 'bg-amber-500' :
                             pillar.score >= 0.6 ? 'bg-orange-500' : 'bg-red-500'
                           }`}
                           style={{ width: `${pillar.score * 100}%` }}

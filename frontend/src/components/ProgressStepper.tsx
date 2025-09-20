@@ -328,12 +328,12 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
 
   const getColorClasses = (color: string) => {
     const colorMap = {
-      blue: { bg: 'bg-blue-500', light: 'bg-blue-50', text: 'text-blue-700', ring: 'ring-blue-500/20' },
-      purple: { bg: 'bg-purple-500', light: 'bg-purple-50', text: 'text-purple-700', ring: 'ring-purple-500/20' },
+      blue: { bg: 'bg-yellow-500', light: 'bg-yellow-50', text: 'text-yellow-700', ring: 'ring-yellow-500/20' },
+      purple: { bg: 'bg-amber-500', light: 'bg-amber-50', text: 'text-amber-700', ring: 'ring-amber-500/20' },
       orange: { bg: 'bg-orange-500', light: 'bg-orange-50', text: 'text-orange-700', ring: 'ring-orange-500/20' },
       green: { bg: 'bg-green-500', light: 'bg-green-50', text: 'text-green-700', ring: 'ring-green-500/20' },
       yellow: { bg: 'bg-yellow-500', light: 'bg-yellow-50', text: 'text-yellow-700', ring: 'ring-yellow-500/20' },
-      emerald: { bg: 'bg-emerald-500', light: 'bg-emerald-50', text: 'text-emerald-700', ring: 'ring-emerald-500/20' }
+      emerald: { bg: 'bg-amber-500', light: 'bg-amber-50', text: 'text-amber-700', ring: 'ring-amber-500/20' }
     };
     return colorMap[color as keyof typeof colorMap] || colorMap.blue;
   };
@@ -350,12 +350,12 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
     ));
   
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+    <div className="h-screen flex flex-col bg-white">
       {/* Header */}
       <div className="flex-shrink-0 px-8 py-6 bg-white/80 backdrop-blur-sm border-b border-gray-200/50">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <div className="p-3 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl">
+            <div className="p-3 bg-gradient-to-r from-yellow-500 to-amber-600 rounded-xl">
               <SparklesIcon className="w-6 h-6 text-white" />
             </div>
             <div>
@@ -364,7 +364,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
             </div>
           </div>
           <div className="text-right">
-            <div className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+            <div className="text-3xl font-bold bg-gradient-to-r from-yellow-600 to-amber-600 bg-clip-text text-transparent">
               {workflow.progress || 0}%
             </div>
             <div className="text-sm text-gray-500">Complete</div>
@@ -375,7 +375,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
         <div className="mt-4">
           <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
             <div 
-              className="bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 h-2 rounded-full transition-all duration-1000 ease-out relative"
+              className="bg-gradient-to-r from-yellow-500 via-amber-500 to-orange-500 h-2 rounded-full transition-all duration-1000 ease-out relative"
               style={{ width: `${workflow.progress || 0}%` }}
             >
               <div className="absolute inset-0 bg-white/30 animate-pulse rounded-full"></div>
@@ -395,7 +395,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
               {/* Vertical Progress Timeline */}
               <div className="relative">
                 {/* Connecting Line */}
-                <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-gradient-to-b from-gray-200 via-blue-200 to-gray-200"></div>
+                <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-gradient-to-b from-gray-200 via-yellow-200 to-gray-200"></div>
                 
                 {enabledSteps.map((step, index) => {
                   const status = getStepStatus(index);
@@ -632,7 +632,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                 {/* Primary: View Summary Button */}
                 <button
                   onClick={() => onShowSummary && onShowSummary()}
-                  className="inline-flex items-center px-6 py-3 rounded-xl font-bold text-base transition-all duration-200 bg-gradient-to-r from-blue-600 to-emerald-600 hover:from-blue-700 hover:to-emerald-700 text-white shadow-lg hover:shadow-xl transform hover:scale-105"
+                  className="inline-flex items-center px-6 py-3 rounded-xl font-bold text-base transition-all duration-200 bg-gradient-to-r from-yellow-600 to-amber-600 hover:from-yellow-700 hover:to-amber-700 text-white shadow-lg hover:shadow-xl transform hover:scale-105"
                 >
                   <SparklesIcon className="w-5 h-5 mr-2" />
                   View AI Analysis

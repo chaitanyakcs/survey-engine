@@ -1,8 +1,12 @@
-from typing import List
+from typing import List, Optional, Any
 from sentence_transformers import SentenceTransformer
 from src.config import settings
 import replicate
 import asyncio
+import uuid
+import time
+from ..utils.llm_audit_decorator import LLMAuditContext
+from ..services.llm_audit_service import LLMAuditService
 
 
 class EmbeddingService:
@@ -17,7 +21,7 @@ class EmbeddingService:
             cls._instance = super(EmbeddingService, cls).__new__(cls)
         return cls._instance
     
-    def __init__(self) -> None:
+    def __init__(self, db_session: Optional[Any] = None) -> None:
         # Only initialize once
         if hasattr(self, '_initialized_instance'):
             return
@@ -25,6 +29,7 @@ class EmbeddingService:
         self.model_name = settings.embedding_model
         self.use_replicate = None
         self._initialized_instance = True
+        self.db_session = db_session
         
         # Always initialize model attribute
         self.model = None
@@ -165,23 +170,51 @@ class EmbeddingService:
         Get embedding from Replicate API
         """
         try:
-            # Use a popular text embedding model on Replicate
+            # Determine the model to use
             if "text-embedding-ada-002" in self.model_name:
-                # For OpenAI-style models, use a compatible model
-                output = await replicate.async_run(
-                    "replicate/all-mpnet-base-v2:b6b7585c9640cd7a9572c6e129c9549d79c9c31f0d3fdce7baac7c67ca38f305",
-                    input={"text": text}
-                )
+                model_to_use = "replicate/all-mpnet-base-v2:b6b7585c9640cd7a9572c6e129c9549d79c9c31f0d3fdce7baac7c67ca38f305"
             elif "/" in self.model_name:
-                # Custom Replicate model specified
-                output = await replicate.async_run(
-                    self.model_name,
-                    input={"text": text}
-                )
+                model_to_use = self.model_name
             else:
-                # Default to a good general-purpose embedding model
+                model_to_use = "nateraw/bge-large-en-v1.5:9cf9f015a9cb9c61d1a2610659cdac4a4ca222f2d3707a68517b18c198a9add1"
+            
+            # Create audit context for this LLM interaction
+            interaction_id = f"embedding_{uuid.uuid4().hex[:8]}"
+            audit_service = LLMAuditService(self.db_session) if self.db_session else None
+            
+            if audit_service:
+                async with LLMAuditContext(
+                    audit_service=audit_service,
+                    interaction_id=interaction_id,
+                    model_name=model_to_use,
+                    model_provider="replicate",
+                    purpose="embedding",
+                    input_prompt=text,
+                    sub_purpose="text_embedding",
+                    context_type="text",
+                    hyperparameters={},
+                    metadata={
+                        "text_length": len(text),
+                        "model_name": model_to_use
+                    },
+                    tags=["embedding", "text_processing"]
+                ) as audit_context:
+                    start_time = time.time()
+                    output = await replicate.async_run(
+                        model_to_use,
+                        input={"text": text}
+                    )
+                    
+                    # Process the output and set audit context
+                    response_time_ms = int((time.time() - start_time) * 1000)
+                    audit_context.set_output(
+                        output_content=str(output),
+                        response_time_ms=response_time_ms
+                    )
+            else:
+                # Fallback without auditing
                 output = await replicate.async_run(
-                    "nateraw/bge-large-en-v1.5:9cf9f015a9cb9c61d1a2610659cdac4a4ca222f2d3707a68517b18c198a9add1",
+                    model_to_use,
                     input={"text": text}
                 )
             

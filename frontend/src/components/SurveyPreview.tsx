@@ -399,7 +399,7 @@ const SectionCard: React.FC<{
     <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
       {/* Section Header */}
       <div
-        className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 border-b border-gray-200 cursor-pointer hover:from-blue-100 hover:to-indigo-100 transition-colors"
+        className="bg-gradient-to-r from-yellow-50 to-amber-50 px-6 py-4 border-b border-gray-200 cursor-pointer hover:from-yellow-100 hover:to-amber-100 transition-colors"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center justify-between">

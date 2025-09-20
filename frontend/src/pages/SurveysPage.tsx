@@ -353,7 +353,7 @@ export const SurveysPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 flex">
+    <div className="min-h-screen bg-white flex">
       {/* Toast Container */}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
       
@@ -377,7 +377,7 @@ export const SurveysPage: React.FC = () => {
                     </svg>
                   </button>
                   <div className="flex items-center space-x-3">
-                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                    <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-amber-600 rounded-xl flex items-center justify-center shadow-lg">
                       <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
@@ -418,7 +418,7 @@ export const SurveysPage: React.FC = () => {
             </div>
             
             {/* Survey Preview */}
-            <div className="flex-1 overflow-y-auto bg-gradient-to-br from-gray-50 to-white">
+            <div className="flex-1 overflow-y-auto bg-white">
               <SurveyPreview />
             </div>
           </div>
@@ -429,7 +429,7 @@ export const SurveysPage: React.FC = () => {
               <div className="px-6 py-6">
                 <div className="flex items-center justify-between mb-6">
                   <div className="flex items-center space-x-4">
-                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                    <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-amber-600 rounded-xl flex items-center justify-center shadow-lg">
                       <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
@@ -485,7 +485,7 @@ export const SurveysPage: React.FC = () => {
                     
                     <button
                       onClick={() => window.location.href = '/'}
-                      className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 rounded-xl transition-all duration-200 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                      className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-yellow-600 to-amber-600 text-white hover:from-yellow-700 hover:to-amber-700 rounded-xl transition-all duration-200 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
                     >
                       <PlusIcon className="h-5 w-5" />
                       <span>New Survey</span>
@@ -545,7 +545,7 @@ export const SurveysPage: React.FC = () => {
                     <button
                       onClick={() => fetchSurveys(true)}
                       disabled={isRetrying}
-                      className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                      className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-yellow-600 to-amber-600 text-white rounded-xl hover:from-yellow-700 hover:to-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
                     >
                       {isRetrying ? (
                         <>
@@ -566,7 +566,7 @@ export const SurveysPage: React.FC = () => {
               ) : filteredSurveys.length === 0 ? (
                 <div className="flex items-center justify-center h-64">
                   <div className="text-center">
-                    <div className="w-24 h-24 bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg">
+                    <div className="w-24 h-24 bg-gradient-to-br from-yellow-100 to-amber-200 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg">
                       <PlusIcon className="h-12 w-12 text-gray-400" />
                     </div>
                     <h3 className="text-2xl font-semibold text-gray-900 mb-3">No surveys found</h3>
@@ -578,7 +578,7 @@ export const SurveysPage: React.FC = () => {
                     </p>
                     <button
                       onClick={() => window.location.href = '/'}
-                      className="px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-200 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                      className="px-8 py-4 bg-gradient-to-r from-yellow-600 to-amber-600 text-white rounded-xl hover:from-yellow-700 hover:to-amber-700 transition-all duration-200 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
                     >
                       <PlusIcon className="h-5 w-5 mr-2 inline" />
                       Create Survey
@@ -616,7 +616,7 @@ export const SurveysPage: React.FC = () => {
                           
                           {/* Survey Icon */}
                           <div className="flex-shrink-0">
-                            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                            <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-amber-600 rounded-xl flex items-center justify-center shadow-lg">
                               <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                               </svg>

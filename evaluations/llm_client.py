@@ -7,6 +7,8 @@ Provides unified interface for LLM-powered survey evaluation
 import os
 import json
 import asyncio
+import uuid
+import time
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 
@@ -16,6 +18,16 @@ try:
     REPLICATE_AVAILABLE = True
 except ImportError:
     REPLICATE_AVAILABLE = False
+
+# Import audit components
+try:
+    import sys
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+    from utils.llm_audit_decorator import LLMAuditContext
+    from services.llm_audit_service import LLMAuditService
+    AUDIT_AVAILABLE = True
+except ImportError:
+    AUDIT_AVAILABLE = False
 
 @dataclass
 class LLMResponse:
@@ -30,13 +42,16 @@ class EvaluationLLMClient:
     Uses the same Replicate setup as the main survey generation
     """
     
-    def __init__(self):
+    def __init__(self, db_session: Optional[Any] = None):
         self.replicate_available = REPLICATE_AVAILABLE
         self.replicate_token = os.getenv("REPLICATE_API_TOKEN", "")
+        self.db_session = db_session
+        self.audit_available = AUDIT_AVAILABLE
+        
         # Read evaluation model from main app settings if available
         try:
             from src.config.settings import settings as app_settings
-            self.model = getattr(app_settings, 'generation_model', 'openai/gpt-4o-mini')
+            self.model = getattr(app_settings, 'evaluation_model', getattr(app_settings, 'generation_model', 'openai/gpt-4o-mini'))
         except Exception:
             self.model = 'openai/gpt-4o-mini'
         
@@ -75,31 +90,93 @@ class EvaluationLLMClient:
             return self._fallback_evaluation(prompt)
         
         try:
-            # Use the same model as survey generation for consistency
-            response = await asyncio.to_thread(
-                replicate.run,
-                self.model,
-                input={
-                    "prompt": prompt,
-                    "max_tokens": max_tokens,
-                    "temperature": 0.3,  # Lower temperature for more consistent evaluation
-                    "top_p": 0.9,
-                    "frequency_penalty": 0.0,
-                    "presence_penalty": 0.0
-                }
-            )
+            # Create audit context for this LLM interaction
+            interaction_id = f"evaluation_{uuid.uuid4().hex[:8]}"
+            audit_service = LLMAuditService(self.db_session) if (self.audit_available and self.db_session) else None
             
-            # Extract content from response
-            if isinstance(response, list):
-                content = ''.join(response)
+            if audit_service:
+                async with LLMAuditContext(
+                    audit_service=audit_service,
+                    interaction_id=interaction_id,
+                    model_name=self.model,
+                    model_provider="replicate",
+                    purpose="evaluation",
+                    input_prompt=prompt,
+                    sub_purpose="survey_evaluation",
+                    context_type="survey_data",
+                    hyperparameters={
+                        "max_tokens": max_tokens,
+                        "temperature": 0.3,
+                        "top_p": 0.9,
+                        "frequency_penalty": 0.0,
+                        "presence_penalty": 0.0
+                    },
+                    metadata={
+                        "prompt_length": len(prompt),
+                        "max_tokens": max_tokens
+                    },
+                    tags=["evaluation", "survey_analysis"]
+                ) as audit_context:
+                    start_time = time.time()
+                    # Use the same model as survey generation for consistency
+                    response = await asyncio.to_thread(
+                        replicate.run,
+                        self.model,
+                        input={
+                            "prompt": prompt,
+                            "max_tokens": max_tokens,
+                            "temperature": 0.3,  # Lower temperature for more consistent evaluation
+                            "top_p": 0.9,
+                            "frequency_penalty": 0.0,
+                            "presence_penalty": 0.0
+                        }
+                    )
+                    
+                    # Extract content from response
+                    if isinstance(response, list):
+                        content = ''.join(response)
+                    else:
+                        content = str(response)
+                    
+                    # Process the output and set audit context
+                    response_time_ms = int((time.time() - start_time) * 1000)
+                    audit_context.set_output(
+                        output_content=content,
+                        response_time_ms=response_time_ms
+                    )
+                    
+                    return LLMResponse(
+                        content=content.strip(),
+                        success=True,
+                        metadata={"model": self.model, "tokens": max_tokens}
+                    )
             else:
-                content = str(response)
-            
-            return LLMResponse(
-                content=content.strip(),
-                success=True,
-                metadata={"model": self.model, "tokens": max_tokens}
-            )
+                # Fallback without auditing
+                # Use the same model as survey generation for consistency
+                response = await asyncio.to_thread(
+                    replicate.run,
+                    self.model,
+                    input={
+                        "prompt": prompt,
+                        "max_tokens": max_tokens,
+                        "temperature": 0.3,  # Lower temperature for more consistent evaluation
+                        "top_p": 0.9,
+                        "frequency_penalty": 0.0,
+                        "presence_penalty": 0.0
+                    }
+                )
+                
+                # Extract content from response
+                if isinstance(response, list):
+                    content = ''.join(response)
+                else:
+                    content = str(response)
+                
+                return LLMResponse(
+                    content=content.strip(),
+                    success=True,
+                    metadata={"model": self.model, "tokens": max_tokens}
+                )
             
         except Exception as e:
             print(f"🔴 LLM evaluation failed: {e}")
@@ -197,9 +274,9 @@ class EvaluationLLMClient:
             "confidence": "low_heuristic"
         })
 
-def create_evaluation_llm_client() -> EvaluationLLMClient:
+def create_evaluation_llm_client(db_session: Optional[Any] = None) -> EvaluationLLMClient:
     """Factory function to create evaluation LLM client"""
-    return EvaluationLLMClient()
+    return EvaluationLLMClient(db_session=db_session)
 
 # Test function
 async def test_llm_client():

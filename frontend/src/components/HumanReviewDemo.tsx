@@ -18,7 +18,7 @@ export const HumanReviewDemo: React.FC = () => {
   }
 
   return (
-    <div className="h-screen flex bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+    <div className="h-screen flex bg-white">
       {/* Left Panel - Demo Info */}
       <div className="w-1/2 border-r border-gray-200/50 bg-white/40 backdrop-blur-sm p-8">
         <h2 className="text-lg font-semibold text-gray-900 mb-6">Human Review Demo</h2>

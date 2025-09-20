@@ -4,15 +4,19 @@ import json
 import logging
 from typing import Dict, List, Any, Optional, Tuple
 import replicate
+import uuid
+import time
 from ..config.settings import settings
 from ..utils.error_messages import UserFriendlyError, get_api_configuration_error
+from ..utils.llm_audit_decorator import LLMAuditContext
+from ..services.llm_audit_service import LLMAuditService
 
 logger = logging.getLogger(__name__)
 
 class FieldExtractionService:
     """Service for extracting and auto-populating golden example fields from RFQ and Survey content."""
     
-    def __init__(self):
+    def __init__(self, db_session: Optional[Any] = None):
         if not settings.replicate_api_token:
             error_info = get_api_configuration_error()
             raise UserFriendlyError(
@@ -22,6 +26,7 @@ class FieldExtractionService:
             )
         replicate.api_token = settings.replicate_api_token
         self.model = settings.generation_model
+        self.db_session = db_session
     
     def create_field_extraction_prompt(self, rfq_text: str, survey_json: Dict[str, Any]) -> str:
         """Create prompt for extracting golden example fields."""
@@ -151,17 +156,61 @@ Return ONLY a JSON object with this exact structure:
             prompt = self.create_field_extraction_prompt(rfq_text, survey_json)
             logger.info(f"✅ [Field Extraction] Prompt created, length: {len(prompt)} chars")
             
-            # Call LLM for field extraction
-            logger.info(f"🤖 [Field Extraction] Calling LLM for field extraction")
-            output = await replicate.async_run(
-                self.model,
-                input={
-                    "prompt": prompt,
-                    "temperature": 0.1,
-                    "max_tokens": 2000,
-                    "system_prompt": "You are a survey methodology expert. Extract the requested fields from the provided RFQ and Survey content. Return ONLY valid JSON in the exact format specified."
-                }
-            )
+            # Create audit context for this LLM interaction
+            interaction_id = f"field_extraction_{uuid.uuid4().hex[:8]}"
+            audit_service = LLMAuditService(self.db_session) if self.db_session else None
+            
+            if audit_service:
+                async with LLMAuditContext(
+                    audit_service=audit_service,
+                    interaction_id=interaction_id,
+                    model_name=self.model,
+                    model_provider="replicate",
+                    purpose="field_extraction",
+                    input_prompt=prompt,
+                    sub_purpose="golden_example_fields",
+                    context_type="survey_data",
+                    hyperparameters={
+                        "temperature": 0.1,
+                        "max_tokens": 2000
+                    },
+                    metadata={
+                        "rfq_length": len(rfq_text),
+                        "survey_keys": list(survey_json.keys()) if isinstance(survey_json, dict) else [],
+                        "prompt_length": len(prompt)
+                    },
+                    tags=["field_extraction", "golden_examples"]
+                ) as audit_context:
+                    logger.info(f"🤖 [Field Extraction] Calling LLM for field extraction with auditing")
+                    start_time = time.time()
+                    output = await replicate.async_run(
+                        self.model,
+                        input={
+                            "prompt": prompt,
+                            "temperature": 0.1,
+                            "max_tokens": 2000,
+                            "system_prompt": "You are a survey methodology expert. Extract the requested fields from the provided RFQ and Survey content. Return ONLY valid JSON in the exact format specified."
+                        }
+                    )
+                    
+                    # Process the output and set audit context
+                    response_time_ms = int((time.time() - start_time) * 1000)
+                    audit_context.set_output(
+                        output_content=str(output),
+                        response_time_ms=response_time_ms
+                    )
+            else:
+                # Fallback without auditing
+                logger.info(f"🤖 [Field Extraction] Calling LLM for field extraction without auditing")
+                output = await replicate.async_run(
+                    self.model,
+                    input={
+                        "prompt": prompt,
+                        "temperature": 0.1,
+                        "max_tokens": 2000,
+                        "system_prompt": "You are a survey methodology expert. Extract the requested fields from the provided RFQ and Survey content. Return ONLY valid JSON in the exact format specified."
+                    }
+                )
             
             # Process LLM response
             logger.info(f"📥 [Field Extraction] Processing LLM response")

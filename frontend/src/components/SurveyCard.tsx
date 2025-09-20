@@ -51,7 +51,7 @@ export const SurveyCard: React.FC<SurveyCardProps> = ({
       case 'failed':
         return 'bg-red-100 text-red-800 border-red-200';
       case 'in_progress':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
+        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
       default:
         return 'bg-gray-100 text-gray-800 border-gray-200';
     }
@@ -69,7 +69,7 @@ export const SurveyCard: React.FC<SurveyCardProps> = ({
       className={`
         relative group cursor-pointer transition-all duration-300 ease-out
         ${isSelected 
-          ? 'transform scale-[1.02] shadow-2xl ring-2 ring-blue-500 ring-opacity-50' 
+          ? 'transform scale-[1.02] shadow-2xl ring-2 ring-yellow-500 ring-opacity-50' 
           : 'hover:transform hover:scale-[1.02] hover:shadow-xl'
         }
       `}
