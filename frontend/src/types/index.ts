@@ -65,59 +65,43 @@ export interface RFQQualityAssessment {
 }
 
 export interface EnhancedRFQRequest {
-  // Basic Information
-  title?: string;
+  // ========== BASIC INFO ==========
+  title: string;
   description: string;
 
-  // Legacy fields for backward compatibility
-  product_category?: string;
-  target_segment?: string;
-  research_goal?: string;
-
-  // Enhanced Structure
-  context?: {
-    business_background?: string;
-    market_situation?: string;
-    decision_timeline?: string;
+  // ========== BUSINESS CONTEXT ==========
+  business_context: {
+    company_product_background: string;    // Background on company, product & research
+    business_problem: string;              // What business wants to achieve
+    business_objective: string;            // Business objective from research
   };
 
-  objectives?: RFQObjective[];
-
-  target_audience?: {
-    primary_segment?: string;
-    secondary_segments?: string[];
-    demographics?: Record<string, any>;
-    size_estimate?: number;
-    accessibility_notes?: string;
+  // ========== RESEARCH OBJECTIVES ==========
+  research_objectives: {
+    research_audience: string;             // Respondent type, demographics, segments
+    success_criteria: string;              // Desired outcome / success criteria
+    key_research_questions: string[];     // Key research questions & considerations
   };
 
-  methodologies?: {
-    preferred?: string[];
-    excluded?: string[];
-    requirements?: string[];
+  // ========== METHODOLOGY ==========
+  methodology: {
+    primary_method: 'van_westendorp' | 'gabor_granger' | 'conjoint' | 'basic_survey';
+    stimuli_details?: string;             // Concept details, price ranges
+    methodology_requirements?: string;     // Additional methodology notes
   };
 
-  constraints?: RFQConstraint[];
-  stakeholders?: RFQStakeholder[];
-  success_metrics?: RFQSuccess[];
-
-  // AI Configuration
-  generation_config?: {
-    creativity_level?: 'conservative' | 'balanced' | 'innovative';
-    length_preference?: 'concise' | 'standard' | 'comprehensive';
-    complexity_level?: 'basic' | 'intermediate' | 'advanced';
-    include_validation_questions?: boolean;
-    enable_adaptive_routing?: boolean;
+  // ========== SURVEY REQUIREMENTS ==========
+  survey_requirements: {
+    sample_plan: string;                  // Sample structure, LOI, recruiting criteria
+    required_sections: string[];          // QNR structure sections
+    must_have_questions: string[];        // Must-have Qs per respondent type
+    screener_requirements?: string;       // Screener & respondent tagging rules
   };
 
-  // Meta Information
-  estimated_budget?: string;
-  expected_timeline?: string;
-  approval_requirements?: string[];
-  template_used?: string;
+  // ========== SIMPLE META ==========
+  rules_and_definitions?: string;        // Rules, definitions, jargon feed
 
   // Document Integration
-  document_upload_id?: string;
   document_source?: DocumentSource;
 }
 
@@ -540,4 +524,9 @@ export interface AppStore {
   clearDocumentData: () => void;
   applyDocumentMappings: () => void;
   buildRFQUpdatesFromMappings: (mappings: RFQFieldMapping[]) => Partial<EnhancedRFQRequest>;
+
+  // Enhanced RFQ State Persistence
+  persistEnhancedRfqState: (enhancedRfq: EnhancedRFQRequest) => void;
+  restoreEnhancedRfqState: () => boolean;
+  clearEnhancedRfqState: () => void;
 }

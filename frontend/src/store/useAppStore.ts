@@ -24,51 +24,66 @@ export const useAppStore = create<AppStore>((set, get) => ({
   enhancedRfq: {
     title: '',
     description: '',
-    objectives: [],
-    constraints: [],
-    stakeholders: [],
-    success_metrics: [],
-    generation_config: {
-      creativity_level: 'balanced',
-      length_preference: 'standard',
-      complexity_level: 'intermediate',
-      include_validation_questions: true,
-      enable_adaptive_routing: false
+    business_context: {
+      company_product_background: '',
+      business_problem: '',
+      business_objective: ''
+    },
+    research_objectives: {
+      research_audience: '',
+      success_criteria: '',
+      key_research_questions: []
+    },
+    methodology: {
+      primary_method: 'basic_survey',
+      stimuli_details: '',
+      methodology_requirements: ''
+    },
+    survey_requirements: {
+      sample_plan: '',
+      required_sections: [],
+      must_have_questions: [],
+      screener_requirements: ''
     }
   },
 
   setEnhancedRfq: (input) => set((state) => {
     // Use spread operator to create completely new object without mutations
+    const newEnhancedRfq = {
+      ...state.enhancedRfq,
+      ...input,
+      // Handle nested objects specifically to prevent mutations
+      ...(input.business_context && {
+        business_context: {
+          ...state.enhancedRfq.business_context,
+          ...input.business_context
+        }
+      }),
+      ...(input.research_objectives && {
+        research_objectives: {
+          ...state.enhancedRfq.research_objectives,
+          ...input.research_objectives
+        }
+      }),
+      ...(input.methodology && {
+        methodology: {
+          ...state.enhancedRfq.methodology,
+          ...input.methodology
+        }
+      }),
+      ...(input.survey_requirements && {
+        survey_requirements: {
+          ...state.enhancedRfq.survey_requirements,
+          ...input.survey_requirements
+        }
+      })
+    };
+
+    // Auto-save to localStorage whenever Enhanced RFQ is updated
+    get().persistEnhancedRfqState(newEnhancedRfq);
+
     return {
-      enhancedRfq: {
-        ...state.enhancedRfq,
-        ...input,
-        // Handle nested objects specifically to prevent mutations
-        ...(input.context && {
-          context: {
-            ...state.enhancedRfq.context,
-            ...input.context
-          }
-        }),
-        ...(input.target_audience && {
-          target_audience: {
-            ...state.enhancedRfq.target_audience,
-            ...input.target_audience
-          }
-        }),
-        ...(input.methodologies && {
-          methodologies: {
-            ...state.enhancedRfq.methodologies,
-            ...input.methodologies
-          }
-        }),
-        ...(input.generation_config && {
-          generation_config: {
-            ...state.enhancedRfq.generation_config,
-            ...input.generation_config
-          }
-        })
-      }
+      enhancedRfq: newEnhancedRfq
     };
   }),
 
@@ -1132,18 +1147,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const enhancedRfqPayload = {
         title: rfq.title,
         description: enhancedDescription, // 🎯 Key change: Use enriched description instead of basic description
-        product_category: rfq.product_category,
-        target_segment: rfq.target_audience?.primary_segment || rfq.target_segment,
-        research_goal: rfq.research_goal,
+        target_segment: rfq.research_objectives?.research_audience || '',
         enhanced_rfq_data: rfq // 🎯 Send the full structured data for storage and analytics
       };
 
       console.log('🚀 [Enhanced RFQ] Submitting with enriched description and structured data:', {
         originalLength: rfq.description?.length || 0,
         enhancedLength: enhancedDescription.length,
-        hasObjectives: (rfq.objectives?.length || 0) > 0,
-        hasConstraints: (rfq.constraints?.length || 0) > 0,
-        hasStakeholders: (rfq.stakeholders?.length || 0) > 0,
+        hasObjectives: (rfq.research_objectives?.key_research_questions?.length || 0) > 0,
+        hasConstraints: false, // constraints field not in EnhancedRFQRequest interface
+        hasStakeholders: false, // stakeholders field not in EnhancedRFQRequest interface
         structuredDataSize: JSON.stringify(rfq).length
       });
 
@@ -1253,18 +1266,29 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
       const result: DocumentAnalysisResponse = await response.json();
 
-      // Dynamic confidence thresholds per field type for better auto-acceptance
+      // Dynamic confidence thresholds per field type for simplified schema
       const fieldConfidenceThresholds: Record<string, number> = {
-        title: 0.95,           // High threshold - titles must be very accurate
-        description: 0.75,     // Lower threshold - descriptions can be edited easily
-        product_category: 0.85, // Medium-high threshold - categories are important
-        target_segment: 0.80,   // Medium threshold - segments can be refined
-        research_goal: 0.70,    // Lower threshold - goals are often iterative
-        objectives: 0.70,       // Lower threshold - objectives can be refined
-        constraints: 0.65,      // Lowest threshold - constraints are often incomplete in docs
-        deliverables: 0.75,     // Medium threshold - deliverables are important but editable
-        timeline: 0.80,         // Medium threshold - timelines need accuracy
-        budget: 0.90           // High threshold - budget must be very accurate
+        // Critical fields - must be very accurate
+        title: 0.95,
+        description: 0.85,
+        company_product_background: 0.80,
+
+        // High priority fields - important but editable
+        business_problem: 0.75,
+        business_objective: 0.75,
+        primary_method: 0.90,  // Methodology must be accurate
+
+        // Medium priority fields - helpful but not critical
+        research_audience: 0.70,
+        success_criteria: 0.70,
+        key_research_questions: 0.65,
+        stimuli_details: 0.65,
+        methodology_requirements: 0.60,
+        sample_plan: 0.70,
+        required_sections: 0.60,
+        must_have_questions: 0.60,
+        screener_requirements: 0.60,
+        rules_and_definitions: 0.55
       };
 
       const incomingMappings = result.rfq_analysis.field_mappings || [];
@@ -1342,18 +1366,29 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
       const result: DocumentAnalysisResponse = await response.json();
 
-      // Dynamic confidence thresholds per field type for better auto-acceptance
+      // Dynamic confidence thresholds per field type for simplified schema
       const fieldConfidenceThresholds: Record<string, number> = {
-        title: 0.95,           // High threshold - titles must be very accurate
-        description: 0.75,     // Lower threshold - descriptions can be edited easily
-        product_category: 0.85, // Medium-high threshold - categories are important
-        target_segment: 0.80,   // Medium threshold - segments can be refined
-        research_goal: 0.70,    // Lower threshold - goals are often iterative
-        objectives: 0.70,       // Lower threshold - objectives can be refined
-        constraints: 0.65,      // Lowest threshold - constraints are often incomplete in docs
-        deliverables: 0.75,     // Medium threshold - deliverables are important but editable
-        timeline: 0.80,         // Medium threshold - timelines need accuracy
-        budget: 0.90           // High threshold - budget must be very accurate
+        // Critical fields - must be very accurate
+        title: 0.95,
+        description: 0.85,
+        company_product_background: 0.80,
+
+        // High priority fields - important but editable
+        business_problem: 0.75,
+        business_objective: 0.75,
+        primary_method: 0.90,  // Methodology must be accurate
+
+        // Medium priority fields - helpful but not critical
+        research_audience: 0.70,
+        success_criteria: 0.70,
+        key_research_questions: 0.65,
+        stimuli_details: 0.65,
+        methodology_requirements: 0.60,
+        sample_plan: 0.70,
+        required_sections: 0.60,
+        must_have_questions: 0.60,
+        screener_requirements: 0.60,
+        rules_and_definitions: 0.55
       };
 
       const incomingMappings = result.rfq_analysis.field_mappings || [];
@@ -1431,7 +1466,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     });
   },
 
-  // Helper function to build RFQ updates from field mappings
+  // Helper function to build RFQ updates from field mappings (simplified schema)
   buildRFQUpdatesFromMappings: (mappings: RFQFieldMapping[]): Partial<EnhancedRFQRequest> => {
     const rfqUpdates: Partial<EnhancedRFQRequest> = {};
 
@@ -1439,123 +1474,104 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const value = mapping.value;
 
       switch (mapping.field) {
+        // Basic Info
         case 'title':
           rfqUpdates.title = value;
           break;
         case 'description':
           rfqUpdates.description = value;
           break;
-        case 'product_category':
-          rfqUpdates.product_category = value;
-          break;
-        case 'target_segment':
-        case 'primary_segment':
-          if (!rfqUpdates.target_audience) rfqUpdates.target_audience = {};
-          rfqUpdates.target_audience.primary_segment = value;
-          break;
-        case 'research_goal':
-          rfqUpdates.research_goal = value;
-          break;
-        case 'estimated_budget':
-          rfqUpdates.estimated_budget = value;
-          break;
-        case 'expected_timeline':
-          rfqUpdates.expected_timeline = value;
-          break;
-        case 'objectives':
-          if (Array.isArray(value)) {
-            rfqUpdates.objectives = value.map((obj, index) => ({
-              id: `obj-${index}`,
-              title: typeof obj === 'string' ? obj : obj.title || obj.description || `Objective ${index + 1}`,
-              description: typeof obj === 'string' ? obj : obj.description || '',
-              priority: typeof obj === 'string' ? 'medium' : obj.priority || 'medium',
-              methodology_suggestions: typeof obj === 'string' ? [] : obj.methodology_suggestions || []
-            }));
-          } else if (typeof value === 'string') {
-            rfqUpdates.objectives = [{
-              id: 'obj-1',
-              title: value,
-              description: value,
-              priority: 'medium',
-              methodology_suggestions: []
-            }];
-          }
-          break;
-        case 'constraints':
-          if (Array.isArray(value)) {
-            rfqUpdates.constraints = value.map((constraint, index) => ({
-              id: `const-${index}`,
-              type: typeof constraint === 'string' ? 'custom' : constraint.type || 'custom',
-              description: typeof constraint === 'string' ? constraint : constraint.description || '',
-              value: typeof constraint === 'string' ? undefined : constraint.value
-            }));
-          } else if (typeof value === 'string') {
-            rfqUpdates.constraints = [{
-              id: 'const-1',
-              type: 'custom',
-              description: value
-            }];
-          }
-          break;
-        case 'stakeholders':
-          if (Array.isArray(value)) {
-            rfqUpdates.stakeholders = value.map((stakeholder, index) => ({
-              id: `stake-${index}`,
-              role: typeof stakeholder === 'string' ? 'stakeholder' : stakeholder.role || 'stakeholder',
-              requirements: typeof stakeholder === 'string' ? stakeholder : (stakeholder.requirements || stakeholder.name || ''),
-              decision_influence: typeof stakeholder === 'string' ? 'medium' : stakeholder.decision_influence || 'medium'
-            }));
-          } else if (typeof value === 'string') {
-            rfqUpdates.stakeholders = [{
-              id: 'stake-1',
-              role: 'stakeholder',
-              requirements: value,
-              decision_influence: 'medium'
-            }];
-          }
-          break;
+
+        // Business Context
+        case 'company_product_background':
         case 'business_background':
-          if (!rfqUpdates.context) rfqUpdates.context = {};
-          rfqUpdates.context.business_background = value;
+          if (!rfqUpdates.business_context) rfqUpdates.business_context = { company_product_background: '', business_problem: '', business_objective: '' };
+          rfqUpdates.business_context.company_product_background = value;
           break;
-        case 'market_situation':
-          if (!rfqUpdates.context) rfqUpdates.context = {};
-          rfqUpdates.context.market_situation = value;
+        case 'business_problem':
+          if (!rfqUpdates.business_context) rfqUpdates.business_context = { company_product_background: '', business_problem: '', business_objective: '' };
+          rfqUpdates.business_context.business_problem = value;
           break;
-        case 'decision_timeline':
-          if (!rfqUpdates.context) rfqUpdates.context = {};
-          rfqUpdates.context.decision_timeline = value;
+        case 'business_objective':
+          if (!rfqUpdates.business_context) rfqUpdates.business_context = { company_product_background: '', business_problem: '', business_objective: '' };
+          rfqUpdates.business_context.business_objective = value;
           break;
-        case 'methodologies':
-        case 'preferred_methodologies':
-          if (!rfqUpdates.methodologies) rfqUpdates.methodologies = {};
-          if (Array.isArray(value)) {
-            rfqUpdates.methodologies.preferred = value;
-          } else if (typeof value === 'string') {
-            rfqUpdates.methodologies.preferred = [value];
-          }
-          break;
-        case 'excluded_methodologies':
-          if (!rfqUpdates.methodologies) rfqUpdates.methodologies = {};
-          if (Array.isArray(value)) {
-            rfqUpdates.methodologies.excluded = value;
-          } else if (typeof value === 'string') {
-            rfqUpdates.methodologies.excluded = [value];
-          }
-          break;
+
+        // Research Objectives
+        case 'research_audience':
         case 'target_audience':
-        case 'demographics':
-          if (!rfqUpdates.target_audience) rfqUpdates.target_audience = {};
-          if (typeof value === 'object' && value !== null) {
-            Object.assign(rfqUpdates.target_audience, value);
+        case 'target_segment':
+          if (!rfqUpdates.research_objectives) rfqUpdates.research_objectives = { research_audience: '', success_criteria: '', key_research_questions: [] };
+          rfqUpdates.research_objectives.research_audience = value;
+          break;
+        case 'success_criteria':
+        case 'desired_outcome':
+          if (!rfqUpdates.research_objectives) rfqUpdates.research_objectives = { research_audience: '', success_criteria: '', key_research_questions: [] };
+          rfqUpdates.research_objectives.success_criteria = value;
+          break;
+        case 'key_research_questions':
+        case 'research_questions':
+          if (!rfqUpdates.research_objectives) rfqUpdates.research_objectives = { research_audience: '', success_criteria: '', key_research_questions: [] };
+          if (Array.isArray(value)) {
+            rfqUpdates.research_objectives.key_research_questions = value;
+          } else if (typeof value === 'string') {
+            rfqUpdates.research_objectives.key_research_questions = [value];
           }
           break;
-        case 'sample_size':
-          if (!rfqUpdates.target_audience) rfqUpdates.target_audience = {};
-          rfqUpdates.target_audience.size_estimate = typeof value === 'number' ? value : parseInt(value) || undefined;
+
+        // Methodology
+        case 'primary_method':
+        case 'methodology':
+          if (!rfqUpdates.methodology) rfqUpdates.methodology = { primary_method: 'basic_survey' };
+          if (['van_westendorp', 'gabor_granger', 'conjoint', 'basic_survey'].includes(value)) {
+            rfqUpdates.methodology.primary_method = value;
+          }
           break;
+        case 'stimuli_details':
+        case 'concept_details':
+          if (!rfqUpdates.methodology) rfqUpdates.methodology = { primary_method: 'basic_survey' };
+          rfqUpdates.methodology.stimuli_details = value;
+          break;
+        case 'methodology_requirements':
+          if (!rfqUpdates.methodology) rfqUpdates.methodology = { primary_method: 'basic_survey' };
+          rfqUpdates.methodology.methodology_requirements = value;
+          break;
+
+        // Survey Requirements
+        case 'sample_plan':
+          if (!rfqUpdates.survey_requirements) rfqUpdates.survey_requirements = { sample_plan: '', required_sections: [], must_have_questions: [] };
+          rfqUpdates.survey_requirements.sample_plan = value;
+          break;
+        case 'required_sections':
+          if (!rfqUpdates.survey_requirements) rfqUpdates.survey_requirements = { sample_plan: '', required_sections: [], must_have_questions: [] };
+          if (Array.isArray(value)) {
+            rfqUpdates.survey_requirements.required_sections = value;
+          } else if (typeof value === 'string') {
+            rfqUpdates.survey_requirements.required_sections = [value];
+          }
+          break;
+        case 'must_have_questions':
+          if (!rfqUpdates.survey_requirements) rfqUpdates.survey_requirements = { sample_plan: '', required_sections: [], must_have_questions: [] };
+          if (Array.isArray(value)) {
+            rfqUpdates.survey_requirements.must_have_questions = value;
+          } else if (typeof value === 'string') {
+            rfqUpdates.survey_requirements.must_have_questions = [value];
+          }
+          break;
+        case 'screener_requirements':
+          if (!rfqUpdates.survey_requirements) rfqUpdates.survey_requirements = { sample_plan: '', required_sections: [], must_have_questions: [] };
+          rfqUpdates.survey_requirements.screener_requirements = value;
+          break;
+
+        // Meta
+        case 'rules_and_definitions':
+          rfqUpdates.rules_and_definitions = value;
+          break;
+
+        // Legacy field mapping for backward compatibility
         default:
-          console.log('Unhandled field mapping:', mapping.field, value);
+          console.warn(`Unknown field mapping: ${mapping.field}`);
+          break;
       }
     });
 
@@ -1603,5 +1619,65 @@ export const useAppStore = create<AppStore>((set, get) => ({
     });
 
     console.log('Applied document mappings:', rfqUpdates);
+  },
+
+  // Enhanced RFQ State Persistence
+  persistEnhancedRfqState: (enhancedRfq: EnhancedRFQRequest) => {
+    try {
+      const stateToPersist = {
+        ...enhancedRfq,
+        lastSaved: Date.now()
+      };
+      localStorage.setItem('enhanced_rfq_state', JSON.stringify(stateToPersist));
+      console.log('💾 [Store] Enhanced RFQ state persisted to localStorage');
+    } catch (error) {
+      console.error('Failed to persist Enhanced RFQ state:', error);
+    }
+  },
+
+  restoreEnhancedRfqState: () => {
+    try {
+      const persistedState = localStorage.getItem('enhanced_rfq_state');
+      if (persistedState) {
+        const state = JSON.parse(persistedState);
+        const hoursSinceUpdate = (Date.now() - (state.lastSaved || 0)) / (1000 * 60 * 60);
+
+        // Only restore if less than 24 hours old
+        if (hoursSinceUpdate < 24) {
+          console.log('🔄 [Store] Restoring Enhanced RFQ state from localStorage');
+          
+          // Remove the lastSaved field before setting state
+          const { lastSaved, ...enhancedRfqState } = state;
+          
+          set({ enhancedRfq: enhancedRfqState });
+          
+          get().addToast({
+            type: 'info',
+            title: '📝 Form Restored',
+            message: 'Your Enhanced RFQ form has been restored from your last session.',
+            duration: 5000
+          });
+          
+          return true;
+        } else {
+          // Clean up old state
+          localStorage.removeItem('enhanced_rfq_state');
+          console.log('🧹 [Store] Cleaned up old Enhanced RFQ state');
+        }
+      }
+      return false;
+    } catch (error) {
+      console.error('Failed to restore Enhanced RFQ state:', error);
+      return false;
+    }
+  },
+
+  clearEnhancedRfqState: () => {
+    try {
+      localStorage.removeItem('enhanced_rfq_state');
+      console.log('🧹 [Store] Enhanced RFQ state cleared from localStorage');
+    } catch (error) {
+      console.error('Failed to clear Enhanced RFQ state:', error);
+    }
   }
 }));

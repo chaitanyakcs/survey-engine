@@ -7,7 +7,7 @@ type ViewMode = 'editor' | 'preview';
 
 export const EnhancedRFQApp: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewMode>('editor');
-  const { enhancedRfq, submitEnhancedRFQ, workflow } = useAppStore();
+  const { enhancedRfq, submitEnhancedRFQ, workflow, clearEnhancedRfqState } = useAppStore();
 
   const handleShowPreview = () => {
     setCurrentView('preview');
@@ -20,6 +20,8 @@ export const EnhancedRFQApp: React.FC = () => {
   const handleGenerate = async () => {
     try {
       await submitEnhancedRFQ(enhancedRfq);
+      // Clear the form state after successful submission
+      clearEnhancedRfqState();
     } catch (error) {
       console.error('Failed to generate survey:', error);
     }

@@ -43,16 +43,16 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
 
   const calculateEstimates = () => {
     // Simulate AI-powered estimation logic
-    const objectiveCount = rfq.objectives?.length || 0;
-    const hasComplexMethodologies = rfq.methodologies?.preferred?.some(m =>
-      ['Choice Conjoint', 'Van Westendorp PSM', 'MaxDiff'].includes(m)
-    ) || false;
+    const objectiveCount = rfq.research_objectives?.key_research_questions?.length || 0;
+    const hasComplexMethodologies = rfq.methodology?.primary_method && 
+      ['conjoint', 'van_westendorp', 'gabor_granger'].includes(rfq.methodology.primary_method);
 
     let questionEstimate = 15; // Base
     questionEstimate += objectiveCount * 8; // 8 questions per objective
     if (hasComplexMethodologies) questionEstimate += 20;
-    if (rfq.generation_config?.complexity_level === 'advanced') questionEstimate += 15;
-    if (rfq.generation_config?.include_validation_questions) questionEstimate += 10;
+    // Note: generation_config is not part of EnhancedRFQRequest interface
+    // if (rfq.generation_config?.complexity_level === 'advanced') questionEstimate += 15;
+    // if (rfq.generation_config?.include_validation_questions) questionEstimate += 10;
 
     const complexity: 'low' | 'medium' | 'high' =
       hasComplexMethodologies || objectiveCount > 3 ? 'high' :
@@ -62,11 +62,10 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                     complexity === 'medium' ? '15-25 min' : '10-15 min';
 
     const costMultiplier = complexity === 'high' ? 1.5 : complexity === 'medium' ? 1.2 : 1.0;
-    const baseCost = rfq.target_audience?.size_estimate || 1000;
+    const baseCost = 1000; // Default base cost
     const estimatedCost = Math.round(baseCost * costMultiplier * 0.75); // $0.75 per response
 
-    const sampleSize = rfq.constraints?.find(c => c.type === 'sample_size')?.value ||
-                      (complexity === 'high' ? '800-1200' : '400-800');
+    const sampleSize = (complexity === 'high' ? '800-1200' : '400-800');
 
     setEstimatedMetrics({
       estimated_duration: duration,
@@ -207,21 +206,17 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                   <p className="text-gray-600 leading-relaxed">{rfq.description}</p>
                 </div>
 
-                {rfq.objectives && rfq.objectives.length > 0 && (
+                {rfq.research_objectives?.key_research_questions && rfq.research_objectives.key_research_questions.length > 0 && (
                   <div>
-                    <h3 className="font-semibold text-gray-800 mb-3">Research Objectives ({rfq.objectives.length})</h3>
+                    <h3 className="font-semibold text-gray-800 mb-3">Research Objectives ({rfq.research_objectives.key_research_questions.length})</h3>
                     <div className="space-y-3">
-                      {rfq.objectives.map((objective, index) => (
-                        <div key={objective.id} className="flex items-start space-x-3 p-3 bg-blue-50 rounded-xl">
-                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white ${
-                            objective.priority === 'high' ? 'bg-red-500' :
-                            objective.priority === 'medium' ? 'bg-yellow-500' : 'bg-green-500'
-                          }`}>
+                      {rfq.research_objectives.key_research_questions.map((objective, index) => (
+                        <div key={index} className="flex items-start space-x-3 p-3 bg-yellow-50 rounded-xl">
+                          <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white bg-yellow-500">
                             {index + 1}
                           </div>
                           <div className="flex-1">
-                            <p className="font-medium text-gray-900">{objective.title}</p>
-                            <p className="text-sm text-gray-600 mt-1">{objective.description}</p>
+                            <p className="font-medium text-gray-900">{objective}</p>
                           </div>
                         </div>
                       ))}
@@ -229,26 +224,21 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                   </div>
                 )}
 
-                {rfq.methodologies?.preferred && rfq.methodologies.preferred.length > 0 && (
+                {rfq.methodology?.primary_method && (
                   <div>
-                    <h3 className="font-semibold text-gray-800 mb-3">Preferred Methodologies</h3>
+                    <h3 className="font-semibold text-gray-800 mb-3">Primary Methodology</h3>
                     <div className="flex flex-wrap gap-2">
-                      {rfq.methodologies.preferred.map((method) => (
-                        <span key={method} className="px-3 py-2 bg-purple-100 text-purple-700 rounded-xl text-sm font-medium">
-                          {method}
-                        </span>
-                      ))}
+                      <span className="px-3 py-2 bg-yellow-100 text-yellow-700 rounded-xl text-sm font-medium">
+                        {rfq.methodology.primary_method}
+                      </span>
                     </div>
                   </div>
                 )}
 
-                {rfq.target_audience?.primary_segment && (
+                {rfq.research_objectives?.research_audience && (
                   <div>
                     <h3 className="font-semibold text-gray-800 mb-2">Target Audience</h3>
-                    <p className="text-gray-600">{rfq.target_audience.primary_segment}</p>
-                    {rfq.target_audience.size_estimate && (
-                      <p className="text-sm text-gray-500 mt-1">Estimated size: {rfq.target_audience.size_estimate} participants</p>
-                    )}
+                    <p className="text-gray-600">{rfq.research_objectives.research_audience}</p>
                   </div>
                 )}
               </div>
