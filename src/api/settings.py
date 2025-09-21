@@ -110,13 +110,13 @@ async def list_rfq_models():
             "openai/gpt-5",
             "openai/gpt-4o-mini",
             "meta/llama-3.1-70b-instruct",
-            "mistralai/mistral-large"
+            "mistralai/mistral-7b-instruct"
         ]
         return candidates[:3]
     except Exception as e:
         logger.error(f"❌ [Settings API] Failed to list models: {str(e)}")
         # Fallback static list
-        return ["openai/gpt-5", "openai/gpt-4o-mini", "meta/llama-3.1-70b-instruct", "mistralai/mistral-large"]
+        return ["openai/gpt-5", "openai/gpt-4o-mini", "meta/llama-3.1-70b-instruct", "mistralai/mistral-7b-instruct"]
 
 @router.get("/generation/models", response_model=List[str])
 async def list_generation_models():
@@ -126,7 +126,7 @@ async def list_generation_models():
             "openai/gpt-5",
             "openai/gpt-4o-mini",
             "meta/llama-3.1-70b-instruct",
-            "mistralai/mistral-large"
+            "mistralai/mistral-7b-instruct"
         ]
     except Exception as e:
         logger.error(f"❌ [Settings API] Failed to list generation models: {str(e)}")
@@ -140,7 +140,7 @@ async def list_evaluation_models():
             "openai/gpt-5",
             "openai/gpt-4o-mini",
             "meta/llama-3.1-70b-instruct",
-            "mistralai/mistral-large"
+            "mistralai/mistral-7b-instruct"
         ]
     except Exception as e:
         logger.error(f"❌ [Settings API] Failed to list evaluation models: {str(e)}")

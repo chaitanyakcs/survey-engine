@@ -48,18 +48,48 @@ class EvaluationLLMClient:
         self.db_session = db_session
         self.audit_available = AUDIT_AVAILABLE
         
-        # Read evaluation model from main app settings if available
-        try:
-            from src.config.settings import settings as app_settings
-            self.model = getattr(app_settings, 'evaluation_model', getattr(app_settings, 'generation_model', 'openai/gpt-4o-mini'))
-        except Exception:
-            self.model = 'openai/gpt-4o-mini'
+        # Get evaluation model from database settings or fallback to config
+        self.model = self._get_evaluation_model()
         
         if self.replicate_available and self.replicate_token:
             replicate.api_token = self.replicate_token
             print("🤖 LLM client initialized with Replicate API")
         else:
             print("⚠️  LLM client in fallback mode (no Replicate token)")
+    
+    def _get_evaluation_model(self) -> str:
+        """Get evaluation model from database settings or fallback to config"""
+        try:
+            if self.db_session:
+                from src.services.settings_service import SettingsService
+                settings_service = SettingsService(self.db_session)
+                evaluation_settings = settings_service.get_evaluation_settings()
+                
+                if evaluation_settings and 'evaluation_model' in evaluation_settings:
+                    model = evaluation_settings['evaluation_model']
+                    print(f"🔧 [EvaluationLLMClient] Using evaluation model from database settings: {model}")
+                    return model
+                elif evaluation_settings and 'generation_model' in evaluation_settings:
+                    model = evaluation_settings['generation_model']
+                    print(f"🔧 [EvaluationLLMClient] Using generation model from database settings as fallback: {model}")
+                    return model
+                else:
+                    print(f"🔧 [EvaluationLLMClient] No database settings found, using config default")
+                    return self._get_config_model()
+            else:
+                print(f"🔧 [EvaluationLLMClient] No database session, using config default")
+                return self._get_config_model()
+        except Exception as e:
+            print(f"⚠️ [EvaluationLLMClient] Failed to get model from database settings: {e}, using config default")
+            return self._get_config_model()
+    
+    def _get_config_model(self) -> str:
+        """Get model from config settings"""
+        try:
+            from src.config.settings import settings as app_settings
+            return getattr(app_settings, 'evaluation_model', getattr(app_settings, 'generation_model', 'openai/gpt-4o-mini'))
+        except Exception:
+            return 'openai/gpt-4o-mini'
     
     async def analyze(self, prompt: str, max_tokens: int = 1000) -> LLMResponse:
         """

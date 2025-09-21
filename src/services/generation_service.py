@@ -42,11 +42,15 @@ logger = logging.getLogger(__name__)
 class GenerationService:
     def __init__(self, db_session: Optional[Session] = None) -> None:
         self.db_session = db_session  # Store the database session
-        self.model = settings.generation_model
+        # Get model from database settings if available, otherwise fallback to config
+        self.model = self._get_generation_model()
         self.prompt_service = PromptService(db_session=db_session)
         self.pillar_scoring_service = PillarScoringService(db_session=db_session)
         if ADVANCED_EVALUATOR_AVAILABLE:
-            self.advanced_evaluator = PillarBasedEvaluator(llm_client=None, db_session=db_session)
+            # Create LLM client for the evaluator
+            from evaluations.llm_client import create_evaluation_llm_client
+            llm_client = create_evaluation_llm_client(db_session=db_session)
+            self.advanced_evaluator = PillarBasedEvaluator(llm_client=llm_client, db_session=db_session)
         else:
             self.advanced_evaluator = None
         
@@ -66,6 +70,180 @@ class GenerationService:
         
         replicate.api_token = settings.replicate_api_token  # type: ignore
     
+    def _get_generation_model(self) -> str:
+        """Get generation model from database settings or fallback to config"""
+        try:
+            if self.db_session:
+                from src.services.settings_service import SettingsService
+                settings_service = SettingsService(self.db_session)
+                evaluation_settings = settings_service.get_evaluation_settings()
+                
+                if evaluation_settings and 'generation_model' in evaluation_settings:
+                    model = evaluation_settings['generation_model']
+                    logger.info(f"🔧 [GenerationService] Using model from database settings: {model}")
+                    return model
+                else:
+                    logger.info(f"🔧 [GenerationService] No database settings found, using config default: {settings.generation_model}")
+                    return settings.generation_model
+            else:
+                logger.info(f"🔧 [GenerationService] No database session, using config default: {settings.generation_model}")
+                return settings.generation_model
+        except Exception as e:
+            logger.warning(f"⚠️ [GenerationService] Failed to get model from database settings: {e}, using config default")
+            return settings.generation_model
+    
+    async def generate_survey_with_custom_prompt(
+        self,
+        context: Dict[str, Any],
+        golden_examples: List[Dict[str, Any]],
+        methodology_blocks: List[Dict[str, Any]],
+        custom_rules: Dict[str, Any] = None,
+        system_prompt: str = None
+    ) -> Dict[str, Any]:
+        """
+        Generate survey using a custom system prompt (e.g., from human review edits)
+        """
+        try:
+            logger.info("🚀 [GenerationService] Starting survey generation with custom prompt...")
+            logger.info(f"📊 [GenerationService] Input context keys: {list(context.keys()) if context else 'None'}")
+            logger.info(f"📊 [GenerationService] Golden examples: {len(golden_examples) if golden_examples else 0}")
+            logger.info(f"📊 [GenerationService] Methodology blocks: {len(methodology_blocks) if methodology_blocks else 0}")
+            logger.info(f"📊 [GenerationService] Custom rules: {len(custom_rules.get('rules', [])) if custom_rules else 0}")
+            logger.info(f"📝 [GenerationService] Custom system prompt length: {len(system_prompt) if system_prompt else 0}")
+            
+            # Check if API token is configured
+            logger.info(f"🔑 [GenerationService] Checking API token configuration...")
+            logger.info(f"🔑 [GenerationService] Replicate API token present: {bool(settings.replicate_api_token)}")
+            logger.info(f"🔑 [GenerationService] Replicate API token length: {len(settings.replicate_api_token) if settings.replicate_api_token else 0}")
+            if settings.replicate_api_token:
+                logger.info(f"🔑 [GenerationService] Replicate API token preview: {settings.replicate_api_token[:8]}...")
+            
+            # Check if we have a valid API token for the configured model
+            if not settings.replicate_api_token:
+                logger.error("❌ [GenerationService] No Replicate API token configured!")
+                logger.error(f"❌ [GenerationService] Model '{self.model}' requires Replicate API token")
+                error_info = get_api_configuration_error()
+                raise UserFriendlyError(
+                    message=error_info["message"],
+                    technical_details="REPLICATE_API_TOKEN environment variable is not set",
+                    action_required="Configure AI service provider (Replicate or OpenAI)"
+                )
+            
+            logger.info("✅ [GenerationService] API token validation passed")
+            
+            # Use the custom system prompt instead of generating a new one
+            if system_prompt:
+                logger.info("📝 [GenerationService] Using custom system prompt from human review")
+                prompt = system_prompt
+            else:
+                logger.info("🔨 [GenerationService] Building default prompt...")
+                prompt = self.prompt_service.build_golden_enhanced_prompt(
+                    context=context,
+                    golden_examples=golden_examples,
+                    methodology_blocks=methodology_blocks,
+                    custom_rules=custom_rules
+                )
+            
+            logger.info(f"🤖 [GenerationService] Generating survey with model: {self.model}")
+            logger.info(f"📝 [GenerationService] Prompt length: {len(prompt)} characters")
+            
+            # Create audit context for this LLM interaction
+            interaction_id = f"survey_generation_{uuid.uuid4().hex[:8]}"
+            audit_service = LLMAuditService(self.db_session)
+            
+            async with LLMAuditContext(
+                audit_service=audit_service,
+                interaction_id=interaction_id,
+                model_name=self.model,
+                model_provider="replicate",
+                purpose="survey_generation",
+                input_prompt=prompt,
+                context_type="generation",
+                parent_workflow_id=context.get('workflow_id'),
+                parent_survey_id=context.get('survey_id'),
+                parent_rfq_id=context.get('rfq_id'),
+                hyperparameters={
+                    "temperature": 0.7,
+                    "max_tokens": 4000,
+                    "top_p": 0.9,
+                    "frequency_penalty": 0.0,
+                    "presence_penalty": 0.0
+                },
+                metadata={
+                    'golden_examples_count': len(golden_examples) if golden_examples else 0,
+                    'methodology_blocks_count': len(methodology_blocks) if methodology_blocks else 0,
+                    'custom_rules_count': len(custom_rules.get('rules', [])) if custom_rules else 0,
+                    'context_keys': list(context.keys()) if context else [],
+                    'custom_prompt_used': bool(system_prompt)
+                },
+                tags=["survey", "generation", "replicate", "custom_prompt"]
+            ) as audit_context:
+                try:
+                    start_time = time.time()
+                    output = await replicate.async_run(
+                        self.model,
+                        input={
+                            "prompt": prompt,
+                            "temperature": 0.7,
+                            "max_tokens": 4000,
+                            "top_p": 0.9
+                        }
+                    )
+                    response_time_ms = int((time.time() - start_time) * 1000)
+                    
+                    # Set output and metrics in audit context
+                    if isinstance(output, list):
+                        output_text = "\n".join(str(item) for item in output)
+                    else:
+                        output_text = str(output)
+                    
+                    audit_context.set_output(
+                        output_content=output_text,
+                        input_tokens=len(prompt.split()) if prompt else 0,
+                        output_tokens=len(output_text.split()) if output_text else 0
+                    )
+                    
+                    logger.info(f"✅ [GenerationService] Survey generation completed in {response_time_ms}ms")
+                    logger.info(f"📊 [GenerationService] Output length: {len(output_text)} characters")
+                    
+                    # Parse the generated survey
+                    survey_data = self._parse_survey_output(output_text)
+                    
+                    # Calculate pillar scores
+                    pillar_scores = await self._calculate_pillar_scores(survey_data, context)
+                    
+                    return {
+                        "survey": survey_data,
+                        "pillar_scores": pillar_scores,
+                        "generation_metadata": {
+                            "model": self.model,
+                            "response_time_ms": response_time_ms,
+                            "custom_prompt_used": bool(system_prompt),
+                            "prompt_length": len(prompt)
+                        }
+                    }
+                    
+                except Exception as api_error:
+                    logger.error(f"❌ [GenerationService] API call failed: {str(api_error)}")
+                    audit_context.set_output(
+                        output_content=""
+                    )
+                    raise UserFriendlyError(
+                        message="Survey generation failed due to AI service error",
+                        technical_details=str(api_error),
+                        action_required="Please try again or contact support if the issue persists"
+                    )
+        
+        except UserFriendlyError:
+            raise
+        except Exception as e:
+            logger.error(f"❌ [GenerationService] Unexpected error in survey generation: {str(e)}")
+            raise UserFriendlyError(
+                message="Survey generation failed due to an unexpected error",
+                technical_details=str(e),
+                action_required="Please try again or contact support if the issue persists"
+            )
+
     async def generate_survey(
         self,
         context: Dict[str, Any],
