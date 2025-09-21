@@ -252,6 +252,8 @@ class WorkflowService:
         else:
             logger.info(f"📋 [WorkflowService] Using provided workflow_id: {workflow_id}")
             
+        import time
+        
         initial_state = SurveyGenerationState(
             rfq_id=rfq.id,  # type: ignore
             rfq_text=description,
@@ -260,7 +262,8 @@ class WorkflowService:
             target_segment=target_segment,
             research_goal=research_goal,
             workflow_id=workflow_id,
-            survey_id=str(survey.id)
+            survey_id=str(survey.id),
+            workflow_start_time=time.time()  # Set start time for loop prevention
         )
         logger.info(f"📋 [WorkflowService] Workflow state initialized: workflow_id={initial_state.workflow_id}, survey_id={initial_state.survey_id}")
         

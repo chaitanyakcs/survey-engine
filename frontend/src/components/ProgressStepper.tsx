@@ -387,7 +387,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
       {/* Main Content - Split Screen */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Panel - Progress Steps */}
-        <div className="w-1/2 border-r border-gray-200/50 bg-white/40 backdrop-blur-sm">
+        <div className="w-1/4 border-r border-gray-200/50 bg-white/40 backdrop-blur-sm">
           <div className="h-full overflow-y-auto">
             <div className="p-8">
               <h2 className="text-lg font-semibold text-gray-900 mb-6">Progress Timeline</h2>
@@ -480,7 +480,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
         </div>
 
         {/* Right Panel - Current Step Details */}
-        <div className="w-1/2 bg-white/60 backdrop-blur-sm">
+        <div className="w-3/4 bg-white/60 backdrop-blur-sm">
           <div className="h-full overflow-y-auto">
             <div className="p-8">
               {isHumanReviewActive ? (

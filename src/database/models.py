@@ -221,7 +221,7 @@ class SurveyAnnotation(Base):
 class HumanReview(Base):
     """Model for storing human review state for prompt reviews"""
     __tablename__ = "human_reviews"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     workflow_id = Column(String(255), nullable=False, unique=True)
     survey_id = Column(String(255), nullable=True)
@@ -233,6 +233,15 @@ class HumanReview(Base):
     reviewer_notes = Column(Text, nullable=True)
     approval_reason = Column(Text, nullable=True)
     rejection_reason = Column(Text, nullable=True)
+
+    # Prompt editing fields
+    edited_prompt_data = Column(Text, nullable=True)  # Store manually edited prompt
+    original_prompt_data = Column(Text, nullable=True)  # Preserve original for comparison
+    prompt_edited = Column(Boolean, default=False, nullable=False)  # Flag to track if prompt was edited
+    prompt_edit_timestamp = Column(DateTime(timezone=True), nullable=True)  # When edit occurred
+    edited_by = Column(String(255), nullable=True)  # Who made the edit
+    edit_reason = Column(Text, nullable=True)  # Optional reason for the edit
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
@@ -242,6 +251,9 @@ class HumanReview(Base):
         Index('idx_human_reviews_status', 'review_status'),
         Index('idx_human_reviews_reviewer_id', 'reviewer_id'),
         Index('idx_human_reviews_created_at', 'created_at'),
+        Index('idx_human_reviews_prompt_edited', 'prompt_edited'),
+        Index('idx_human_reviews_edited_by', 'edited_by'),
+        Index('idx_human_reviews_edit_timestamp', 'prompt_edit_timestamp'),
         CheckConstraint(
             "review_status IN ('pending', 'in_progress', 'approved', 'rejected', 'expired')",
             name='check_review_status'

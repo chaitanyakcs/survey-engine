@@ -361,15 +361,31 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
         """
         Determine if we should retry generation or proceed to completion
         """
+        import time
+        
+        logger.info(f"🔄 [Workflow] should_retry called - retry_count: {state.retry_count}, max_retries: {state.max_retries}, quality_gate_passed: {state.quality_gate_passed}")
+        
+        # CRITICAL SAFEGUARD: Prevent infinite loops
+        # If we've been retrying for more than 5 minutes, force completion
+        if hasattr(state, 'workflow_start_time'):
+            elapsed_time = time.time() - state.workflow_start_time
+            if elapsed_time > 300:  # 5 minutes
+                logger.error(f"❌ [Workflow] SAFEGUARD TRIGGERED: Workflow running for {elapsed_time:.1f}s, forcing completion to prevent infinite loop")
+                return "completion_handler"
+        
         if state.error_message:
+            logger.info(f"🔄 [Workflow] Error detected, routing to completion_handler")
             return "completion_handler"  # Send to completion on error
             
         if not state.quality_gate_passed:
             if state.retry_count < state.max_retries:
+                logger.info(f"🔄 [Workflow] Quality gate failed, retrying generation (attempt {state.retry_count + 1}/{state.max_retries})")
                 return "generate"  # Retry generation
             else:
+                logger.warning(f"⚠️ [Workflow] Max retries ({state.max_retries}) reached, completing workflow")
                 return "completion_handler"  # Max retries reached, complete workflow
         
+        logger.info(f"✅ [Workflow] Quality gate passed, routing to completion_handler")
         return "completion_handler"  # Quality gate passed, ready for completion
     
     workflow.add_conditional_edges(

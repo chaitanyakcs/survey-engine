@@ -10,7 +10,7 @@ import asyncio
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc
 
-from ..models.human_review import HumanReviewCreate, HumanReviewUpdate, HumanReviewResponse, ReviewDecision, PendingReviewsSummary, ReviewStatus
+from ..models.human_review import HumanReviewCreate, HumanReviewUpdate, HumanReviewResponse, ReviewDecision, PendingReviewsSummary, ReviewStatus, EditPromptRequest
 from ..database import get_db, HumanReview
 
 logger = logging.getLogger(__name__)
@@ -152,6 +152,78 @@ def get_review_by_workflow(
         )
 
 
+@router.put("/{review_id}/edit-prompt")
+async def edit_review_prompt(
+    review_id: int,
+    edit_request: EditPromptRequest,
+    db: Session = Depends(get_db)
+):
+    """Edit the system prompt for a review"""
+    try:
+        logger.info(f"🔧 [HumanReviews API] Editing prompt for review ID: {review_id}")
+
+        # Get the review
+        review = db.query(HumanReview).filter(HumanReview.id == review_id).first()
+
+        if not review:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Review not found: {review_id}"
+            )
+
+        # Check if review is in an editable state
+        if review.review_status not in ["pending", "in_progress"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Review cannot be edited in status: {review.review_status}"
+            )
+
+        # Validate the edited prompt
+        if len(edit_request.edited_prompt.strip()) < 10:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Edited prompt must be at least 10 characters long"
+            )
+
+        if len(edit_request.edited_prompt) > 50000:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Edited prompt cannot exceed 50,000 characters"
+            )
+
+        # Preserve original prompt if not already saved
+        if not review.original_prompt_data:
+            review.original_prompt_data = review.prompt_data
+
+        # Update the review with edited prompt
+        review.edited_prompt_data = edit_request.edited_prompt.strip()
+        review.prompt_edited = True
+        review.prompt_edit_timestamp = datetime.utcnow()
+        review.edit_reason = edit_request.edit_reason
+        review.updated_at = datetime.utcnow()
+
+        # TODO: Get actual user ID from authentication context
+        # For now, using a placeholder
+        review.edited_by = "reviewer"  # This should come from auth context
+
+        db.commit()
+        db.refresh(review)
+
+        logger.info(f"✅ [HumanReviews API] Successfully edited prompt for review {review_id}")
+
+        return convert_to_response(review)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ [HumanReviews API] Failed to edit prompt for review {review_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to edit prompt"
+        )
+
+
 @router.post("/{review_id}/decision")
 async def submit_review_decision(
     review_id: int,
@@ -175,14 +247,24 @@ async def submit_review_decision(
             )
         
         # Update review based on decision
-        if decision.decision == "approve":
+        if decision.decision == "approve" or decision.decision == "approve_with_edits":
+            # Validate that if "approve_with_edits" is used, edits must exist
+            if decision.decision == "approve_with_edits" and not review.prompt_edited:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot approve with edits - no edits have been made to the prompt"
+                )
+
             review.review_status = "approved"
-            review.approval_reason = decision.reason or "Approved by reviewer"
+            if decision.decision == "approve_with_edits":
+                review.approval_reason = decision.reason or "Approved with manual prompt edits"
+            else:
+                review.approval_reason = decision.reason or "Approved by reviewer"
 
             # Resume workflow if it was paused for this review
             await resume_paused_workflow(review.workflow_id, db)
 
-        else:
+        else:  # reject
             review.review_status = "rejected"
             review.rejection_reason = decision.reason or "Rejected by reviewer"
 
@@ -356,11 +438,15 @@ async def resume_paused_workflow(workflow_id: str, db: Session):
                     "message": "Human review approved - resuming survey generation..."
                 })
 
+                # Get the effective prompt from the review (edited or original)
+                effective_prompt = get_effective_prompt(review)
+                logger.info(f"📝 [HumanReview] Using effective prompt for workflow resumption (edited: {review.prompt_edited})")
+
                 # Try to load saved workflow state first
                 from src.services.workflow_state_service import WorkflowStateService
                 state_service = WorkflowStateService(db)
                 saved_state = state_service.load_workflow_state(workflow_id)
-                
+
                 if saved_state:
                     logger.info(f"📂 [HumanReview] Loaded saved workflow state for {workflow_id}")
                     # Update the saved state to skip human review and continue from generation
@@ -368,6 +454,8 @@ async def resume_paused_workflow(workflow_id: str, db: Session):
                     saved_state.workflow_paused = False
                     # Mark that human review is already completed
                     saved_state.review_id = None
+                    # Set the effective prompt (edited prompt if available, otherwise original)
+                    saved_state.system_prompt = effective_prompt
                     initial_state = saved_state
                 else:
                     logger.info(f"📝 [HumanReview] No saved state found, creating new state for {workflow_id}")
@@ -384,7 +472,9 @@ async def resume_paused_workflow(workflow_id: str, db: Session):
                         # Mark that human review is already approved - this will skip human review
                         pending_human_review=False,
                         workflow_paused=False,
-                        review_id=None
+                        review_id=None,
+                        # Set the effective prompt (edited prompt if available, otherwise original)
+                        system_prompt=effective_prompt
                     )
 
                 # Instead of restarting the entire workflow, directly execute the remaining steps
@@ -533,6 +623,24 @@ async def cancel_paused_workflow(workflow_id: str, db: Session, reason: Optional
         logger.error(f"❌ [HumanReview] Failed to cancel workflow {workflow_id}: {str(e)}")
 
 
+def get_effective_prompt(review: HumanReview) -> str:
+    """Get the effective prompt to use - edited prompt if available, otherwise original"""
+    try:
+        if review.prompt_edited and review.edited_prompt_data:
+            logger.info(f"📝 [HumanReview] Using edited prompt for review {review.id}")
+            return review.edited_prompt_data.strip()
+        elif review.original_prompt_data:
+            logger.info(f"📝 [HumanReview] Using original prompt for review {review.id}")
+            return review.original_prompt_data.strip()
+        else:
+            logger.info(f"📝 [HumanReview] Using current prompt_data for review {review.id}")
+            return review.prompt_data.strip()
+    except Exception as e:
+        logger.error(f"❌ [HumanReview] Error getting effective prompt for review {review.id}: {str(e)}")
+        # Fallback to prompt_data as last resort
+        return review.prompt_data.strip()
+
+
 def convert_to_response(review: HumanReview) -> HumanReviewResponse:
     """Convert SQLAlchemy model to Pydantic response model"""
     # Calculate expiration status
@@ -563,5 +671,12 @@ def convert_to_response(review: HumanReview) -> HumanReviewResponse:
         created_at=review.created_at,
         updated_at=review.updated_at,
         is_expired=is_expired,
-        time_remaining_hours=time_remaining_hours
+        time_remaining_hours=time_remaining_hours,
+        # Prompt editing fields
+        edited_prompt_data=review.edited_prompt_data,
+        original_prompt_data=review.original_prompt_data,
+        prompt_edited=review.prompt_edited or False,
+        prompt_edit_timestamp=review.prompt_edit_timestamp,
+        edited_by=review.edited_by,
+        edit_reason=review.edit_reason
     )

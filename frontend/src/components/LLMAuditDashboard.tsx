@@ -210,7 +210,7 @@ const LLMAuditDashboard: React.FC<LLMAuditDashboardProps> = ({ onClose }) => {
           </div>
 
           {/* Main Content - Audit Records */}
-          <div className="flex-1 p-6 overflow-y-auto">
+          <div className="flex-1 p-6 overflow-y-auto min-w-0">
             {/* Filters */}
             <div className="mb-6 flex gap-4">
               <select
@@ -249,25 +249,26 @@ const LLMAuditDashboard: React.FC<LLMAuditDashboardProps> = ({ onClose }) => {
 
             {/* Audit Records Table */}
             <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-              <table className="min-w-full divide-y divide-gray-200">
+              <div className="overflow-x-auto max-w-full relative">
+                <table className="min-w-full divide-y divide-gray-200" style={{ minWidth: '800px' }}>
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48">
                       Interaction
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
                       Model
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
                       Purpose
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
                       Status
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">
                       Duration
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">
                       Actions
                     </th>
                   </tr>
@@ -275,27 +276,27 @@ const LLMAuditDashboard: React.FC<LLMAuditDashboardProps> = ({ onClose }) => {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {auditRecords.map((record) => (
                     <tr key={record.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
+                      <td className="px-4 py-4 w-48">
+                        <div className="text-sm font-medium text-gray-900 truncate">
                           {record.interaction_id}
                         </div>
-                        <div className="text-sm text-gray-500">
+                        <div className="text-sm text-gray-500 truncate">
                           {new Date(record.created_at).toLocaleString()}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{record.model_name}</div>
-                        <div className="text-sm text-gray-500">{record.model_provider}</div>
+                      <td className="px-4 py-4 w-40">
+                        <div className="text-sm text-gray-900 truncate">{record.model_name}</div>
+                        <div className="text-sm text-gray-500 truncate">{record.model_provider}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-4 py-4 w-32">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getPurposeColor(record.purpose)}`}>
                           {record.purpose}
                         </span>
                         {record.sub_purpose && (
-                          <div className="text-xs text-gray-500 mt-1">{record.sub_purpose}</div>
+                          <div className="text-xs text-gray-500 mt-1 truncate">{record.sub_purpose}</div>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-4 py-4 w-24">
                         {record.success ? (
                           <div className="flex items-center text-green-600">
                             <CheckCircleIcon className="h-4 w-4 mr-1" />
@@ -308,13 +309,13 @@ const LLMAuditDashboard: React.FC<LLMAuditDashboardProps> = ({ onClose }) => {
                           </div>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-4 py-4 w-20 text-sm text-gray-900">
                         {record.response_time_ms ? formatDuration(record.response_time_ms) : 'N/A'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      <td className="px-4 py-4 w-20 text-sm font-medium">
                         <button
                           onClick={() => setSelectedRecord(record)}
-                          className="text-yellow-600 hover:text-yellow-900 flex items-center"
+                          className="text-yellow-600 hover:text-yellow-900 flex items-center whitespace-nowrap"
                         >
                           <EyeIcon className="h-4 w-4 mr-1" />
                           View
@@ -323,7 +324,12 @@ const LLMAuditDashboard: React.FC<LLMAuditDashboardProps> = ({ onClose }) => {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+                </table>
+                {/* Scroll indicator */}
+                <div className="absolute bottom-2 right-2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-75">
+                  ← Scroll to see all columns →
+                </div>
+              </div>
             </div>
 
             {/* Pagination */}

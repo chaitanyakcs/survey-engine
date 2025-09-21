@@ -7,6 +7,9 @@ from src.services.generation_service import GenerationService
 from src.services.validation_service import ValidationService
 from src.utils.error_messages import UserFriendlyError
 from src.utils.survey_utils import get_questions_count
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class RFQNode:
@@ -105,6 +108,10 @@ class ContextBuilderNode:
         Assemble hierarchical context with golden examples as few-shot prompts
         """
         try:
+            logger.info(f"🔍 [ContextBuilderNode] Building context with survey_id: {state.survey_id}")
+            logger.info(f"🔍 [ContextBuilderNode] Survey ID type: {type(state.survey_id)}")
+            logger.info(f"🔍 [ContextBuilderNode] RFQ ID: {state.rfq_id}")
+            
             context = {
                 "survey_id": str(state.survey_id) if state.survey_id else None,
                 "rfq_id": str(state.rfq_id) if state.rfq_id else None,
@@ -119,6 +126,9 @@ class ContextBuilderNode:
                 "methodology_guidance": state.methodology_blocks,
                 "template_fallbacks": state.template_questions
             }
+            
+            logger.info(f"🔍 [ContextBuilderNode] Final context survey_id: {context.get('survey_id')}")
+            logger.info(f"🔍 [ContextBuilderNode] Context keys: {list(context.keys())}")
             
             return {
                 "context": context,
@@ -180,13 +190,25 @@ class GeneratorAgent:
             if settings.replicate_api_token:
                 self.logger.info(f"🔧 [GeneratorAgent] Replicate API token preview: {settings.replicate_api_token[:8]}...")
             
-            self.logger.info("🚀 [GeneratorAgent] Calling generation service...")
-            generation_result = await self.generation_service.generate_survey(
-                context=state.context,
-                golden_examples=state.golden_examples,
-                methodology_blocks=state.methodology_blocks,
-                custom_rules=custom_rules
-            )
+            # Check if we have a custom system prompt from human review
+            if state.system_prompt:
+                self.logger.info(f"📝 [GeneratorAgent] Using custom system prompt from human review (length: {len(state.system_prompt)} chars)")
+                # Use the edited system prompt instead of generating a new one
+                generation_result = await self.generation_service.generate_survey_with_custom_prompt(
+                    context=state.context,
+                    golden_examples=state.golden_examples,
+                    methodology_blocks=state.methodology_blocks,
+                    custom_rules=custom_rules,
+                    system_prompt=state.system_prompt
+                )
+            else:
+                self.logger.info("🚀 [GeneratorAgent] Using default prompt generation...")
+                generation_result = await self.generation_service.generate_survey(
+                    context=state.context,
+                    golden_examples=state.golden_examples,
+                    methodology_blocks=state.methodology_blocks,
+                    custom_rules=custom_rules
+                )
             
             # Extract survey and pillar scores from generation result
             generated_survey = generation_result.get("survey", {})

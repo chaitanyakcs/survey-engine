@@ -85,15 +85,24 @@ class SettingsService:
             "embedding_model": app_settings.embedding_model
         }
         
+        logger.info(f"🔍 [SettingsService] Getting evaluation settings...")
+        logger.info(f"🔍 [SettingsService] Default generation_model: {default_settings['generation_model']}")
+        
         try:
             settings = self.get_setting("evaluation_settings", default_settings)
+            logger.info(f"🔍 [SettingsService] Retrieved settings from database: {settings}")
+            
             # Ensure all required keys are present
             for key, default_value in default_settings.items():
                 if key not in settings:
                     settings[key] = default_value
+                    logger.info(f"🔍 [SettingsService] Added missing key {key}: {default_value}")
+            
+            logger.info(f"🔍 [SettingsService] Final generation_model: {settings.get('generation_model')}")
             return settings
         except Exception as e:
             logger.error(f"❌ [SettingsService] Failed to get evaluation settings: {e}")
+            logger.info(f"🔍 [SettingsService] Returning default settings due to error")
             return default_settings
 
     def update_evaluation_settings(self, settings: Dict[str, Any]) -> bool:
@@ -154,7 +163,11 @@ class SettingsService:
                 "prompt_review_mode": "disabled",
                 "require_approval_for_generation": False,
                 "auto_approve_trusted_prompts": False,
-                "prompt_review_timeout_hours": 24
+                "prompt_review_timeout_hours": 24,
+                # Model configuration (overridable via UI)
+                "generation_model": app_settings.generation_model,
+                "evaluation_model": app_settings.generation_model,
+                "embedding_model": app_settings.embedding_model
             }
             
             success = self.set_setting(

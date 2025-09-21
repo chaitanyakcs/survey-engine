@@ -227,8 +227,8 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg w-full max-w-6xl max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
+      <div className="bg-white rounded-lg w-full max-w-6xl max-h-[90vh] overflow-hidden mx-4">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div>
@@ -247,10 +247,10 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
 
         {/* Filter buttons */}
         <div className="px-6 py-3 border-b border-gray-200 bg-gray-50">
-          <div className="flex space-x-2">
+          <div className="flex space-x-2 overflow-x-auto pb-1">
             <button
               onClick={() => setFilter('all')}
-              className={`px-3 py-1 text-sm rounded-lg font-medium ${
+              className={`px-3 py-1 text-sm rounded-lg font-medium whitespace-nowrap flex-shrink-0 ${
                 filter === 'all'
                   ? 'bg-indigo-600 text-white'
                   : 'bg-white text-gray-700 hover:bg-gray-100'
@@ -260,7 +260,7 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
             </button>
             <button
               onClick={() => setFilter('prompts')}
-              className={`px-3 py-1 text-sm rounded-lg font-medium ${
+              className={`px-3 py-1 text-sm rounded-lg font-medium whitespace-nowrap flex-shrink-0 ${
                 filter === 'prompts'
                   ? 'bg-indigo-600 text-white'
                   : 'bg-white text-gray-700 hover:bg-gray-100'
@@ -270,7 +270,7 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
             </button>
             <button
               onClick={() => setFilter('llm')}
-              className={`px-3 py-1 text-sm rounded-lg font-medium ${
+              className={`px-3 py-1 text-sm rounded-lg font-medium whitespace-nowrap flex-shrink-0 ${
                 filter === 'llm'
                   ? 'bg-indigo-600 text-white'
                   : 'bg-white text-gray-700 hover:bg-gray-100'
@@ -473,18 +473,22 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
                     <h4 className="text-sm font-medium text-gray-900 mb-2">
                       {isSystemPromptAudit(selectedItem) ? 'System Prompt' : 'Input Prompt'}
                     </h4>
-                    <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono bg-gray-50 p-4 rounded-lg border border-gray-200 overflow-x-auto">
-                      {getItemContent(selectedItem)}
-                    </pre>
+                    <div className="overflow-x-auto">
+                      <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono bg-gray-50 p-4 rounded-lg border border-gray-200 min-w-0">
+                        {getItemContent(selectedItem)}
+                      </pre>
+                    </div>
                   </div>
 
                   {/* Output content for LLM interactions */}
                   {isLLMInteraction(selectedItem) && selectedItem.output_content && (
                     <div className="mb-4">
                       <h4 className="text-sm font-medium text-gray-900 mb-2">Output Content</h4>
-                      <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono bg-gray-50 p-4 rounded-lg border border-gray-200 overflow-x-auto">
-                        {selectedItem.output_content}
-                      </pre>
+                      <div className="overflow-x-auto">
+                        <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono bg-gray-50 p-4 rounded-lg border border-gray-200 min-w-0">
+                          {selectedItem.output_content}
+                        </pre>
+                      </div>
                     </div>
                   )}
 
@@ -492,9 +496,11 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
                   {isLLMInteraction(selectedItem) && selectedItem.interaction_metadata && Object.keys(selectedItem.interaction_metadata).length > 0 && (
                     <div className="mb-4">
                       <h4 className="text-sm font-medium text-gray-900 mb-2">Metadata</h4>
-                      <pre className="text-sm text-gray-700 bg-gray-50 p-4 rounded-lg border border-gray-200 overflow-x-auto">
-                        {JSON.stringify(selectedItem.interaction_metadata, null, 2)}
-                      </pre>
+                      <div className="overflow-x-auto">
+                        <pre className="text-sm text-gray-700 bg-gray-50 p-4 rounded-lg border border-gray-200 min-w-0">
+                          {JSON.stringify(selectedItem.interaction_metadata, null, 2)}
+                        </pre>
+                      </div>
                     </div>
                   )}
                 </div>

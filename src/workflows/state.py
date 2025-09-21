@@ -31,7 +31,10 @@ class SurveyGenerationState(BaseModel):
     used_golden_examples: List[UUID] = []
     
     retry_count: int = 0
-    max_retries: int = 2
+    max_retries: int = 1  # Reduced to prevent long loops
+    
+    # Workflow timing for loop prevention
+    workflow_start_time: Optional[float] = None
     
     # Human review state
     pending_human_review: bool = False

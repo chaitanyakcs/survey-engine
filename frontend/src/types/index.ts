@@ -332,10 +332,23 @@ export interface PendingReview {
   updated_at: string;
   is_expired?: boolean;
   time_remaining_hours?: number;
+
+  // Prompt editing fields
+  edited_prompt_data?: string;
+  original_prompt_data?: string;
+  prompt_edited: boolean;
+  prompt_edit_timestamp?: string;
+  edited_by?: string;
+  edit_reason?: string;
+}
+
+export interface EditPromptRequest {
+  edited_prompt: string;
+  edit_reason?: string;
 }
 
 export interface ReviewDecision {
-  decision: 'approve' | 'reject';
+  decision: 'approve' | 'reject' | 'approve_with_edits';
   notes?: string;
   reason?: string;
 }

@@ -18,6 +18,81 @@ This roadmap outlines planned enhancements and improvements across all aspects o
 
 ---
 
+## 🚨 Survey Generation Resilience
+
+*Current State: Evaluation failures cause inappropriate fallbacks to minimal 10-question surveys*
+
+### 1. Graceful Degradation Implementation 🔴
+**Complexity**: Complex ⏱️ (6-8 weeks)
+- **Description**: Ensure survey generation succeeds even when optional components fail
+- **Features**:
+  - Separate core generation from optional scoring/evaluation
+  - Smart fallback chain: Advanced evaluation → API evaluation → Legacy evaluation → Default scores
+  - Reserve minimal survey fallback only for complete LLM generation failures
+  - Proper error boundaries around optional operations
+- **Impact**: High - Prevents 33-question surveys from becoming 10-question fallbacks
+- **Current Issue**: Pillar evaluation failures trigger `_create_minimal_survey()` inappropriately
+- **Dependencies**: Generation service refactoring, error handling improvements
+- **Status**: 🚨 Critical - In Progress
+
+### 2. Evaluation Error Isolation 🔴
+**Complexity**: Moderate ⏱️ (3-4 weeks)
+- **Description**: Isolate evaluation failures from core survey generation
+- **Features**:
+  - `try_evaluate_safely()` method with complete error handling
+  - Default score structures for evaluation failures
+  - Comprehensive fallback score generation
+  - Evaluation degradation tracking and monitoring
+- **Impact**: High - Ensures users always get complete surveys
+- **Dependencies**: Graceful degradation implementation
+- **Status**: 🚨 Critical - Pending
+
+---
+
+## 🖥️ Frontend Error Handling & State Management
+
+*Current State: Generic error messages, users land on broken survey pages with 0 questions*
+
+### 1. Error Classification & Debug System 🔴
+**Complexity**: Complex ⏱️ (7-9 weeks)
+- **Description**: Comprehensive error handling with engineering debug support
+- **Features**:
+  - Detailed error codes (`GEN_001`, `SYS_002`, etc.) with specific classification
+  - Debug handle generation (`DBG-2024-001-ABC123`) for engineering support
+  - Structured error responses with stack traces and context
+  - Error recovery action suggestions
+- **Impact**: High - Eliminates user confusion, enables engineering debugging
+- **Current Issue**: All errors show generic "Generation failed" message
+- **Dependencies**: Backend error response enhancement
+- **Status**: 🚨 Critical - Pending
+
+### 2. State Management & Navigation Fixes 🔴
+**Complexity**: Moderate ⏱️ (4-5 weeks)
+- **Description**: Prevent broken state and navigation issues
+- **Features**:
+  - Proper workflow state cleanup on failures
+  - Smart navigation logic (no broken survey views)
+  - Degraded state handling for partial successes
+  - State persistence for error recovery
+- **Impact**: High - Prevents users from seeing empty survey pages
+- **Current Issue**: Failed workflows navigate to survey view with 0 questions
+- **Dependencies**: Error classification system
+- **Status**: 🚨 Critical - Pending
+
+### 3. Granular Progress & Recovery UI 🔴
+**Complexity**: Moderate ⏱️ (3-4 weeks)
+- **Description**: Real-time progress tracking and smart error recovery
+- **Features**:
+  - Step-by-step progress with optional step indicators
+  - Graceful degradation UI warnings
+  - Smart retry mechanisms with different strategies
+  - Rich error UI components with recovery actions
+- **Impact**: High - Improves user experience and error recovery
+- **Dependencies**: State management fixes, error classification
+- **Status**: 🚨 Critical - Pending
+
+---
+
 ## 🚀 RFQ Autofilling Enhancements
 
 *Current State: LLM-powered autofill with dynamic confidence thresholds and auto-acceptance*
@@ -269,18 +344,20 @@ This roadmap outlines planned enhancements and improvements across all aspects o
 
 ## Implementation Strategy
 
-### Phase 1 (Q1 2025) - Foundation
-**Focus**: Critical system reliability and monitoring
+### Phase 1 (Q1 2025) - Critical Resilience
+**Focus**: Survey generation resilience and error handling
+- 🚨 Graceful Degradation Implementation
+- 🚨 Error Classification & Debug System
+- 🚨 State Management & Navigation Fixes
+- 🚨 Evaluation Error Isolation
+
+### Phase 2 (Q2 2025) - Foundation & Intelligence
+**Focus**: System reliability and advanced autofill
+- Granular Progress & Recovery UI
 - Performance Monitoring Dashboard
 - Comprehensive Test Suite
-- Automated Quality Regression Detection
-- Enhanced Analytics Service
-
-### Phase 2 (Q2 2025) - Intelligence
-**Focus**: Advanced autofill and quality improvements
 - Multi-Document Intelligence
 - Contextual Learning from User Feedback
-- Intelligent Quality Gates
 
 ### Phase 3 (Q3 2025) - Optimization
 **Focus**: Advanced features and business intelligence

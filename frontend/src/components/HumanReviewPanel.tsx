@@ -1,17 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  CheckCircleIcon, 
-  XCircleIcon, 
-  ClockIcon, 
+import {
+  CheckCircleIcon,
+  XCircleIcon,
+  ClockIcon,
   EyeIcon,
   DocumentTextIcon,
   ExclamationTriangleIcon,
   UserIcon,
   CalendarIcon,
-  ChatBubbleLeftRightIcon
+  ChatBubbleLeftRightIcon,
+  PencilIcon,
+  ArrowUturnLeftIcon
 } from '@heroicons/react/24/solid';
 import { useAppStore } from '../store/useAppStore';
-import { ReviewDecision } from '../types';
+import { ReviewDecision, EditPromptRequest } from '../types';
 
 interface HumanReviewPanelProps {
   isActive: boolean;
@@ -37,6 +39,20 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
   const [reviewNotes, setReviewNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showFullPrompt, setShowFullPrompt] = useState(false);
+  const [showFullOriginalRequest, setShowFullOriginalRequest] = useState(false);
+
+  // Prompt editing state
+  const [editingPrompt, setEditingPrompt] = useState(false);
+  const [editedPrompt, setEditedPrompt] = useState('');
+  const [editReason, setEditReason] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  // Helper function to truncate text to approximately 4 lines
+  const truncateToLines = (text: string, maxLines: number = 4) => {
+    const lines = text.split('\n');
+    if (lines.length <= maxLines) return text;
+    return lines.slice(0, maxLines).join('\n');
+  };
 
   const fetchReviewData = useCallback(async (currentRetryCount = 0) => {
     const maxRetries = 3;
@@ -125,7 +141,7 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
 
   const handleReject = async () => {
     if (!activeReview) return;
-    
+
     setSubmitting(true);
     try {
       const decision: ReviewDecision = {
@@ -133,7 +149,7 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
         notes: reviewNotes,
         reason: 'Prompt requires revision to meet quality standards'
       };
-      
+
       await submitReviewDecision(activeReview.id, decision);
       setReviewNotes(''); // Clear notes after submission
     } catch (error) {
@@ -141,6 +157,85 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleApproveWithEdits = async () => {
+    if (!activeReview) return;
+
+    setSubmitting(true);
+    try {
+      const decision: ReviewDecision = {
+        decision: 'approve_with_edits',
+        notes: reviewNotes,
+        reason: 'Prompt approved with manual edits applied'
+      };
+
+      await submitReviewDecision(activeReview.id, decision);
+      setReviewNotes(''); // Clear notes after submission
+    } catch (error) {
+      console.error('Failed to approve prompt with edits:', error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleStartEdit = () => {
+    if (!activeReview) return;
+
+    // Initialize edit with current prompt (edited or original)
+    const currentPrompt = activeReview.edited_prompt_data || activeReview.prompt_data;
+    setEditedPrompt(currentPrompt);
+    setEditReason('');
+    setEditingPrompt(true);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingPrompt(false);
+    setEditedPrompt('');
+    setEditReason('');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!activeReview || !editedPrompt.trim()) return;
+
+    setSavingEdit(true);
+    try {
+      const editRequest: EditPromptRequest = {
+        edited_prompt: editedPrompt.trim(),
+        edit_reason: editReason.trim() || undefined
+      };
+
+      const response = await fetch(`/api/v1/reviews/${activeReview.id}/edit-prompt`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(editRequest),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to save prompt edit');
+      }
+
+      const updatedReview = await response.json();
+      setActiveReview(updatedReview);
+      setEditingPrompt(false);
+      setEditedPrompt('');
+      setEditReason('');
+
+      console.log('✅ [HumanReviewPanel] Prompt edit saved successfully');
+    } catch (error) {
+      console.error('❌ [HumanReviewPanel] Failed to save prompt edit:', error);
+      // You could add a toast notification here
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const resetToOriginal = () => {
+    if (!activeReview?.original_prompt_data) return;
+    setEditedPrompt(activeReview.original_prompt_data);
   };
 
   const getStatusColor = (status: string) => {
@@ -240,27 +335,142 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
           <DocumentTextIcon className="w-4 h-4 mr-1" />
           Original Request Context
         </h3>
-        <p className="text-yellow-800 text-xs leading-relaxed">{activeReview.original_rfq}</p>
+        <div className="text-yellow-800 text-xs leading-relaxed">
+          <pre className="whitespace-pre-wrap font-sans">
+            {showFullOriginalRequest ? activeReview.original_rfq : truncateToLines(activeReview.original_rfq)}
+          </pre>
+          {activeReview.original_rfq.split('\n').length > 4 && (
+            <button
+              onClick={() => setShowFullOriginalRequest(!showFullOriginalRequest)}
+              className="mt-2 text-yellow-700 hover:text-yellow-900 font-medium text-xs underline focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-opacity-50 rounded"
+            >
+              {showFullOriginalRequest ? 'Read less' : 'Read more'}
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Generated Prompt */}
+      {/* System Prompt Section */}
       <div className="bg-white border border-gray-200 rounded-lg">
         <div className="p-3 border-b border-gray-200 flex items-center justify-between">
           <h3 className="font-medium text-gray-900 flex items-center text-sm">
             <ChatBubbleLeftRightIcon className="w-4 h-4 mr-1" />
-            AI-Generated System Prompt
+            System Prompt
+            {activeReview.prompt_edited && (
+              <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                Edited
+              </span>
+            )}
           </h3>
-          <button
-            onClick={() => setShowFullPrompt(!showFullPrompt)}
-            className="text-yellow-600 hover:text-yellow-800 text-xs font-medium"
-          >
-            {showFullPrompt ? 'Show Less' : 'Show Full'}
-          </button>
-        </div>
-        <div className="p-3">
-          <div className={`text-gray-800 text-xs leading-relaxed whitespace-pre-wrap ${!showFullPrompt ? 'line-clamp-4' : ''}`}>
-            {showFullPrompt ? activeReview.prompt_data : activeReview.prompt_data.substring(0, 200) + '...'}
+          <div className="flex items-center space-x-2">
+            {!editingPrompt && (activeReview.review_status === 'pending' || activeReview.review_status === 'in_review') && (
+              <button
+                onClick={handleStartEdit}
+                className="text-blue-600 hover:text-blue-800 text-xs font-medium flex items-center"
+              >
+                <PencilIcon className="w-3 h-3 mr-1" />
+                Edit
+              </button>
+            )}
+            <button
+              onClick={() => setShowFullPrompt(!showFullPrompt)}
+              className="text-yellow-600 hover:text-yellow-800 text-xs font-medium"
+            >
+              {showFullPrompt ? 'Show Less' : 'Show Full'}
+            </button>
           </div>
+        </div>
+
+        <div className="p-3">
+          {editingPrompt ? (
+            // Editing Mode
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-2">
+                  Edit System Prompt
+                </label>
+                <textarea
+                  value={editedPrompt}
+                  onChange={(e) => setEditedPrompt(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-xs leading-relaxed font-mono resize-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                  rows={12}
+                  placeholder="Enter the revised system prompt..."
+                />
+                <div className="mt-2 text-xs text-gray-500">
+                  {editedPrompt.length} characters {editedPrompt.length < 10 && '(minimum 10 required)'}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Edit Reason (Optional)
+                </label>
+                <textarea
+                  value={editReason}
+                  onChange={(e) => setEditReason(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-xs resize-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                  rows={2}
+                  placeholder="Explain why you're editing the prompt..."
+                />
+              </div>
+
+              <div className="flex items-center justify-between pt-2">
+                <div className="flex space-x-2">
+                  {activeReview.original_prompt_data && (
+                    <button
+                      onClick={resetToOriginal}
+                      className="inline-flex items-center px-2 py-1 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded"
+                    >
+                      <ArrowUturnLeftIcon className="w-3 h-3 mr-1" />
+                      Reset to Original
+                    </button>
+                  )}
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={handleCancelEdit}
+                    disabled={savingEdit}
+                    className="px-3 py-1 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveEdit}
+                    disabled={savingEdit || editedPrompt.trim().length < 10}
+                    className="px-3 py-1 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {savingEdit ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            // Display Mode
+            <div className="space-y-2">
+              <div className={`text-gray-800 text-xs leading-relaxed whitespace-pre-wrap font-mono ${!showFullPrompt ? 'line-clamp-4' : ''}`}>
+                {(() => {
+                  const currentPrompt = activeReview.edited_prompt_data || activeReview.prompt_data;
+                  return showFullPrompt ? currentPrompt : currentPrompt.substring(0, 200) + '...';
+                })()}
+              </div>
+
+              {activeReview.prompt_edited && activeReview.edited_by && (
+                <div className="text-xs text-gray-500 border-t pt-2">
+                  <div className="flex items-center justify-between">
+                    <span>Edited by {activeReview.edited_by}</span>
+                    {activeReview.prompt_edit_timestamp && (
+                      <span>{new Date(activeReview.prompt_edit_timestamp).toLocaleString()}</span>
+                    )}
+                  </div>
+                  {activeReview.edit_reason && (
+                    <div className="mt-1 text-gray-600 italic">
+                      "{activeReview.edit_reason}"
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -321,24 +531,39 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
       )}
 
       {/* Action Buttons */}
-      {(activeReview.review_status === 'pending' || activeReview.review_status === 'in_review') && (
-        <div className="flex space-x-2 pt-2 border-t border-gray-200">
-          <button
-            onClick={handleReject}
-            disabled={submitting}
-            className="flex-1 inline-flex items-center justify-center px-3 py-2 border border-red-300 rounded-lg text-red-700 bg-red-50 hover:bg-red-100 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <XCircleIcon className="w-4 h-4 mr-1" />
-            {submitting ? 'Processing...' : 'Reject'}
-          </button>
-          <button
-            onClick={handleApprove}
-            disabled={submitting}
-            className="flex-1 inline-flex items-center justify-center px-3 py-2 border border-green-300 rounded-lg text-green-700 bg-green-50 hover:bg-green-100 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <CheckCircleIcon className="w-4 h-4 mr-1" />
-            {submitting ? 'Processing...' : 'Approve'}
-          </button>
+      {(activeReview.review_status === 'pending' || activeReview.review_status === 'in_review') && !editingPrompt && (
+        <div className="space-y-2 pt-2 border-t border-gray-200">
+          {/* Primary Actions */}
+          <div className="flex space-x-2">
+            <button
+              onClick={handleReject}
+              disabled={submitting}
+              className="flex-1 inline-flex items-center justify-center px-3 py-2 border border-red-300 rounded-lg text-red-700 bg-red-50 hover:bg-red-100 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <XCircleIcon className="w-4 h-4 mr-1" />
+              {submitting ? 'Processing...' : 'Reject'}
+            </button>
+            <button
+              onClick={handleApprove}
+              disabled={submitting}
+              className="flex-1 inline-flex items-center justify-center px-3 py-2 border border-green-300 rounded-lg text-green-700 bg-green-50 hover:bg-green-100 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <CheckCircleIcon className="w-4 h-4 mr-1" />
+              {submitting ? 'Processing...' : 'Approve'}
+            </button>
+          </div>
+
+          {/* Approve with Edits - Only show if prompt has been edited */}
+          {activeReview.prompt_edited && (
+            <button
+              onClick={handleApproveWithEdits}
+              disabled={submitting}
+              className="w-full inline-flex items-center justify-center px-3 py-2 border border-blue-300 rounded-lg text-blue-700 bg-blue-50 hover:bg-blue-100 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <CheckCircleIcon className="w-4 h-4 mr-1" />
+              {submitting ? 'Processing...' : 'Approve with Edits'}
+            </button>
+          )}
         </div>
       )}
 

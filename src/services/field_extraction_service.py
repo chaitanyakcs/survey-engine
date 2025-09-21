@@ -17,6 +17,10 @@ class FieldExtractionService:
     """Service for extracting and auto-populating golden example fields from RFQ and Survey content."""
     
     def __init__(self, db_session: Optional[Any] = None):
+        logger.info(f"🚀 [FieldExtractionService] Starting initialization...")
+        logger.info(f"🚀 [FieldExtractionService] Database session provided: {bool(db_session)}")
+        logger.info(f"🚀 [FieldExtractionService] Config generation_model: {settings.generation_model}")
+        
         if not settings.replicate_api_token:
             error_info = get_api_configuration_error()
             raise UserFriendlyError(
@@ -25,8 +29,43 @@ class FieldExtractionService:
                 action_required="Configure AI service provider (Replicate or OpenAI)"
             )
         replicate.api_token = settings.replicate_api_token
-        self.model = settings.generation_model
-        self.db_session = db_session
+        self.db_session = db_session  # Set db_session BEFORE calling _get_generation_model
+        self.model = self._get_generation_model()
+        
+        logger.info(f"🔧 [FieldExtractionService] Model selected: {self.model}")
+        logger.info(f"🔧 [FieldExtractionService] Model type: {type(self.model)}")
+    
+    def _get_generation_model(self) -> str:
+        """Get generation model from database settings or fallback to config"""
+        try:
+            logger.info(f"🔍 [FieldExtractionService] Starting model selection process...")
+            logger.info(f"🔍 [FieldExtractionService] Database session available: {bool(self.db_session)}")
+            logger.info(f"🔍 [FieldExtractionService] Config default model: {settings.generation_model}")
+            
+            if self.db_session:
+                from src.services.settings_service import SettingsService
+                settings_service = SettingsService(self.db_session)
+                evaluation_settings = settings_service.get_evaluation_settings()
+                
+                logger.info(f"🔍 [FieldExtractionService] Database evaluation settings: {evaluation_settings}")
+                
+                if evaluation_settings and 'generation_model' in evaluation_settings:
+                    model = evaluation_settings['generation_model']
+                    logger.info(f"🔧 [FieldExtractionService] Using model from database settings: {model}")
+                    logger.info(f"🔧 [FieldExtractionService] Model source: DATABASE")
+                    return model
+                else:
+                    logger.info(f"🔧 [FieldExtractionService] No database settings found, using config default: {settings.generation_model}")
+                    logger.info(f"🔧 [FieldExtractionService] Model source: CONFIG_FALLBACK")
+                    return settings.generation_model
+            else:
+                logger.info(f"🔧 [FieldExtractionService] No database session, using config default: {settings.generation_model}")
+                logger.info(f"🔧 [FieldExtractionService] Model source: CONFIG_NO_DB")
+                return settings.generation_model
+        except Exception as e:
+            logger.warning(f"⚠️ [FieldExtractionService] Failed to get model from database settings: {e}, using config default")
+            logger.info(f"🔧 [FieldExtractionService] Model source: CONFIG_EXCEPTION")
+            return settings.generation_model
     
     def create_field_extraction_prompt(self, rfq_text: str, survey_json: Dict[str, Any]) -> str:
         """Create prompt for extracting golden example fields."""

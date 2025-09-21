@@ -116,7 +116,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
           },
           survey_requirements: {
             sample_plan: '',
-            required_sections: [],
+            required_sections: ['Screener', 'Demographics', 'Awareness', 'Usage', 'Concept Testing', 'Pricing', 'Satisfaction'],
             must_have_questions: []
           }
         });
@@ -376,27 +376,28 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                       Research Objectives
                     </h2>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      <FormField
-                        label="Research Audience"
-                        value={enhancedRfq.research_objectives?.research_audience || ''}
-                        onChange={(value) => setEnhancedRfq({
-                          ...enhancedRfq,
-                          research_objectives: {
-                            ...enhancedRfq.research_objectives,
-                            research_audience: value,
-                            success_criteria: enhancedRfq.research_objectives?.success_criteria || '',
-                            key_research_questions: enhancedRfq.research_objectives?.key_research_questions || []
-                          }
-                        })}
-                        placeholder="Describe respondent type, demographics, targeted segments..."
-                        type="textarea"
-                        rows={4}
-                        isAutoFilled={isFieldAutoFilled('research_objectives.research_audience')}
-                      />
+                    <div className="grid grid-cols-1 gap-6">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <FormField
+                          label="Research Audience"
+                          value={enhancedRfq.research_objectives?.research_audience || ''}
+                          onChange={(value) => setEnhancedRfq({
+                            ...enhancedRfq,
+                            research_objectives: {
+                              ...enhancedRfq.research_objectives,
+                              research_audience: value,
+                              success_criteria: enhancedRfq.research_objectives?.success_criteria || '',
+                              key_research_questions: enhancedRfq.research_objectives?.key_research_questions || []
+                            }
+                          })}
+                          placeholder="Describe respondent type, demographics, targeted segments..."
+                          type="textarea"
+                          rows={4}
+                          isAutoFilled={isFieldAutoFilled('research_objectives.research_audience')}
+                        />
 
-                      <FormField
-                        label="Success Criteria"
+                        <FormField
+                          label="Success Criteria"
                         value={enhancedRfq.research_objectives?.success_criteria || ''}
                         onChange={(value) => setEnhancedRfq({
                           ...enhancedRfq,
@@ -411,21 +412,21 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                         type="textarea"
                         rows={4}
                         isAutoFilled={isFieldAutoFilled('research_objectives.success_criteria')}
-                      />
-                    </div>
-
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <label className="block text-sm font-semibold text-gray-800">
-                          Key Research Questions
-                        </label>
-                        <button
-                          onClick={addResearchQuestion}
-                          className="px-3 py-1 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors text-sm"
-                        >
-                          + Add Question
-                        </button>
+                        />
                       </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <label className="block text-sm font-semibold text-gray-800">
+                            Key Research Questions
+                          </label>
+                          <button
+                            onClick={addResearchQuestion}
+                            className="px-3 py-1 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors text-sm"
+                          >
+                            + Add Question
+                          </button>
+                        </div>
                       <div className="space-y-3">
                         {(enhancedRfq.research_objectives?.key_research_questions || []).map((question, index) => (
                           <div key={index} className="flex items-center space-x-3">
@@ -452,6 +453,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                             <p className="text-sm">Click "Add Question" to get started.</p>
                           </div>
                         )}
+                      </div>
                       </div>
                     </div>
                   </div>

@@ -41,9 +41,17 @@ logger = logging.getLogger(__name__)
 
 class GenerationService:
     def __init__(self, db_session: Optional[Session] = None) -> None:
+        logger.info(f"🚀 [GenerationService] Starting initialization...")
+        logger.info(f"🚀 [GenerationService] Database session provided: {bool(db_session)}")
+        logger.info(f"🚀 [GenerationService] Config generation_model: {settings.generation_model}")
+        
         self.db_session = db_session  # Store the database session
         # Get model from database settings if available, otherwise fallback to config
         self.model = self._get_generation_model()
+        
+        logger.info(f"🔧 [GenerationService] Model selected: {self.model}")
+        logger.info(f"🔧 [GenerationService] Model type: {type(self.model)}")
+        
         self.prompt_service = PromptService(db_session=db_session)
         self.pillar_scoring_service = PillarScoringService(db_session=db_session)
         if ADVANCED_EVALUATOR_AVAILABLE:
@@ -73,23 +81,33 @@ class GenerationService:
     def _get_generation_model(self) -> str:
         """Get generation model from database settings or fallback to config"""
         try:
+            logger.info(f"🔍 [GenerationService] Starting model selection process...")
+            logger.info(f"🔍 [GenerationService] Database session available: {bool(self.db_session)}")
+            logger.info(f"🔍 [GenerationService] Config default model: {settings.generation_model}")
+            
             if self.db_session:
                 from src.services.settings_service import SettingsService
                 settings_service = SettingsService(self.db_session)
                 evaluation_settings = settings_service.get_evaluation_settings()
                 
+                logger.info(f"🔍 [GenerationService] Database evaluation settings: {evaluation_settings}")
+                
                 if evaluation_settings and 'generation_model' in evaluation_settings:
                     model = evaluation_settings['generation_model']
                     logger.info(f"🔧 [GenerationService] Using model from database settings: {model}")
+                    logger.info(f"🔧 [GenerationService] Model source: DATABASE")
                     return model
                 else:
                     logger.info(f"🔧 [GenerationService] No database settings found, using config default: {settings.generation_model}")
+                    logger.info(f"🔧 [GenerationService] Model source: CONFIG_FALLBACK")
                     return settings.generation_model
             else:
                 logger.info(f"🔧 [GenerationService] No database session, using config default: {settings.generation_model}")
+                logger.info(f"🔧 [GenerationService] Model source: CONFIG_NO_DB")
                 return settings.generation_model
         except Exception as e:
             logger.warning(f"⚠️ [GenerationService] Failed to get model from database settings: {e}, using config default")
+            logger.info(f"🔧 [GenerationService] Model source: CONFIG_EXCEPTION")
             return settings.generation_model
     
     async def generate_survey_with_custom_prompt(
@@ -207,10 +225,10 @@ class GenerationService:
                     logger.info(f"📊 [GenerationService] Output length: {len(output_text)} characters")
                     
                     # Parse the generated survey
-                    survey_data = self._parse_survey_output(output_text)
+                    survey_data = self._extract_survey_json(output_text)
                     
                     # Calculate pillar scores
-                    pillar_scores = await self._calculate_pillar_scores(survey_data, context)
+                    pillar_scores = await self._evaluate_with_advanced_system(survey_data, context.get('rfq_text', ''))
                     
                     return {
                         "survey": survey_data,
@@ -302,6 +320,11 @@ class GenerationService:
             # Create audit context for this LLM interaction
             interaction_id = f"survey_generation_{uuid.uuid4().hex[:8]}"
             audit_service = LLMAuditService(self.db_session)
+            
+            logger.info(f"🔍 [GenerationService] Context received: {context}")
+            logger.info(f"🔍 [GenerationService] Survey ID from context: {context.get('survey_id')}")
+            logger.info(f"🔍 [GenerationService] Workflow ID from context: {context.get('workflow_id')}")
+            logger.info(f"🔍 [GenerationService] RFQ ID from context: {context.get('rfq_id')}")
             
             async with LLMAuditContext(
                 audit_service=audit_service,
@@ -738,6 +761,7 @@ class GenerationService:
         """
         import re
         sections = []
+        processed_sections = set()  # Track processed section IDs to prevent duplicates
 
         # Look for section-like patterns
         section_patterns = [
@@ -751,6 +775,14 @@ class GenerationService:
                 section_id = int(match.group(1))
                 section_title = match.group(2)
                 questions_text = match.group(3)
+
+                # Skip if we've already processed this section
+                if section_id in processed_sections:
+                    logger.info(f"🔍 [GenerationService] Skipping duplicate section {section_id}")
+                    continue
+                
+                processed_sections.add(section_id)
+                logger.info(f"🔍 [GenerationService] Processing section {section_id}: {section_title}")
 
                 questions = self._extract_questions_from_text_force(questions_text)
                 if questions:
@@ -774,8 +806,13 @@ class GenerationService:
         Ultra-robust question extraction with detailed drop tracking
         """
         import re
+        import time
 
         logger.info("🔍 [GenerationService] === QUESTION EXTRACTION TRACKING ===")
+        
+        # Add timeout to prevent infinite loops
+        start_time = time.time()
+        max_processing_time = 30  # 30 seconds max
 
         # Multiple question patterns
         patterns = [
@@ -790,10 +827,19 @@ class GenerationService:
         dropped_questions = []
 
         for i, (pattern_name, pattern) in enumerate(patterns):
+            # Check timeout
+            if time.time() - start_time > max_processing_time:
+                logger.warning(f"⚠️ [GenerationService] Timeout reached after {max_processing_time}s, stopping question extraction")
+                break
+                
             matches = list(re.finditer(pattern, text, re.DOTALL))
             logger.info(f"🔍 [GenerationService] Pattern '{pattern_name}': {len(matches)} matches found")
 
             for match in matches:
+                # Check timeout in inner loop too
+                if time.time() - start_time > max_processing_time:
+                    logger.warning(f"⚠️ [GenerationService] Timeout reached during pattern processing, stopping")
+                    break
                 if i < 2:  # First two patterns have different group orders
                     q_id = match.group(1) if i == 0 else match.group(2)
                     q_text = match.group(2) if i == 0 else match.group(1)
@@ -1804,95 +1850,177 @@ class GenerationService:
     
     async def _evaluate_with_advanced_system(self, survey_data: Dict[str, Any], rfq_text: str) -> Dict[str, Any]:
         """
-        Evaluate survey using the advanced chain-of-thought pillar evaluation system
+        Evaluate survey using the appropriate evaluator based on settings
         """
-        if not self.advanced_evaluator:
-            logger.warning("⚠️ [GenerationService] Advanced evaluator not available, calling pillar-scores API")
-            # Call the pillar-scores API to get advanced evaluation
-            return await self._call_pillar_scores_api(survey_data, rfq_text)
-        
-        logger.info("🚀 [GenerationService] Using advanced chain-of-thought evaluation")
-        
+        # Get evaluation mode from settings
+        evaluation_mode = "single_call"  # Default to single_call for efficiency
         try:
-            # Run advanced evaluation
-            result = await self.advanced_evaluator.evaluate_survey(survey_data, rfq_text)
-            
-            # Convert advanced results to the format expected by the generation service
-            pillar_breakdown = []
-            
-            # Map pillar scores to the expected format
-            pillar_mapping = {
-                'content_validity': 'Content Validity',
-                'methodological_rigor': 'Methodological Rigor', 
-                'clarity_comprehensibility': 'Clarity & Comprehensibility',
-                'structural_coherence': 'Structural Coherence',
-                'deployment_readiness': 'Deployment Readiness'
-            }
-            
-            weights = self.advanced_evaluator.PILLAR_WEIGHTS
-            
-            for pillar_name, display_name in pillar_mapping.items():
-                score = getattr(result.pillar_scores, pillar_name)
-                weight = weights[pillar_name]
-                weighted_score = score * weight
-                
-                # Convert score to criteria format for compatibility
-                criteria_met = int(score * 10)  # Scale to 0-10
-                total_criteria = 10
-                
-                # Calculate grade
-                if score >= 0.9:
-                    grade = "A"
-                elif score >= 0.8:
-                    grade = "B"
-                elif score >= 0.7:
-                    grade = "C"
-                elif score >= 0.6:
-                    grade = "D"
-                else:
-                    grade = "F"
-                
-                pillar_breakdown.append({
-                    "pillar_name": pillar_name,
-                    "display_name": display_name,
-                    "score": score,
-                    "weighted_score": weighted_score,
-                    "weight": weight,
-                    "criteria_met": criteria_met,
-                    "total_criteria": total_criteria,
-                    "grade": grade
-                })
-            
-            # Calculate overall grade
-            if result.overall_score >= 0.9:
-                overall_grade = "A"
-            elif result.overall_score >= 0.8:
-                overall_grade = "B"
-            elif result.overall_score >= 0.7:
-                overall_grade = "C"
-            elif result.overall_score >= 0.6:
-                overall_grade = "D"
-            else:
-                overall_grade = "F"
-            
-            # Create summary with advanced evaluation indicator
-            summary = f"Advanced Chain-of-Thought Analysis (v2.0-advanced-chain-of-thought) | Overall Score: {result.overall_score:.1%} (Grade {overall_grade})"
-            
-            # Return in the expected format
-            return {
-                "overall_grade": overall_grade,
-                "weighted_score": result.overall_score,
-                "total_score": result.overall_score,
-                "summary": summary,
-                "pillar_breakdown": pillar_breakdown,
-                "recommendations": result.recommendations or []
-            }
-            
+            from src.services.settings_service import SettingsService
+            settings_service = SettingsService(self.db_session)
+            evaluation_settings = settings_service.get_evaluation_settings()
+            evaluation_mode = evaluation_settings.get('evaluation_mode', 'single_call')
+            logger.info(f"🔧 [GenerationService] Using evaluation mode: {evaluation_mode}")
         except Exception as e:
-            logger.error(f"❌ [GenerationService] Advanced evaluation failed: {str(e)}")
-            logger.warning("⚠️ [GenerationService] Falling back to pillar-scores API")
-            # Call the pillar-scores API as fallback
-            return await self._call_pillar_scores_api(survey_data, rfq_text)
+            logger.warning(f"⚠️ [GenerationService] Failed to get evaluation mode: {e}, using single_call")
+        
+        if evaluation_mode == "single_call":
+            logger.info("🚀 [GenerationService] Using single-call evaluation for efficiency")
+            # Use single-call evaluator for cost efficiency
+            try:
+                from evaluations.modules.single_call_evaluator import SingleCallEvaluator
+                from evaluations.llm_client import create_evaluation_llm_client
+                llm_client = create_evaluation_llm_client(db_session=self.db_session)
+                evaluator = SingleCallEvaluator(llm_client=llm_client, db_session=self.db_session)
+                result = await evaluator.evaluate_survey(survey_data, rfq_text)
+                
+                # Convert single-call results to expected format
+                pillar_breakdown = []
+                pillar_mapping = {
+                    'content_validity': 'Content Validity',
+                    'methodological_rigor': 'Methodological Rigor', 
+                    'clarity_comprehensibility': 'Clarity & Comprehensibility',
+                    'structural_coherence': 'Structural Coherence',
+                    'deployment_readiness': 'Deployment Readiness'
+                }
+                
+                # Default weights
+                weights = {
+                    'content_validity': 0.20,
+                    'methodological_rigor': 0.25,
+                    'clarity_comprehensibility': 0.25,
+                    'structural_coherence': 0.20,
+                    'deployment_readiness': 0.10
+                }
+                
+                for pillar_name, display_name in pillar_mapping.items():
+                    score = result.pillar_scores.get(pillar_name, 0.5)
+                    weight = weights[pillar_name]
+                    weighted_score = score * weight
+                    
+                    # Convert score to criteria format for compatibility
+                    criteria_met = int(score * 10)  # Scale to 0-10
+                    total_criteria = 10
+                    
+                    # Calculate grade
+                    if score >= 0.9:
+                        grade = "A"
+                    elif score >= 0.8:
+                        grade = "B"
+                    elif score >= 0.7:
+                        grade = "C"
+                    elif score >= 0.6:
+                        grade = "D"
+                    else:
+                        grade = "F"
+                    
+                    pillar_breakdown.append({
+                        "pillar_name": pillar_name,
+                        "display_name": display_name,
+                        "score": score,
+                        "weighted_score": weighted_score,
+                        "weight": weight,
+                        "criteria_met": criteria_met,
+                        "total_criteria": total_criteria,
+                        "grade": grade
+                    })
+                
+                return {
+                    "overall_grade": result.overall_grade,
+                    "weighted_score": result.weighted_score,
+                    "total_score": result.weighted_score,  # Use weighted_score as total_score
+                    "summary": f"Single-Call Comprehensive Analysis | Overall Score: {result.weighted_score:.1%} (Grade {result.overall_grade})",
+                    "pillar_breakdown": pillar_breakdown,
+                    "recommendations": result.overall_recommendations or []
+                }
+            except Exception as e:
+                logger.error(f"❌ [GenerationService] Single-call evaluator failed: {e}, falling back to API")
+                return await self._call_pillar_scores_api(survey_data, rfq_text)
+        else:
+            logger.info("🚀 [GenerationService] Using multiple-call evaluation")
+            if not self.advanced_evaluator:
+                logger.warning("⚠️ [GenerationService] Advanced evaluator not available, calling pillar-scores API")
+                return await self._call_pillar_scores_api(survey_data, rfq_text)
+            
+            try:
+                # Run advanced evaluation
+                result = await self.advanced_evaluator.evaluate_survey(survey_data, rfq_text)
+                
+                # Convert advanced results to the format expected by the generation service
+                pillar_breakdown = []
+                
+                # Map pillar scores to the expected format
+                pillar_mapping = {
+                    'content_validity': 'Content Validity',
+                    'methodological_rigor': 'Methodological Rigor', 
+                    'clarity_comprehensibility': 'Clarity & Comprehensibility',
+                    'structural_coherence': 'Structural Coherence',
+                    'deployment_readiness': 'Deployment Readiness'
+                }
+                
+                weights = self.advanced_evaluator.PILLAR_WEIGHTS
+                
+                for pillar_name, display_name in pillar_mapping.items():
+                    score = getattr(result.pillar_scores, pillar_name)
+                    weight = weights[pillar_name]
+                    weighted_score = score * weight
+                    
+                    # Convert score to criteria format for compatibility
+                    criteria_met = int(score * 10)  # Scale to 0-10
+                    total_criteria = 10
+                    
+                    # Calculate grade
+                    if score >= 0.9:
+                        grade = "A"
+                    elif score >= 0.8:
+                        grade = "B"
+                    elif score >= 0.7:
+                        grade = "C"
+                    elif score >= 0.6:
+                        grade = "D"
+                    else:
+                        grade = "F"
+                    
+                    pillar_breakdown.append({
+                        "pillar_name": pillar_name,
+                        "display_name": display_name,
+                        "score": score,
+                        "weighted_score": weighted_score,
+                        "weight": weight,
+                        "criteria_met": criteria_met,
+                        "total_criteria": total_criteria,
+                        "grade": grade
+                    })
+                
+                # Calculate overall grade
+                if result.overall_score >= 0.9:
+                    overall_grade = "A"
+                elif result.overall_score >= 0.8:
+                    overall_grade = "B"
+                elif result.overall_score >= 0.7:
+                    overall_grade = "C"
+                elif result.overall_score >= 0.6:
+                    overall_grade = "D"
+                else:
+                    overall_grade = "F"
+                
+                # Create summary with advanced evaluation indicator
+                summary = f"Advanced Chain-of-Thought Analysis (v2.0-advanced-chain-of-thought) | Overall Score: {result.overall_score:.1%} (Grade {overall_grade})"
+                
+                # Return in the expected format
+                return {
+                    "overall_grade": overall_grade,
+                    "weighted_score": result.overall_score,
+                    "total_score": result.overall_score,
+                    "summary": summary,
+                    "pillar_breakdown": pillar_breakdown,
+                    "recommendations": result.recommendations or []
+                }
+                
+            except Exception as e:
+                logger.error(f"❌ [GenerationService] Advanced evaluation failed: {str(e)}")
+                logger.warning("⚠️ [GenerationService] Falling back to pillar-scores API")
+                # Call the pillar-scores API as fallback
+                return await self._call_pillar_scores_api(survey_data, rfq_text)
     
     async def _call_pillar_scores_api(self, survey_data: Dict[str, Any], rfq_text: str) -> Dict[str, Any]:
         """
@@ -1954,4 +2082,30 @@ class GenerationService:
                     for score in legacy_result.pillar_scores
                 ],
                 "recommendations": self._compile_recommendations(legacy_result.pillar_scores)
+            }
+
+    async def _calculate_pillar_scores(self, survey_data: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Calculate pillar scores for the generated survey
+        """
+        try:
+            logger.info("🏛️ [GenerationService] Starting pillar score calculation")
+            
+            # Extract RFQ text from context
+            rfq_text = context.get('rfq_text', '')
+            if not rfq_text:
+                rfq_text = f"Survey: {survey_data.get('title', 'Unnamed Survey')}"
+            
+            # Use the advanced evaluation system
+            return await self._evaluate_with_advanced_system(survey_data, rfq_text)
+            
+        except Exception as e:
+            logger.error(f"❌ [GenerationService] Failed to calculate pillar scores: {e}")
+            # Return default scores on failure
+            return {
+                "total_score": 0.5,
+                "weighted_score": 0.5,
+                "overall_grade": "C",
+                "summary": "Pillar scoring unavailable due to error",
+                "pillar_breakdown": []
             }

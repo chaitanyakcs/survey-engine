@@ -4,11 +4,13 @@ Settings API - Handle evaluation settings and cost tracking
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from src.database import get_db
 from src.services.settings_service import SettingsService
 from pydantic import BaseModel
 from typing import Dict, Any, Optional, List
 import logging
+import json
 from src.config.settings import settings as app_settings
 
 logger = logging.getLogger(__name__)
@@ -110,24 +112,29 @@ async def list_rfq_models():
             "openai/gpt-5",
             "openai/gpt-4o-mini",
             "meta/llama-3.1-70b-instruct",
-            "mistralai/mistral-7b-instruct"
+            "meta/llama-3.1-405b-instruct",
+            "meta/llama-3.1-8b-instruct"
         ]
         return candidates[:3]
     except Exception as e:
         logger.error(f"❌ [Settings API] Failed to list models: {str(e)}")
         # Fallback static list
-        return ["openai/gpt-5", "openai/gpt-4o-mini", "meta/llama-3.1-70b-instruct", "mistralai/mistral-7b-instruct"]
+        return ["openai/gpt-5", "openai/gpt-4o-mini", "meta/llama-3.1-70b-instruct"]
 
 @router.get("/generation/models", response_model=List[str])
 async def list_generation_models():
     """Return suitable LLMs for survey generation."""
     try:
-        return [
+        models = [
             "openai/gpt-5",
             "openai/gpt-4o-mini",
             "meta/llama-3.1-70b-instruct",
-            "mistralai/mistral-7b-instruct"
+            "meta/llama-3.1-405b-instruct",
+            "meta/llama-3.1-8b-instruct"
         ]
+        logger.info(f"🔍 [Settings API] Returning generation models: {models}")
+        logger.info(f"🔍 [Settings API] DEPLOYMENT CONFIRMATION: Updated model list is active")
+        return models
     except Exception as e:
         logger.error(f"❌ [Settings API] Failed to list generation models: {str(e)}")
         return [app_settings.generation_model]
@@ -140,7 +147,8 @@ async def list_evaluation_models():
             "openai/gpt-5",
             "openai/gpt-4o-mini",
             "meta/llama-3.1-70b-instruct",
-            "mistralai/mistral-7b-instruct"
+            "meta/llama-3.1-405b-instruct",
+            "meta/llama-3.1-8b-instruct"
         ]
     except Exception as e:
         logger.error(f"❌ [Settings API] Failed to list evaluation models: {str(e)}")
@@ -290,3 +298,4 @@ async def reset_settings(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"❌ [Settings API] Failed to reset settings: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+

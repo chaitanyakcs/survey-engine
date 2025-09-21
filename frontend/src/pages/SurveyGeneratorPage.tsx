@@ -143,7 +143,7 @@ export const SurveyGeneratorPage: React.FC = () => {
                           onClick={() => setUseEnhancedRFQ(false)}
                           className={`px-6 py-3 rounded-xl font-medium transition-all duration-200 ${
                             !useEnhancedRFQ
-                              ? 'bg-blue-500 text-white shadow-lg'
+                              ? 'bg-gradient-to-r from-yellow-500 to-amber-500 text-white shadow-lg'
                               : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                           }`}
                         >

@@ -35,13 +35,28 @@ export const SurveyCard: React.FC<SurveyCardProps> = ({
 }) => {
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffHours / 24);
+    
+    // Show relative time for recent items, absolute time for older ones
+    if (diffHours < 1) {
+      const diffMinutes = Math.floor(diffMs / (1000 * 60));
+      return `${diffMinutes}m ago`;
+    } else if (diffHours < 24) {
+      return `${diffHours}h ago`;
+    } else if (diffDays < 7) {
+      return `${diffDays}d ago`;
+    } else {
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -166,7 +181,18 @@ export const SurveyCard: React.FC<SurveyCardProps> = ({
                 </div>
               )}
             </div>
-            <span className="text-sm font-medium bg-white/80 px-3 py-1.5 rounded-lg shadow-sm">
+            <span 
+              className="text-sm font-medium bg-white/80 px-3 py-1.5 rounded-lg shadow-sm cursor-help"
+              title={new Date(survey.created_at).toLocaleString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+              })}
+            >
               {formatDate(survey.created_at)}
             </span>
           </div>
