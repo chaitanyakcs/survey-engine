@@ -122,51 +122,68 @@ export const SurveyGeneratorPage: React.FC = () => {
                   <p className="text-gray-600">Create AI-powered surveys with advanced methodologies</p>
                 </div>
               </div>
+              
+              {/* Mode Selection and Progress Controls */}
+              <div className="flex items-center space-x-4">
+                {/* Mode Selection - Only show when idle */}
+                {workflow.status === 'idle' && (
+                  <div className="flex items-center space-x-3">
+                    <button
+                      onClick={() => setUseEnhancedRFQ(false)}
+                      className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
+                        !useEnhancedRFQ
+                          ? 'bg-gradient-to-r from-yellow-500 to-amber-500 text-white shadow-lg'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      🚀 Quick Mode
+                    </button>
+                    <button
+                      onClick={() => setUseEnhancedRFQ(true)}
+                      className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
+                        useEnhancedRFQ
+                          ? 'bg-gradient-to-r from-yellow-500 to-amber-500 text-white shadow-lg'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      ✨ Enhanced Mode
+                    </button>
+                  </div>
+                )}
+                
+                {/* Progress Status and Cancel - Only show during generation */}
+                {(workflow.status === 'started' || workflow.status === 'in_progress') && (
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center px-4 py-2 bg-gradient-to-r from-yellow-100 to-amber-100 text-amber-800 rounded-lg border border-amber-200">
+                      <div className="w-2 h-2 bg-gradient-to-r from-yellow-500 to-amber-600 rounded-full animate-pulse mr-2" />
+                      <span className="text-sm font-medium">Generating Survey...</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        console.log('🔄 [SurveyGeneratorPage] Canceling generation');
+                        resetWorkflow();
+                      }}
+                      className="inline-flex items-center px-4 py-2 rounded-lg font-medium transition-all duration-200 bg-red-100 hover:bg-red-200 text-red-700 border border-red-300 hover:border-red-400"
+                    >
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </header>
 
-        <main className="py-4">
+        <main className="py-2">
         {/* Survey Generator View */}
         {currentView === 'survey' && (
           <>
             {/* RFQ Input Phase */}
             {workflow.status === 'idle' && (
               <div>
-                {/* RFQ Interface Toggle */}
-                <div className="px-6 mb-4">
-                  <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-4 shadow-lg">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="font-semibold text-gray-900">Survey Builder Mode</h3>
-                        <p className="text-sm text-gray-600">Choose between quick setup or comprehensive requirements builder</p>
-                      </div>
-                      <div className="flex items-center space-x-3">
-                        <button
-                          onClick={() => setUseEnhancedRFQ(false)}
-                          className={`px-6 py-3 rounded-xl font-medium transition-all duration-200 ${
-                            !useEnhancedRFQ
-                              ? 'bg-gradient-to-r from-yellow-500 to-amber-500 text-white shadow-lg'
-                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                          }`}
-                        >
-                          🚀 Quick Mode
-                        </button>
-                        <button
-                          onClick={() => setUseEnhancedRFQ(true)}
-                          className={`px-6 py-3 rounded-xl font-medium transition-all duration-200 ${
-                            useEnhancedRFQ
-                              ? 'bg-gradient-to-r from-yellow-500 to-amber-500 text-white shadow-lg'
-                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                          }`}
-                        >
-                          ✨ Enhanced Mode
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
                 {/* RFQ Interface */}
                 {useEnhancedRFQ ? <EnhancedRFQApp /> : <RFQEditor />}
               </div>
@@ -175,7 +192,7 @@ export const SurveyGeneratorPage: React.FC = () => {
             {/* Generation Progress Phase */}
             {(workflow.status === 'started' || workflow.status === 'in_progress') && (
               <div>
-                <div className="px-6 mb-6 text-center">
+                <div className="px-6 mb-4 text-center">
                   <h2 className="text-xl font-semibold text-black mb-2">Generating Your Survey</h2>
                   <p className="text-gray-600">Our AI is creating your survey using advanced methodologies and best practices.</p>
                 </div>
@@ -206,7 +223,7 @@ export const SurveyGeneratorPage: React.FC = () => {
             {/* Human Review Phase */}
             {workflow.status === 'paused' && (
               <div>
-                <div className="px-6 mb-6 text-center">
+                <div className="px-6 mb-4 text-center">
                   <h2 className="text-xl font-semibold text-black mb-2">Human Review Required</h2>
                   <p className="text-gray-600">Please review the AI-generated system prompt before survey generation continues.</p>
                 </div>
@@ -237,7 +254,7 @@ export const SurveyGeneratorPage: React.FC = () => {
             {/* Survey Completed Phase */}
             {workflow.status === 'completed' && (
               <div>
-                <div className="px-6 mb-6 text-center">
+                <div className="px-6 mb-4 text-center">
                   <div className="mb-6">
                     <div className="w-16 h-16 bg-gradient-to-r from-yellow-500 to-amber-500 rounded-full flex items-center justify-center mx-auto mb-4">
                       <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
