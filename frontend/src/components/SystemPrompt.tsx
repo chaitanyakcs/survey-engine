@@ -206,7 +206,7 @@ export const SystemPromptComponent: React.FC<SystemPromptProps> = ({
               value={tempPromptText}
               onChange={(e) => setTempPromptText(e.target.value)}
               placeholder="Enter your custom system prompt instructions here. These will be added to every AI generation request..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent h-32 resize-y"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent h-32 resize-y"
             />
             <p className="text-xs text-gray-500 mt-1">
               These instructions will be injected into every AI prompt to guide survey generation.
@@ -215,7 +215,7 @@ export const SystemPromptComponent: React.FC<SystemPromptProps> = ({
           <div className="flex space-x-3">
             <button
               onClick={handleSaveSystemPrompt}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+              className="px-4 py-2 bg-gradient-to-r from-amber-600 to-yellow-600 text-white rounded-lg hover:from-amber-700 hover:to-yellow-700 transition-all duration-200"
             >
               Save Prompt
             </button>

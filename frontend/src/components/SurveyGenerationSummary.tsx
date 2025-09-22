@@ -27,20 +27,20 @@ export const SurveyGenerationSummary: React.FC<SurveyGenerationSummaryProps> = (
 }) => {
   const getGradeColor = (grade: string) => {
     switch (grade) {
-      case 'A': return 'bg-green-100 text-green-800';
+      case 'A': return 'bg-amber-100 text-amber-800';
       case 'B': return 'bg-yellow-100 text-yellow-800';
-      case 'C': return 'bg-amber-100 text-amber-800';
-      case 'D': return 'bg-orange-100 text-orange-800';
+      case 'C': return 'bg-orange-100 text-orange-800';
+      case 'D': return 'bg-red-100 text-red-800';
       case 'F': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
 
   const getScoreColor = (score: number) => {
-    if (score >= 0.9) return 'text-green-600';
-    if (score >= 0.8) return 'text-yellow-600';
-    if (score >= 0.7) return 'text-amber-600';
-    if (score >= 0.6) return 'text-orange-600';
+    if (score >= 0.9) return 'text-amber-700';
+    if (score >= 0.8) return 'text-yellow-700';
+    if (score >= 0.7) return 'text-orange-600';
+    if (score >= 0.6) return 'text-orange-500';
     return 'text-red-600';
   };
 
@@ -66,7 +66,7 @@ export const SurveyGenerationSummary: React.FC<SurveyGenerationSummaryProps> = (
           <div className="flex flex-wrap justify-center gap-4 mb-8">
             <button
               onClick={onViewSurvey}
-              className="flex items-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors shadow-lg hover:shadow-xl"
+              className="flex items-center px-6 py-3 bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-700 hover:to-yellow-700 text-white rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-xl"
             >
               <EyeIcon className="w-5 h-5 mr-2" />
               View Survey
@@ -80,7 +80,7 @@ export const SurveyGenerationSummary: React.FC<SurveyGenerationSummaryProps> = (
             </button>
             <button
               onClick={onStartNew}
-              className="flex items-center px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-medium transition-colors shadow-lg hover:shadow-xl"
+              className="flex items-center px-6 py-3 bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-white rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-xl"
             >
               <PlusIcon className="w-5 h-5 mr-2" />
               Create New Survey
@@ -166,10 +166,10 @@ export const SurveyGenerationSummary: React.FC<SurveyGenerationSummaryProps> = (
                       <div className="w-full bg-gray-200 rounded-full h-2">
                         <div 
                           className={`h-2 rounded-full transition-all duration-300 ${
-                            pillar.score >= 0.9 ? 'bg-green-500' :
+                            pillar.score >= 0.9 ? 'bg-amber-500' :
                             pillar.score >= 0.8 ? 'bg-yellow-500' :
-                            pillar.score >= 0.7 ? 'bg-amber-500' :
-                            pillar.score >= 0.6 ? 'bg-orange-500' : 'bg-red-500'
+                            pillar.score >= 0.7 ? 'bg-orange-500' :
+                            pillar.score >= 0.6 ? 'bg-orange-400' : 'bg-red-500'
                           }`}
                           style={{ width: `${pillar.score * 100}%` }}
                         />

@@ -85,7 +85,7 @@ class SingleCallEvaluator:
         pillar_rules_context = ""
         if self.pillar_rules_service:
             try:
-                pillar_rules_context = self.pillar_rules_service.get_pillar_rules_context()
+                pillar_rules_context = self.pillar_rules_service.get_comprehensive_evaluation_context()
             except Exception as e:
                 logger.warning(f"⚠️ Failed to load pillar rules: {e}")
         

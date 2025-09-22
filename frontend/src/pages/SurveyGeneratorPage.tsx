@@ -6,7 +6,10 @@ import { ProgressStepper } from '../components/ProgressStepper';
 import { HumanReviewPanel } from '../components/HumanReviewPanel';
 import { Sidebar } from '../components/Sidebar';
 import { ToastContainer } from '../components/Toast';
+import { ErrorDisplay } from '../components/ErrorDisplay';
+import { ErrorBanner } from '../components/ErrorBanner';
 import { useSidebarLayout } from '../hooks/useSidebarLayout';
+import { RecoveryAction } from '../types';
 
 export const SurveyGeneratorPage: React.FC = () => {
   const { workflow, currentSurvey, toasts, removeToast, addToast, resetWorkflow, clearEnhancedRfqState } = useAppStore();
@@ -328,62 +331,96 @@ export const SurveyGeneratorPage: React.FC = () => {
               </div>
             )}
 
-            {/* Error State */}
-            {workflow.status === 'failed' && (
-              <div className="px-6 text-center">
-                <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-                  <div className="flex items-center justify-center mb-4">
-                    <svg className="w-12 h-12 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <h2 className="text-lg font-semibold text-red-900 mb-2">
-                    {workflow.error?.includes('rejection') ? 'Workflow Rejected' : 'Generation Failed'}
-                  </h2>
-                  <p className="text-red-700 mb-6">
-                    {workflow.error || 'An error occurred during survey generation.'}
-                  </p>
-                  <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                    <button
-                      onClick={() => {
+            {/* Enhanced Error State */}
+            {workflow.status === 'failed' && workflow.detailedError && (
+              <div className="px-6">
+                <ErrorDisplay
+                  error={workflow.detailedError}
+                  onRecoveryAction={(action: RecoveryAction) => {
+                    switch (action) {
+                      case 'retry':
                         addToast({
                           type: 'info',
-                          title: 'Restarting Generation',
-                          message: 'Resetting workflow to start a new survey generation.',
+                          title: 'Retrying Generation',
+                          message: 'Restarting survey generation with same parameters.',
                           duration: 3000
                         });
                         resetWorkflow();
-                      }}
-                      className="inline-flex items-center px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
-                    >
-                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      Try Again
-                    </button>
-                    <button
-                      onClick={() => {
-                        // Clear all state and go to home
-                        clearEnhancedRfqState();
-                        resetWorkflow();
+                        break;
+
+                      case 'return_to_form':
                         addToast({
                           type: 'info',
-                          title: 'Returning to Home',
-                          message: 'All form data has been cleared. You can start fresh.',
+                          title: 'Returning to Form',
+                          message: 'Please review and modify your RFQ before trying again.',
                           duration: 3000
                         });
-                        // Navigate to home page
-                        window.location.href = '/';
-                      }}
-                      className="inline-flex items-center px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
-                    >
-                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                      </svg>
-                      Go to Home
-                    </button>
-                  </div>
-                </div>
+                        resetWorkflow();
+                        break;
+
+                      case 'contact_support':
+                        window.open('mailto:support@surveyengine.com?subject=Survey Generation Error&body=Debug Code: ' + encodeURIComponent(JSON.stringify(workflow.detailedError?.debugInfo || {})), '_blank');
+                        break;
+
+                      case 'refresh_page':
+                        window.location.reload();
+                        break;
+
+                      default:
+                        console.log('Recovery action not implemented:', action);
+                    }
+                  }}
+                  onRetry={() => {
+                    addToast({
+                      type: 'info',
+                      title: 'Retrying Generation',
+                      message: 'Restarting survey generation.',
+                      duration: 3000
+                    });
+                    resetWorkflow();
+                  }}
+                  onDismiss={() => {
+                    clearEnhancedRfqState();
+                    resetWorkflow();
+                    window.location.href = '/';
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Fallback Error State (for errors without detailed info) */}
+            {workflow.status === 'failed' && !workflow.detailedError && (
+              <div className="px-6">
+                <ErrorBanner
+                  error={{
+                    code: 'UNK_001' as any,
+                    severity: 'high' as any,
+                    message: workflow.error || 'Unknown error occurred',
+                    userMessage: workflow.error || 'An unexpected error occurred during survey generation. Please try again.',
+                    debugInfo: {
+                      sessionId: 'legacy',
+                      timestamp: new Date().toISOString(),
+                      errorCode: 'UNK_001' as any,
+                      userAgent: navigator.userAgent
+                    },
+                    retryable: true,
+                    suggestedActions: ['retry' as any, 'return_to_form' as any]
+                  }}
+                  onRetry={() => {
+                    addToast({
+                      type: 'info',
+                      title: 'Retrying Generation',
+                      message: 'Restarting survey generation.',
+                      duration: 3000
+                    });
+                    resetWorkflow();
+                  }}
+                  onDismiss={() => {
+                    clearEnhancedRfqState();
+                    resetWorkflow();
+                    window.location.href = '/';
+                  }}
+                />
               </div>
             )}
           </>

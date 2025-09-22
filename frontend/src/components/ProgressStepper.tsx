@@ -155,10 +155,38 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
   const [enabledSteps, setEnabledSteps] = useState<SimplifiedStep[]>([]);
   
   // Get settings to determine if human review step should be shown
-  const [showHumanReview, setShowHumanReview] = useState(false);
+  const [showHumanReview, setShowHumanReview] = useState<boolean | null>(null); // null = loading, true/false = loaded
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+
+  // Fetch settings to determine if human review is enabled
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const response = await fetch('/api/v1/settings/evaluation');
+        if (response.ok) {
+          const settings = await response.json();
+          const humanReviewEnabled = settings.enable_prompt_review && settings.prompt_review_mode !== 'disabled';
+          setShowHumanReview(humanReviewEnabled);
+          setSettingsLoaded(true);
+        } else {
+          // Fallback to false if API fails
+          setShowHumanReview(false);
+          setSettingsLoaded(true);
+        }
+      } catch (error) {
+        console.error('Failed to fetch settings:', error);
+        // Fallback to false if API fails
+        setShowHumanReview(false);
+        setSettingsLoaded(true);
+      }
+    };
+    fetchSettings();
+  }, []);
 
   // Determine if human review should be shown based on workflow state
   useEffect(() => {
+    if (!settingsLoaded) return; // Don't update until settings are loaded
+    
     const shouldShowHumanReview = Boolean(
       // There's an active review
       !!activeReview ||
@@ -172,35 +200,26 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
       shouldShowHumanReview,
       activeReview: !!activeReview,
       workflowPaused: workflow.workflow_paused,
-      currentStep: workflow.current_step
+      currentStep: workflow.current_step,
+      settingsLoaded
     });
 
     setShowHumanReview(shouldShowHumanReview);
-  }, [activeReview, workflow.workflow_paused, workflow.current_step]);
+  }, [activeReview, workflow.workflow_paused, workflow.current_step, settingsLoaded]);
   
   useEffect(() => {
-    // Fetch settings to determine if human review is enabled
-    const fetchSettings = async () => {
-      try {
-        const response = await fetch('/api/v1/settings/evaluation');
-        if (response.ok) {
-          const settings = await response.json();
-          setShowHumanReview(settings.enable_prompt_review && settings.prompt_review_mode !== 'disabled');
-        }
-      } catch (error) {
-        console.error('Failed to fetch settings:', error);
-      }
-    };
-    fetchSettings();
-  }, []);
-  
-  useEffect(() => {
+    // Don't filter steps until settings are loaded
+    if (!settingsLoaded) {
+      setEnabledSteps([]);
+      return;
+    }
+    
     // Filter steps based on settings
     const steps = SIMPLIFIED_STEPS.filter(step => 
       !step.conditional || (step.conditional && showHumanReview)
     );
     setEnabledSteps(steps);
-  }, [showHumanReview]);
+  }, [showHumanReview, settingsLoaded]);
   
   useEffect(() => {
     if (!workflow.current_step || enabledSteps.length === 0) return;
@@ -294,7 +313,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
     });
 
     setCompletedSteps(completed);
-  }, [workflow.current_step, workflow.progress, workflowStatus, enabledSteps]);
+  }, [workflow.current_step, workflow.progress, workflowStatus, workflow.workflow_paused, enabledSteps]);
 
   // Handle automatic completion actions
   useEffect(() => {
@@ -349,6 +368,20 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
       workflow.current_step === 'human_review'
     ));
   
+  // Show loading state while settings are being fetched
+  if (!settingsLoaded) {
+    return (
+      <div className="h-screen flex flex-col bg-white">
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading settings...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex flex-col bg-white">
       {/* Header */}
@@ -387,7 +420,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
       {/* Main Content - Split Screen */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Panel - Progress Steps */}
-        <div className="w-1/4 border-r border-gray-200/50 bg-white/40 backdrop-blur-sm">
+        <div className="w-1/2 border-r border-gray-200/50 bg-white/40 backdrop-blur-sm">
           <div className="h-full overflow-y-auto">
             <div className="p-8">
               <h2 className="text-lg font-semibold text-gray-900 mb-6">Progress Timeline</h2>
@@ -480,7 +513,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
         </div>
 
         {/* Right Panel - Current Step Details */}
-        <div className="w-3/4 bg-white/60 backdrop-blur-sm">
+        <div className="w-1/2 bg-white/60 backdrop-blur-sm">
           <div className="h-full overflow-y-auto">
             <div className="p-8">
               {isHumanReviewActive ? (
@@ -632,7 +665,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                 {/* Primary: View Summary Button */}
                 <button
                   onClick={() => onShowSummary && onShowSummary()}
-                  className="inline-flex items-center px-6 py-3 rounded-xl font-bold text-base transition-all duration-200 bg-gradient-to-r from-yellow-600 to-amber-600 hover:from-yellow-700 hover:to-amber-700 text-white shadow-lg hover:shadow-xl transform hover:scale-105"
+                  className="inline-flex items-center px-6 py-3 rounded-xl font-bold text-base transition-all duration-200 bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-700 hover:to-yellow-700 text-white shadow-lg hover:shadow-xl transform hover:scale-105"
                 >
                   <SparklesIcon className="w-5 h-5 mr-2" />
                   View AI Analysis

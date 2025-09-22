@@ -213,9 +213,9 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+        <div className="w-full">
           {/* Main Content */}
-          <div className="xl:col-span-3">
+          <div className="w-full">
             <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-8">
 
                 {/* Document Upload Section */}
@@ -652,61 +652,103 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                   </div>
                 )}
 
-                {/* Preview & Generate Section */}
+                {/* Navigation Section */}
                 <div className="mt-8 pt-8 border-t border-gray-200">
                   <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">Ready to Generate Your Survey?</h3>
-                      <p className="text-gray-600 text-sm mt-1">
-                        Review your requirements and generate a professional survey
-                      </p>
+                    {/* Left side - Navigation buttons */}
+                    <div className="flex items-center space-x-3">
+                      {/* Previous Button */}
+                      {sections.findIndex(s => s.id === currentSection) > 0 && (
+                        <button
+                          onClick={() => {
+                            const currentIndex = sections.findIndex(s => s.id === currentSection);
+                            setCurrentSection(sections[currentIndex - 1].id);
+                          }}
+                          className="flex items-center space-x-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                          </svg>
+                          <span>Previous</span>
+                        </button>
+                      )}
+
+                      {/* Next Button */}
+                      {sections.findIndex(s => s.id === currentSection) < sections.length - 1 && (
+                        <button
+                          onClick={() => {
+                            const currentIndex = sections.findIndex(s => s.id === currentSection);
+                            setCurrentSection(sections[currentIndex + 1].id);
+                          }}
+                          className="flex items-center space-x-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
+                        >
+                          <span>Next</span>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </button>
+                      )}
                     </div>
-                    <div className="flex space-x-4">
-                     <button
-                       onClick={() => setCurrentSection('document')}
-                       className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors font-medium"
-                     >
-                       Back to Start
-                     </button>
-                     <button
-                       onClick={() => {
-                         if (window.confirm('Are you sure you want to clear all form data? This action cannot be undone.')) {
-                           clearEnhancedRfqState();
-                           setCurrentSection('document');
-                           addToast({
-                             type: 'info',
-                             title: 'Form Cleared',
-                             message: 'All form data has been cleared. You can start fresh.',
-                             duration: 4000
-                           });
-                         }
-                       }}
-                       className="px-6 py-3 bg-red-100 text-red-700 rounded-xl hover:bg-red-200 transition-colors font-medium"
-                     >
-                       Clear Form
-                     </button>
-                      <button
-                        onClick={onPreview}
-                        disabled={isLoading}
-                        className="px-8 py-3 bg-gradient-to-r from-yellow-500 to-orange-500 text-white rounded-xl hover:from-yellow-600 hover:to-orange-600 transition-all duration-300 font-semibold shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-                      >
-                        {isLoading ? (
-                          <>
-                            <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            <span>Generating...</span>
-                          </>
-                        ) : (
-                          <>
-                            <span>Preview & Generate</span>
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                            </svg>
-                          </>
-                        )}
-                      </button>
+
+                    {/* Right side - Refresh icon and Preview & Generate */}
+                    <div className="flex items-center space-x-3">
+                      {/* Refresh/Clear Button - only show if not on last section */}
+                      {sections.findIndex(s => s.id === currentSection) < sections.length - 1 && (
+                        <button
+                          onClick={() => {
+                            if (window.confirm('Are you sure you want to clear all form data? This action cannot be undone.')) {
+                              clearEnhancedRfqState();
+                              setCurrentSection('document');
+                              addToast({
+                                type: 'info',
+                                title: 'Form Cleared',
+                                message: 'All form data has been cleared. You can start fresh.',
+                                duration: 4000
+                              });
+                            }
+                          }}
+                          className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Clear form and start over"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                        </button>
+                      )}
+
+                      {/* Preview & Generate - only show on last section */}
+                      {sections.findIndex(s => s.id === currentSection) === sections.length - 1 && (
+                        <>
+                          <div className="text-right mr-4">
+                            <h3 className="text-lg font-semibold text-gray-900">Ready to Generate Your Survey?</h3>
+                            <p className="text-gray-600 text-sm">
+                              Review your requirements and generate a professional survey
+                            </p>
+                          </div>
+                          <button
+                            onClick={onPreview}
+                            disabled={isLoading}
+                            className="px-8 py-3 bg-gradient-to-r from-yellow-500 to-orange-500 text-white rounded-xl hover:from-yellow-600 hover:to-orange-600 transition-all duration-300 font-semibold shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                          >
+                            {isLoading ? (
+                              <>
+                                <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                <span>Generating...</span>
+                              </>
+                            ) : (
+                              <>
+                                <span>Preview & Generate</span>
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                                </svg>
+                              </>
+                            )}
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>

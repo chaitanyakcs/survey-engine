@@ -85,6 +85,12 @@ class GoldenRetrieverNode:
             finally:
                 fresh_db.close()
             
+            # Update the state with the retrieved data
+            state.golden_examples = golden_examples
+            state.methodology_blocks = methodology_blocks
+            state.template_questions = template_questions
+            state.used_golden_examples = [ex["id"] for ex in golden_examples]
+            
             return {
                 "golden_examples": golden_examples,
                 "methodology_blocks": methodology_blocks,
@@ -129,6 +135,16 @@ class ContextBuilderNode:
             
             logger.info(f"🔍 [ContextBuilderNode] Final context survey_id: {context.get('survey_id')}")
             logger.info(f"🔍 [ContextBuilderNode] Context keys: {list(context.keys())}")
+            
+            # Update the state with the context
+            state.context = context
+            
+            # Log the context details for debugging
+            logger.info(f"🔍 [ContextBuilderNode] Context built successfully")
+            logger.info(f"🔍 [ContextBuilderNode] Survey ID in context: {context.get('survey_id')}")
+            logger.info(f"🔍 [ContextBuilderNode] Context keys: {list(context.keys())}")
+            logger.info(f"🔍 [ContextBuilderNode] State survey_id: {state.survey_id}")
+            logger.info(f"🔍 [ContextBuilderNode] State context keys: {list(state.context.keys()) if state.context else 'None'}")
             
             return {
                 "context": context,
@@ -190,6 +206,14 @@ class GeneratorAgent:
             if settings.replicate_api_token:
                 self.logger.info(f"🔧 [GeneratorAgent] Replicate API token preview: {settings.replicate_api_token[:8]}...")
             
+            # Log the context being passed to generation service
+            self.logger.info(f"🔍 [GeneratorAgent] About to call generation service with context:")
+            self.logger.info(f"🔍 [GeneratorAgent] Context type: {type(state.context)}")
+            self.logger.info(f"🔍 [GeneratorAgent] Context keys: {list(state.context.keys()) if state.context else 'None'}")
+            self.logger.info(f"🔍 [GeneratorAgent] Context survey_id: {state.context.get('survey_id') if state.context else 'None'}")
+            self.logger.info(f"🔍 [GeneratorAgent] Context rfq_id: {state.context.get('rfq_id') if state.context else 'None'}")
+            self.logger.info(f"🔍 [GeneratorAgent] Context workflow_id: {state.context.get('workflow_id') if state.context else 'None'}")
+            
             # Check if we have a custom system prompt from human review
             if state.system_prompt:
                 self.logger.info(f"📝 [GeneratorAgent] Using custom system prompt from human review (length: {len(state.system_prompt)} chars)")
@@ -228,6 +252,18 @@ class GeneratorAgent:
                     self.logger.warning("⚠️ [GeneratorAgent] No questions found in generated survey")
             else:
                 self.logger.warning("⚠️ [GeneratorAgent] No survey data generated")
+            
+            # Update the state with the generated data
+            state.raw_survey = generated_survey
+            state.generated_survey = generated_survey
+            state.pillar_scores = pillar_scores
+            
+            # Log the context details for debugging
+            logger.info(f"🔍 [GeneratorAgent] Context received from state:")
+            logger.info(f"🔍 [GeneratorAgent] State survey_id: {state.survey_id}")
+            logger.info(f"🔍 [GeneratorAgent] State context: {state.context}")
+            logger.info(f"🔍 [GeneratorAgent] Context survey_id: {state.context.get('survey_id') if state.context else 'None'}")
+            logger.info(f"🔍 [GeneratorAgent] Context keys: {list(state.context.keys()) if state.context else 'None'}")
             
             result = {
                 "raw_survey": generated_survey,

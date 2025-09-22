@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { AppStore, RFQRequest, EnhancedRFQRequest, RFQTemplate, RFQQualityAssessment, WorkflowState, ProgressMessage, GoldenExampleRequest, ToastMessage, SurveyAnnotations, getQuestionCount, PendingReview, ReviewDecision, DocumentContent, DocumentAnalysis, RFQFieldMapping, DocumentAnalysisResponse } from '../types';
+import { AppStore, RFQRequest, EnhancedRFQRequest, RFQTemplate, RFQQualityAssessment, WorkflowState, ProgressMessage, GoldenExampleRequest, ToastMessage, SurveyAnnotations, getQuestionCount, PendingReview, ReviewDecision, DocumentContent, DocumentAnalysis, RFQFieldMapping, DocumentAnalysisResponse, ErrorClassifier, DetailedError, ErrorCode } from '../types';
 import { apiService } from '../services/api';
 import { rfqTemplateService } from '../services/RFQTemplateService';
 
@@ -238,13 +238,28 @@ export const useAppStore = create<AppStore>((set, get) => ({
       get().connectWebSocket(response.workflow_id);
 
     } catch (error) {
+      // Classify the error for better handling
+      const detailedError = ErrorClassifier.classifyError(
+        error,
+        { component: 'RFQSubmission', action: 'submit_rfq' }
+      );
+
       set((state) => ({
         workflow: {
           ...state.workflow,
           status: 'failed',
-          error: error instanceof Error ? error.message : 'Unknown error'
+          error: error instanceof Error ? error.message : 'Unknown error',
+          detailedError: detailedError
         }
       }));
+
+      // Show enhanced error toast
+      get().addToast({
+        type: 'error',
+        title: 'Submission Failed',
+        message: `${detailedError.userMessage}\n\nDebug Code: ${ErrorClassifier.generateDebugHandle(detailedError.code, new Date())}`,
+        duration: 8000
+      });
     }
   },
 
@@ -490,23 +505,38 @@ export const useAppStore = create<AppStore>((set, get) => ({
           }, 3000); // 3 second delay
         } else if (message.type === 'error') {
           console.error('Workflow error:', message);
-          
-          // Show error toast notification
+
+          // Classify the error using our error classification system
+          const detailedError = ErrorClassifier.classifyError(
+            message.message || 'Survey generation failed',
+            {
+              component: 'WebSocket',
+              action: 'survey_generation',
+              step: get().workflow.current_step,
+              additionalData: {
+                workflowId: get().workflow.workflow_id,
+                message: message
+              }
+            }
+          );
+
+          // Enhanced error toast with debug information
           get().addToast({
             type: 'error',
-            title: 'Generation Failed',
-            message: message.message || 'Survey generation failed. Please try again.',
-            duration: 6000
+            title: detailedError.severity === 'critical' ? 'Critical Error' : 'Generation Failed',
+            message: `${detailedError.userMessage}\n\nDebug Code: ${ErrorClassifier.generateDebugHandle(detailedError.code, new Date())}`,
+            duration: detailedError.severity === 'critical' ? 10000 : 6000
           });
-          
+
           set((state) => ({
             workflow: {
               ...state.workflow,
               status: 'failed',
-              error: message.message
+              error: message.message,
+              detailedError: detailedError
             }
           }));
-          
+
           // Close WebSocket on error
           if (keepAliveInterval) {
             clearInterval(keepAliveInterval);
@@ -558,13 +588,33 @@ export const useAppStore = create<AppStore>((set, get) => ({
           }, retryDelay);
         } else if (retryCount >= maxRetries) {
           console.error('WebSocket connection failed after maximum retries');
+
+          // Classify the connection failure error
+          const detailedError = ErrorClassifier.classifyError(
+            'WebSocket connection failed after multiple attempts',
+            {
+              component: 'WebSocket',
+              action: 'connection_retry',
+              additionalData: { retryCount, maxRetries }
+            }
+          );
+
           set((state) => ({
             workflow: {
               ...state.workflow,
               status: 'failed',
-              error: 'WebSocket connection failed after multiple attempts'
+              error: 'WebSocket connection failed after multiple attempts',
+              detailedError: detailedError
             }
           }));
+
+          // Show enhanced error notification
+          get().addToast({
+            type: 'error',
+            title: 'Connection Failed',
+            message: `${detailedError.userMessage}\n\nDebug Code: ${ErrorClassifier.generateDebugHandle(detailedError.code, new Date())}`,
+            duration: 10000
+          });
         }
       };
 

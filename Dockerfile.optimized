@@ -1,0 +1,49 @@
+# Multi-stage build for Survey Engine
+FROM python:3.11-slim as base
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PIP_NO_CACHE_DIR=1
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    nginx \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app user
+RUN groupadd -r app && useradd -r -g app app
+
+# Set work directory
+WORKDIR /app
+
+# Install Python dependencies
+COPY requirements-docker.txt .
+RUN pip install --no-cache-dir -r requirements-docker.txt
+
+# Copy application code
+COPY . .
+
+# Create necessary directories
+RUN mkdir -p /app/logs /app/tmp /var/log/nginx
+
+# Set permissions
+RUN chown -R app:app /app
+RUN chmod +x start_docker.sh
+
+# Switch to app user
+USER app
+
+# Expose ports
+EXPOSE 8080 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Start the application
+CMD ["./start_docker.sh"]

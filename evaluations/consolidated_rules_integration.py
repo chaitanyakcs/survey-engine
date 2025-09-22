@@ -45,11 +45,29 @@ class ConsolidatedRulesService:
         if self.db_session:
             try:
                 from sqlalchemy import text
-                # Use the active_evaluation_rules view created by migration
+                # Query the base survey_rules table directly since pillar rules are managed via API
                 query = text("""
                 SELECT id, rule_type, category, rule_name, rule_description, 
-                       rule_content, priority, pillar_weight, pillar_name
-                FROM active_evaluation_rules
+                       rule_content, priority,
+                       -- Calculate pillar weight from rule_content JSON
+                       COALESCE(
+                           (rule_content->>'weight')::float,
+                           CASE category
+                               WHEN 'content_validity' THEN 0.20
+                               WHEN 'methodological_rigor' THEN 0.25
+                               WHEN 'clarity_comprehensibility' THEN 0.25
+                               WHEN 'structural_coherence' THEN 0.20
+                               WHEN 'deployment_readiness' THEN 0.10
+                               ELSE 0.0
+                           END
+                       ) as pillar_weight,
+                       -- Use category as pillar_name for pillar rules
+                       CASE 
+                           WHEN rule_type = 'pillar' THEN category
+                           ELSE NULL
+                       END as pillar_name
+                FROM survey_rules
+                WHERE is_active = true
                 ORDER BY rule_type, category, priority DESC
                 """)
                 
@@ -86,7 +104,11 @@ class ConsolidatedRulesService:
                         })
                         
             except Exception as e:
-                print(f"Warning: Could not load consolidated rules from database: {e}")
+                # Only log the warning once to avoid spam
+                if not hasattr(self, '_db_warning_logged'):
+                    print(f"Warning: Could not load consolidated rules from database: {e}")
+                    print("Note: Pillar rules are managed via API and may not exist yet. Using fallback rules.")
+                    self._db_warning_logged = True
         
         return active_rules
     

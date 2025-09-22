@@ -46,20 +46,20 @@ const PillarScoresDisplay: React.FC<PillarScoresDisplayProps> = ({
 
   const getGradeColor = (grade: string) => {
     switch (grade) {
-      case 'A': return 'text-green-600 bg-green-100';
-      case 'B': return 'text-blue-600 bg-blue-100';
-      case 'C': return 'text-yellow-600 bg-yellow-100';
-      case 'D': return 'text-orange-600 bg-orange-100';
-      case 'F': return 'text-red-600 bg-red-100';
+      case 'A': return 'text-amber-700 bg-amber-100';
+      case 'B': return 'text-yellow-700 bg-yellow-100';
+      case 'C': return 'text-orange-600 bg-orange-100';
+      case 'D': return 'text-red-600 bg-red-100';
+      case 'F': return 'text-red-700 bg-red-100';
       default: return 'text-gray-600 bg-gray-100';
     }
   };
 
   const getScoreColor = (score: number) => {
-    if (score >= 0.9) return 'text-green-600';
-    if (score >= 0.8) return 'text-blue-600';
-    if (score >= 0.7) return 'text-yellow-600';
-    if (score >= 0.6) return 'text-orange-600';
+    if (score >= 0.9) return 'text-amber-700';
+    if (score >= 0.8) return 'text-yellow-700';
+    if (score >= 0.7) return 'text-orange-600';
+    if (score >= 0.6) return 'text-orange-500';
     return 'text-red-600';
   };
 
@@ -131,10 +131,10 @@ const PillarScoresDisplay: React.FC<PillarScoresDisplayProps> = ({
               <div className="w-full bg-gray-200 rounded-full h-1.5">
                 <div 
                   className={`h-1.5 rounded-full transition-all duration-300 ${
-                    pillar.score >= 0.9 ? 'bg-green-500' :
-                    pillar.score >= 0.8 ? 'bg-blue-500' :
-                    pillar.score >= 0.7 ? 'bg-yellow-500' :
-                    pillar.score >= 0.6 ? 'bg-orange-500' : 'bg-red-500'
+                    pillar.score >= 0.9 ? 'bg-amber-500' :
+                    pillar.score >= 0.8 ? 'bg-yellow-500' :
+                    pillar.score >= 0.7 ? 'bg-orange-500' :
+                    pillar.score >= 0.6 ? 'bg-orange-400' : 'bg-red-500'
                   }`}
                   style={{ width: `${pillar.score * 100}%` }}
                 />

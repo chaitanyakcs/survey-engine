@@ -61,6 +61,23 @@ python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_calls = true
+disallow_untyped_decorators = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+disallow_unused_ignores = true
+disallow_any_unimported = true
+disallow_any_expr = false  # Too strict for this project
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_optional = true
+show_error_codes = true
+show_column_numbers = true
+show_error_context = true
 
 [dependency-groups]
 dev = [

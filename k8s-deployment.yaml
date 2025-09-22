@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: survey-engine
+  labels:
+    app: survey-engine
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: survey-engine
+  template:
+    metadata:
+      labels:
+        app: survey-engine
+    spec:
+      containers:
+      - name: survey-engine
+        image: survey-engine:latest
+        ports:
+        - containerPort: 8080
+        - containerPort: 8000
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: survey-engine-secrets
+              key: database-url
+        - name: PORT
+          value: "8080"
+        - name: PYTHONPATH
+          value: "/app/src"
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+      volumes:
+      - name: logs
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: survey-engine-service
+spec:
+  selector:
+    app: survey-engine
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+  - name: api
+    port: 8000
+    targetPort: 8000
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: survey-engine-secrets
+type: Opaque
+stringData:
+  database-url: "postgresql://postgres:password@postgres-service:5432/survey_engine"

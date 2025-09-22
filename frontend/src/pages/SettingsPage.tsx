@@ -249,9 +249,9 @@ export const SettingsPage: React.FC = () => {
       <div className="min-h-screen bg-white">
         <Sidebar currentView="settings" onViewChange={handleViewChange} />
         <div className={mainContentClasses}>
-          <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-          </div>
+            <div className="flex items-center justify-center h-64">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500"></div>
+            </div>
         </div>
       </div>
     );
@@ -269,7 +269,7 @@ export const SettingsPage: React.FC = () => {
             <div className="px-6 py-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
-                  <CogIcon className="w-8 h-8 text-indigo-600" />
+                  <CogIcon className="w-8 h-8 text-yellow-600" />
                   <div>
                     <h1 className="text-2xl font-bold text-gray-900">Survey Generation Settings</h1>
                     <p className="text-gray-600">Configure human review and survey generation preferences</p>
@@ -292,7 +292,7 @@ export const SettingsPage: React.FC = () => {
                   <button
                     onClick={saveSettings}
                     disabled={saving}
-                    className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="px-6 py-2 bg-gradient-to-r from-yellow-500 to-amber-500 text-white rounded-lg hover:from-yellow-600 hover:to-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg"
                   >
                     {saving ? 'Saving...' : 'Save Settings'}
                   </button>
@@ -305,7 +305,7 @@ export const SettingsPage: React.FC = () => {
             {/* Model Configuration */}
             <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6">
               <div className="flex items-center space-x-3 mb-6">
-                <CogIcon className="w-6 h-6 text-indigo-600" />
+                <CogIcon className="w-6 h-6 text-yellow-600" />
                 <h2 className="text-xl font-semibold text-gray-900">Model Configuration</h2>
               </div>
 
@@ -316,7 +316,7 @@ export const SettingsPage: React.FC = () => {
                   <select
                     value={settings.generation_model}
                     onChange={(e) => setSettings({ ...settings, generation_model: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
                   >
                     {generationModels.map((m) => (
                       <option key={m} value={m}>{m}</option>
@@ -331,7 +331,7 @@ export const SettingsPage: React.FC = () => {
                   <select
                     value={settings.evaluation_model}
                     onChange={(e) => setSettings({ ...settings, evaluation_model: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
                   >
                     {evaluationModels.map((m) => (
                       <option key={m} value={m}>{m}</option>
@@ -346,7 +346,7 @@ export const SettingsPage: React.FC = () => {
                   <select
                     value={settings.embedding_model}
                     onChange={(e) => setSettings({ ...settings, embedding_model: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
                   >
                     {embeddingModels.map((m) => (
                       <option key={m} value={m}>{m}</option>
@@ -360,7 +360,7 @@ export const SettingsPage: React.FC = () => {
                 <button
                   onClick={saveSettings}
                   disabled={saving}
-                  className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-6 py-2 bg-gradient-to-r from-yellow-500 to-amber-500 text-white rounded-lg hover:from-yellow-600 hover:to-amber-600 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
                 >
                   {saving ? 'Saving...' : 'Save Model Settings'}
                 </button>
@@ -369,7 +369,7 @@ export const SettingsPage: React.FC = () => {
             {/* RFQ Parsing Settings */}
             <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6">
               <div className="flex items-center space-x-3 mb-6">
-                <CogIcon className="w-6 h-6 text-indigo-600" />
+                <CogIcon className="w-6 h-6 text-yellow-600" />
                 <h2 className="text-xl font-semibold text-gray-900">RFQ Parsing Settings</h2>
               </div>
 
@@ -384,7 +384,7 @@ export const SettingsPage: React.FC = () => {
                     step={0.05}
                     value={rfqParsing.auto_apply_threshold}
                     onChange={(e) => setRfqParsing({ ...rfqParsing, auto_apply_threshold: Number(e.target.value) })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
                   />
                   <p className="text-xs text-gray-500 mt-1">Fields with confidence ≥ threshold are auto-filled.</p>
                 </div>
@@ -395,7 +395,7 @@ export const SettingsPage: React.FC = () => {
                   <select
                     value={rfqParsing.parsing_model}
                     onChange={(e) => setRfqParsing({ ...rfqParsing, parsing_model: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
                   >
                     {rfqModels.map((m) => (
                       <option key={m} value={m}>{m}</option>
@@ -408,7 +408,7 @@ export const SettingsPage: React.FC = () => {
               <div className="mt-6 flex justify-end">
                 <button
                   onClick={saveRfqParsingSettings}
-                  className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                  className="px-6 py-2 bg-gradient-to-r from-yellow-500 to-amber-500 text-white rounded-lg hover:from-yellow-600 hover:to-amber-600 shadow-lg"
                 >
                   Save RFQ Parsing Settings
                 </button>
@@ -417,7 +417,7 @@ export const SettingsPage: React.FC = () => {
             {/* Human Prompt Review Settings */}
             <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6">
               <div className="flex items-center space-x-3 mb-6">
-                <UserIcon className="w-6 h-6 text-orange-600" />
+                <UserIcon className="w-6 h-6 text-amber-600" />
                 <h2 className="text-xl font-semibold text-gray-900">Human Prompt Review</h2>
               </div>
               
@@ -440,7 +440,7 @@ export const SettingsPage: React.FC = () => {
                     })}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-yellow-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-yellow-500 peer-checked:to-amber-500"></div>
                 </label>
               </div>
 
@@ -470,8 +470,8 @@ export const SettingsPage: React.FC = () => {
                       key={mode.value}
                       className={`border-2 rounded-xl p-4 cursor-pointer transition-all duration-200 ${
                         settings.prompt_review_mode === mode.value
-                          ? 'border-indigo-500 bg-indigo-50'
-                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                          ? 'border-yellow-500 bg-gradient-to-br from-yellow-50 to-amber-50'
+                          : 'border-gray-200 hover:border-yellow-300 hover:bg-yellow-50'
                       }`}
                       onClick={() => setSettings({ ...settings, prompt_review_mode: mode.value as any })}
                     >
@@ -484,7 +484,7 @@ export const SettingsPage: React.FC = () => {
                               value={mode.value}
                               checked={settings.prompt_review_mode === mode.value}
                               onChange={() => setSettings({ ...settings, prompt_review_mode: mode.value as any })}
-                              className="w-4 h-4 text-indigo-600"
+                              className="w-4 h-4 text-yellow-600"
                             />
                             <span className="text-2xl">{mode.icon}</span>
                             <h4 className="text-lg font-medium text-gray-900">{mode.title}</h4>
@@ -535,7 +535,7 @@ export const SettingsPage: React.FC = () => {
                       <div className={`w-11 h-6 rounded-full peer ${
                         settings.prompt_review_mode !== 'blocking' 
                           ? 'bg-gray-200 cursor-not-allowed' 
-                          : 'bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 peer-checked:bg-indigo-600'
+                          : 'bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-yellow-300 peer-checked:bg-gradient-to-r peer-checked:from-yellow-500 peer-checked:to-amber-500'
                       } peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all`}></div>
                     </label>
                   </div>
@@ -553,7 +553,7 @@ export const SettingsPage: React.FC = () => {
                         onChange={(e) => setSettings({ ...settings, auto_approve_trusted_prompts: e.target.checked })}
                         className="sr-only peer"
                       />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-yellow-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-yellow-500 peer-checked:to-amber-500"></div>
                     </label>
                   </div>
 
@@ -568,7 +568,7 @@ export const SettingsPage: React.FC = () => {
                         type="number"
                         value={settings.prompt_review_timeout_hours}
                         onChange={(e) => setSettings({ ...settings, prompt_review_timeout_hours: Number(e.target.value) })}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
                         min="1"
                         max="168"
                         step="1"
@@ -609,8 +609,10 @@ export const SettingsPage: React.FC = () => {
                     key={mode.value}
                     className={`border-2 rounded-xl p-4 cursor-pointer transition-all duration-200 ${
                       settings.evaluation_mode === mode.value
-                        ? `border-${mode.color}-500 bg-${mode.color}-50`
-                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                        ? mode.color === 'green' 
+                          ? 'border-yellow-500 bg-gradient-to-br from-yellow-50 to-amber-50'
+                          : 'border-amber-500 bg-gradient-to-br from-amber-50 to-orange-50'
+                        : 'border-gray-200 hover:border-yellow-300 hover:bg-yellow-50'
                     }`}
                     onClick={() => setSettings({ ...settings, evaluation_mode: mode.value as any })}
                   >
@@ -623,7 +625,7 @@ export const SettingsPage: React.FC = () => {
                             value={mode.value}
                             checked={settings.evaluation_mode === mode.value}
                             onChange={() => setSettings({ ...settings, evaluation_mode: mode.value as any })}
-                            className="w-4 h-4 text-indigo-600"
+                            className="w-4 h-4 text-yellow-600"
                           />
                           {mode.icon}
                           <h3 className="text-lg font-medium text-gray-900">{mode.title}</h3>
@@ -655,7 +657,7 @@ export const SettingsPage: React.FC = () => {
 
               {/* Parallel Processing Toggle */}
               {settings.evaluation_mode === 'multiple_calls' && (
-                <div className="mt-6 p-4 bg-blue-50 rounded-xl">
+                <div className="mt-6 p-4 bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl border border-yellow-200">
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="text-lg font-medium text-gray-900">Enable Parallel Processing</h3>
@@ -668,7 +670,7 @@ export const SettingsPage: React.FC = () => {
                         onChange={(e) => setSettings({ ...settings, enable_parallel_processing: e.target.checked })}
                         className="sr-only peer"
                       />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-yellow-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-yellow-500 peer-checked:to-amber-500"></div>
                     </label>
                   </div>
                 </div>
@@ -676,12 +678,12 @@ export const SettingsPage: React.FC = () => {
             </div>
 
             {/* Information Panel */}
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
+            <div className="bg-gradient-to-br from-yellow-50 to-amber-50 border border-yellow-200 rounded-xl p-6">
               <div className="flex items-start space-x-3">
-                <InformationCircleIcon className="w-6 h-6 text-blue-600 mt-0.5" />
+                <InformationCircleIcon className="w-6 h-6 text-amber-600 mt-0.5" />
                 <div>
-                  <h3 className="text-lg font-medium text-blue-900 mb-2">About Human Review</h3>
-                  <div className="text-blue-800 space-y-2">
+                  <h3 className="text-lg font-medium text-amber-900 mb-2">About Human Review</h3>
+                  <div className="text-amber-800 space-y-2">
                     <p><strong>Parallel Review:</strong> Allows continuous survey generation while building a prompt approval dataset for future improvements. Recommended for most workflows.</p>
                     <p><strong>Blocking Review:</strong> Ensures complete human oversight but introduces delays in the generation pipeline. Use when quality control is critical.</p>
                     <p><strong>Auto-approval:</strong> Uses machine learning to automatically approve prompts similar to previously approved ones, reducing manual review workload.</p>

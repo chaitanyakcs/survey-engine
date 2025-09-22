@@ -115,13 +115,23 @@ run_migrations() {
     fi
 }
 
+# Global flag to track if models are already preloaded
+MODELS_PRELOADED=false
+
 # Function to preload models
 preload_models() {
+    if [ "$MODELS_PRELOADED" = true ]; then
+        log_info "Models already preloaded, skipping..."
+        return 0
+    fi
+    
     log_info "Preloading ML models to avoid startup delays..."
     if python3 preload_models.py; then
         log_success "Model preloading completed successfully"
+        MODELS_PRELOADED=true
     else
         log_warning "Model preloading failed, but continuing with startup"
+        MODELS_PRELOADED=true  # Mark as attempted to prevent retries
     fi
 }
 
@@ -174,22 +184,29 @@ start_consolidated() {
         exit 1
     }
     
-    # Wait for nginx to be ready (check if nginx process is running)
+    # Wait for nginx to be ready (check if nginx is responding on port)
     log_info "⏳ Waiting for nginx to be ready..."
-    local max_attempts=5
+    local max_attempts=10
     local attempt=1
     while [ $attempt -le $max_attempts ]; do
-        if pgrep nginx > /dev/null 2>&1; then
-            log_success "✅ Step 2: Nginx is ready and running on port $nginx_port!"
+        # Check if nginx process is running AND responding on the port
+        if pgrep nginx > /dev/null 2>&1 && curl -s -f "http://localhost:$nginx_port/health" > /dev/null 2>&1; then
+            log_success "✅ Step 2: Nginx is ready and responding on port $nginx_port!"
             break
         fi
         log_info "Nginx not ready yet - attempt $attempt/$max_attempts"
-        sleep 1
+        sleep 2
         attempt=$((attempt + 1))
     done
     
     if [ $attempt -gt $max_attempts ]; then
         log_warning "Nginx readiness check timed out, but continuing..."
+        # Try to start nginx if it's not running
+        if ! pgrep nginx > /dev/null 2>&1; then
+            log_info "Attempting to start nginx..."
+            nginx -c /etc/nginx/nginx.conf &
+            sleep 3
+        fi
     fi
     
     # Step 3: Start FastAPI in foreground

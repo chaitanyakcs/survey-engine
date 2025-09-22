@@ -93,7 +93,7 @@ const QuestionCard: React.FC<{
     <div 
       className={`
         border rounded-lg p-4 cursor-pointer transition-all duration-200
-        ${isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}
+        ${isSelected ? 'border-amber-500 bg-amber-50' : 'border-gray-200 hover:border-gray-300'}
       `}
       onClick={() => {
         console.log('🔍 [QuestionCard] Question clicked:', {
@@ -194,7 +194,7 @@ const QuestionCard: React.FC<{
                   ))}
                   <button
                     onClick={addOption}
-                    className="px-3 py-2 text-sm text-blue-600 border border-blue-300 rounded-md hover:bg-blue-50"
+                    className="px-3 py-2 text-sm text-amber-600 border border-amber-300 rounded-md hover:bg-amber-50"
                   >
                     Add Option
                   </button>
@@ -206,7 +206,7 @@ const QuestionCard: React.FC<{
                   <input
                     type="radio"
                     disabled
-                    className="h-4 w-4 text-blue-600 border-gray-300"
+                    className="h-4 w-4 text-amber-600 border-gray-300"
                   />
                   <label className="ml-2 text-sm text-gray-700">
                     {option}
@@ -226,7 +226,7 @@ const QuestionCard: React.FC<{
                   <input
                     type="radio"
                     disabled
-                    className="h-4 w-4 text-blue-600 border-gray-300"
+                    className="h-4 w-4 text-amber-600 border-gray-300"
                   />
                   <label className="ml-2 text-sm text-gray-700">
                     {option}
@@ -260,7 +260,7 @@ const QuestionCard: React.FC<{
             <div className="space-y-2">
               {question.options?.map((option, idx) => (
                 <div key={idx} className="flex items-center p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                  <div className="flex items-center justify-center w-6 h-6 bg-blue-100 text-blue-600 rounded-full text-sm font-medium mr-3">
+                  <div className="flex items-center justify-center w-6 h-6 bg-amber-100 text-amber-600 rounded-full text-sm font-medium mr-3">
                     {idx + 1}
                   </div>
                   <span className="text-sm text-gray-700 flex-1">{option}</span>
@@ -404,7 +404,7 @@ const SectionCard: React.FC<{
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="flex items-center justify-center w-8 h-8 bg-blue-100 text-blue-600 rounded-full font-semibold text-sm">
+            <div className="flex items-center justify-center w-8 h-8 bg-amber-100 text-amber-600 rounded-full font-semibold text-sm">
               {section.id}
             </div>
             <div>
@@ -1161,7 +1161,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
                     <>
                       <button 
                         onClick={handleStartEditing}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-lg"
+                        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-600 to-yellow-600 text-white rounded-lg font-medium hover:from-amber-700 hover:to-yellow-700 transition-all duration-200 shadow-lg hover:shadow-xl"
                       >
                         <PencilIcon className="w-5 h-5" />
                         <span className="text-sm">Edit Survey</span>
@@ -1178,7 +1178,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
                           }));
                           setShowGoldenModal(true);
                         }}
-                        className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors shadow-lg"
+                        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-yellow-600 to-amber-600 text-white rounded-lg font-medium hover:from-yellow-700 hover:to-amber-700 transition-all duration-200 shadow-lg hover:shadow-xl"
                       >
                         <BookmarkIcon className="w-5 h-5" />
                         <span className="text-sm">Save as Golden Example</span>
@@ -1186,7 +1186,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
                       
                       <button 
                         onClick={() => setShowSystemPromptModal(true)}
-                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors shadow-lg"
+                        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-lg font-medium hover:from-amber-600 hover:to-orange-600 transition-all duration-200 shadow-lg hover:shadow-xl"
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -1197,7 +1197,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
                       <div className="relative export-dropdown">
                         <button 
                           onClick={() => setShowExportDropdown(!showExportDropdown)}
-                          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors shadow-lg"
+                          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-yellow-500 to-amber-500 text-white rounded-lg font-medium hover:from-yellow-600 hover:to-amber-600 transition-all duration-200 shadow-lg hover:shadow-xl"
                         >
                           <ArrowDownTrayIcon className="w-5 h-5" />
                           <span className="text-sm">Export</span>
@@ -1391,7 +1391,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
               <div className="flex items-center">
                 <div className="w-full bg-gray-200 rounded-full h-2">
                   <div 
-                    className="bg-green-600 h-2 rounded-full"
+                    className="bg-gradient-to-r from-amber-500 to-yellow-500 h-2 rounded-full"
                     style={{ 
                       width: `${surveyToDisplay.pillar_scores.weighted_score * 100}%` 
                     }}
@@ -1625,7 +1625,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
               <button
                 onClick={handleSaveAsGoldenExample}
                 disabled={!goldenFormData.industry_category || !goldenFormData.research_goal}
-                className="px-4 py-2 bg-purple-600 text-white rounded-md text-sm hover:bg-purple-700 disabled:opacity-50"
+                className="px-4 py-2 bg-gradient-to-r from-yellow-600 to-amber-600 text-white rounded-md text-sm hover:from-yellow-700 hover:to-amber-700 disabled:opacity-50 transition-all duration-200"
               >
                 Save as Golden Example
               </button>

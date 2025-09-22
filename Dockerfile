@@ -1,12 +1,5 @@
 # Multi-stage build for full-stack application
-FROM node:18-alpine as frontend-build
-
-# Build React frontend
-WORKDIR /app/frontend
-COPY frontend/package*.json ./
-RUN npm ci
-COPY frontend/ ./
-RUN npm run build
+# Note: Using pre-built frontend from local build
 
 # Python backend stage
 FROM python:3.11-slim
@@ -54,8 +47,8 @@ COPY preload_models.py ./
 COPY seed_rules.py ./
 COPY migrations/ ./migrations/
 
-# Copy built frontend from previous stage
-COPY --from=frontend-build /app/frontend/build /app/frontend/build
+# Copy pre-built frontend from local build
+COPY frontend/build /app/frontend/build
 
 # Create nginx configuration
 RUN cat > /etc/nginx/nginx.conf << 'EOF'

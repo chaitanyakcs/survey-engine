@@ -73,6 +73,15 @@ class LLMAuditService:
             The ID of the created audit record
         """
         try:
+            # Log the parameters being passed for debugging
+            logger.info(f"🔍 [LLMAuditService] Logging LLM interaction:")
+            logger.info(f"🔍 [LLMAuditService] Interaction ID: {interaction_id}")
+            logger.info(f"🔍 [LLMAuditService] Purpose: {purpose}")
+            logger.info(f"🔍 [LLMAuditService] Parent Survey ID: {parent_survey_id}")
+            logger.info(f"🔍 [LLMAuditService] Parent RFQ ID: {parent_rfq_id}")
+            logger.info(f"🔍 [LLMAuditService] Parent Workflow ID: {parent_workflow_id}")
+            logger.info(f"🔍 [LLMAuditService] Context Type: {context_type}")
+            
             # Extract hyperparameters
             hyperparams = hyperparameters or {}
             temperature = hyperparams.get('temperature')
@@ -128,14 +137,33 @@ class LLMAuditService:
             )
             
             self.db_session.add(audit_record)
-            self.db_session.commit()
             
-            logger.info(f"✅ [LLMAuditService] Logged LLM interaction: {interaction_id} ({purpose})")
-            return str(audit_record.id)
+            # Commit the audit record to ensure it's persisted
+            try:
+                self.db_session.commit()
+                logger.info(f"✅ [LLMAuditService] Logged LLM interaction: {interaction_id} ({purpose})")
+                return str(audit_record.id)
+            except Exception as commit_error:
+                logger.warning(f"⚠️ [LLMAuditService] Failed to commit audit record, rolling back: {str(commit_error)}")
+                self.db_session.rollback()
+                # Try to create a new session for audit logging
+                try:
+                    from src.database.connection import get_db
+                    audit_session = next(get_db())
+                    audit_session.add(audit_record)
+                    audit_session.commit()
+                    logger.info(f"✅ [LLMAuditService] Logged LLM interaction with new session: {interaction_id} ({purpose})")
+                    return str(audit_record.id)
+                except Exception as retry_error:
+                    logger.error(f"❌ [LLMAuditService] Failed to log with new session: {str(retry_error)}")
+                    raise
             
         except Exception as e:
             logger.error(f"❌ [LLMAuditService] Failed to log LLM interaction: {str(e)}")
-            self.db_session.rollback()
+            try:
+                self.db_session.rollback()
+            except:
+                pass  # Ignore rollback errors
             raise
     
     async def get_hyperparameter_config(

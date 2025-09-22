@@ -458,6 +458,18 @@ class WorkflowService:
             initial_state.pending_human_review = False
             initial_state.workflow_paused = False
             initial_state.prompt_approved = True
+            
+            # CRITICAL FIX: Rebuild context if it's missing or empty
+            if not initial_state.context or not initial_state.context.get('survey_id'):
+                logger.info("🔧 [WorkflowService] Rebuilding context for resumed workflow")
+                from src.workflows.nodes import ContextBuilderNode
+                context_builder = ContextBuilderNode(self.db)
+                context_result = await context_builder(initial_state)
+                if context_result.get('context'):
+                    initial_state.context = context_result['context']
+                    logger.info(f"✅ [WorkflowService] Context rebuilt successfully: {list(initial_state.context.keys())}")
+                else:
+                    logger.warning("⚠️ [WorkflowService] Failed to rebuild context, proceeding with existing state")
 
             # Send progress update
             try:

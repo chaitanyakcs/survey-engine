@@ -107,16 +107,16 @@ export const RFQEditor: React.FC = () => {
 
       <div className="relative w-full p-4 lg:p-6">
 
-        <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+        <div className="w-full">
           {/* Main Input Form */}
-          <div className="xl:col-span-3">
-            <div className="bg-white/70 backdrop-blur-lg rounded-3xl shadow-2xl border border-white/20 p-6 lg:p-8">
-              <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="w-full">
+            <div className="bg-white/70 backdrop-blur-lg rounded-2xl shadow-xl border border-white/20 p-4">
+              <form onSubmit={handleSubmit} className="space-y-2">
 
                 {/* Title & Meta Fields */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   <div className="group">
-                    <label className="block text-sm font-semibold text-gray-800 mb-3 flex items-center">
+                    <label className="block text-sm font-semibold text-gray-800 mb-2 flex items-center">
                       <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
                       Survey Title
                     </label>
@@ -126,14 +126,14 @@ export const RFQEditor: React.FC = () => {
                         value={rfqInput.title || ''}
                         onChange={(e) => setRFQInput({ title: e.target.value })}
                         placeholder="Market Research Study"
-                        className="w-full px-4 py-4 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-2xl focus:ring-4 focus:ring-yellow-500/20 focus:border-yellow-500 transition-all duration-300 shadow-lg hover:shadow-xl group-hover:shadow-xl text-gray-900 placeholder-gray-400"
+                        className="w-full px-3 py-3 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-xl focus:ring-4 focus:ring-yellow-500/20 focus:border-yellow-500 transition-all duration-300 shadow-lg hover:shadow-xl group-hover:shadow-xl text-gray-900 placeholder-gray-400"
                       />
                       <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-yellow-500/10 to-amber-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
                     </div>
                   </div>
                   
                   <div className="group">
-                    <label className="block text-sm font-semibold text-gray-800 mb-3 flex items-center">
+                    <label className="block text-sm font-semibold text-gray-800 mb-2 flex items-center">
                       <span className="w-2 h-2 bg-amber-500 rounded-full mr-2"></span>
                       Product Category
                     </label>
@@ -164,7 +164,7 @@ export const RFQEditor: React.FC = () => {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="group">
-                    <label className="block text-sm font-semibold text-gray-800 mb-3 flex items-center">
+                    <label className="block text-sm font-semibold text-gray-800 mb-2 flex items-center">
                       <span className="w-2 h-2 bg-orange-500 rounded-full mr-2"></span>
                       Target Segment
                     </label>
@@ -191,7 +191,7 @@ export const RFQEditor: React.FC = () => {
                   </div>
                   
                   <div className="group">
-                    <label className="block text-sm font-semibold text-gray-800 mb-3 flex items-center">
+                    <label className="block text-sm font-semibold text-gray-800 mb-2 flex items-center">
                       <span className="w-2 h-2 bg-indigo-500 rounded-full mr-2"></span>
                       Research Goal
                     </label>
@@ -219,25 +219,25 @@ export const RFQEditor: React.FC = () => {
                 </div>
 
                 {/* Research Requirements Input */}
-                <div className="space-y-4">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-lg font-semibold text-gray-900 flex items-center">
-                      <div className="w-6 h-6 bg-gradient-to-r from-orange-500 to-red-500 rounded-lg mr-3 flex items-center justify-center">
+                    <h4 className="text-base font-semibold text-gray-900 flex items-center">
+                      <div className="w-5 h-5 bg-gradient-to-r from-orange-500 to-red-500 rounded-lg mr-2 flex items-center justify-center">
                         <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
                         </svg>
                       </div>
                       Research Requirements
                     </h4>
-                    <div className="flex items-center text-sm text-gray-500">
-                      <span className="w-2 h-2 bg-red-400 rounded-full mr-2"></span>
+                    <div className="flex items-center text-xs text-gray-500">
+                      <span className="w-2 h-2 bg-red-400 rounded-full mr-1"></span>
                       Required
                     </div>
                   </div>
 
                   {/* Document Upload Section - Always visible */}
-                  <div className="space-y-4">
-                    <div className="border-2 border-dashed border-gray-300 rounded-2xl p-6 text-center hover:border-yellow-400 transition-colors duration-200">
+                  <div className="space-y-2">
+                    <div className="border-2 border-dashed border-gray-300 rounded-xl p-3 text-center hover:border-yellow-400 transition-colors duration-200">
                       <input
                         type="file"
                         accept=".docx"
@@ -307,7 +307,7 @@ export const RFQEditor: React.FC = () => {
                   </div>
 
                   {/* Text Input Section - Always visible */}
-                  <div className="group relative">
+                  <div className="group relative mb-2">
                     <textarea
                       value={rfqInput.description}
                       onChange={(e) => setRFQInput({ description: e.target.value })}
@@ -315,9 +315,9 @@ export const RFQEditor: React.FC = () => {
                         ? "Review and adjust the extracted text below, or type your research requirements directly..."
                         : "Upload a DOCX file above or describe your research requirements in detail. Include methodologies, target audience, key questions, and any specific analysis needed..."
                       }
-                      rows={10}
+                      rows={8}
                       required
-                      className="w-full px-6 py-6 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-3xl focus:ring-4 focus:ring-orange-500/20 focus:border-orange-500 transition-all duration-300 shadow-lg hover:shadow-xl group-hover:shadow-xl text-gray-900 placeholder-gray-400 resize-none leading-relaxed"
+                      className="w-full px-3 py-3 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-xl focus:ring-4 focus:ring-orange-500/20 focus:border-orange-500 transition-all duration-300 shadow-lg hover:shadow-xl group-hover:shadow-xl text-gray-900 placeholder-gray-400 resize-none leading-relaxed"
                     />
                     <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-orange-500/5 via-red-500/5 to-pink-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
                     
@@ -327,30 +327,27 @@ export const RFQEditor: React.FC = () => {
                     </div>
                   </div>
                   
-                  <div className="bg-gradient-to-r from-yellow-50 to-amber-50 rounded-2xl p-4 border border-yellow-100">
-                    <div className="flex items-start space-x-3">
-                      <div className="w-5 h-5 bg-yellow-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="bg-gradient-to-r from-yellow-50 to-amber-50 rounded-xl p-3 border border-yellow-100">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-4 h-4 bg-yellow-500 rounded-full flex items-center justify-center flex-shrink-0">
+                        <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-yellow-900 mb-1">Pro Tip</p>
-                        <p className="text-sm text-yellow-800">
-                          Be specific about methodologies (Van Westendorp, conjoint analysis, MaxDiff, etc.) and research objectives for better survey generation.
-                        </p>
-                      </div>
+                      <p className="text-xs text-yellow-800">
+                        <span className="font-medium">Pro Tip:</span> Be specific about methodologies (Van Westendorp, conjoint analysis, MaxDiff, etc.) and research objectives for better survey generation.
+                      </p>
                     </div>
                   </div>
                 </div>
 
                 {/* Submit Button */}
-                <div className="pt-6">
+                <div className="pt-2">
                   <button
                     type="submit"
                     disabled={!rfqInput.description.trim() || isLoading}
                     className={`
-                      group relative w-full py-6 px-8 rounded-3xl font-bold text-lg transition-all duration-300 transform
+                      group relative w-full py-4 px-6 rounded-2xl font-bold text-base transition-all duration-300 transform
                       ${isLoading || !rfqInput.description.trim()
                         ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                         : 'bg-gradient-to-r from-yellow-600 via-amber-600 to-yellow-600 text-white shadow-2xl hover:shadow-3xl hover:scale-105 active:scale-95'
@@ -386,132 +383,6 @@ export const RFQEditor: React.FC = () => {
                   </button>
                 </div>
               </form>
-            </div>
-          </div>
-
-          {/* AI Intelligence Panel */}
-          <div className="xl:col-span-1">
-            <div className="relative">
-              {/* Main AI Panel */}
-              <div className="bg-white/60 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/30 p-4 lg:p-6 relative overflow-hidden">
-                {/* Animated background pattern */}
-                <div className="absolute inset-0 opacity-10">
-                  <div className="absolute top-0 left-0 w-32 h-32 bg-gradient-to-br from-yellow-400 to-amber-600 rounded-full blur-2xl animate-pulse"></div>
-                  <div className="absolute bottom-0 right-0 w-24 h-24 bg-gradient-to-br from-amber-400 to-orange-600 rounded-full blur-2xl animate-pulse" style={{animationDelay: '1s'}}></div>
-                </div>
-                
-                <div className="relative z-10">
-                  {/* Header */}
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xl font-bold text-gray-900 flex items-center">
-                      <div className="w-8 h-8 bg-gradient-to-r from-yellow-500 to-amber-600 rounded-2xl mr-3 flex items-center justify-center">
-                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                        </svg>
-                      </div>
-                      AI Intelligence
-                    </h3>
-                    <div className="w-3 h-3 bg-amber-400 rounded-full animate-pulse"></div>
-                  </div>
-                  
-                  {/* Methodologies Section */}
-                  <div className="space-y-4">
-                    <div className="group">
-                      <div className="flex items-center mb-3">
-                        <div className="w-6 h-6 bg-gradient-to-r from-yellow-500 to-amber-600 rounded-lg mr-3 flex items-center justify-center">
-                          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-                          </svg>
-                        </div>
-                        <h4 className="font-semibold text-gray-800">Pricing Methodologies</h4>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <span className="inline-flex items-center px-3 py-2 bg-gradient-to-r from-yellow-500/10 to-amber-500/10 border border-yellow-200/50 text-yellow-700 font-medium rounded-xl text-xs hover:shadow-lg transition-all duration-300 cursor-pointer group-hover:scale-105">
-                          <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
-                          Van Westendorp PSM
-                        </span>
-                        <span className="inline-flex items-center px-3 py-2 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-200/50 text-amber-700 font-medium rounded-xl text-xs hover:shadow-lg transition-all duration-300 cursor-pointer group-hover:scale-105">
-                          <span className="w-2 h-2 bg-amber-500 rounded-full mr-2"></span>
-                          Gabor-Granger
-                        </span>
-                      </div>
-                    </div>
-                    
-                    <div className="group">
-                      <div className="flex items-center mb-3">
-                        <div className="w-6 h-6 bg-gradient-to-r from-orange-500 to-amber-600 rounded-lg mr-3 flex items-center justify-center">
-                          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
-                          </svg>
-                        </div>
-                        <h4 className="font-semibold text-gray-800">Feature Analysis</h4>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <span className="inline-flex items-center px-3 py-2 bg-gradient-to-r from-orange-500/10 to-amber-500/10 border border-orange-200/50 text-orange-700 font-medium rounded-xl text-xs hover:shadow-lg transition-all duration-300 cursor-pointer group-hover:scale-105">
-                          <span className="w-2 h-2 bg-orange-500 rounded-full mr-2"></span>
-                          Choice Conjoint
-                        </span>
-                        <span className="inline-flex items-center px-3 py-2 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-200/50 text-amber-700 font-medium rounded-xl text-xs hover:shadow-lg transition-all duration-300 cursor-pointer group-hover:scale-105">
-                          <span className="w-2 h-2 bg-amber-500 rounded-full mr-2"></span>
-                          MaxDiff
-                        </span>
-                      </div>
-                    </div>
-                    
-                    {/* Reference Examples */}
-                    <div className="space-y-3">
-                      <div className="flex items-center">
-                        <div className="w-6 h-6 bg-gradient-to-r from-yellow-500 to-orange-600 rounded-lg mr-3 flex items-center justify-center">
-                          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-                          </svg>
-                        </div>
-                        <h4 className="font-semibold text-gray-800">Reference Examples</h4>
-                      </div>
-                      
-                      <div className="space-y-3">
-                        <div className="group relative bg-white/80 backdrop-blur-sm border border-white/40 rounded-2xl p-4 hover:shadow-xl transition-all duration-300 cursor-pointer">
-                          <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-yellow-500/5 to-amber-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                          <div className="relative z-10">
-                            <div className="flex items-center justify-between mb-2">
-                              <h5 className="font-bold text-sm text-gray-800 group-hover:text-yellow-900 transition-colors duration-300">Healthcare Technology Pricing</h5>
-                              <div className="flex items-center space-x-1">
-                                <div className="w-2 h-2 bg-emerald-400 rounded-full"></div>
-                                <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
-                              </div>
-                            </div>
-                            <p className="text-xs text-gray-600 flex items-center">
-                              <svg className="w-3 h-3 mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                              </svg>
-                              Van Westendorp + Gabor-Granger
-                            </p>
-                          </div>
-                        </div>
-                        
-                        <div className="group relative bg-white/80 backdrop-blur-sm border border-white/40 rounded-2xl p-4 hover:shadow-xl transition-all duration-300 cursor-pointer">
-                          <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-orange-500/5 to-amber-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                          <div className="relative z-10">
-                            <div className="flex items-center justify-between mb-2">
-                              <h5 className="font-bold text-sm text-gray-800 group-hover:text-orange-900 transition-colors duration-300">B2B SaaS Feature Analysis</h5>
-                              <div className="flex items-center space-x-1">
-                                <div className="w-2 h-2 bg-orange-400 rounded-full"></div>
-                                <div className="w-2 h-2 bg-amber-400 rounded-full"></div>
-                              </div>
-                            </div>
-                            <p className="text-xs text-gray-600 flex items-center">
-                              <svg className="w-3 h-3 mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                              </svg>
-                              Choice Conjoint + Competitive
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         </div>

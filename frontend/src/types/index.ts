@@ -1,3 +1,85 @@
+// Define error types locally to avoid import issues
+export enum ErrorCode {
+  // ========== GENERATION ERRORS ==========
+  LLM_API_FAILURE = 'GEN_001',
+  JSON_PARSING_FAILED = 'GEN_002',
+  EVALUATION_FAILED = 'GEN_003',
+  INSUFFICIENT_QUESTIONS = 'GEN_004',
+  PROMPT_TOO_LONG = 'GEN_005',
+  RATE_LIMIT_EXCEEDED = 'GEN_006',
+  CONTENT_POLICY_VIOLATION = 'GEN_007',
+
+  // ========== SYSTEM ERRORS ==========
+  DATABASE_ERROR = 'SYS_001',
+  TIMEOUT_ERROR = 'SYS_002',
+  NETWORK_ERROR = 'SYS_003',
+  SERVICE_UNAVAILABLE = 'SYS_004',
+  AUTHENTICATION_ERROR = 'SYS_005',
+  PERMISSION_DENIED = 'SYS_006',
+
+  // ========== VALIDATION ERRORS ==========
+  INVALID_RFQ = 'VAL_001',
+  MISSING_REQUIRED_FIELDS = 'VAL_002',
+  INVALID_METHODOLOGY = 'VAL_003',
+  CONFLICTING_REQUIREMENTS = 'VAL_004',
+
+  // ========== WORKFLOW ERRORS ==========
+  HUMAN_REVIEW_TIMEOUT = 'WF_001',
+  HUMAN_REVIEW_REJECTED = 'WF_002',
+  WORKFLOW_INTERRUPTED = 'WF_003',
+  STATE_CORRUPTION = 'WF_004',
+
+  // ========== UNKNOWN/FALLBACK ==========
+  UNKNOWN_ERROR = 'UNK_001'
+}
+
+export enum ErrorSeverity {
+  LOW = 'low',
+  MEDIUM = 'medium',
+  HIGH = 'high',
+  CRITICAL = 'critical'
+}
+
+export enum RecoveryAction {
+  RETRY = 'retry',
+  WAIT_AND_RETRY = 'wait_retry',
+  RETURN_TO_FORM = 'return_to_form',
+  CONTACT_SUPPORT = 'contact_support',
+  RETRY_WITH_DIFFERENT_PARAMS = 'retry_modified',
+  REFRESH_PAGE = 'refresh_page',
+  CHECK_NETWORK = 'check_network'
+}
+
+export interface DebugInfo {
+  timestamp: string;
+  component?: string;
+  action?: string;
+  step?: string;
+  additionalData?: Record<string, any>;
+  stackTrace?: string;
+  requestId?: string;
+  userId?: string;
+  sessionId?: string;
+  workflowId?: string;
+  userAgent?: string;
+  context?: Record<string, any>;
+  errorCode?: string;
+}
+
+export interface DetailedError {
+  code: ErrorCode;
+  severity: ErrorSeverity;
+  message: string;
+  userMessage: string;
+  technicalDetails?: string;
+  debugInfo: DebugInfo;
+  retryable: boolean;
+  suggestedActions: RecoveryAction[];
+  estimatedRecoveryTime?: number; // minutes
+  helpUrl?: string;
+  relatedErrors?: ErrorCode[];
+}
+
 // Utility Functions
 export const getQuestionCount = (survey: Survey): number => {
   // Check if we have sections (new format)
@@ -218,13 +300,15 @@ export interface ProgressMessage {
 
 // UI State Types
 export interface WorkflowState {
-  status: 'idle' | 'started' | 'in_progress' | 'completed' | 'failed' | 'paused';
+  status: 'idle' | 'started' | 'in_progress' | 'completed' | 'failed' | 'paused' | 'degraded';
   workflow_id?: string;
   survey_id?: string;
   current_step?: string;
   progress?: number;
   message?: string;
   error?: string;
+  detailedError?: DetailedError; // Enhanced error information
+  degradationReason?: string; // When survey generated but with issues
   workflow_paused?: boolean;
   pending_human_review?: boolean;
   review_id?: number;
@@ -432,6 +516,9 @@ export interface DocumentUploadProgress {
   message: string;
   error?: string;
 }
+
+// Error Handling Types
+export * from './errors';
 
 // Store Types
 export interface AppStore {
