@@ -50,16 +50,29 @@ class ProgressService:
         
         step_info = progress_mapping.get(step, {"percent": 0, "message": message})
         
-        await self.send_progress_update(
-            session_id=session_id,
-            step=step,
-            percent=step_info["percent"],
-            message=step_info["message"],
-            details={
-                "extracted_data": extracted_data,
-                "step_details": step
+        # Send via field extraction WebSocket if available
+        if hasattr(self, 'field_extraction_manager') and self.field_extraction_manager:
+            message_data = {
+                "type": "golden_example_progress",
+                "step": step,
+                "percent": step_info["percent"],
+                "message": step_info["message"],
+                "extracted_data": extracted_data
             }
-        )
+            await self.field_extraction_manager.send_progress(session_id, message_data)
+            logger.info(f"📤 [ProgressService] Field extraction progress sent via WebSocket for session {session_id}: {step}")
+        else:
+            # Fallback to regular progress update
+            await self.send_progress_update(
+                session_id=session_id,
+                step=step,
+                percent=step_info["percent"],
+                message=step_info["message"],
+                details={
+                    "extracted_data": extracted_data,
+                    "step_details": step
+                }
+            )
 
 # Global instance
 progress_service = ProgressService()

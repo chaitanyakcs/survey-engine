@@ -314,6 +314,8 @@ export interface WorkflowState {
   review_id?: number;
   system_prompt?: string;
   prompt_approved?: boolean;
+  survey_fetch_failed?: boolean; // When survey fetch fails after completion
+  survey_fetch_error?: string; // Error message from failed survey fetch
 }
 
 // Golden Examples Types
@@ -520,6 +522,9 @@ export interface DocumentUploadProgress {
 // Error Handling Types
 export * from './errors';
 
+// Explicitly export ErrorClassifier to ensure it's available
+export { ErrorClassifier } from './errors';
+
 // Store Types
 export interface AppStore {
   // RFQ Input
@@ -542,6 +547,7 @@ export interface AppStore {
   
   // Workflow State
   workflow: WorkflowState;
+  workflowTimeoutId?: NodeJS.Timeout;
   setWorkflowState: (state: Partial<WorkflowState>) => void;
   
   // Survey Data
@@ -575,6 +581,8 @@ export interface AppStore {
   submitRFQ: (rfq: RFQRequest) => Promise<void>;
   submitEnhancedRFQ: (rfq: EnhancedRFQRequest) => Promise<void>;
   fetchSurvey: (surveyId: string) => Promise<void>;
+  loadPillarScoresAsync: (surveyId: string) => Promise<any>;
+  startPillarEvaluationPolling: (surveyId: string) => void;
   connectWebSocket: (workflowId: string) => void;
   disconnectWebSocket: () => void;
 
@@ -616,7 +624,7 @@ export interface AppStore {
   documentUploadError?: string;
 
   // Document Upload Actions
-  uploadDocument: (file: File) => Promise<DocumentAnalysisResponse>;
+  uploadDocument: (file: File, sessionId?: string) => Promise<DocumentAnalysisResponse>;
   analyzeText: (text: string, filename?: string) => Promise<DocumentAnalysisResponse>;
   acceptFieldMapping: (field: string, value: any) => void;
   rejectFieldMapping: (field: string) => void;

@@ -175,6 +175,8 @@ class EvaluationLLMClient:
                         response_time_ms=response_time_ms
                     )
                     
+                    print(f"🔍 LLM Response content length: {len(content)}")
+                    print(f"🔍 LLM Response content preview: {content[:200]}...")
                     return LLMResponse(
                         content=content.strip(),
                         success=True,
@@ -202,6 +204,8 @@ class EvaluationLLMClient:
                 else:
                     content = str(response)
                 
+                print(f"🔍 LLM Response content length (no audit): {len(content)}")
+                print(f"🔍 LLM Response content preview (no audit): {content[:200]}...")
                 return LLMResponse(
                     content=content.strip(),
                     success=True,

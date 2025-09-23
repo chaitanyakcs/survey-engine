@@ -24,24 +24,24 @@ tests/
 
 ```bash
 # Run all tests
-python3 run_tests.py
+python3 tests/run_tests.py
 
 # Run specific test types
-python3 run_tests.py --type api
-python3 run_tests.py --type unit
-python3 run_tests.py --type integration
+python3 tests/run_tests.py --type api
+python3 tests/run_tests.py --type unit
+python3 tests/run_tests.py --type integration
 
 # Run with coverage
-python3 run_tests.py --coverage
+python3 tests/run_tests.py --coverage
 
 # Run with verbose output
-python3 run_tests.py --verbose
+python3 tests/run_tests.py --verbose
 
 # Run specific test markers
-python3 run_tests.py --markers "api and not slow"
+python3 tests/run_tests.py --markers "api and not slow"
 
 # Run in parallel
-python3 run_tests.py --parallel 4
+python3 tests/run_tests.py --parallel 4
 ```
 
 ### Using pytest directly
@@ -255,7 +255,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-docker.txt
       - name: Run tests
-        run: python3 run_tests.py --coverage
+        run: python3 tests/run_tests.py --coverage
 ```
 
 ## 📚 Best Practices

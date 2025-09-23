@@ -468,3 +468,61 @@ async def get_pillar_rules_summary(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"❌ [Pillar Scores API] Error getting pillar rules summary: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get pillar rules summary: {str(e)}")
+
+@router.post("/{survey_id}/evaluate-async")
+async def evaluate_pillar_scores_async(
+    survey_id: UUID,
+    force: bool = False,
+    db: Session = Depends(get_db)
+):
+    """
+    Trigger async pillar evaluation for a survey (non-blocking)
+    Returns immediately while evaluation runs in background
+    """
+    logger.info(f"🏛️ [Pillar Scores API] Starting async pillar evaluation for survey: {survey_id}")
+
+    try:
+        # Check if survey exists
+        survey = db.query(Survey).filter(Survey.id == survey_id).first()
+        if not survey:
+            raise HTTPException(status_code=404, detail="Survey not found")
+
+        if not survey.final_output:
+            raise HTTPException(status_code=400, detail="Survey has not been generated yet")
+
+        # If scores already exist and not forced, return immediately
+        if not force and survey.pillar_scores:
+            logger.info(f"📋 [Pillar Scores API] Pillar scores already exist for survey {survey_id}")
+            return {
+                "status": "completed",
+                "message": "Pillar scores already available",
+                "cached": True
+            }
+
+        # Import async pillar evaluation service
+        from src.services.async_pillar_evaluation_service import AsyncPillarEvaluationService
+
+        # Start async evaluation (don't await - let it run in background)
+        async_service = AsyncPillarEvaluationService(db)
+
+        # Use asyncio to run evaluation in background without blocking the response
+        import asyncio
+        asyncio.create_task(async_service.evaluate_survey_pillars_async(
+            survey_id=str(survey_id),
+            force=force
+        ))
+
+        logger.info(f"✅ [Pillar Scores API] Async pillar evaluation started for survey {survey_id}")
+
+        return {
+            "status": "started",
+            "message": "Pillar evaluation started in background",
+            "survey_id": str(survey_id),
+            "estimated_completion": "30-60 seconds"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [Pillar Scores API] Error starting async pillar evaluation for survey {survey_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to start pillar evaluation: {str(e)}")

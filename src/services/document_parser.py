@@ -25,7 +25,7 @@ class DocumentParsingError(Exception):
 class DocumentParser:
     """Service for parsing DOCX documents and converting to survey JSON."""
 
-    def __init__(self, db_session: Optional[Any] = None):
+    def __init__(self, db_session: Optional[Any] = None, rfq_parsing_manager: Optional[Any] = None):
         if not settings.replicate_api_token:
             error_info = get_api_configuration_error()
             raise UserFriendlyError(
@@ -36,6 +36,24 @@ class DocumentParser:
         replicate.api_token = settings.replicate_api_token  # type: ignore
         self.model = settings.generation_model  # Use GPT-5 from settings
         self.db_session = db_session
+        self.rfq_parsing_manager = rfq_parsing_manager
+
+    async def _send_progress(self, session_id: str, stage: str, progress: int, message: str, details: Optional[str] = None):
+        """Send progress update via WebSocket if manager is available."""
+        if self.rfq_parsing_manager and session_id:
+            progress_data = {
+                "type": "progress",
+                "stage": stage,
+                "progress": progress,
+                "message": message,
+                "details": details,
+                "timestamp": time.time()
+            }
+            try:
+                await self.rfq_parsing_manager.send_progress(session_id, progress_data)
+                logger.debug(f"📤 [DocumentParser] Sent progress: {stage} ({progress}%)")
+            except Exception as e:
+                logger.warning(f"⚠️ [DocumentParser] Failed to send progress update: {str(e)}")
     
     def extract_text_from_docx(self, docx_content: bytes) -> str:
         """Extract text content from DOCX file."""
@@ -721,24 +739,36 @@ IMPORTANT:
                 "extraction_error": f"RFQ extraction failed: {str(e)}"
             }
 
-    async def parse_document_for_rfq(self, docx_content: bytes, filename: str = None) -> Dict[str, Any]:
+    async def parse_document_for_rfq(self, docx_content: bytes, filename: str = None, session_id: str = None) -> Dict[str, Any]:
         """Parse DOCX document specifically for RFQ data extraction."""
         logger.info(f"🎯 [Document Parser] Starting RFQ-specific document parsing")
         try:
+            # Send initial progress
+            await self._send_progress(session_id, "extracting", 10, "Extracting text from document...")
+
             # Extract text from DOCX
             logger.info(f"📄 [Document Parser] Extracting text from DOCX")
             document_text = self.extract_text_from_docx(docx_content)
 
             if not document_text.strip():
                 logger.error(f"❌ [Document Parser] No text content found in document")
+                await self._send_progress(session_id, "error", 0, "No text content found in document")
                 raise DocumentParsingError("No text content found in document")
 
             logger.info(f"✅ [Document Parser] Text extraction successful, length: {len(document_text)} chars")
 
+            # Send progress update for LLM processing
+            await self._send_progress(session_id, "prompting", 25, "Preparing AI analysis prompt...")
+
             # Extract RFQ-specific data
             logger.info(f"🎯 [Document Parser] Extracting RFQ data from text")
+            await self._send_progress(session_id, "llm_processing", 40, "AI is analyzing document structure...")
+
             rfq_data = await self.extract_rfq_data(document_text)
             logger.info(f"✅ [Document Parser] RFQ data extraction completed")
+
+            # Send progress for data processing
+            await self._send_progress(session_id, "parsing", 80, "Processing AI response...")
 
             # Structure the response for frontend consumption
             result = {
@@ -757,12 +787,17 @@ IMPORTANT:
             logger.info(f"📊 [Document Parser] Extraction confidence: {rfq_data.get('confidence', 0)}")
             logger.info(f"📊 [Document Parser] Field mappings found: {len(rfq_data.get('field_mappings', []))}")
 
+            # Send completion progress
+            await self._send_progress(session_id, "completed", 100, "RFQ extraction completed successfully!")
+
             return result
 
         except DocumentParsingError:
+            await self._send_progress(session_id, "error", 0, "Document parsing failed")
             raise
         except Exception as e:
             logger.error(f"❌ [Document Parser] Unexpected error during RFQ document parsing: {str(e)}", exc_info=True)
+            await self._send_progress(session_id, "error", 0, f"Unexpected error: {str(e)}")
             raise DocumentParsingError(f"Unexpected error: {str(e)}")
 
     async def parse_document(self, docx_content: bytes) -> Dict[str, Any]:

@@ -123,19 +123,19 @@ const MAIN_WORKFLOW_STEPS: MainWorkflowStep[] = [
       {
         key: 'single_call_evaluator',
         label: 'Single-call comprehensive evaluation',
-        backendStep: 'validation_scoring',
+        backendStep: 'single_call_evaluator',
         message: 'Running AI-powered comprehensive quality assessment'
       },
       {
         key: 'pillar_scores_analysis',
         label: 'Pillar-based quality scoring',
-        backendStep: 'validation_scoring',
+        backendStep: 'pillar_scores_analysis',
         message: 'Analyzing methodological rigor, content validity, and clarity'
       },
       {
         key: 'fallback_evaluation',
         label: 'Quality assurance checks',
-        backendStep: 'validation_scoring',
+        backendStep: 'fallback_evaluation',
         message: 'Ensuring evaluation completeness and reliability'
       }
     ]
@@ -147,7 +147,7 @@ const MAIN_WORKFLOW_STEPS: MainWorkflowStep[] = [
     icon: '🎉',
     color: 'gold',
     percentRange: [100, 100],
-    rightPanelType: 'survey_preview',
+    rightPanelType: 'substeps',
     subSteps: [
       {
         key: 'completed',
@@ -162,13 +162,11 @@ const MAIN_WORKFLOW_STEPS: MainWorkflowStep[] = [
 interface ProgressStepperProps {
   onShowSurvey?: () => void;
   onCancelGeneration?: () => void;
-  onShowSummary?: () => void;
 }
 
-export const ProgressStepper: React.FC<ProgressStepperProps> = ({ 
-  onShowSurvey, 
-  onCancelGeneration,
-  onShowSummary
+export const ProgressStepper: React.FC<ProgressStepperProps> = ({
+  onShowSurvey,
+  onCancelGeneration
 }) => {
   const { workflow, currentSurvey, activeReview } = useAppStore();
   const workflowStatus = workflow.status;
@@ -180,23 +178,46 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
   const [showHumanReview, setShowHumanReview] = useState<boolean | null>(null); // null = loading, true/false = loaded
   const [settingsLoaded, setSettingsLoaded] = useState(false);
 
-  // Fetch settings to determine if human review is enabled
+  // Debug survey structure when it changes
+  useEffect(() => {
+    if (currentSurvey) {
+      console.log('🔍 [ProgressStepper] Survey structure debug:', {
+        survey_id: currentSurvey.survey_id,
+        title: currentSurvey.title,
+        sections: currentSurvey.sections?.length || 0,
+        questions: currentSurvey.questions?.length || 0,
+        sectionsData: currentSurvey.sections,
+        questionsData: currentSurvey.questions
+      });
+    }
+  }, [currentSurvey]);
+
+  // Fetch settings to determine step visibility
   useEffect(() => {
     const fetchSettings = async () => {
       try {
         const response = await fetch('/api/v1/settings/evaluation');
         if (response.ok) {
           const settings = await response.json();
-          const humanReviewEnabled = settings.enable_prompt_review && settings.prompt_review_mode !== 'disabled';
+          console.log('🔍 [ProgressStepper] Loaded settings for step filtering:', settings);
+
+          // Determine human review visibility based on multiple factors
+          const humanReviewEnabled = Boolean(
+            settings.enable_prompt_review &&
+            settings.prompt_review_mode &&
+            settings.prompt_review_mode !== 'disabled'
+          );
+
           setShowHumanReview(humanReviewEnabled);
           setSettingsLoaded(true);
         } else {
+          console.warn('⚠️ [ProgressStepper] Settings API failed, using fallback step configuration');
           // Fallback to false if API fails
           setShowHumanReview(false);
           setSettingsLoaded(true);
         }
       } catch (error) {
-        console.error('Failed to fetch settings:', error);
+        console.error('❌ [ProgressStepper] Failed to fetch settings:', error);
         // Fallback to false if API fails
         setShowHumanReview(false);
         setSettingsLoaded(true);
@@ -236,44 +257,115 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
       return;
     }
 
-    // Filter steps based on settings and actual workflow state
-    const steps = MAIN_WORKFLOW_STEPS.filter(step => {
+    // Dynamic step filtering based on settings and workflow state
+    const filteredSteps = MAIN_WORKFLOW_STEPS.filter(step => {
       // Always include non-conditional steps
       if (!step.conditional) return true;
 
-      // For conditional steps like human_review, check if it should be shown
-      if (step.key === 'human_review') {
-        return showHumanReview;
-      }
+      // Handle conditional steps dynamically
+      switch (step.key) {
+        case 'human_review':
+          // Include human review step if:
+          // 1. Settings enable it, OR
+          // 2. Workflow is currently in human review state, OR
+          // 3. There's an active review
+          return Boolean(
+            showHumanReview ||
+            workflow.current_step === 'human_review' ||
+            workflow.workflow_paused ||
+            activeReview
+          );
 
-      return true;
+        // Future conditional steps can be added here
+        // case 'quality_assurance':
+        //   return settings.enable_qa_step;
+        // case 'advanced_validation':
+        //   return settings.enable_advanced_validation;
+
+        default:
+          return true;
+      }
     });
-    setEnabledSteps(steps);
-  }, [showHumanReview, settingsLoaded]);
+
+    // Recalculate step percentages to ensure smooth distribution
+    const redistributePercentages = (steps: MainWorkflowStep[]) => {
+      if (steps.length === 0) return steps;
+
+      const totalSteps = MAIN_WORKFLOW_STEPS.length;
+      const enabledSteps = steps.length;
+      const percentagePerStep = 100 / enabledSteps;
+
+      return steps.map((step, index) => ({
+        ...step,
+        percentRange: [
+          Math.round(index * percentagePerStep),
+          Math.round((index + 1) * percentagePerStep)
+        ] as [number, number]
+      }));
+    };
+
+    const stepsWithAdjustedPercentages = redistributePercentages(filteredSteps);
+
+    console.log('🔍 [ProgressStepper] Dynamic step filtering result:', {
+      originalSteps: MAIN_WORKFLOW_STEPS.length,
+      filteredSteps: filteredSteps.length,
+      showHumanReview,
+      workflowState: workflow.current_step,
+      adjustedPercentages: stepsWithAdjustedPercentages.map(s => ({ key: s.key, percentRange: s.percentRange }))
+    });
+
+    setEnabledSteps(stepsWithAdjustedPercentages);
+  }, [showHumanReview, settingsLoaded, workflow.current_step, workflow.workflow_paused, activeReview]);
   
   useEffect(() => {
     if (!workflow.current_step || enabledSteps.length === 0) return;
 
     // Find current step index by directly matching backend step names
-    const currentStepIndex = enabledSteps.findIndex(step => step.key === workflow.current_step);
+    let newStepIndex = enabledSteps.findIndex(step => step.key === workflow.current_step);
+
+    // If direct match fails, try matching substeps
+    if (newStepIndex === -1) {
+      newStepIndex = enabledSteps.findIndex(step =>
+        step.subSteps.some(subStep => subStep.backendStep === workflow.current_step)
+      );
+    }
 
     console.log('🔍 [ProgressStepper] Step calculation:', {
+      newStepIndex,
       currentStepIndex,
       workflowStep: workflow.current_step,
       workflowProgress: workflow.progress,
       enabledStepsKeys: enabledSteps.map(s => s.key)
     });
 
-    // Set current step index (use progress-based fallback if direct match fails)
-    if (currentStepIndex !== -1) {
-      setCurrentStepIndex(currentStepIndex);
+    // Apply smooth transition logic to prevent jumps
+    if (newStepIndex !== -1) {
+      // Only allow forward transitions or stay in same step
+      // Prevent backward jumps unless workflow explicitly restarted
+      if (newStepIndex >= currentStepIndex || workflow.progress === 0) {
+        setCurrentStepIndex(newStepIndex);
+      } else {
+        // If trying to go backward, only allow if it's a valid transition
+        // (e.g., human review completion moving to next step)
+        const currentStep = enabledSteps[currentStepIndex];
+        const targetStep = enabledSteps[newStepIndex];
+
+        if (currentStep?.key === 'human_review' && targetStep) {
+          // Allow transition from human_review to next step
+          setCurrentStepIndex(newStepIndex);
+        } else {
+          // Otherwise, keep current step to prevent jarring jumps
+          console.log('🚫 [ProgressStepper] Preventing backward step jump from', currentStepIndex, 'to', newStepIndex);
+        }
+      }
     } else if (workflow.progress) {
-      // Fallback: find step based on progress percentage
+      // Fallback: find step based on progress percentage, but only move forward
       const progressBasedIndex = enabledSteps.findIndex(step => {
         const [minPercent, maxPercent] = step.percentRange;
         return workflow.progress! >= minPercent && workflow.progress! <= maxPercent;
       });
-      if (progressBasedIndex !== -1) {
+
+      if (progressBasedIndex !== -1 && progressBasedIndex >= currentStepIndex) {
         setCurrentStepIndex(progressBasedIndex);
       }
     }
@@ -287,17 +379,18 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
         completed.push(i);
       }
     } else {
-      // Mark steps as completed based on progress or step position
+      // Only mark steps as completed if we've actually moved past them
+      // Don't mark current step as completed if it has substeps in progress
       for (let i = 0; i < enabledSteps.length; i++) {
         const step = enabledSteps[i];
-        const [minPercent] = step.percentRange;
+        const [, maxPercent] = step.percentRange;
 
         // Mark step as completed if:
-        // 1. Current progress is beyond this step's start percentage
-        // 2. OR we've passed this step in the workflow sequence
-        if (workflow.progress && workflow.progress > minPercent) {
+        // 1. We're past the current step index (moved to next step)
+        // 2. OR workflow progress is beyond this step's end percentage
+        if (currentStepIndex > i) {
           completed.push(i);
-        } else if (currentStepIndex > i) {
+        } else if (workflow.progress && workflow.progress >= maxPercent) {
           completed.push(i);
         }
       }
@@ -329,10 +422,28 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
   
   const getStepStatus = (index: number) => {
     if (workflowStatus === 'completed') return 'completed';
+    
+    // If this is the current step, check if it has substeps in progress
+    if (index === currentStepIndex) {
+      const step = enabledSteps[index];
+      if (step && step.subSteps) {
+        // Check if any substeps are still in progress
+        const hasInProgressSubSteps = step.subSteps.some(subStep => {
+          // Check if this substep matches the current backend step and workflow is in progress
+          return subStep.backendStep === workflow.current_step && workflowStatus === 'in_progress';
+        });
+        
+        // If workflow is in progress and we have substeps, show as current (in progress)
+        if (hasInProgressSubSteps || workflowStatus === 'in_progress') {
+          return 'current';
+        }
+      }
+      return 'current';
+    }
+    
+    // Only mark steps as completed if they are actually finished
     if (completedSteps.includes(index)) return 'completed';
-    if (index === currentStepIndex) return 'current';
-    // Only mark previous steps as completed if they are actually finished
-    // Don't auto-complete steps just because they come before current step
+    
     return 'pending';
   };
 
@@ -345,8 +456,30 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
     const mainStep = getCurrentMainStep();
     if (!mainStep || !workflow.current_step) return null;
 
+    // For evaluation steps, use more sophisticated matching
+    if (mainStep.key === 'quality_evaluation') {
+      // Check if workflow.current_step is one of the evaluation substep names
+      const evalSubStep = mainStep.subSteps.find(sub => sub.backendStep === workflow.current_step);
+      if (evalSubStep) {
+        return evalSubStep;
+      }
+
+      // If workflow.current_step is 'validation_scoring', determine active substep based on progress
+      if (workflow.current_step === 'validation_scoring') {
+        const progress = workflow.progress || 0;
+        if (progress >= 85) {
+          return mainStep.subSteps.find(sub => sub.key === 'fallback_evaluation') || mainStep.subSteps[2];
+        } else if (progress >= 82) {
+          return mainStep.subSteps.find(sub => sub.key === 'pillar_scores_analysis') || mainStep.subSteps[1];
+        } else {
+          return mainStep.subSteps.find(sub => sub.key === 'single_call_evaluator') || mainStep.subSteps[0];
+        }
+      }
+    }
+
     // Find the sub-step that matches the current backend step
-    return mainStep.subSteps.find(sub => sub.backendStep === workflow.current_step) || mainStep.subSteps[0];
+    const matchingSubStep = mainStep.subSteps.find(sub => sub.backendStep === workflow.current_step);
+    return matchingSubStep || mainStep.subSteps[0];
   };
 
   const getColorClasses = (color: string) => {
@@ -564,9 +697,27 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                       <div className="space-y-3">
                         {currentMainStep.subSteps.map((subStep, index) => {
                           const isCurrentSubStep = currentSubStep?.key === subStep.key;
-                          // More accurate completion logic based on backend step completion
-                          const isCompletedSubStep = workflow.current_step &&
-                            currentMainStep.subSteps.findIndex(s => s.backendStep === workflow.current_step) > index;
+
+                          // Enhanced completion logic for evaluation substeps
+                          let isCompletedSubStep = false;
+                          if (currentMainStep.key === 'quality_evaluation') {
+                            // For evaluation, check if current substep index is greater than this one
+                            const currentSubStepIndex = currentMainStep.subSteps.findIndex(s => s.key === currentSubStep?.key);
+                            isCompletedSubStep = currentSubStepIndex > index;
+
+                            // Also consider progress-based completion
+                            const progress = workflow.progress || 0;
+                            if (subStep.key === 'single_call_evaluator' && progress >= 82) {
+                              isCompletedSubStep = true;
+                            } else if (subStep.key === 'pillar_scores_analysis' && progress >= 85) {
+                              isCompletedSubStep = true;
+                            }
+                          } else {
+                            // Standard completion logic for other steps
+                            isCompletedSubStep = Boolean(workflow.current_step &&
+                              currentMainStep.subSteps.findIndex(s => s.backendStep === workflow.current_step) > index);
+                          }
+
                           // Loading state: current step that's in progress
                           const isLoadingSubStep = isCurrentSubStep && workflow.status === 'in_progress';
 
@@ -605,62 +756,210 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                           );
                         })}
                       </div>
+
+                      {/* Add completion buttons when workflow is completed */}
+                      {currentMainStep.key === 'completion' && workflowStatus === 'completed' && (
+                        <div className="mt-6 pt-6 border-t border-amber-200">
+                          <h4 className="text-md font-semibold text-amber-900 mb-4">Next Steps</h4>
+                          <div className="flex justify-center">
+                            <button
+                              onClick={() => {
+                                if (currentSurvey?.survey_id) {
+                                  // Navigate to surveys list with the specific survey ID
+                                  window.location.href = `/surveys?id=${currentSurvey.survey_id}`;
+                                }
+                              }}
+                              className="bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-600 hover:to-amber-700 text-white px-8 py-3 rounded-lg font-medium transition-all duration-200 shadow-md hover:shadow-lg flex items-center justify-center"
+                            >
+                              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                              </svg>
+                              View Survey
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
-                  {currentMainStep.rightPanelType === 'survey_preview' && currentSurvey && (
+                  {currentMainStep.rightPanelType === 'survey_preview' && (
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900 mb-4">Survey Preview</h3>
-                      <div className="bg-white border border-gray-200 rounded-xl p-4 max-h-96 overflow-y-auto">
-                        <div className="space-y-4">
-                          <div className="text-center pb-4 border-b border-gray-200">
-                            <h4 className="text-xl font-bold text-gray-900">{currentSurvey.title}</h4>
-                            <p className="text-sm text-gray-600 mt-1">{currentSurvey.description}</p>
-                          </div>
-                          {currentSurvey.sections?.map((section, sectionIndex) => (
-                            <div key={section.id} className="space-y-3">
-                              {section.title && (
-                                <h5 className="font-medium text-gray-800 border-l-4 border-blue-500 pl-3">
-                                  {section.title}
-                                </h5>
-                              )}
-                              {section.questions?.map((question, questionIndex) => (
-                                <div key={question.id} className="pl-4">
-                                  <div className="flex items-start space-x-2">
-                                    <span className="text-sm font-medium text-gray-500 mt-1">
-                                      {sectionIndex + 1}.{questionIndex + 1}
-                                    </span>
-                                    <div className="flex-1">
-                                      <p className="text-sm text-gray-700">{question.text}</p>
-                                      {question.options && question.options.length > 0 && (
-                                        <div className="mt-2 space-y-1">
-                                          {question.options.map((option, optionIndex) => (
-                                            <div key={optionIndex} className="flex items-center space-x-2 text-xs text-gray-600">
-                                              <span className="w-4 h-4 border border-gray-300 rounded flex-shrink-0"></span>
-                                              <span>{option}</span>
-                                            </div>
-                                          ))}
+
+                      {currentSurvey ? (
+                        // Survey successfully loaded
+                        <>
+                          <div className="bg-white border border-gray-200 rounded-xl p-4 max-h-96 overflow-y-auto">
+                            <div className="space-y-4">
+                              <div className="text-center pb-4 border-b border-gray-200">
+                                <h4 className="text-xl font-bold text-gray-900">{currentSurvey.title}</h4>
+                                <p className="text-sm text-gray-600 mt-1">{currentSurvey.description}</p>
+                              </div>
+                              {/* Handle both sections and questions format */}
+                              {currentSurvey.sections && currentSurvey.sections.length > 0 ? (
+                                // Sections-based format
+                                currentSurvey.sections.map((section, sectionIndex) => (
+                                  <div key={section.id} className="space-y-3">
+                                    {section.title && (
+                                      <h5 className="font-medium text-gray-800 border-l-4 border-blue-500 pl-3">
+                                        {section.title}
+                                      </h5>
+                                    )}
+                                    {section.questions?.map((question, questionIndex) => (
+                                      <div key={question.id} className="pl-4">
+                                        <div className="flex items-start space-x-2">
+                                          <span className="text-sm font-medium text-gray-500 mt-1">
+                                            {sectionIndex + 1}.{questionIndex + 1}
+                                          </span>
+                                          <div className="flex-1">
+                                            <p className="text-sm text-gray-700">{question.text}</p>
+                                            {question.options && question.options.length > 0 && (
+                                              <div className="mt-2 space-y-1">
+                                                {question.options.map((option, optionIndex) => (
+                                                  <div key={optionIndex} className="flex items-center space-x-2 text-xs text-gray-600">
+                                                    <span className="w-4 h-4 border border-gray-300 rounded flex-shrink-0"></span>
+                                                    <span>{option}</span>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </div>
                                         </div>
-                                      )}
-                                    </div>
+                                      </div>
+                                    ))}
                                   </div>
+                                ))
+                              ) : currentSurvey.questions && currentSurvey.questions.length > 0 ? (
+                                // Questions-only format (fallback)
+                                <div className="space-y-3">
+                                  <h5 className="font-medium text-gray-800 border-l-4 border-blue-500 pl-3">
+                                    Survey Questions
+                                  </h5>
+                                  {currentSurvey.questions.map((question, questionIndex) => (
+                                    <div key={question.id || questionIndex} className="pl-4">
+                                      <div className="flex items-start space-x-2">
+                                        <span className="text-sm font-medium text-gray-500 mt-1">
+                                          {questionIndex + 1}.
+                                        </span>
+                                        <div className="flex-1">
+                                          <p className="text-sm text-gray-700">{question.text}</p>
+                                          {question.options && question.options.length > 0 && (
+                                            <div className="mt-2 space-y-1">
+                                              {question.options.map((option, optionIndex) => (
+                                                <div key={optionIndex} className="flex items-center space-x-2 text-xs text-gray-600">
+                                                  <span className="w-4 h-4 border border-gray-300 rounded flex-shrink-0"></span>
+                                                  <span>{option}</span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
-                              ))}
+                              ) : (
+                                // No questions found
+                                <div className="text-center py-8 text-gray-500">
+                                  <p>Survey structure loading...</p>
+                                  <p className="text-xs mt-1">Questions are being processed</p>
+                                </div>
+                              )}
                             </div>
-                          ))}
+                          </div>
+                          <div className="mt-4 flex space-x-3">
+                            <button
+                              onClick={() => {
+                                if (currentSurvey?.survey_id) {
+                                  // Open survey preview in new tab to keep user in ProgressStepper
+                                  window.open(`/preview?surveyId=${currentSurvey.survey_id}`, '_blank');
+                                }
+                              }}
+                              className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 shadow-md hover:shadow-lg flex items-center justify-center"
+                            >
+                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                              View Survey
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (currentSurvey?.survey_id) {
+                                  // Open survey preview in same tab for editing
+                                  window.location.href = `/preview?surveyId=${currentSurvey.survey_id}`;
+                                }
+                              }}
+                              className="flex-1 border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center"
+                            >
+                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                              Edit Survey
+                            </button>
+                          </div>
+                        </>
+                      ) : workflow.survey_fetch_failed ? (
+                        // Survey fetch failed - show fallback UI
+                        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6">
+                          <div className="text-center">
+                            <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                              <svg className="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                              </svg>
+                            </div>
+                            <h4 className="text-lg font-semibold text-yellow-900 mb-2">Survey Generated Successfully!</h4>
+                            <p className="text-yellow-800 mb-4">
+                              Your survey was created, but there's a temporary issue loading the preview.
+                            </p>
+                            <div className="space-y-3">
+                              <button
+                                onClick={() => {
+                                  if (workflow.survey_id) {
+                                    // Clear the failed state and retry
+                                    const { setWorkflowState, fetchSurvey } = useAppStore.getState();
+                                    setWorkflowState({ survey_fetch_failed: false, survey_fetch_error: undefined });
+                                    fetchSurvey(workflow.survey_id);
+                                  }
+                                }}
+                                className="inline-flex items-center px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors font-medium"
+                              >
+                                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                Try Loading Again
+                              </button>
+                              <div className="mt-2">
+                                <button
+                                  onClick={() => window.location.reload()}
+                                  className="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                                >
+                                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                  </svg>
+                                  Refresh Page
+                                </button>
+                              </div>
+                            </div>
+                            {workflow.survey_fetch_error && (
+                              <div className="mt-4 text-xs text-yellow-700 bg-yellow-100 rounded p-2">
+                                Error details: {workflow.survey_fetch_error}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      <div className="mt-4 flex space-x-3">
-                        <button
-                          onClick={() => onShowSurvey && onShowSurvey()}
-                          className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-                        >
-                          View Full Survey
-                        </button>
-                        <button className="flex-1 border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors">
-                          Export Survey
-                        </button>
-                      </div>
+                      ) : (
+                        // Still loading survey
+                        <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
+                          <div className="text-center">
+                            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                              <div className="w-6 h-6 border-2 border-amber-600 rounded-full border-t-transparent animate-spin"></div>
+                            </div>
+                            <h4 className="text-lg font-semibold text-blue-900 mb-2">Loading Survey Preview</h4>
+                            <p className="text-blue-800">Please wait while we load your generated survey...</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 

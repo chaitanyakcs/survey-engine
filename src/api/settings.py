@@ -104,22 +104,28 @@ async def update_rfq_parsing_settings(settings: RFQParsingSettings, db: Session 
 
 @router.get("/rfq-parsing/models", response_model=List[str])
 async def list_rfq_models():
-    """Return top 3 suitable LLMs for RFQ parsing (from Replicate)."""
+    """Return suitable LLMs for RFQ parsing (from Replicate)."""
     try:
         import replicate
-        # Simple curated shortlist; could be dynamic via Replicate API search
-        candidates = [
+        # Comprehensive list of all available models
+        models = [
             "openai/gpt-5",
             "openai/gpt-4o-mini",
-            "meta/llama-3.1-70b-instruct",
-            "meta/llama-3.1-405b-instruct",
-            "meta/llama-3.1-8b-instruct"
+            "openai/gpt-4o",
+            "anthropic/claude-4-sonnet",
+            "anthropic/claude-3.7-sonnet",
+            "anthropic/claude-3.5-sonnet",
+            "anthropic/claude-3.5-haiku",
+            "meta/meta-llama-3.1-405b-instruct",
+            "meta/meta-llama-3-70b-instruct",
+            "meta/meta-llama-3-8b-instruct",
+            "mistralai/mistral-7b-instruct-v0.1"
         ]
-        return candidates[:3]
+        return models
     except Exception as e:
         logger.error(f"❌ [Settings API] Failed to list models: {str(e)}")
         # Fallback static list
-        return ["openai/gpt-5", "openai/gpt-4o-mini", "meta/llama-3.1-70b-instruct"]
+        return ["openai/gpt-5", "openai/gpt-4o-mini", "openai/gpt-4o"]
 
 @router.get("/generation/models", response_model=List[str])
 async def list_generation_models():
@@ -128,9 +134,15 @@ async def list_generation_models():
         models = [
             "openai/gpt-5",
             "openai/gpt-4o-mini",
-            "meta/llama-3.1-70b-instruct",
-            "meta/llama-3.1-405b-instruct",
-            "meta/llama-3.1-8b-instruct"
+            "openai/gpt-4o",
+            "anthropic/claude-4-sonnet",
+            "anthropic/claude-3.7-sonnet",
+            "anthropic/claude-3.5-sonnet",
+            "anthropic/claude-3.5-haiku",
+            "meta/meta-llama-3.1-405b-instruct",
+            "meta/meta-llama-3-70b-instruct",
+            "meta/meta-llama-3-8b-instruct",
+            "mistralai/mistral-7b-instruct-v0.1"
         ]
         logger.info(f"🔍 [Settings API] Returning generation models: {models}")
         logger.info(f"🔍 [Settings API] DEPLOYMENT CONFIRMATION: Updated model list is active")
@@ -146,9 +158,15 @@ async def list_evaluation_models():
         return [
             "openai/gpt-5",
             "openai/gpt-4o-mini",
-            "meta/llama-3.1-70b-instruct",
-            "meta/llama-3.1-405b-instruct",
-            "meta/llama-3.1-8b-instruct"
+            "openai/gpt-4o",
+            "anthropic/claude-4-sonnet",
+            "anthropic/claude-3.7-sonnet",
+            "anthropic/claude-3.5-sonnet",
+            "anthropic/claude-3.5-haiku",
+            "meta/meta-llama-3.1-405b-instruct",
+            "meta/meta-llama-3-70b-instruct",
+            "meta/meta-llama-3-8b-instruct",
+            "mistralai/mistral-7b-instruct-v0.1"
         ]
     except Exception as e:
         logger.error(f"❌ [Settings API] Failed to list evaluation models: {str(e)}")

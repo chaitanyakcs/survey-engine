@@ -981,7 +981,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
                     : 'text-white bg-blue-600 hover:bg-blue-700'
                 }`}>
                   {isUploading ? (
-                    <div className="animate-spin rounded-full h-4 w-4 mr-2 border-2 border-blue-600 border-t-transparent"></div>
+                    <div className="animate-spin rounded-full h-4 w-4 mr-2 border-2 border-amber-600 border-t-transparent"></div>
                   ) : (
                     <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />

@@ -6,6 +6,7 @@ from src.utils.survey_utils import get_questions_count
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from uuid import UUID
+from datetime import datetime
 import json
 import logging
 
@@ -107,22 +108,32 @@ async def get_survey(
     Include: golden_similarity_score, validation_results, edit_suggestions
     """
     logger.info(f"🔍 [Survey API] Retrieving survey: survey_id={survey_id}")
+    logger.info(f"🔍 [Survey API] Request received at: {datetime.now()}")
     
     try:
         survey_service = SurveyService(db)
         logger.info("📋 [Survey API] Created SurveyService, querying database")
         
+        logger.info(f"🔍 [Survey API] About to call survey_service.get_survey({survey_id})")
         survey = survey_service.get_survey(survey_id)
+        logger.info(f"🔍 [Survey API] get_survey returned: {survey is not None}")
         
         if not survey:
             logger.warning(f"❌ [Survey API] Survey not found in database: survey_id={survey_id}")
             raise HTTPException(status_code=404, detail="Survey not found")
         
         logger.info(f"✅ [Survey API] Survey found: id={survey.id}, status={survey.status}")
+        logger.info(f"🔍 [Survey API] Survey data keys: {list(survey.__dict__.keys()) if survey else 'None'}")
         
+        logger.info(f"🔍 [Survey API] Getting validation results for survey_id={survey_id}")
         validation_results = survey_service.get_validation_results(survey_id)
-        edit_suggestions = survey_service.get_edit_suggestions(survey_id)
+        logger.info(f"🔍 [Survey API] Validation results: {validation_results is not None}")
         
+        logger.info(f"🔍 [Survey API] Getting edit suggestions for survey_id={survey_id}")
+        edit_suggestions = survey_service.get_edit_suggestions(survey_id)
+        logger.info(f"🔍 [Survey API] Edit suggestions: {edit_suggestions is not None}")
+        
+        logger.info(f"🔍 [Survey API] Building response object...")
         response = SurveyResponse(
             id=str(survey.id),
             status=survey.status,  # type: ignore
@@ -135,6 +146,11 @@ async def get_survey(
         )
         
         logger.info(f"🎉 [Survey API] Returning survey response: status={response.status}")
+        logger.info(f"🔍 [Survey API] Response data size: {len(str(response))} characters")
+        logger.info(f"🔍 [Survey API] Response has final_output: {response.final_output is not None}")
+        if response.final_output:
+            logger.info(f"🔍 [Survey API] Final output keys: {list(response.final_output.keys())}")
+        
         return response
         
     except HTTPException:

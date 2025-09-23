@@ -484,11 +484,11 @@ class WorkflowService:
 
             # CRITICAL FIX: Use the same node instances as the main workflow to ensure consistency
             # Create nodes with the same database session and configuration as the main workflow
-            from src.workflows.nodes import GeneratorAgent, GoldenValidatorNode
+            from src.workflows.nodes import GeneratorAgent, ValidatorAgent
 
             # Use the same database session as the main workflow service
-            generator = GeneratorAgent(self.db)
-            validator = GoldenValidatorNode(self.db)
+            generator = GeneratorAgent(self.db, connection_manager=self.connection_manager)
+            validator = ValidatorAgent(self.db, connection_manager=self.connection_manager)
 
             # Send progress update for generation
             try:

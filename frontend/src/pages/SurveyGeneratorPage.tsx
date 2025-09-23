@@ -3,7 +3,6 @@ import { useAppStore } from '../store/useAppStore';
 import { RFQEditor } from '../components/RFQEditor';
 import { EnhancedRFQApp } from '../components/EnhancedRFQApp';
 import { ProgressStepper } from '../components/ProgressStepper';
-import { HumanReviewPanel } from '../components/HumanReviewPanel';
 import { Sidebar } from '../components/Sidebar';
 import { ToastContainer } from '../components/Toast';
 import { ErrorDisplay } from '../components/ErrorDisplay';
@@ -12,7 +11,7 @@ import { useSidebarLayout } from '../hooks/useSidebarLayout';
 import { RecoveryAction } from '../types';
 
 export const SurveyGeneratorPage: React.FC = () => {
-  const { workflow, currentSurvey, toasts, removeToast, addToast, resetWorkflow, clearEnhancedRfqState } = useAppStore();
+  const { workflow, currentSurvey, toasts, removeToast, addToast, resetWorkflow, clearEnhancedRfqState, loadPillarScoresAsync } = useAppStore();
   const [currentView, setCurrentView] = useState<'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings'>('survey');
   const [useEnhancedRFQ, setUseEnhancedRFQ] = useState<boolean>(false);
   const { mainContentClasses } = useSidebarLayout();
@@ -28,9 +27,11 @@ export const SurveyGeneratorPage: React.FC = () => {
     });
   }, [workflow.status, currentSurvey, currentView]);
 
+
   // Fallback: Fetch survey if workflow is completed but survey is not loaded
   React.useEffect(() => {
-    if (workflow.status === 'completed' && !currentSurvey && workflow.survey_id) {
+    // Only attempt to fetch if survey hasn't failed before
+    if (workflow.status === 'completed' && !currentSurvey && workflow.survey_id && !workflow.survey_fetch_failed) {
       console.log('🔄 [SurveyGeneratorPage] Workflow completed but survey not loaded, fetching survey:', workflow.survey_id);
       useAppStore.getState().fetchSurvey(workflow.survey_id).catch((error) => {
         console.error('❌ [SurveyGeneratorPage] Failed to fetch survey:', error);
@@ -41,7 +42,7 @@ export const SurveyGeneratorPage: React.FC = () => {
         }
       });
     }
-  }, [workflow.status, currentSurvey, workflow.survey_id, resetWorkflow]);
+  }, [workflow.status, currentSurvey, workflow.survey_id, workflow.survey_fetch_failed, resetWorkflow]);
 
   // Load survey from URL parameters if present
   React.useEffect(() => {
@@ -64,7 +65,9 @@ export const SurveyGeneratorPage: React.FC = () => {
       setCurrentView('survey');
     }
     
-    if (surveyId && surveyId !== 'undefined' && surveyId !== 'null' && !currentSurvey) {
+    // Only process survey loading if we have a survey ID in URL and no current survey
+    // Skip this if workflow is completed to avoid unnecessary re-renders
+    if (surveyId && surveyId !== 'undefined' && surveyId !== 'null' && !currentSurvey && workflow.status !== 'completed') {
       console.log('📥 [SurveyGeneratorPage] Loading survey from URL parameter:', surveyId);
       useAppStore.getState().fetchSurvey(surveyId).then(async () => {
         // Load annotations after survey is loaded
@@ -77,11 +80,25 @@ export const SurveyGeneratorPage: React.FC = () => {
         }
       });
     } else if (!surveyId || surveyId === 'undefined' || surveyId === 'null') {
-      console.log('⚠️ [SurveyGeneratorPage] No valid survey ID found in URL parameters');
+      // Only log this warning if we're not in a completed workflow state
+      if (workflow.status !== 'completed') {
+        console.log('⚠️ [SurveyGeneratorPage] No valid survey ID found in URL parameters');
+      }
     } else if (currentSurvey) {
       console.log('✅ [SurveyGeneratorPage] Survey already loaded, skipping fetch');
     }
-  }, [currentSurvey]);
+  }, [currentSurvey, workflow.status]);
+
+  // Load pillar scores asynchronously when survey is available (non-blocking)
+  React.useEffect(() => {
+    if (currentSurvey && !currentSurvey.pillar_scores) {
+      console.log('🏛️ [SurveyGeneratorPage] Loading pillar scores in background');
+      loadPillarScoresAsync(currentSurvey.survey_id).catch((error) => {
+        console.warn('⚠️ [SurveyGeneratorPage] Background pillar scores loading failed:', error);
+        // Don't show error to user - this is a background operation
+      });
+    }
+  }, [currentSurvey, loadPillarScoresAsync]);
 
   const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings') => {
     if (view === 'rules') {
@@ -199,18 +216,6 @@ export const SurveyGeneratorPage: React.FC = () => {
                 
                 <div className="px-6">
                   <ProgressStepper 
-                    onShowSurvey={() => {
-                      if (currentSurvey?.survey_id) {
-                        console.log('🔍 [SurveyGeneratorPage] Navigating to surveys section with survey ID:', currentSurvey.survey_id);
-                        window.location.href = `/surveys?id=${currentSurvey.survey_id}`;
-                      }
-                    }}
-                    onShowSummary={() => {
-                      if (currentSurvey?.survey_id) {
-                        console.log('🔍 [SurveyGeneratorPage] Navigating to summary with survey ID:', currentSurvey.survey_id);
-                        window.location.href = `/summary/${currentSurvey.survey_id}`;
-                      }
-                    }}
                     onCancelGeneration={() => {
                       console.log('🔄 [SurveyGeneratorPage] Canceling generation');
                       resetWorkflow();
@@ -230,18 +235,6 @@ export const SurveyGeneratorPage: React.FC = () => {
 
                 <div className="px-6">
                   <ProgressStepper
-                    onShowSurvey={() => {
-                      if (currentSurvey?.survey_id) {
-                        console.log('🔍 [SurveyGeneratorPage] Navigating to surveys section with survey ID:', currentSurvey.survey_id);
-                        window.location.href = `/surveys?id=${currentSurvey.survey_id}`;
-                      }
-                    }}
-                    onShowSummary={() => {
-                      if (currentSurvey?.survey_id) {
-                        console.log('🔍 [SurveyGeneratorPage] Navigating to summary with survey ID:', currentSurvey.survey_id);
-                        window.location.href = `/summary/${currentSurvey.survey_id}`;
-                      }
-                    }}
                     onCancelGeneration={() => {
                       console.log('🔄 [SurveyGeneratorPage] Canceling generation');
                       resetWorkflow();
@@ -251,102 +244,26 @@ export const SurveyGeneratorPage: React.FC = () => {
               </div>
             )}
 
-            {/* Survey Completed Phase */}
+            {/* Survey Completion Phase */}
             {workflow.status === 'completed' && (
               <div>
                 <div className="px-6 mb-4 text-center">
-                  <div className="mb-6">
-                    <div className="w-16 h-16 bg-gradient-to-r from-yellow-500 to-amber-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                    </div>
-                    <h2 className="text-3xl font-bold text-gray-900 mb-3">🎉 Your Survey is Ready!</h2>
-                    <p className="text-lg text-gray-600 mb-2">We've crafted a professional survey tailored to your needs</p>
-                    <p className="text-sm text-gray-500">Ready to collect valuable insights from your target audience</p>
-                  </div>
-                  
-                  {/* Survey Loading State */}
-                  {!currentSurvey && workflow.survey_id && (
-                    <div className="mb-8">
-                      <div className="inline-flex items-center px-6 py-3 bg-blue-50 text-blue-700 rounded-xl">
-                        <div className="w-5 h-5 border-2 border-blue-500 rounded-full border-t-transparent animate-spin mr-3"></div>
-                        <span className="font-medium">Loading your survey...</span>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Survey Not Found State */}
-                  {!currentSurvey && !workflow.survey_id && (
-                    <div className="mb-8">
-                      <div className="inline-flex items-center px-6 py-3 bg-yellow-50 text-yellow-700 rounded-xl">
-                        <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                        </svg>
-                        <span className="font-medium">Survey generation completed but survey data is not available. Please try refreshing the page.</span>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Primary Action Button - View Survey */}
-                  <div className="mt-8">
-                    <button
-                      onClick={() => {
-                        if (currentSurvey?.survey_id) {
-                          console.log('🔍 [SurveyGeneratorPage] Navigating to surveys section with survey ID:', currentSurvey.survey_id);
-                          window.location.href = `/surveys?id=${currentSurvey.survey_id}`;
-                        }
-                      }}
-                      className="inline-flex items-center px-10 py-5 bg-gradient-to-r from-yellow-500 to-amber-500 text-white rounded-2xl font-bold text-xl shadow-2xl hover:shadow-yellow-300 transform hover:scale-105 transition-all duration-300"
-                    >
-                      <svg className="w-7 h-7 mr-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                      </svg>
-                      Take a Look at Your Survey
-                      <span className="ml-3 text-emerald-200 text-2xl">✨</span>
-                    </button>
-                  </div>
-                  
-                  {/* Secondary Action Button - Generate Another */}
-                  <div className="mt-6">
-                    <button
-                      onClick={() => {
-                        console.log('🔄 [SurveyGeneratorPage] Starting new survey');
-                        resetWorkflow();
-                      }}
-                      className="inline-flex items-center px-8 py-4 bg-white border-2 border-gray-200 text-gray-700 rounded-xl font-semibold text-lg hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 transition-all duration-200"
-                    >
-                      <svg className="w-6 h-6 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      Create Another Survey
-                    </button>
-                  </div>
-                  
-                  {/* Success Stats */}
-                  <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4 px-6">
-                    <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl p-4 text-center">
-                      <div className="text-2xl font-bold text-yellow-600">✓</div>
-                      <div className="text-sm font-medium text-yellow-800 mt-1">Quality Assured</div>
-                      <div className="text-xs text-yellow-600">5-pillar evaluation</div>
-                    </div>
-                    <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl p-4 text-center">
-                      <div className="text-2xl font-bold text-yellow-600">🎯</div>
-                      <div className="text-sm font-medium text-yellow-800 mt-1">Tailored</div>
-                      <div className="text-xs text-yellow-600">To your needs</div>
-                    </div>
-                    <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl p-4 text-center">
-                      <div className="text-2xl font-bold text-yellow-600">⚡</div>
-                      <div className="text-sm font-medium text-yellow-800 mt-1">Ready to Deploy</div>
-                      <div className="text-xs text-yellow-600">Start collecting data</div>
-                    </div>
-                  </div>
+                  <h2 className="text-xl font-semibold text-black mb-2">Survey Generation Complete!</h2>
+                  <p className="text-gray-600">Your professional survey has been generated successfully and is ready for deployment.</p>
                 </div>
-                
-                
+
+                <div className="px-6">
+                  <ProgressStepper
+                    onCancelGeneration={() => {
+                      console.log('🔄 [SurveyGeneratorPage] Resetting workflow');
+                      resetWorkflow();
+                    }}
+                  />
+                </div>
               </div>
             )}
+
+
 
             {/* Enhanced Error State */}
             {workflow.status === 'failed' && workflow.detailedError && (

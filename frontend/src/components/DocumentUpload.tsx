@@ -52,41 +52,68 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
     }
 
     setIsUploading(true);
-    
-    // Initial upload stage
-    setUploadProgress({
-      stage: 'uploading',
-      progress: 5,
-      message: 'Preparing document upload...'
-    });
-
-    // Simulate realistic progress with delays
-    const progressSteps = [
-      { stage: 'uploading' as const, progress: 10, message: 'Uploading document to secure servers...', delay: 500 },
-      { stage: 'uploading' as const, progress: 20, message: 'Validating file format and content...', delay: 300 },
-      { stage: 'parsing' as const, progress: 30, message: 'Extracting text from document...', delay: 800 },
-      { stage: 'parsing' as const, progress: 40, message: 'Analyzing document structure...', delay: 600 },
-      { stage: 'analyzing' as const, progress: 50, message: 'Initializing AI analysis...', delay: 400 },
-      { stage: 'analyzing' as const, progress: 60, message: 'Processing content with advanced AI...', delay: 1000 },
-      { stage: 'analyzing' as const, progress: 70, message: 'Extracting key insights and patterns...', delay: 800 },
-      { stage: 'analyzing' as const, progress: 80, message: 'Running LLM analysis and field extraction...', delay: 1200 },
-      { stage: 'mapping' as const, progress: 85, message: 'Mapping fields to survey requirements...', delay: 500 },
-      { stage: 'mapping' as const, progress: 90, message: 'Finalizing field mappings...', delay: 300 },
-    ];
 
     try {
-      // Execute progress steps with realistic timing
-      for (const step of progressSteps) {
-        setUploadProgress({
-          stage: step.stage,
-          progress: step.progress,
-          message: step.message
-        });
-        await new Promise(resolve => setTimeout(resolve, step.delay));
+      // Set initial progress
+      setUploadProgress({
+        stage: 'uploading',
+        progress: 10,
+        message: 'Starting document upload...'
+      });
+
+      // Generate session ID for WebSocket tracking
+      const sessionId = `rfq-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      // Connect to RFQ parsing WebSocket for real progress updates
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/ws/rfq-parsing/${sessionId}`;
+      console.log('🔌 [Document Upload] Connecting to WebSocket for real progress:', wsUrl);
+
+      let websocket: WebSocket | null = null;
+
+      try {
+        websocket = new WebSocket(wsUrl);
+
+        websocket.onopen = () => {
+          console.log('🔌 [Document Upload] WebSocket connected successfully');
+        };
+
+        websocket.onmessage = (event) => {
+          try {
+            const progressData = JSON.parse(event.data);
+            console.log('📥 [Document Upload] Received progress:', progressData);
+
+            if (progressData.type === 'progress') {
+              setUploadProgress({
+                stage: progressData.stage,
+                progress: progressData.progress,
+                message: progressData.message
+              });
+            }
+          } catch (error) {
+            console.warn('⚠️ [Document Upload] Failed to parse WebSocket message:', error);
+          }
+        };
+
+        websocket.onerror = (error) => {
+          console.error('❌ [Document Upload] WebSocket error:', error);
+        };
+
+        websocket.onclose = () => {
+          console.log('🔌 [Document Upload] WebSocket disconnected');
+        };
+
+      } catch (error) {
+        console.warn('⚠️ [Document Upload] WebSocket connection failed, using fallback progress');
       }
 
-      // Use store method which also updates global state for UI population
-      const result: DocumentAnalysisResponse = await storeUploadDocument(file);
+      // Start the actual upload with session ID for backend tracking
+      const result: DocumentAnalysisResponse = await storeUploadDocument(file, sessionId);
+
+      // Close WebSocket connection
+      if (websocket) {
+        websocket.close();
+      }
 
       // Final completion
       setUploadProgress({

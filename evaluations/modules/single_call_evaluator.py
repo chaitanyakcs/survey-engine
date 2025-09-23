@@ -67,16 +67,32 @@ class SingleCallEvaluator:
             if self.llm_client:
                 response = await self.llm_client.analyze(prompt, max_tokens=4000)
                 if response.success:
-                    result = json.loads(response.content)
-                    return self._parse_comprehensive_result(result, survey_id, rfq_id)
+                    try:
+                        # Try to parse JSON response
+                        result = json.loads(response.content)
+                        return self._parse_comprehensive_result(result, survey_id, rfq_id)
+                    except json.JSONDecodeError as e:
+                        logger.error(f"❌ JSON parsing failed: {e}")
+                        logger.error(f"❌ Response content length: {len(response.content)}")
+                        logger.error(f"❌ Response content (first 1000 chars): {response.content[:1000]}...")
+                        # Extract JSON from response if it's embedded in text
+                        result = self._extract_json_from_response(response.content)
+                        if result:
+                            logger.info(f"✅ Successfully extracted JSON from response")
+                            return self._parse_comprehensive_result(result, survey_id, rfq_id)
+                        else:
+                            logger.warning("⚠️ Failed to extract valid JSON, using fallback")
+                            logger.error(f"❌ Full response content: {response.content}")
+                else:
+                    logger.warning(f"⚠️ LLM response failed: {response.error}")
             
             # Fallback to basic evaluation
             logger.warning("⚠️ Single call evaluation failed, using basic fallback")
-            return self._basic_evaluation_fallback(survey, rfq_text, survey_id, rfq_id)
+            return await self._basic_evaluation_fallback(survey, rfq_text, survey_id, rfq_id)
             
         except Exception as e:
             logger.error(f"❌ Single call evaluation failed: {str(e)}")
-            return self._basic_evaluation_fallback(survey, rfq_text, survey_id, rfq_id)
+            return await self._basic_evaluation_fallback(survey, rfq_text, survey_id, rfq_id)
     
     async def _build_comprehensive_prompt(self, survey: Dict[str, Any], rfq_text: str, survey_id: str, rfq_id: str) -> str:
         """Build comprehensive prompt for single-call evaluation"""
@@ -219,7 +235,63 @@ RESPOND WITH JSON:
 """
         
         return prompt
-    
+
+    def _extract_json_from_response(self, response_content: str) -> Optional[Dict[str, Any]]:
+        """Extract JSON from LLM response that may contain extra text"""
+        import re
+
+        logger.debug(f"🔍 Extracting JSON from response of length: {len(response_content)}")
+        
+        # Try to find JSON block between code fences
+        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response_content, re.DOTALL)
+        if json_match:
+            logger.debug(f"🔍 Found JSON match in code fences, length: {len(json_match.group(1))}")
+            try:
+                result = json.loads(json_match.group(1))
+                logger.debug(f"✅ Successfully parsed JSON from code fences")
+                return result
+            except json.JSONDecodeError as e:
+                logger.debug(f"❌ JSON parsing failed from code fences: {e}")
+                pass
+
+        # Try to find JSON block starting with {
+        start_idx = response_content.find('{')
+        if start_idx == -1:
+            logger.debug("🔍 No opening brace found in response")
+            return None
+
+        logger.debug(f"🔍 Found opening brace at index: {start_idx}")
+
+        # Find balanced braces
+        brace_count = 0
+        end_idx = start_idx
+
+        for i in range(start_idx, len(response_content)):
+            char = response_content[i]
+            if char == '{':
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    end_idx = i + 1
+                    break
+
+        logger.debug(f"🔍 Found closing brace at index: {end_idx}, balanced: {brace_count == 0}")
+
+        if brace_count == 0:
+            try:
+                json_str = response_content[start_idx:end_idx]
+                logger.debug(f"🔍 Extracted JSON string of length: {len(json_str)}")
+                result = json.loads(json_str)
+                logger.debug(f"✅ Successfully parsed JSON from balanced braces")
+                return result
+            except json.JSONDecodeError as e:
+                logger.debug(f"❌ JSON parsing failed from balanced braces: {e}")
+                pass
+
+        logger.debug("🔍 No valid JSON found in response")
+        return None
+
     def _parse_comprehensive_result(self, result: Dict[str, Any], survey_id: str, rfq_id: str) -> SingleCallEvaluationResult:
         """Parse comprehensive evaluation result"""
         

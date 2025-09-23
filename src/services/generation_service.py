@@ -1,32 +1,9 @@
 from typing import Dict, List, Any, Optional
 from src.config import settings
 from src.services.prompt_service import PromptService
-from src.services.pillar_scoring_service import PillarScoringService
-import sys
-import os
 import logging
 
 logger = logging.getLogger(__name__)
-
-# Add evaluations directory to path for advanced evaluators
-current_dir = os.path.dirname(__file__)
-project_root = current_dir
-while project_root != '/' and project_root != '':
-    eval_path = os.path.join(project_root, 'evaluations')
-    if os.path.exists(eval_path):
-        break
-    project_root = os.path.dirname(project_root)
-
-if os.path.exists(eval_path):
-    sys.path.insert(0, eval_path)
-    try:
-        from modules.pillar_based_evaluator import PillarBasedEvaluator
-        ADVANCED_EVALUATOR_AVAILABLE = True
-    except ImportError as e:
-        ADVANCED_EVALUATOR_AVAILABLE = False
-        print(f"⚠️ Advanced evaluator not available: {e}")
-else:
-    ADVANCED_EVALUATOR_AVAILABLE = False
 from src.utils.error_messages import UserFriendlyError, get_api_configuration_error
 from src.utils.survey_utils import get_questions_count
 from sqlalchemy.orm import Session
@@ -43,58 +20,58 @@ logger = logging.getLogger(__name__)
 
 
 class GenerationService:
-    def __init__(self, db_session: Optional[Session] = None) -> None:
+    def __init__(self, db_session: Optional[Session] = None, workflow_id: Optional[str] = None, connection_manager=None) -> None:
         logger.info(f"🚀 [GenerationService] Starting initialization...")
         logger.info(f"🚀 [GenerationService] Database session provided: {bool(db_session)}")
         logger.info(f"🚀 [GenerationService] Config generation_model: {settings.generation_model}")
-        
+
         self.db_session = db_session  # Store the database session
+        self.workflow_id = workflow_id
+        self.connection_manager = connection_manager
+
+        # Initialize WebSocket client for progress updates
+        if connection_manager and workflow_id:
+            from src.services.websocket_client import WebSocketNotificationService
+            self.ws_client = WebSocketNotificationService(connection_manager)
+        else:
+            self.ws_client = None
         # Get model from database settings if available, otherwise fallback to config
         self.model = self._get_generation_model()
-        
+
         logger.info(f"🔧 [GenerationService] Model selected: {self.model}")
         logger.info(f"🔧 [GenerationService] Model type: {type(self.model)}")
-        
+
         self.prompt_service = PromptService(db_session=db_session)
-        self.pillar_scoring_service = PillarScoringService(db_session=db_session)
-        if ADVANCED_EVALUATOR_AVAILABLE:
-            # Create LLM client for the evaluator
-            from evaluations.llm_client import create_evaluation_llm_client
-            llm_client = create_evaluation_llm_client(db_session=db_session)
-            self.advanced_evaluator = PillarBasedEvaluator(llm_client=llm_client, db_session=db_session)
-        else:
-            self.advanced_evaluator = None
-        
+
         logger.info(f"🔧 [GenerationService] Initializing with model: {self.model}")
-        logger.info(f"🔧 [GenerationService] Advanced evaluator available: {ADVANCED_EVALUATOR_AVAILABLE}")
         logger.info(f"🔧 [GenerationService] Replicate API token configured: {bool(settings.replicate_api_token)}")
         logger.info(f"🔧 [GenerationService] Replicate API token length: {len(settings.replicate_api_token) if settings.replicate_api_token else 0}")
         if settings.replicate_api_token:
             logger.info(f"🔧 [GenerationService] Replicate API token preview: {settings.replicate_api_token[:8]}...")
-        
+
         # Check if we have the required API token
         if not settings.replicate_api_token:
             logger.warning("⚠️ [GenerationService] No Replicate API token configured. Survey generation will fail.")
             logger.warning(f"⚠️ [GenerationService] Model '{self.model}' requires Replicate API token")
         else:
             logger.info("✅ [GenerationService] Replicate API token is configured")
-        
+
         replicate.api_token = settings.replicate_api_token  # type: ignore
-    
+
     def _get_generation_model(self) -> str:
         """Get generation model from database settings or fallback to config"""
         try:
             logger.info(f"🔍 [GenerationService] Starting model selection process...")
             logger.info(f"🔍 [GenerationService] Database session available: {bool(self.db_session)}")
             logger.info(f"🔍 [GenerationService] Config default model: {settings.generation_model}")
-            
+
             if self.db_session:
                 from src.services.settings_service import SettingsService
                 settings_service = SettingsService(self.db_session)
                 evaluation_settings = settings_service.get_evaluation_settings()
-                
+
                 logger.info(f"🔍 [GenerationService] Database evaluation settings: {evaluation_settings}")
-                
+
                 if evaluation_settings and 'generation_model' in evaluation_settings:
                     model = evaluation_settings['generation_model']
                     logger.info(f"🔧 [GenerationService] Using model from database settings: {model}")
@@ -112,7 +89,7 @@ class GenerationService:
             logger.warning(f"⚠️ [GenerationService] Failed to get model from database settings: {e}, using config default")
             logger.info(f"🔧 [GenerationService] Model source: CONFIG_EXCEPTION")
             return settings.generation_model
-    
+
     async def generate_survey_with_custom_prompt(
         self,
         context: Dict[str, Any],
@@ -131,14 +108,14 @@ class GenerationService:
             logger.info(f"📊 [GenerationService] Methodology blocks: {len(methodology_blocks) if methodology_blocks else 0}")
             logger.info(f"📊 [GenerationService] Custom rules: {len(custom_rules.get('rules', [])) if custom_rules else 0}")
             logger.info(f"📝 [GenerationService] Custom system prompt length: {len(system_prompt) if system_prompt else 0}")
-            
+
             # Check if API token is configured
             logger.info(f"🔑 [GenerationService] Checking API token configuration...")
             logger.info(f"🔑 [GenerationService] Replicate API token present: {bool(settings.replicate_api_token)}")
             logger.info(f"🔑 [GenerationService] Replicate API token length: {len(settings.replicate_api_token) if settings.replicate_api_token else 0}")
             if settings.replicate_api_token:
                 logger.info(f"🔑 [GenerationService] Replicate API token preview: {settings.replicate_api_token[:8]}...")
-            
+
             # Check if we have a valid API token for the configured model
             if not settings.replicate_api_token:
                 logger.error("❌ [GenerationService] No Replicate API token configured!")
@@ -149,9 +126,9 @@ class GenerationService:
                     technical_details="REPLICATE_API_TOKEN environment variable is not set",
                     action_required="Configure AI service provider (Replicate or OpenAI)"
                 )
-            
+
             logger.info("✅ [GenerationService] API token validation passed")
-            
+
             # Use the custom system prompt instead of generating a new one
             if system_prompt:
                 logger.info("📝 [GenerationService] Using custom system prompt from human review")
@@ -164,14 +141,14 @@ class GenerationService:
                     methodology_blocks=methodology_blocks,
                     custom_rules=custom_rules
                 )
-            
+
             logger.info(f"🤖 [GenerationService] Generating survey with model: {self.model}")
             logger.info(f"📝 [GenerationService] Prompt length: {len(prompt)} characters")
-            
+
             # Create audit context for this LLM interaction
             interaction_id = f"survey_generation_{uuid.uuid4().hex[:8]}"
             audit_service = LLMAuditService(self.db_session)
-            
+
             # Log the context details for debugging
             logger.info(f"🔍 [GenerationService] Context received:")
             logger.info(f"🔍 [GenerationService] Context type: {type(context)}")
@@ -179,7 +156,7 @@ class GenerationService:
             logger.info(f"🔍 [GenerationService] Context survey_id: {context.get('survey_id') if context else 'None'}")
             logger.info(f"🔍 [GenerationService] Context rfq_id: {context.get('rfq_id') if context else 'None'}")
             logger.info(f"🔍 [GenerationService] Context workflow_id: {context.get('workflow_id') if context else 'None'}")
-            
+
             async with LLMAuditContext(
                 audit_service=audit_service,
                 interaction_id=interaction_id,
@@ -219,31 +196,27 @@ class GenerationService:
                         }
                     )
                     response_time_ms = int((time.time() - start_time) * 1000)
-                    
+
                     # Set output and metrics in audit context
                     if isinstance(output, list):
                         output_text = "\n".join(str(item) for item in output)
                     else:
                         output_text = str(output)
-                    
+
                     audit_context.set_output(
                         output_content=output_text,
                         input_tokens=len(prompt.split()) if prompt else 0,
                         output_tokens=len(output_text.split()) if output_text else 0
                     )
-                    
+
                     logger.info(f"✅ [GenerationService] Survey generation completed in {response_time_ms}ms")
                     logger.info(f"📊 [GenerationService] Output length: {len(output_text)} characters")
-                    
+
                     # Parse the generated survey
                     survey_data = self._extract_survey_json(output_text)
-                    
-                    # Calculate pillar scores with graceful degradation
-                    pillar_scores = await self.try_evaluate_safely(survey_data, context.get('rfq_text', ''))
-                    
+
                     return {
                         "survey": survey_data,
-                        "pillar_scores": pillar_scores,
                         "generation_metadata": {
                             "model": self.model,
                             "response_time_ms": response_time_ms,
@@ -251,7 +224,7 @@ class GenerationService:
                             "prompt_length": len(prompt)
                         }
                     }
-                    
+
                 except Exception as api_error:
                     logger.error(f"❌ [GenerationService] API call failed: {str(api_error)}")
                     audit_context.set_output(
@@ -262,7 +235,7 @@ class GenerationService:
                         technical_details=str(api_error),
                         action_required="Please try again or contact support if the issue persists"
                     )
-        
+
         except UserFriendlyError:
             raise
         except Exception as e:
@@ -289,14 +262,14 @@ class GenerationService:
             logger.info(f"📊 [GenerationService] Golden examples: {len(golden_examples) if golden_examples else 0}")
             logger.info(f"📊 [GenerationService] Methodology blocks: {len(methodology_blocks) if methodology_blocks else 0}")
             logger.info(f"📊 [GenerationService] Custom rules: {len(custom_rules.get('rules', [])) if custom_rules else 0}")
-            
+
             # Check if API token is configured
             logger.info(f"🔑 [GenerationService] Checking API token configuration...")
             logger.info(f"🔑 [GenerationService] Replicate API token present: {bool(settings.replicate_api_token)}")
             logger.info(f"🔑 [GenerationService] Replicate API token length: {len(settings.replicate_api_token) if settings.replicate_api_token else 0}")
             if settings.replicate_api_token:
                 logger.info(f"🔑 [GenerationService] Replicate API token preview: {settings.replicate_api_token[:8]}...")
-            
+
             # Check if we have a valid API token for the configured model
             if not settings.replicate_api_token:
                 logger.error("❌ [GenerationService] No Replicate API token configured!")
@@ -307,9 +280,9 @@ class GenerationService:
                     technical_details="REPLICATE_API_TOKEN environment variable is not set",
                     action_required="Configure AI service provider (Replicate or OpenAI)"
                 )
-            
+
             logger.info("✅ [GenerationService] API token validation passed")
-            
+
             # Build comprehensive prompt with rules and golden examples
             logger.info("🔨 [GenerationService] Building prompt...")
             prompt = self.prompt_service.build_golden_enhanced_prompt(
@@ -318,25 +291,25 @@ class GenerationService:
                 methodology_blocks=methodology_blocks,
                 custom_rules=custom_rules
             )
-            
+
             logger.info(f"🤖 [GenerationService] Generating survey with model: {self.model}")
             logger.info(f"📝 [GenerationService] Prompt length: {len(prompt)} characters")
-            
+
             # System prompt is now automatically logged via LLMAuditContext decorator
-            
+
             logger.info("🌐 [GenerationService] Making API call to Replicate...")
             logger.info(f"🌐 [GenerationService] Model: {self.model}")
             logger.info(f"🌐 [GenerationService] API token set: {bool(replicate.api_token)}")
-            
+
             # Create audit context for this LLM interaction
             interaction_id = f"survey_generation_{uuid.uuid4().hex[:8]}"
             audit_service = LLMAuditService(self.db_session)
-            
+
             logger.info(f"🔍 [GenerationService] Context received: {context}")
             logger.info(f"🔍 [GenerationService] Survey ID from context: {context.get('survey_id')}")
             logger.info(f"🔍 [GenerationService] Workflow ID from context: {context.get('workflow_id')}")
             logger.info(f"🔍 [GenerationService] RFQ ID from context: {context.get('rfq_id')}")
-            
+
             async with LLMAuditContext(
                 audit_service=audit_service,
                 interaction_id=interaction_id,
@@ -375,24 +348,24 @@ class GenerationService:
                         }
                     )
                     response_time_ms = int((time.time() - start_time) * 1000)
-                    
+
                     # Set output and metrics in audit context
                     if isinstance(output, list):
                         output_content = "".join(output)
                     else:
                         output_content = str(output)
-                    
+
                     audit_context.set_output(
                         output_content=output_content,
                         input_tokens=len(prompt.split()),  # Rough estimate
                         output_tokens=len(output_content.split()),  # Rough estimate
                         cost_usd=None  # Replicate doesn't provide cost info in response
                     )
-                    
+
                 except Exception as api_error:
                     logger.error(f"❌ [GenerationService] API call failed: {str(api_error)}")
                     logger.error(f"❌ [GenerationService] API error type: {type(api_error)}")
-                    
+
                     # Check if it's an authentication error
                     if "authentication" in str(api_error).lower() or "unauthorized" in str(api_error).lower():
                         error_info = get_api_configuration_error()
@@ -403,11 +376,11 @@ class GenerationService:
                         )
                     else:
                         raise Exception(f"API call failed: {str(api_error)}")
-            
+
                 logger.info(f"✅ [GenerationService] Received response from {self.model}")
                 logger.info(f"📊 [GenerationService] Response type: {type(output)}")
                 logger.info(f"📊 [GenerationService] Response content: {str(output)[:200]}...")
-                
+
                 # Handle different output formats from Replicate
                 if isinstance(output, list):
                     survey_text = "".join(output)
@@ -415,7 +388,7 @@ class GenerationService:
                 else:
                     survey_text = str(output)
                     logger.info(f"📝 [GenerationService] String response, length: {len(survey_text)}")
-                
+
                 logger.info(f"📊 [GenerationService] Final response length: {len(survey_text)} characters")
                 logger.info(f"📊 [GenerationService] Response preview: {survey_text[:500]}...")
 
@@ -442,40 +415,27 @@ class GenerationService:
                     logger.info(f"🔍 [GenerationService] Response end: ...{survey_text[-500:]}")
                 else:
                     logger.info(f"🔍 [GenerationService] Full LLM response: {survey_text}")
-                
+
                 # Check if response is empty or too short
                 if not survey_text or len(survey_text.strip()) < 10:
                     logger.error("❌ [GenerationService] Empty or very short response from API")
                     logger.error(f"❌ [GenerationService] Response content: '{survey_text}'")
                     raise Exception("API returned empty or invalid response. Please check your API configuration and try again.")
-                
+
                 logger.info("🔍 [GenerationService] Extracting survey JSON...")
                 survey_json = self._extract_survey_json(survey_text)
-                
-                # Safely evaluate survey with graceful degradation
-                logger.info("🏛️ [GenerationService] Evaluating survey with graceful degradation...")
-                pillar_scores = await self.try_evaluate_safely(survey_json, context.get('rfq_text', ''))
-                
+
                 final_question_count = get_questions_count(survey_json)
                 logger.info(f"🎉 [GenerationService] Successfully generated survey with {final_question_count} questions")
                 logger.info(f"🎉 [GenerationService] Survey keys: {list(survey_json.keys())}")
-                logger.info(f"🏛️ [GenerationService] Pillar adherence score: {pillar_scores['overall_grade']} ({pillar_scores['weighted_score']:.1%})")
 
                 # Log final extraction summary
                 self._log_final_extraction_summary(survey_json, survey_text)
-                
+
                 return {
-                    "survey": survey_json,
-                    "pillar_scores": {
-                        "overall_grade": pillar_scores["overall_grade"],
-                        "weighted_score": pillar_scores["weighted_score"],
-                        "total_score": pillar_scores["total_score"],
-                        "summary": pillar_scores["summary"],
-                        "pillar_breakdown": pillar_scores["pillar_breakdown"],
-                        "recommendations": pillar_scores["recommendations"]
-                    }
+                    "survey": survey_json
                 }
-            
+
         except UserFriendlyError as e:
             logger.error(f"❌ [GenerationService] UserFriendlyError: {e.message}")
             # Re-raise user-friendly errors as-is
@@ -494,8 +454,8 @@ class GenerationService:
             else:
                 logger.error(f"❌ [GenerationService] Generic error: {str(e)}")
                 raise Exception(f"Survey generation failed: {str(e)}")
-    
-    
+
+
     def _extract_survey_json(self, response_text: str) -> Dict[str, Any]:
         """
         Bulletproof JSON extraction with multiple fallback strategies
@@ -604,6 +564,7 @@ class GenerationService:
 
         logger.info("🎯 [GenerationService] =======================================")
 
+    # All the JSON extraction methods remain unchanged...
     def _extract_balanced_json_robust(self, response_text: str) -> Optional[Dict[str, Any]]:
         """
         Robust balanced JSON extraction with error tolerance
@@ -791,7 +752,7 @@ class GenerationService:
                 if section_id in processed_sections:
                     logger.info(f"🔍 [GenerationService] Skipping duplicate section {section_id}")
                     continue
-                
+
                 processed_sections.add(section_id)
                 logger.info(f"🔍 [GenerationService] Processing section {section_id}: {section_title}")
 
@@ -820,7 +781,7 @@ class GenerationService:
         import time
 
         logger.info("🔍 [GenerationService] === QUESTION EXTRACTION TRACKING ===")
-        
+
         # Add timeout to prevent infinite loops
         start_time = time.time()
         max_processing_time = 30  # 30 seconds max
@@ -832,19 +793,19 @@ class GenerationService:
             ("Complete Text+ID objects", r'\{\s*"text"\s*:\s*"([^"]*)"[^}]*"id"\s*:\s*"([^"]*)"[^}]*\}'),
             ("Complete Question+ID objects", r'\{\s*"question"\s*:\s*"([^"]*)"[^}]*"id"\s*:\s*"([^"]*)"[^}]*\}'),
             ("Complete ID+Question objects", r'\{\s*"id"\s*:\s*"([^"]*)"[^}]*"question"\s*:\s*"([^"]*)"[^}]*\}'),
-            
+
             # Partial patterns with more flexible matching
             ("Partial ID+Text patterns", r'"id"\s*:\s*"([^"]*)"[^,}]*,?[^,}]*"text"\s*:\s*"([^"]*)"'),
             ("Partial Text+ID patterns", r'"text"\s*:\s*"([^"]*)"[^,}]*,?[^,}]*"id"\s*:\s*"([^"]*)"'),
             ("Partial Question+ID patterns", r'"question"\s*:\s*"([^"]*)"[^,}]*,?[^,}]*"id"\s*:\s*"([^"]*)"'),
             ("Partial ID+Question patterns", r'"id"\s*:\s*"([^"]*)"[^,}]*,?[^,}]*"question"\s*:\s*"([^"]*)"'),
-            
+
             # More flexible patterns that catch malformed JSON
             ("Flexible ID+Text", r'"id"\s*:\s*"([^"]*)"[^}]*?"text"\s*:\s*"([^"]*)"'),
             ("Flexible Text+ID", r'"text"\s*:\s*"([^"]*)"[^}]*?"id"\s*:\s*"([^"]*)"'),
             ("Flexible Question+ID", r'"question"\s*:\s*"([^"]*)"[^}]*?"id"\s*:\s*"([^"]*)"'),
             ("Flexible ID+Question", r'"id"\s*:\s*"([^"]*)"[^}]*?"question"\s*:\s*"([^"]*)"'),
-            
+
             # Patterns for questions without explicit IDs
             ("Text only patterns", r'"text"\s*:\s*"([^"]*)"'),
             ("Question only patterns", r'"question"\s*:\s*"([^"]*)"'),
@@ -859,7 +820,7 @@ class GenerationService:
             if time.time() - start_time > max_processing_time:
                 logger.warning(f"⚠️ [GenerationService] Timeout reached after {max_processing_time}s, stopping question extraction")
                 break
-                
+
             matches = list(re.finditer(pattern, text, re.DOTALL))
             logger.info(f"🔍 [GenerationService] Pattern '{pattern_name}': {len(matches)} matches found")
 
@@ -1282,956 +1243,3 @@ class GenerationService:
             "golden_examples": [],
             "metadata": {"target_responses": 100, "methodology": ["survey"]}
         }
-
-    def _extract_balanced_json(self, response_text: str) -> Optional[str]:
-        """
-        Extract JSON using balanced brace counting to find a complete JSON object
-        """
-        try:
-            # Find the first opening brace
-            start_idx = response_text.find('{')
-            if start_idx == -1:
-                return None
-
-            # Count braces to find the matching closing brace
-            brace_count = 0
-            in_string = False
-            escape_next = False
-
-            for i in range(start_idx, len(response_text)):
-                char = response_text[i]
-
-                if escape_next:
-                    escape_next = False
-                    continue
-
-                if char == '\\' and in_string:
-                    escape_next = True
-                    continue
-
-                if char == '"' and not escape_next:
-                    in_string = not in_string
-                    continue
-
-                if not in_string:
-                    if char == '{':
-                        brace_count += 1
-                    elif char == '}':
-                        brace_count -= 1
-
-                        if brace_count == 0:
-                            # Found the matching closing brace
-                            end_idx = i + 1
-                            json_text = response_text[start_idx:end_idx]
-                            logger.info(f"🔍 [GenerationService] Balanced JSON extraction: {len(json_text)} characters")
-                            return json_text
-
-            # If we get here, braces weren't balanced
-            logger.warning("⚠️ [GenerationService] Could not find balanced JSON braces")
-            return None
-
-        except Exception as e:
-            logger.warning(f"⚠️ [GenerationService] Balanced JSON extraction failed: {str(e)}")
-            return None
-
-    def _repair_json_simple(self, json_text: str) -> Optional[str]:
-        """
-        Simple JSON repair focusing on the most common LLM errors
-        """
-        try:
-            import re
-
-            logger.info(f"🔧 [GenerationService] Starting simple JSON repair")
-            original_text = json_text
-
-            # 1. Remove any non-printable characters that can break JSON
-            json_text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]', '', json_text)
-
-            # 2. Fix missing commas between array elements (most common issue)
-            # Pattern: "text"\n\s*"text" -> "text",\n\s*"text"
-            json_text = re.sub(r'("[^"]*")\s*\n\s*("[^"]*")', r'\1,\n        \2', json_text)
-
-            # 3. Fix missing commas between object properties
-            # Pattern: "key": "value"\n\s*"key2" -> "key": "value",\n\s*"key2"
-            json_text = re.sub(r'("[^"]*":\s*"[^"]*")\s*\n\s*"', r'\1,\n        "', json_text)
-
-            # 4. Fix missing commas after objects in arrays
-            # Pattern: }\n\s*{ -> },\n\s*{
-            json_text = re.sub(r'}\s*\n\s*{', '},\n        {', json_text)
-
-            # 5. Fix missing commas after closing brackets/braces
-            # Pattern: ]\n\s*"key" -> ],\n\s*"key"
-            json_text = re.sub(r']\s*\n\s*"', '],\n        "', json_text)
-            json_text = re.sub(r'}\s*\n\s*"', '},\n        "', json_text)
-
-            # 6. Remove trailing commas
-            json_text = re.sub(r',(\s*[}\]])', r'\1', json_text)
-
-            if json_text != original_text:
-                logger.info(f"🔧 [GenerationService] Applied simple JSON repairs")
-                # Test if the repair worked
-                try:
-                    json.loads(json_text)
-                    logger.info(f"✅ [GenerationService] Simple JSON repair successful")
-                    return json_text
-                except json.JSONDecodeError as test_error:
-                    logger.warning(f"⚠️ [GenerationService] Simple repair still invalid: {str(test_error)}")
-                    return None
-            else:
-                logger.warning(f"⚠️ [GenerationService] No simple repairs applied")
-                return None
-
-        except Exception as e:
-            logger.error(f"❌ [GenerationService] Simple JSON repair failed: {str(e)}")
-            return None
-
-    def _repair_json(self, json_text: str) -> str:
-        """Attempt to repair common JSON formatting issues from LLM responses"""
-        try:
-            import re
-            
-            # Store original for logging
-            original_text = json_text
-            
-            # First, clean control characters that can break JSON parsing
-            json_text = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', json_text)
-            
-            # Common repairs for LLM-generated JSON
-            
-            # 1. Fix missing commas between array elements (most common issue)
-            # Look for patterns like: "text"\n\s*"text" and add comma (but not between object keys)
-            # Only match when the first quote is a value (after a colon) or in array context
-            json_text = re.sub(r'(":\s*"[^"]*")\s*\n\s*"', r'\1,\n            "', json_text)
-            
-            # 1b. More specific fix for the error we're seeing: missing comma after quoted string
-            # Look for patterns like: "text"\n\s*] or "text"\n\s*} (but not after opening braces)
-            json_text = re.sub(r'"[^"]*"\s*\n\s*([}\]])', r'",\n          \1', json_text)
-            
-            # 1c. Fix missing commas in arrays with mixed content
-            # Look for patterns like: "text"\n\s*[0-9] or "text"\n\s*{ (but not after opening braces)
-            json_text = re.sub(r'"[^"]*"\s*\n\s*([0-9{])', r'",\n            \1', json_text)
-            
-            # 2. Fix missing commas between object properties
-            # Look for patterns like: }\n\s*"property" and add comma  
-            json_text = re.sub(r'}\s*\n\s*"', '},\n        "', json_text)
-            
-            # 3. Fix missing commas between array elements (numbers and strings)
-            # Look for patterns like: 5\n\s*"text" and add comma
-            json_text = re.sub(r'(\d+)\s*\n\s*"', r'\1,\n            "', json_text)
-            
-            # 3b. Fix missing commas between string elements in arrays (specific to our error)
-            # Look for line breaks in array context: "text"\n followed by whitespace and another "text"
-            json_text = re.sub(r'("[^"]*")\s*\n\s*("[^"]*")', r'\1,\n            \2', json_text)
-            
-            # 4. Fix missing commas after closing arrays/objects
-            # Look for patterns like: ]\n\s*"property" and add comma
-            json_text = re.sub(r']\s*\n\s*"', '],\n        "', json_text)
-            
-            # 5. Fix missing commas between object properties in arrays
-            # Look for patterns like: }\n\s*{ and add comma
-            json_text = re.sub(r'}\s*\n\s*{', '},\n        {', json_text)
-            
-            # 6. Fix missing commas between array elements with objects
-            # Look for patterns like: }\n\s*" and add comma
-            json_text = re.sub(r'}\s*\n\s*"', '},\n        "', json_text)
-            
-            # 7. Fix trailing commas that might break parsing
-            json_text = re.sub(r',\s*}', '}', json_text)
-            json_text = re.sub(r',\s*]', ']', json_text)
-            
-            # 8. Fix common quote issues
-            json_text = re.sub(r'([^"\\])"([^",:}\]\s])', r'\1"\2', json_text)
-            
-            # 9. Fix missing commas after quoted string values (most specific first)
-            # Look for patterns like: "key": "value"\n\s*"key2" (missing comma after string value)
-            json_text = re.sub(r'("[^"]*":\s*"[^"]*")\s*\n\s*"', r'\1,\n        "', json_text)
-            
-            
-            # 10. Fix missing commas after boolean/null values
-            json_text = re.sub(r'(true|false|null)\s*\n\s*"', r'\1,\n        "', json_text)
-            
-            logger.debug(f"🔍 [GenerationService] JSON repair check: original_text == json_text: {original_text == json_text}")
-            logger.debug(f"🔍 [GenerationService] Original length: {len(original_text)}, Repaired length: {len(json_text)}")
-            
-            if json_text != original_text:
-                logger.info(f"🔧 [GenerationService] Applied JSON repairs")
-                logger.debug(f"🔧 [GenerationService] Original: {original_text[:500]}...")
-                logger.debug(f"🔧 [GenerationService] Repaired: {json_text[:500]}...")
-                
-                # Test if the repair worked
-                try:
-                    json.loads(json_text)
-                    logger.info(f"✅ [GenerationService] JSON repair validation successful")
-                    return json_text
-                except json.JSONDecodeError as test_error:
-                    logger.warning(f"⚠️ [GenerationService] Repaired JSON still invalid: {str(test_error)}")
-                    logger.debug(f"🔍 [GenerationService] Repair validation error: line {test_error.lineno}, column {test_error.colno}")
-                    # Try one more aggressive repair pass
-                    return self._aggressive_json_repair(json_text)
-            else:
-                logger.warning(f"⚠️ [GenerationService] No repairs applied to JSON")
-                logger.debug(f"🔍 [GenerationService] Original text: {original_text[:200]}...")
-                logger.debug(f"🔍 [GenerationService] Repaired text: {json_text[:200]}...")
-                return None
-                
-        except Exception as repair_error:
-            logger.error(f"❌ [GenerationService] JSON repair failed: {str(repair_error)}")
-            return None
-    
-    def _aggressive_json_repair(self, json_text: str) -> str:
-        """More aggressive JSON repair for difficult cases"""
-        try:
-            import re
-            
-            # Try to find and fix the specific error pattern
-            # Look for missing commas in array contexts
-            lines = json_text.split('\n')
-            repaired_lines = []
-            
-            for i, line in enumerate(lines):
-                repaired_lines.append(line)
-                
-                # Check if next line starts a new array element or object property
-                if i < len(lines) - 1:
-                    next_line = lines[i + 1].strip()
-                    current_line = line.strip()
-                    
-                    # If current line ends with quote and next line starts with quote (missing comma)
-                    if (current_line.endswith('"') and 
-                        next_line.startswith('"') and 
-                        not current_line.endswith('",') and
-                        not current_line.endswith('":')):
-                        # Add comma to current line
-                        repaired_lines[-1] = line.rstrip() + ','
-                        logger.info(f"🔧 [GenerationService] Added missing comma at line {i+1}")
-                    
-                    # If current line ends with } and next line starts with " (missing comma)
-                    elif (current_line.endswith('}') and 
-                          next_line.startswith('"') and 
-                          not current_line.endswith('},')):
-                        repaired_lines[-1] = line.rstrip() + ','
-                        logger.info(f"🔧 [GenerationService] Added missing comma at line {i+1}")
-                    
-                    # If current line ends with " and next line starts with " (missing comma between properties)
-                    elif (current_line.endswith('"') and 
-                          next_line.startswith('"') and 
-                          not current_line.endswith('",') and
-                          not current_line.endswith('":') and
-                          ':' in current_line):
-                        repaired_lines[-1] = line.rstrip() + ','
-                        logger.info(f"🔧 [GenerationService] Added missing comma between properties at line {i+1}")
-                    
-                    # If current line ends with a value and next line starts with " (missing comma)
-                    elif (next_line.startswith('"') and 
-                          not current_line.endswith(',') and
-                          not current_line.endswith('{') and
-                          not current_line.endswith('[') and
-                          ':' in current_line):
-                        repaired_lines[-1] = line.rstrip() + ','
-                        logger.info(f"🔧 [GenerationService] Added missing comma after value at line {i+1}")
-            
-            repaired_text = '\n'.join(repaired_lines)
-            
-            # Test the aggressive repair
-            try:
-                json.loads(repaired_text)
-                logger.info(f"🔧 [GenerationService] Aggressive repair successful")
-                return repaired_text
-            except json.JSONDecodeError:
-                logger.warning(f"⚠️ [GenerationService] Aggressive repair also failed")
-                return None
-                
-        except Exception as e:
-            logger.error(f"❌ [GenerationService] Aggressive repair failed: {str(e)}")
-            return None
-
-    def _extract_partial_survey(self, json_text: str) -> Optional[Dict[str, Any]]:
-        """Fallback method to extract partial survey data from malformed JSON"""
-        try:
-            import re
-            
-            logger.info(f"🔧 [GenerationService] Attempting fallback partial extraction")
-            
-            # Try to extract basic survey structure even if JSON is incomplete
-            survey = {
-                "title": "Generated Survey",
-                "description": "AI-generated survey (partial extraction)",
-                "sections": []
-            }
-            
-            # Extract title if present
-            title_match = re.search(r'"title"\s*:\s*"([^"]*)"', json_text)
-            if title_match:
-                survey["title"] = title_match.group(1)
-            
-            # Extract description if present
-            desc_match = re.search(r'"description"\s*:\s*"([^"]*)"', json_text)
-            if desc_match:
-                survey["description"] = desc_match.group(1)
-            
-            # Check if we have sections format
-            sections_match = re.search(r'"sections"\s*:\s*\[', json_text)
-            if sections_match:
-                # Try to extract sections
-                logger.info("🔧 [GenerationService] Attempting to extract sections format")
-                survey["sections"] = self._extract_sections_fallback(json_text)
-            else:
-                # Fall back to legacy questions format
-                logger.info("🔧 [GenerationService] Attempting to extract legacy questions format")
-                questions = self._extract_questions_fallback(json_text)
-                if questions:
-                    # Convert to sections format
-                    survey["sections"] = [{
-                        "id": 1,
-                        "title": "Survey Questions",
-                        "description": "All survey questions",
-                        "questions": questions
-                    }]
-            
-            if len(survey["sections"]) > 0:
-                total_questions = sum(len(section.get("questions", [])) for section in survey["sections"])
-                logger.info(f"🔧 [GenerationService] Fallback extraction found {len(survey['sections'])} sections with {total_questions} questions")
-                return survey
-            else:
-                logger.warning(f"⚠️ [GenerationService] Fallback extraction found no sections or questions")
-                return None
-                
-        except Exception as e:
-            logger.error(f"❌ [GenerationService] Fallback extraction failed: {str(e)}")
-            return None
-    
-    def _extract_sections_fallback(self, json_text: str) -> List[Dict[str, Any]]:
-        """Extract sections from malformed JSON"""
-        import re
-        
-        sections = []
-        logger.info(f"🔍 [GenerationService] Extracting sections from JSON text (length: {len(json_text)})")
-        
-        # More flexible pattern to find sections - look for the section structure
-        # This pattern looks for: {"id": number, ... "title": "...", ... "questions": [...]}
-        section_pattern = r'\{\s*"id"\s*:\s*(\d+).*?"title"\s*:\s*"([^"]*)".*?"questions"\s*:\s*\[(.*?)\](?=\s*[,}])'
-        section_matches = re.finditer(section_pattern, json_text, re.DOTALL)
-        
-        logger.info(f"🔍 [GenerationService] Found {len(list(re.finditer(section_pattern, json_text, re.DOTALL)))} section matches")
-        
-        for i, match in enumerate(section_matches):
-            section_id = int(match.group(1))
-            section_title = match.group(2)
-            questions_text = match.group(3)
-            
-            logger.info(f"🔍 [GenerationService] Processing section {i+1}: id={section_id}, title='{section_title}'")
-            logger.info(f"🔍 [GenerationService] Questions text length: {len(questions_text)}")
-            logger.info(f"🔍 [GenerationService] Questions text preview: {questions_text[:200]}...")
-            
-            # Extract questions from this section
-            questions = self._extract_questions_from_text(questions_text)
-            logger.info(f"🔍 [GenerationService] Extracted {len(questions)} questions for section {section_id}")
-            
-            sections.append({
-                "id": section_id,
-                "title": section_title,
-                "description": f"Section {section_id}",
-                "questions": questions
-            })
-        
-        logger.info(f"🔍 [GenerationService] Total sections extracted: {len(sections)}")
-        return sections
-    
-    def _extract_questions_fallback(self, json_text: str) -> List[Dict[str, Any]]:
-        """Extract questions from malformed JSON (legacy format)"""
-        return self._extract_questions_from_text(json_text)
-    
-    def _extract_questions_from_text(self, text: str) -> List[Dict[str, Any]]:
-        """Extract questions from text using regex patterns"""
-        import re
-        
-        questions = []
-        logger.info(f"🔍 [GenerationService] Extracting questions from text (length: {len(text)})")
-        
-        # Try multiple parsing strategies to maximize question extraction
-        import json
-        
-        # Strategy 1: Use a more sophisticated approach to find JSON objects
-        logger.info("🔍 [GenerationService] Strategy 1: Looking for JSON objects with question structure...")
-
-        # Try to extract all JSON objects first, then filter for questions
-        json_objects = self._extract_all_json_objects(text)
-        logger.info(f"🔍 [GenerationService] Found {len(json_objects)} potential JSON objects")
-
-        complete_matches = []
-        for i, obj_text in enumerate(json_objects):
-            try:
-                obj = json.loads(obj_text)
-                if isinstance(obj, dict) and 'id' in obj and 'text' in obj:
-                    complete_matches.append((obj_text, obj))
-                    logger.info(f"🔍 [GenerationService] Valid question object {i+1}: id='{obj.get('id')}', text='{str(obj.get('text'))[:50]}...'")
-            except json.JSONDecodeError:
-                continue
-
-        logger.info(f"🔍 [GenerationService] Found {len(complete_matches)} valid question objects")
-
-        for i, (match_text, question_json) in enumerate(complete_matches):
-            try:
-                logger.info(f"🔍 [GenerationService] Processing question {i+1}: {match_text[:100]}...")
-                logger.info(f"🔍 [GenerationService] Parsed JSON keys: {list(question_json.keys())}")
-
-                question_id = question_json['id']
-                question_text = question_json['text']
-
-                logger.info(f"✅ [GenerationService] Successfully parsed question {i+1}: id='{question_id}', text='{question_text[:50]}...'")
-
-                # Create question object with all available fields
-                question_obj = {
-                    "id": question_id or f"q{i+1}",
-                    "text": question_text,
-                    "type": question_json.get("type", "text"),
-                    "required": question_json.get("required", True),
-                    "order": len(questions) + 1
-                }
-
-                # Add other fields if present
-                if "options" in question_json:
-                    question_obj["options"] = question_json["options"]
-                if "scale_labels" in question_json:
-                    question_obj["scale_labels"] = question_json["scale_labels"]
-                if "category" in question_json:
-                    question_obj["category"] = question_json["category"]
-                if "methodology" in question_json:
-                    question_obj["methodology"] = question_json["methodology"]
-                if "ai_rationale" in question_json:
-                    question_obj["ai_rationale"] = question_json["ai_rationale"]
-
-                questions.append(question_obj)
-
-            except Exception as e:
-                logger.warning(f"⚠️ [GenerationService] Error processing question {i+1}: {e}")
-                continue
-        
-        # Strategy 2: Look for any JSON objects that might contain questions
-        if len(questions) == 0:
-            logger.info("🔍 [GenerationService] Strategy 2: Looking for any JSON objects...")
-            # More flexible pattern - any JSON object
-            any_json_pattern = r'\{[^{}]*\}'
-            any_matches = list(re.finditer(any_json_pattern, text, re.DOTALL))
-            logger.info(f"🔍 [GenerationService] Found {len(any_matches)} potential JSON objects")
-            
-            for i, match in enumerate(any_matches):
-                try:
-                    match_text = match.group(0)
-                    logger.info(f"🔍 [GenerationService] Processing any JSON {i+1}: {match_text[:100]}...")
-                    question_json = json.loads(match_text)
-                    logger.info(f"🔍 [GenerationService] Parsed JSON keys: {list(question_json.keys())}")
-                    
-                    # Check if this looks like a question (has text field)
-                    if 'text' in question_json and question_json['text']:
-                        question_id = question_json.get('id', f"q{len(questions) + 1}")
-                        question_text = question_json['text']
-                        
-                        logger.info(f"✅ [GenerationService] Successfully parsed question from any JSON {i+1}: id='{question_id}', text='{question_text[:50]}...'")
-                        
-                        # Create question object
-                        question_obj = {
-                            "id": question_id,
-                            "text": question_text,
-                            "type": question_json.get("type", "text"),
-                            "required": question_json.get("required", True),
-                            "order": len(questions) + 1
-                        }
-                        
-                        # Add other fields if present
-                        if "options" in question_json:
-                            question_obj["options"] = question_json["options"]
-                        if "scale_labels" in question_json:
-                            question_obj["scale_labels"] = question_json["scale_labels"]
-                        if "category" in question_json:
-                            question_obj["category"] = question_json["category"]
-                        if "methodology" in question_json:
-                            question_obj["methodology"] = question_json["methodology"]
-                        if "ai_rationale" in question_json:
-                            question_obj["ai_rationale"] = question_json["ai_rationale"]
-                        
-                        questions.append(question_obj)
-                    else:
-                        logger.debug(f"🔍 [GenerationService] Any JSON {i+1} doesn't look like a question: {list(question_json.keys())}")
-                        
-                except json.JSONDecodeError as e:
-                    logger.debug(f"🔍 [GenerationService] Any JSON {i+1} not valid JSON: {e}")
-                    continue
-                except Exception as e:
-                    logger.warning(f"⚠️ [GenerationService] Error processing any JSON {i+1}: {e}")
-                    continue
-        
-        # Strategy 3: Fallback to regex if no questions found
-        if len(questions) == 0:
-            logger.info("🔍 [GenerationService] Strategy 3: Fallback to regex pattern matching...")
-            question_pattern = r'\{\s*"id"\s*:\s*"([^"]*)".*?"text"\s*:\s*"([^"]*)".*?\}'
-            question_matches = re.finditer(question_pattern, text, re.DOTALL)
-            
-            for i, match in enumerate(question_matches):
-                question_id = match.group(1)
-                question_text = match.group(2)
-                
-                logger.info(f"✅ [GenerationService] Successfully parsed question via regex {i+1}: id='{question_id}', text='{question_text[:50]}...'")
-                
-                question_obj = {
-                    "id": question_id or f"q{i+1}",
-                    "text": question_text,
-                    "type": "text",  # Default to text type
-                    "required": True,
-                    "order": len(questions) + 1
-                }
-                
-                # Try to extract question type if present
-                type_match = re.search(r'"type"\s*:\s*"([^"]*)"', match.group(0))
-                if type_match:
-                    question_obj["type"] = type_match.group(1)
-                
-                questions.append(question_obj)
-        
-        logger.info(f"🔍 [GenerationService] Total questions extracted: {len(questions)}")
-        
-        # Log summary of extracted questions
-        if len(questions) > 0:
-            logger.info(f"✅ [GenerationService] Successfully extracted questions:")
-            for i, q in enumerate(questions):
-                logger.info(f"  {i+1}. ID: {q.get('id', 'N/A')}, Text: {q.get('text', 'N/A')[:50]}..., Type: {q.get('type', 'N/A')}")
-        else:
-            logger.warning("⚠️ [GenerationService] No questions could be extracted from the response")
-            logger.warning(f"⚠️ [GenerationService] Response text sample: {text[:500]}...")
-        
-        return questions
-
-    def _extract_all_json_objects(self, text: str) -> List[str]:
-        """
-        Extract all potential JSON objects from text using balanced brace counting
-        """
-        json_objects = []
-        i = 0
-
-        while i < len(text):
-            # Find the next opening brace
-            start_idx = text.find('{', i)
-            if start_idx == -1:
-                break
-
-            # Count braces to find the matching closing brace
-            brace_count = 0
-            in_string = False
-            escape_next = False
-
-            for j in range(start_idx, len(text)):
-                char = text[j]
-
-                if escape_next:
-                    escape_next = False
-                    continue
-
-                if char == '\\' and in_string:
-                    escape_next = True
-                    continue
-
-                if char == '"' and not escape_next:
-                    in_string = not in_string
-                    continue
-
-                if not in_string:
-                    if char == '{':
-                        brace_count += 1
-                    elif char == '}':
-                        brace_count -= 1
-
-                        if brace_count == 0:
-                            # Found the matching closing brace
-                            end_idx = j + 1
-                            json_candidate = text[start_idx:end_idx]
-                            json_objects.append(json_candidate)
-                            i = end_idx
-                            break
-            else:
-                # No matching brace found, move past this opening brace
-                i = start_idx + 1
-
-        return json_objects
-
-    def _calculate_pillar_grade(self, score: float) -> str:
-        """Calculate letter grade for individual pillar score"""
-        if score >= 0.9:
-            return "A"
-        elif score >= 0.8:
-            return "B"
-        elif score >= 0.7:
-            return "C"
-        elif score >= 0.6:
-            return "D"
-        else:
-            return "F"
-    
-    def _compile_recommendations(self, pillar_scores) -> List[str]:
-        """Compile recommendations from all pillar scores"""
-        all_recommendations = []
-        for score in pillar_scores:
-            all_recommendations.extend(score.recommendations)
-        
-        # Remove duplicates while preserving order
-        seen = set()
-        unique_recommendations = []
-        for rec in all_recommendations:
-            if rec not in seen:
-                seen.add(rec)
-                unique_recommendations.append(rec)
-        
-        return unique_recommendations
-    
-    async def _evaluate_with_advanced_system(self, survey_data: Dict[str, Any], rfq_text: str) -> Dict[str, Any]:
-        """
-        Evaluate survey using the appropriate evaluator based on settings
-        """
-        # Get evaluation mode from settings
-        evaluation_mode = "single_call"  # Default to single_call for efficiency
-        try:
-            from src.services.settings_service import SettingsService
-            settings_service = SettingsService(self.db_session)
-            evaluation_settings = settings_service.get_evaluation_settings()
-            evaluation_mode = evaluation_settings.get('evaluation_mode', 'single_call')
-            logger.info(f"🔧 [GenerationService] Using evaluation mode: {evaluation_mode}")
-        except Exception as e:
-            logger.warning(f"⚠️ [GenerationService] Failed to get evaluation mode: {e}, using single_call")
-        
-        if evaluation_mode == "single_call":
-            logger.info("🚀 [GenerationService] Using single-call evaluation for efficiency")
-            # Use single-call evaluator for cost efficiency
-            try:
-                from evaluations.modules.single_call_evaluator import SingleCallEvaluator
-                from evaluations.llm_client import create_evaluation_llm_client
-                llm_client = create_evaluation_llm_client(db_session=self.db_session)
-                evaluator = SingleCallEvaluator(llm_client=llm_client, db_session=self.db_session)
-                result = await evaluator.evaluate_survey(survey_data, rfq_text)
-                
-                # Convert single-call results to expected format
-                pillar_breakdown = []
-                pillar_mapping = {
-                    'content_validity': 'Content Validity',
-                    'methodological_rigor': 'Methodological Rigor', 
-                    'clarity_comprehensibility': 'Clarity & Comprehensibility',
-                    'structural_coherence': 'Structural Coherence',
-                    'deployment_readiness': 'Deployment Readiness'
-                }
-                
-                # Default weights
-                weights = {
-                    'content_validity': 0.20,
-                    'methodological_rigor': 0.25,
-                    'clarity_comprehensibility': 0.25,
-                    'structural_coherence': 0.20,
-                    'deployment_readiness': 0.10
-                }
-                
-                for pillar_name, display_name in pillar_mapping.items():
-                    score = result.pillar_scores.get(pillar_name, 0.5)
-                    weight = weights[pillar_name]
-                    weighted_score = score * weight
-                    
-                    # Convert score to criteria format for compatibility
-                    criteria_met = int(score * 10)  # Scale to 0-10
-                    total_criteria = 10
-                    
-                    # Calculate grade
-                    if score >= 0.9:
-                        grade = "A"
-                    elif score >= 0.8:
-                        grade = "B"
-                    elif score >= 0.7:
-                        grade = "C"
-                    elif score >= 0.6:
-                        grade = "D"
-                    else:
-                        grade = "F"
-                    
-                    pillar_breakdown.append({
-                        "pillar_name": pillar_name,
-                        "display_name": display_name,
-                        "score": score,
-                        "weighted_score": weighted_score,
-                        "weight": weight,
-                        "criteria_met": criteria_met,
-                        "total_criteria": total_criteria,
-                        "grade": grade
-                    })
-                
-                return {
-                    "overall_grade": result.overall_grade,
-                    "weighted_score": result.weighted_score,
-                    "total_score": result.weighted_score,  # Use weighted_score as total_score
-                    "summary": f"Single-Call Comprehensive Analysis | Overall Score: {result.weighted_score:.1%} (Grade {result.overall_grade})",
-                    "pillar_breakdown": pillar_breakdown,
-                    "recommendations": result.overall_recommendations or []
-                }
-            except Exception as e:
-                logger.error(f"❌ [GenerationService] Single-call evaluator failed: {e}, falling back to API")
-                return await self._call_pillar_scores_api(survey_data, rfq_text)
-        else:
-            logger.info("🚀 [GenerationService] Using multiple-call evaluation")
-            if not self.advanced_evaluator:
-                logger.warning("⚠️ [GenerationService] Advanced evaluator not available, calling pillar-scores API")
-                return await self._call_pillar_scores_api(survey_data, rfq_text)
-            
-            try:
-                # Run advanced evaluation
-                result = await self.advanced_evaluator.evaluate_survey(survey_data, rfq_text)
-                
-                # Convert advanced results to the format expected by the generation service
-                pillar_breakdown = []
-                
-                # Map pillar scores to the expected format
-                pillar_mapping = {
-                    'content_validity': 'Content Validity',
-                    'methodological_rigor': 'Methodological Rigor', 
-                    'clarity_comprehensibility': 'Clarity & Comprehensibility',
-                    'structural_coherence': 'Structural Coherence',
-                    'deployment_readiness': 'Deployment Readiness'
-                }
-                
-                weights = self.advanced_evaluator.PILLAR_WEIGHTS
-                
-                for pillar_name, display_name in pillar_mapping.items():
-                    score = getattr(result.pillar_scores, pillar_name)
-                    weight = weights[pillar_name]
-                    weighted_score = score * weight
-                    
-                    # Convert score to criteria format for compatibility
-                    criteria_met = int(score * 10)  # Scale to 0-10
-                    total_criteria = 10
-                    
-                    # Calculate grade
-                    if score >= 0.9:
-                        grade = "A"
-                    elif score >= 0.8:
-                        grade = "B"
-                    elif score >= 0.7:
-                        grade = "C"
-                    elif score >= 0.6:
-                        grade = "D"
-                    else:
-                        grade = "F"
-                    
-                    pillar_breakdown.append({
-                        "pillar_name": pillar_name,
-                        "display_name": display_name,
-                        "score": score,
-                        "weighted_score": weighted_score,
-                        "weight": weight,
-                        "criteria_met": criteria_met,
-                        "total_criteria": total_criteria,
-                        "grade": grade
-                    })
-                
-                # Calculate overall grade
-                if result.overall_score >= 0.9:
-                    overall_grade = "A"
-                elif result.overall_score >= 0.8:
-                    overall_grade = "B"
-                elif result.overall_score >= 0.7:
-                    overall_grade = "C"
-                elif result.overall_score >= 0.6:
-                    overall_grade = "D"
-                else:
-                    overall_grade = "F"
-                
-                # Create summary with advanced evaluation indicator
-                summary = f"Advanced Chain-of-Thought Analysis (v2.0-advanced-chain-of-thought) | Overall Score: {result.overall_score:.1%} (Grade {overall_grade})"
-                
-                # Return in the expected format
-                return {
-                    "overall_grade": overall_grade,
-                    "weighted_score": result.overall_score,
-                    "total_score": result.overall_score,
-                    "summary": summary,
-                    "pillar_breakdown": pillar_breakdown,
-                    "recommendations": result.recommendations or []
-                }
-                
-            except Exception as e:
-                logger.error(f"❌ [GenerationService] Advanced evaluation failed: {str(e)}")
-                logger.warning("⚠️ [GenerationService] Falling back to pillar-scores API")
-                # Call the pillar-scores API as fallback
-                return await self._call_pillar_scores_api(survey_data, rfq_text)
-    
-    async def _call_pillar_scores_api(self, survey_data: Dict[str, Any], rfq_text: str) -> Dict[str, Any]:
-        """
-        Call the pillar-scores API to get advanced evaluation results
-        """
-        try:
-            # Import the pillar-scores API function directly
-            from src.api.pillar_scores import _evaluate_with_advanced_system
-            
-            # Create a mock DB session from our existing one
-            db_session = self.pillar_scoring_service.db_session
-            
-            # Call the advanced evaluation function
-            result = await _evaluate_with_advanced_system(survey_data, rfq_text, db_session)
-            
-            # Convert the API response to the format expected by generation service
-            return {
-                "overall_grade": result.overall_grade,
-                "weighted_score": result.weighted_score,
-                "total_score": result.total_score,
-                "summary": result.summary,
-                "pillar_breakdown": [
-                    {
-                        "pillar_name": pillar.pillar_name,
-                        "display_name": pillar.display_name,
-                        "score": pillar.score,
-                        "weighted_score": pillar.weighted_score,
-                        "weight": pillar.weight,
-                        "criteria_met": pillar.criteria_met,
-                        "total_criteria": pillar.total_criteria,
-                        "grade": pillar.grade
-                    }
-                    for pillar in result.pillar_breakdown
-                ],
-                "recommendations": result.recommendations
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ [GenerationService] Failed to call pillar-scores API: {str(e)}")
-            logger.warning("⚠️ [GenerationService] Final fallback to legacy evaluation")
-            # Final fallback to legacy system
-            legacy_result = self.pillar_scoring_service.evaluate_survey_pillars(survey_data)
-            return {
-                "overall_grade": legacy_result.overall_grade,
-                "weighted_score": legacy_result.weighted_score,
-                "total_score": legacy_result.total_score,
-                "summary": f"Legacy Evaluation - {legacy_result.summary}",
-                "pillar_breakdown": [
-                    {
-                        "pillar_name": score.pillar_name,
-                        "display_name": score.pillar_name.replace('_', ' ').title().replace('Comprehensibility', '& Comprehensibility'),
-                        "score": score.score,
-                        "weighted_score": score.weighted_score,
-                        "weight": score.weight,
-                        "criteria_met": score.criteria_met,
-                        "total_criteria": score.total_criteria,
-                        "grade": self._calculate_pillar_grade(score.score)
-                    }
-                    for score in legacy_result.pillar_scores
-                ],
-                "recommendations": self._compile_recommendations(legacy_result.pillar_scores)
-            }
-
-    async def try_evaluate_safely(self, survey_data: Dict[str, Any], rfq_text: str) -> Dict[str, Any]:
-        """
-        Safely attempt evaluation with comprehensive fallback chain.
-        This method ensures we ALWAYS return valid scores, never failing the entire generation.
-
-        Fallback chain:
-        1. Advanced evaluation system
-        2. Pillar-scores API
-        3. Legacy evaluation system
-        4. Default scores with warning
-        """
-        logger.info("🛡️ [GenerationService] Starting safe evaluation with fallback chain")
-
-        # Try 1: Advanced evaluation system
-        try:
-            logger.info("🔄 [GenerationService] Attempting advanced evaluation...")
-            result = await self._evaluate_with_advanced_system(survey_data, rfq_text)
-            logger.info("✅ [GenerationService] Advanced evaluation succeeded")
-            return result
-        except Exception as e:
-            logger.warning(f"⚠️ [GenerationService] Advanced evaluation failed: {str(e)}")
-
-        # Try 2: Pillar-scores API
-        try:
-            logger.info("🔄 [GenerationService] Attempting pillar-scores API...")
-            result = await self._call_pillar_scores_api(survey_data, rfq_text)
-            logger.info("✅ [GenerationService] Pillar-scores API succeeded")
-            return result
-        except Exception as e:
-            logger.warning(f"⚠️ [GenerationService] Pillar-scores API failed: {str(e)}")
-
-        # Try 3: Legacy evaluation system
-        try:
-            logger.info("🔄 [GenerationService] Attempting legacy evaluation...")
-            legacy_result = self.pillar_scoring_service.evaluate_survey_pillars(survey_data)
-            logger.info("✅ [GenerationService] Legacy evaluation succeeded")
-            return {
-                "overall_grade": legacy_result.overall_grade,
-                "weighted_score": legacy_result.weighted_score,
-                "total_score": legacy_result.total_score,
-                "summary": f"Legacy Evaluation - {legacy_result.summary}",
-                "pillar_breakdown": [
-                    {
-                        "pillar_name": score.pillar_name,
-                        "display_name": score.pillar_name.replace('_', ' ').title(),
-                        "score": score.score,
-                        "weighted_score": score.weighted_score,
-                        "weight": score.weight,
-                        "criteria_met": score.criteria_met,
-                        "total_criteria": score.total_criteria,
-                        "grade": self._calculate_pillar_grade(score.score)
-                    }
-                    for score in legacy_result.pillar_scores
-                ],
-                "recommendations": ["Evaluation completed using legacy system due to advanced system unavailability"]
-            }
-        except Exception as e:
-            logger.warning(f"⚠️ [GenerationService] Legacy evaluation failed: {str(e)}")
-
-        # Fallback 4: Default scores (last resort)
-        logger.warning("🚨 [GenerationService] All evaluation methods failed, using default scores")
-        question_count = get_questions_count(survey_data)
-
-        # Generate reasonable default scores based on survey characteristics
-        default_score = min(0.7, max(0.4, question_count / 30))  # Scale based on question count
-        default_weighted = default_score * 0.9  # Slightly lower weighted score
-
-        return {
-            "overall_grade": "C" if default_score >= 0.6 else "D",
-            "weighted_score": default_weighted,
-            "total_score": default_score,
-            "summary": f"Survey generated successfully with {question_count} questions. Quality scoring unavailable - using default assessment.",
-            "pillar_breakdown": [
-                {
-                    "pillar_name": pillar,
-                    "display_name": pillar.replace('_', ' ').title(),
-                    "score": default_score,
-                    "weighted_score": default_weighted * 0.2,  # Each pillar gets 20% weight
-                    "weight": 0.2,
-                    "criteria_met": int(default_score * 10),
-                    "total_criteria": 10,
-                    "grade": "C" if default_score >= 0.6 else "D"
-                }
-                for pillar in ["methodological_rigor", "content_validity", "respondent_experience", "analytical_value", "business_impact"]
-            ],
-            "recommendations": [
-                f"Survey contains {question_count} questions and appears structurally sound",
-                "Quality scoring systems were unavailable - manual review recommended",
-                "All survey functionality remains available despite scoring limitations"
-            ]
-        }
-
-    async def _calculate_pillar_scores(self, survey_data: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Calculate pillar scores for the generated survey
-        """
-        try:
-            logger.info("🏛️ [GenerationService] Starting pillar score calculation")
-            
-            # Extract RFQ text from context
-            rfq_text = context.get('rfq_text', '')
-            if not rfq_text:
-                rfq_text = f"Survey: {survey_data.get('title', 'Unnamed Survey')}"
-            
-            # Use the advanced evaluation system
-            return await self._evaluate_with_advanced_system(survey_data, rfq_text)
-            
-        except Exception as e:
-            logger.error(f"❌ [GenerationService] Failed to calculate pillar scores: {e}")
-            # Return default scores on failure
-            return {
-                "total_score": 0.5,
-                "weighted_score": 0.5,
-                "overall_grade": "C",
-                "summary": "Pillar scoring unavailable due to error",
-                "pillar_breakdown": []
-            }

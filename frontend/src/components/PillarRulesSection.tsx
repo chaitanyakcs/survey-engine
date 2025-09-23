@@ -27,7 +27,7 @@ export const PillarRulesSection: React.FC<PillarRulesSectionProps> = ({
   return (
     <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 overflow-hidden hover:shadow-xl transition-all duration-300">
       <div 
-        className="bg-gradient-to-r from-purple-600 via-purple-700 to-indigo-700 px-6 py-6 text-white cursor-pointer"
+        className="bg-gradient-to-r from-yellow-500 via-amber-600 to-orange-600 px-6 py-6 text-white cursor-pointer"
         onClick={() => onToggleSection('pillars')}
       >
         <div className="flex items-center justify-between">
@@ -42,7 +42,7 @@ export const PillarRulesSection: React.FC<PillarRulesSectionProps> = ({
                 <h2 className="text-2xl font-bold">5-Pillar Evaluation Rules</h2>
                 <span className="px-2 py-1 bg-white/20 rounded-full text-xs font-medium">NEW</span>
               </div>
-              <p className="text-purple-100 mt-1">Customize evaluation criteria for the 5-pillar survey assessment framework</p>
+              <p className="text-amber-100 mt-1">Customize evaluation criteria for the 5-pillar survey assessment framework</p>
             </div>
           </div>
           <ChevronDownIcon 

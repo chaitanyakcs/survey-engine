@@ -8,6 +8,7 @@ from .nodes import (
     ContextBuilderNode,
     GeneratorAgent,
     GoldenValidatorNode,
+    ValidatorAgent,
     HumanPromptReviewNode
 )
 from src.services.websocket_client import WebSocketNotificationService
@@ -27,8 +28,8 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     golden_retriever = GoldenRetrieverNode(db)
     context_builder = ContextBuilderNode(db)
     prompt_reviewer = HumanPromptReviewNode(db)
-    generator = GeneratorAgent(db)
-    validator = GoldenValidatorNode(db)
+    generator = GeneratorAgent(db, connection_manager=connection_manager)
+    validator = ValidatorAgent(db, connection_manager=connection_manager)
     
     # Initialize WebSocket client for progress updates
     ws_client = WebSocketNotificationService(connection_manager)
@@ -428,8 +429,7 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     # pause_for_review should not have outgoing edges - workflow pauses here
     # The workflow will be resumed externally when human review is completed
 
-    # Route from generate to completion_handler
-    workflow.add_edge("generate", "completion_handler")
+    # Note: generate -> validate is already defined above (line 285)
 
     # Set end points - both completion_handler and pause_for_review are valid end points
     workflow.set_finish_point("completion_handler")

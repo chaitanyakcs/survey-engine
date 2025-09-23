@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 def load_test_survey():
     """Load the test survey JSON from our test file"""
-    with open('/Users/chaitanya/Work/repositories/survey-engine/test_survey_parsing.py', 'r') as f:
+    with open('/Users/chaitanya/Work/repositories/survey-engine/tests/test_survey_parsing.py', 'r') as f:
         content = f.read()
 
     # Extract the survey_json from the test file

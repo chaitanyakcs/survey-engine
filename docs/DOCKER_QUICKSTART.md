@@ -79,7 +79,7 @@ docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 
 ```bash
 # Test the Docker setup
-./test-docker-setup.sh
+./tests/test-docker-setup.sh
 
 # View specific service logs
 docker-compose logs -f backend
@@ -133,6 +133,6 @@ For production deployment, see:
 If you encounter issues:
 
 1. Check the logs: `docker-compose logs -f`
-2. Run the test script: `./test-docker-setup.sh`
+2. Run the test script: `./tests/test-docker-setup.sh`
 3. Verify environment variables in `.env`
 4. Ensure all required ports are available

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { AppStore, RFQRequest, EnhancedRFQRequest, RFQTemplate, RFQQualityAssessment, WorkflowState, ProgressMessage, GoldenExampleRequest, ToastMessage, SurveyAnnotations, getQuestionCount, PendingReview, ReviewDecision, DocumentContent, DocumentAnalysis, RFQFieldMapping, DocumentAnalysisResponse, ErrorClassifier, DetailedError, ErrorCode } from '../types';
+import { AppStore, RFQRequest, EnhancedRFQRequest, RFQTemplate, RFQQualityAssessment, WorkflowState, ProgressMessage, GoldenExampleRequest, ToastMessage, SurveyAnnotations, getQuestionCount, PendingReview, ReviewDecision, DocumentContent, DocumentAnalysis, RFQFieldMapping, DocumentAnalysisResponse, DetailedError, ErrorCode } from '../types';
+import { ErrorClassifier } from '../types/errors';
 import { apiService } from '../services/api';
 import { rfqTemplateService } from '../services/RFQTemplateService';
 
@@ -101,10 +102,90 @@ export const useAppStore = create<AppStore>((set, get) => ({
   workflow: {
     status: 'idle'
   } as WorkflowState,
-  
-  setWorkflowState: (workflowState) => set((state) => ({
-    workflow: { ...state.workflow, ...workflowState }
-  })),
+
+  workflowTimeoutId: undefined as NodeJS.Timeout | undefined,
+
+  setWorkflowState: (workflowState) => {
+    const currentState = get();
+    const currentProgress = currentState.workflow.progress || 0;
+    const newProgress = workflowState.progress;
+
+    // Apply smooth progress transition to prevent jarring jumps
+    let smoothedProgress = newProgress;
+    if (newProgress !== undefined && newProgress !== currentProgress) {
+      // Only allow forward progress or resets (to prevent backward jumps)
+      if (newProgress >= currentProgress || newProgress === 0) {
+        smoothedProgress = newProgress;
+      } else {
+        // Keep current progress if new progress is backward (unless it's a reset)
+        console.log('🚫 [Store] Preventing backward progress jump from', currentProgress, 'to', newProgress);
+        smoothedProgress = currentProgress;
+      }
+    }
+
+    set((state) => ({
+      workflow: {
+        ...state.workflow,
+        ...workflowState,
+        ...(smoothedProgress !== undefined && { progress: smoothedProgress })
+      }
+    }));
+
+    // Set up completion timeout protection
+    const { workflowTimeoutId } = get();
+
+    // Clear existing timeout
+    if (workflowTimeoutId) {
+      clearTimeout(workflowTimeoutId);
+    }
+
+    // Only set timeout for in-progress workflows
+    if (workflowState.status === 'in_progress' || workflowState.status === 'started') {
+      console.log('⏰ [Store] Setting workflow completion timeout (5 minutes)');
+      const newTimeoutId = setTimeout(() => {
+        const currentState = get().workflow;
+
+        // Only force completion if still in progress
+        if (currentState.status === 'in_progress' || currentState.status === 'started') {
+          console.log('🚨 [Store] Workflow timeout reached - forcing completion to prevent hanging');
+
+          // Try to fetch survey data to see if generation actually completed
+          const surveyId = currentState.survey_id;
+          if (surveyId) {
+            get().fetchSurvey(surveyId).then(() => {
+              console.log('✅ [Store] Survey data found - marking workflow as completed');
+              get().setWorkflowState({ status: 'completed' });
+            }).catch(() => {
+              console.log('❌ [Store] No survey data found - marking workflow as failed');
+              get().setWorkflowState({
+                status: 'failed',
+                error: 'Workflow timed out after 5 minutes. Please try again.'
+              });
+            });
+          } else {
+            console.log('❌ [Store] No survey ID - marking workflow as failed');
+            get().setWorkflowState({
+              status: 'failed',
+              error: 'Workflow timed out after 5 minutes. Please try again.'
+            });
+          }
+
+          // Show timeout notification
+          get().addToast({
+            type: 'warning',
+            title: 'Workflow Timeout',
+            message: 'The survey generation took longer than expected. Checking for completion...',
+            duration: 8000
+          });
+        }
+      }, 5 * 60 * 1000); // 5 minutes
+
+      set({ workflowTimeoutId: newTimeoutId });
+    } else if (workflowState.status === 'completed' || workflowState.status === 'failed') {
+      // Clear timeout when workflow completes
+      set({ workflowTimeoutId: undefined });
+    }
+  },
 
   // Survey State
   currentSurvey: undefined,
@@ -287,6 +368,30 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
   },
 
+  loadPillarScoresAsync: async (surveyId: string) => {
+    try {
+      console.log('🏛️ [Store] Loading pillar scores asynchronously:', surveyId);
+      const pillarScores = await apiService.fetchPillarScores(surveyId);
+
+      // Update the current survey with pillar scores
+      const currentState = get();
+      if (currentState.currentSurvey && currentState.currentSurvey.survey_id === surveyId) {
+        set({
+          currentSurvey: {
+            ...currentState.currentSurvey,
+            pillar_scores: pillarScores
+          }
+        });
+        console.log('✅ [Store] Pillar scores loaded and updated in survey');
+      }
+
+      return pillarScores;
+    } catch (error) {
+      console.warn('⚠️ [Store] Failed to load pillar scores (non-blocking):', error);
+      return null;
+    }
+  },
+
   connectWebSocket: (workflowId: string) => {
     // Use relative URL so it works in both local and production environments
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -333,6 +438,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
           if (message.step === 'completed' && message.percent === 100) {
             console.log('🎉 [WebSocket] Progress completion detected, updating workflow status to completed');
 
+            // Show success toast for progress-based completion
+            get().addToast({
+              type: 'success',
+              title: '🎉 Survey Complete!',
+              message: 'Your professional survey is ready to collect insights!',
+              duration: 8000
+            });
+
             set((state) => ({
               workflow: {
                 ...state.workflow,
@@ -346,13 +459,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
             // Clear persisted workflow state since completion is successful
             localStorage.removeItem('survey_workflow_state');
 
-            // Show success toast for progress-based completion
-            get().addToast({
-              type: 'success',
-              title: '🎉 Survey Complete!',
-              message: 'Your professional survey is ready to collect insights!',
-              duration: 8000
-            });
+            // Try to fetch survey if we have a survey_id
+            const currentWorkflow = get().workflow;
+            if (currentWorkflow.survey_id) {
+              console.log('📥 [WebSocket] Fetching survey after progress completion');
+              get().fetchSurvey(currentWorkflow.survey_id).catch((error) => {
+                console.warn('⚠️ [WebSocket] Failed to fetch survey after progress completion:', error);
+              });
+            }
 
             console.log('✅ [Frontend] Workflow marked as completed via progress message');
           } else {
@@ -435,7 +549,24 @@ export const useAppStore = create<AppStore>((set, get) => ({
           console.log('✅ [Frontend] Workflow resuming state updated');
         } else if (message.type === 'completed') {
           console.log('🎉 [WebSocket] Workflow completed:', message);
-          
+
+          // Validate completion message
+          if (!message.survey_id) {
+            console.error('❌ [WebSocket] Invalid completion message - missing survey_id');
+            // Try to recover by checking current workflow for survey_id
+            const currentWorkflow = get().workflow;
+            if (currentWorkflow.survey_id) {
+              console.log('🔄 [WebSocket] Using survey_id from current workflow state');
+              message.survey_id = currentWorkflow.survey_id;
+            } else {
+              console.error('❌ [WebSocket] Cannot complete workflow - no survey_id available');
+              return;
+            }
+          }
+
+          // Handle completion with resilience
+          console.log('✅ [WebSocket] Processing workflow completion with survey_id:', message.survey_id);
+
           // Show success toast notification
           get().addToast({
             type: 'success',
@@ -443,7 +574,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
             message: 'Your professional survey is ready to collect insights!',
             duration: 8000
           });
-          
+
           // Update workflow status first
           set((state) => ({
             workflow: {
@@ -455,41 +586,34 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
           // Clear persisted workflow state since completion is successful
           localStorage.removeItem('survey_workflow_state');
-          
-          console.log('🔄 [WebSocket] Workflow status updated to completed, survey_id:', message.survey_id);
-          
-          // Fetch the completed survey
-          if (message.survey_id) {
-            console.log('📥 [WebSocket] Fetching completed survey:', message.survey_id);
-            get().fetchSurvey(message.survey_id).then(() => {
-              console.log('✅ [WebSocket] Survey fetched successfully, state should trigger redirect');
-              // Log the current state after fetch
-              const currentState = get();
-              console.log('🔍 [WebSocket] Current state after fetch:', {
-                workflowStatus: currentState.workflow.status,
-                hasSurvey: !!currentState.currentSurvey,
-                surveyId: currentState.currentSurvey?.survey_id
-              });
-            }).catch((error) => {
-              console.error('❌ [WebSocket] Failed to fetch survey:', error);
-              // Show error toast if survey fetch fails
-              get().addToast({
-                type: 'error',
-                title: 'Survey Error',
-                message: 'Survey was generated but failed to load. Please try refreshing.',
-                duration: 6000
-              });
-            });
-          } else {
-            console.error('❌ [WebSocket] No survey_id in completion message:', message);
-            // Show error toast if no survey ID
+
+          // Fetch the completed survey with retry mechanism
+          const fetchWithRetry = async (surveyId: string, retries = 3) => {
+            for (let i = 0; i < retries; i++) {
+              try {
+                await get().fetchSurvey(surveyId);
+                console.log('✅ [WebSocket] Survey fetched successfully after', i + 1, 'attempts');
+                return;
+              } catch (error) {
+                console.warn(`⚠️ [WebSocket] Survey fetch attempt ${i + 1} failed:`, error);
+                if (i === retries - 1) {
+                  throw error;
+                }
+                // Wait before retry
+                await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+              }
+            }
+          };
+
+          fetchWithRetry(message.survey_id).catch((error) => {
+            console.error('❌ [WebSocket] Failed to fetch survey after retries:', error);
             get().addToast({
               type: 'error',
-              title: 'Generation Error',
-              message: 'Survey generation completed but no survey ID was provided.',
+              title: 'Survey Error',
+              message: 'Survey was generated but failed to load. Please try refreshing.',
               duration: 6000
             });
-          }
+          });
           
           // Don't close WebSocket immediately - let it stay open for a bit
           // This prevents the frontend from going blank
@@ -1099,9 +1223,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
   resetWorkflow: () => {
     console.log('🔄 [Store] Resetting workflow to idle state');
 
+    // Clear any pending timeout
+    const { workflowTimeoutId } = get();
+    if (workflowTimeoutId) {
+      clearTimeout(workflowTimeoutId);
+    }
+
     // Clear workflow state
     set((state) => ({
       workflow: { status: 'idle' },
+      workflowTimeoutId: undefined,
       currentSurvey: undefined,
       rfqInput: {
         title: '',
@@ -1186,7 +1317,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           const shouldRestoreWorkflow = 
             state.status === 'in_progress' || 
             state.status === 'started' ||
-            (state.status === 'completed' && (currentPath === '/' || currentPath.startsWith('/summary/')));
+            (state.status === 'completed' && currentPath === '/');
 
           if (shouldRestoreWorkflow) {
             get().setWorkflowState(state);
@@ -1327,12 +1458,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   // Document Upload Actions
-  uploadDocument: async (file: File): Promise<DocumentAnalysisResponse> => {
+  uploadDocument: async (file: File, sessionId?: string): Promise<DocumentAnalysisResponse> => {
     set({ isDocumentProcessing: true, documentUploadError: undefined });
 
     try {
       const formData = new FormData();
       formData.append('file', file);
+      if (sessionId) {
+        formData.append('session_id', sessionId);
+      }
 
       const response = await fetch('/api/v1/rfq/upload-document', {
         method: 'POST',
@@ -1648,6 +1782,32 @@ export const useAppStore = create<AppStore>((set, get) => ({
           rfqUpdates.rules_and_definitions = value;
           break;
 
+        // Additional field mappings from document parsing
+        case 'objectives':
+          if (!rfqUpdates.research_objectives) rfqUpdates.research_objectives = { research_audience: '', success_criteria: '', key_research_questions: [] };
+          if (Array.isArray(value)) {
+            rfqUpdates.research_objectives.key_research_questions = value;
+          } else if (typeof value === 'string') {
+            rfqUpdates.research_objectives.key_research_questions = [value];
+          }
+          break;
+        case 'research_goal':
+          if (!rfqUpdates.research_objectives) rfqUpdates.research_objectives = { research_audience: '', success_criteria: '', key_research_questions: [] };
+          rfqUpdates.research_objectives.success_criteria = value;
+          break;
+        case 'methodology_details':
+          if (!rfqUpdates.methodology) rfqUpdates.methodology = { primary_method: 'basic_survey' };
+          rfqUpdates.methodology.methodology_requirements = value;
+          break;
+        case 'product_category':
+          if (!rfqUpdates.business_context) rfqUpdates.business_context = { company_product_background: '', business_problem: '', business_objective: '' };
+          rfqUpdates.business_context.company_product_background = value;
+          break;
+        case 'deliverables':
+          if (!rfqUpdates.research_objectives) rfqUpdates.research_objectives = { research_audience: '', success_criteria: '', key_research_questions: [] };
+          rfqUpdates.research_objectives.success_criteria = value;
+          break;
+
         // Legacy field mapping for backward compatibility
         default:
           console.warn(`Unknown field mapping: ${mapping.field}`);
@@ -1759,5 +1919,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
     } catch (error) {
       console.error('Failed to clear Enhanced RFQ state:', error);
     }
+  },
+
+  // Pillar Evaluation Polling
+  startPillarEvaluationPolling: (surveyId: string) => {
+    console.log('🔍 [Store] Starting pillar evaluation polling for survey:', surveyId);
+    // This would typically start a polling mechanism to check for pillar evaluation results
+    // For now, we'll just log that it was called
+    console.log('Pillar evaluation polling started (implementation pending)');
   }
 }));

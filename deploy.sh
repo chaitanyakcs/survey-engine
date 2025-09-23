@@ -2,13 +2,14 @@
 
 # Survey Engine Railway Deployment Script
 # This script runs build checks, builds and pushes the Docker image to Railway
-# Usage: ./deploy.sh [--strict-types]
+# Usage: ./deploy.sh [--strict-types] [--strict-lint] [--strict] [--clean]
 
 set -e  # Exit on any error
 
 # Parse command line arguments
 STRICT_TYPES=false
 STRICT_LINT=false
+CLEAN_BUILD=false
 for arg in "$@"; do
     case $arg in
         --strict-types)
@@ -24,11 +25,16 @@ for arg in "$@"; do
             STRICT_LINT=true
             shift
             ;;
+        --clean)
+            CLEAN_BUILD=true
+            shift
+            ;;
         --help|-h)
-            echo "Usage: $0 [--strict-types] [--strict-lint] [--strict]"
+            echo "Usage: $0 [--strict-types] [--strict-lint] [--strict] [--clean]"
             echo "  --strict-types    Enforce strict type checking (mypy errors block deployment)"
             echo "  --strict-lint     Enforce strict linting (flake8 errors block deployment)"
             echo "  --strict          Enable both strict type checking and linting"
+            echo "  --clean           Perform a clean build (remove build artifacts and Docker cache)"
             echo "  --help, -h        Show this help message"
             exit 0
             ;;
@@ -136,6 +142,37 @@ fi
 echo "✅ All build checks passed!"
 echo "================================================"
 
+# Clean build if requested
+if [ "$CLEAN_BUILD" = true ]; then
+    echo "🧹 Performing clean build..."
+    echo "================================================"
+    
+    # Clean frontend build artifacts
+    echo "🗑️  Cleaning frontend build artifacts..."
+    rm -rf frontend/build
+    rm -rf frontend/dist
+    rm -rf frontend/node_modules/.cache
+    
+    # Clean Python cache
+    echo "🗑️  Cleaning Python cache..."
+    find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+    find . -type f -name "*.pyc" -delete 2>/dev/null || true
+    find . -type f -name "*.pyo" -delete 2>/dev/null || true
+    
+    # Clean Docker build cache
+    echo "🗑️  Cleaning Docker build cache..."
+    docker builder prune -f
+    docker system prune -f --volumes
+    
+    # Remove existing Docker images for this project
+    echo "🗑️  Removing existing Docker images..."
+    docker rmi chaitanyakc/survey-engine:latest 2>/dev/null || true
+    docker rmi $(docker images -q chaitanyakc/survey-engine) 2>/dev/null || true
+    
+    echo "✅ Clean build preparation complete!"
+    echo "================================================"
+fi
+
 # Build frontend first
 echo "🔨 Building frontend..."
 cd frontend
@@ -144,7 +181,12 @@ cd ..
 
 # Build the Docker image for AMD64/Linux platform
 echo "📦 Building Docker image for AMD64/Linux platform..."
-docker buildx build --platform linux/amd64 -t chaitanyakc/survey-engine:latest --load .
+if [ "$CLEAN_BUILD" = true ]; then
+    echo "   (Clean build: using --no-cache flag)"
+    docker buildx build --platform linux/amd64 --no-cache -t chaitanyakc/survey-engine:latest --load .
+else
+    docker buildx build --platform linux/amd64 -t chaitanyakc/survey-engine:latest --load .
+fi
 
 if [ $? -eq 0 ]; then
     echo "✅ Docker image built successfully!"

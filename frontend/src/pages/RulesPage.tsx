@@ -105,55 +105,73 @@ export const RulesPage: React.FC = () => {
       }
       
       const timestamp = new Date().getTime();
-      const [methodologiesRes, qualityRes, systemPromptRes] = await Promise.all([
-        fetch(`/api/v1/rules/methodologies?t=${timestamp}`, {
-          method: 'GET',
-          headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-          }
-        }),
-        fetch(`/api/v1/rules/quality-rules?t=${timestamp}`, {
-          method: 'GET',
-          headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-          }
-        }),
-        fetch(`/api/v1/rules/system-prompt?t=${timestamp}`, {
-          method: 'GET',
-          headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-          }
-        })
-      ]);
-
-      if (!methodologiesRes.ok || !qualityRes.ok) {
-        throw new Error('Failed to fetch rules');
-      }
-
-      const methodologiesData = await methodologiesRes.json();
-      const qualityData = await qualityRes.json();
-
-      setMethodologies(methodologiesData.rules || {});
-      setQualityRules(qualityData);
-
-      // Fetch system prompt
-      if (systemPromptRes.ok) {
-        const systemPromptData = await systemPromptRes.json();
-        setSystemPrompt(systemPromptData);
-      }
-
-      setError(null);
       
-      if (isRetry) {
-        addToast({
-          type: 'success',
-          title: 'Rules Loaded Successfully',
-          message: 'Rules have been fetched and loaded successfully.',
-          duration: 5000
-        });
+      // Add timeout to prevent stuck requests
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      try {
+        const [methodologiesRes, qualityRes, systemPromptRes] = await Promise.all([
+          fetch(`/api/v1/rules/methodologies?t=${timestamp}`, {
+            method: 'GET',
+            headers: {
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache'
+            },
+            signal: controller.signal
+          }),
+          fetch(`/api/v1/rules/quality-rules?t=${timestamp}`, {
+            method: 'GET',
+            headers: {
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache'
+            },
+            signal: controller.signal
+          }),
+          fetch(`/api/v1/rules/system-prompt?t=${timestamp}`, {
+            method: 'GET',
+            headers: {
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache'
+            },
+            signal: controller.signal
+          })
+        ]);
+
+        clearTimeout(timeoutId);
+
+        if (!methodologiesRes.ok || !qualityRes.ok) {
+          throw new Error('Failed to fetch rules');
+        }
+
+        const methodologiesData = await methodologiesRes.json();
+        const qualityData = await qualityRes.json();
+
+        setMethodologies(methodologiesData.rules || {});
+        setQualityRules(qualityData);
+
+        // Fetch system prompt
+        if (systemPromptRes.ok) {
+          const systemPromptData = await systemPromptRes.json();
+          setSystemPrompt(systemPromptData);
+        }
+
+        setError(null);
+        
+        if (isRetry) {
+          addToast({
+            type: 'success',
+            title: 'Rules Loaded Successfully',
+            message: 'Rules have been fetched and loaded successfully.',
+            duration: 5000
+          });
+        }
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+          throw new Error('Request timed out. Please check your connection and try again.');
+        }
+        throw fetchError;
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch rules';
@@ -169,7 +187,7 @@ export const RulesPage: React.FC = () => {
       setLoading(false);
       setIsRetrying(false);
     }
-  }, [addToast]);
+  }, []); // Remove addToast from dependencies to prevent infinite loop
 
   useEffect(() => {
     fetchRules();
@@ -199,7 +217,7 @@ export const RulesPage: React.FC = () => {
         <Sidebar currentView="rules" onViewChange={handleViewChange} />
         <div className={mainContentClasses}>
           <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-600"></div>
           </div>
         </div>
       </div>

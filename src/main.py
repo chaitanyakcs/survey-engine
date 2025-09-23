@@ -99,6 +99,35 @@ async def websocket_endpoint(websocket: WebSocket, workflow_id: str):
     except WebSocketDisconnect:
         manager.disconnect(websocket, workflow_id)
 
+
+@app.websocket("/ws/rfq-parsing/{session_id}")
+async def rfq_parsing_websocket(websocket: WebSocket, session_id: str):
+    """
+    WebSocket endpoint for real-time progress updates during RFQ document parsing.
+    """
+    logger.info(f"🔌 [RFQ Parsing WebSocket] New connection attempt for session_id={session_id}")
+
+    # Import the RFQ parsing manager
+    from src.api.field_extraction import rfq_parsing_manager
+
+    await rfq_parsing_manager.connect(websocket, session_id)
+    logger.info(f"✅ [RFQ Parsing WebSocket] Connection established for session_id={session_id}")
+
+    try:
+        while True:
+            # Keep connection alive and handle any incoming messages
+            data = await websocket.receive_text()
+            logger.debug(f"📨 [RFQ Parsing WebSocket] Received WebSocket message: {data}")
+
+    except WebSocketDisconnect:
+        logger.info(f"🔌 [RFQ Parsing WebSocket] Client disconnected for session_id={session_id}")
+        rfq_parsing_manager.disconnect(websocket, session_id)
+    except Exception as e:
+        logger.error(f"❌ [RFQ Parsing WebSocket] WebSocket error for session {session_id}: {str(e)}", exc_info=True)
+        rfq_parsing_manager.disconnect(websocket, session_id)
+        await websocket.close()
+
+
 @app.get("/")
 async def root():
     """Root endpoint - should be served by nginx, but fallback here"""

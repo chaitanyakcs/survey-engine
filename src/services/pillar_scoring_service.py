@@ -61,6 +61,17 @@ class PillarScoringService:
         logger.info(f"🏛️ [PillarScoring] Survey data keys: {list(survey_data.keys()) if survey_data else 'None'}")
         logger.info(f"🏛️ [PillarScoring] Survey questions count: {get_questions_count(survey_data) if survey_data else 0}")
         
+        # Handle None survey data
+        if survey_data is None:
+            logger.warning("⚠️ [PillarScoring] Survey data is None, returning zero scores")
+            return OverallPillarScore(
+                total_score=0.0,
+                weighted_score=0.0,
+                pillar_scores=[],
+                overall_grade="F",
+                summary="No survey data available for evaluation"
+            )
+        
         pillar_scores = []
         total_weighted_score = 0.0
         
@@ -324,7 +335,7 @@ class PillarScoringService:
         
         if 'logical progression' in rule_description:
             # Check for logical flow
-            has_sections = 'sections' in survey_data or len(questions) > 0
+            has_sections = (survey_data and 'sections' in survey_data) or len(questions) > 0
             if not has_sections:
                 recommendations.append("Organize questions into logical sections with clear progression")
             return {'met': has_sections, 'recommendations': recommendations}

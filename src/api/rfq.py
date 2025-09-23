@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from src.database import get_db, RFQ, Survey
 from pydantic import BaseModel
@@ -190,6 +190,7 @@ async def process_rfq_workflow_async(
 @router.post("/upload-document", response_model=DocumentAnalysisResponse)
 async def upload_and_analyze_document(
     file: UploadFile = File(...),
+    session_id: str = Form(None),
     db: Session = Depends(get_db)
 ) -> DocumentAnalysisResponse:
     """
@@ -224,13 +225,15 @@ async def upload_and_analyze_document(
         # Parse document using enhanced document parser
         logger.info(f"🤖 [RFQ API] Starting document analysis")
         from src.services.document_parser import DocumentParser
-        
-        # Create document parser with database session for audit
-        document_parser = DocumentParser(db_session=db)
+        from src.api.field_extraction import rfq_parsing_manager
+
+        # Create document parser with database session and WebSocket manager for real-time progress
+        document_parser = DocumentParser(db_session=db, rfq_parsing_manager=rfq_parsing_manager)
 
         analysis_result = await document_parser.parse_document_for_rfq(
             docx_content=file_content,
-            filename=file.filename
+            filename=file.filename,
+            session_id=session_id
         )
 
         logger.info(f"✅ [RFQ API] Document analysis completed")

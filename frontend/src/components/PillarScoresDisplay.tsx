@@ -105,42 +105,48 @@ const PillarScoresDisplay: React.FC<PillarScoresDisplayProps> = ({
 
         {/* Compact Pillar Grid */}
         <div className="space-y-3">
-          {pillarScores.pillar_breakdown.map((pillar, index) => (
-            <div key={index} className="bg-gray-50 rounded-lg p-3">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center space-x-2">
-                  <div className="p-1 bg-white rounded">
-                    {getPillarIcon(pillar.pillar_name)}
+          {pillarScores.pillar_breakdown?.length > 0 ? (
+            pillarScores.pillar_breakdown.map((pillar, index) => (
+              <div key={index} className="bg-gray-50 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-2">
+                    <div className="p-1 bg-white rounded">
+                      {getPillarIcon(pillar.pillar_name)}
+                    </div>
+                    <div>
+                      <h5 className="text-sm font-medium text-gray-900">{pillar.display_name}</h5>
+                      <p className="text-xs text-gray-500">{pillar.criteria_met}/{pillar.total_criteria}</p>
+                    </div>
                   </div>
-                  <div>
-                    <h5 className="text-sm font-medium text-gray-900">{pillar.display_name}</h5>
-                    <p className="text-xs text-gray-500">{pillar.criteria_met}/{pillar.total_criteria}</p>
+                  <div className="text-center">
+                    <div className={`text-lg font-semibold ${getScoreColor(pillar.score)}`}>
+                      {Math.round(pillar.score * 100)}%
+                    </div>
+                    <div className={`text-xs px-1.5 py-0.5 rounded-full ${getGradeColor(pillar.grade)} text-center`}>
+                      {pillar.grade}
+                    </div>
                   </div>
                 </div>
-                <div className="text-center">
-                  <div className={`text-lg font-semibold ${getScoreColor(pillar.score)}`}>
-                    {Math.round(pillar.score * 100)}%
-                  </div>
-                  <div className={`text-xs px-1.5 py-0.5 rounded-full ${getGradeColor(pillar.grade)} text-center`}>
-                    {pillar.grade}
-                  </div>
+                
+                {/* Compact Progress Bar */}
+                <div className="w-full bg-gray-200 rounded-full h-1.5">
+                  <div 
+                    className={`h-1.5 rounded-full transition-all duration-300 ${
+                      pillar.score >= 0.9 ? 'bg-amber-500' :
+                      pillar.score >= 0.8 ? 'bg-yellow-500' :
+                      pillar.score >= 0.7 ? 'bg-orange-500' :
+                      pillar.score >= 0.6 ? 'bg-orange-400' : 'bg-red-500'
+                    }`}
+                    style={{ width: `${pillar.score * 100}%` }}
+                  />
                 </div>
               </div>
-              
-              {/* Compact Progress Bar */}
-              <div className="w-full bg-gray-200 rounded-full h-1.5">
-                <div 
-                  className={`h-1.5 rounded-full transition-all duration-300 ${
-                    pillar.score >= 0.9 ? 'bg-amber-500' :
-                    pillar.score >= 0.8 ? 'bg-yellow-500' :
-                    pillar.score >= 0.7 ? 'bg-orange-500' :
-                    pillar.score >= 0.6 ? 'bg-orange-400' : 'bg-red-500'
-                  }`}
-                  style={{ width: `${pillar.score * 100}%` }}
-                />
-              </div>
+            ))
+          ) : (
+            <div className="text-center py-4 text-gray-500">
+              <p>No pillar breakdown data available</p>
             </div>
-          ))}
+          )}
         </div>
 
       </div>
@@ -176,51 +182,57 @@ const PillarScoresDisplay: React.FC<PillarScoresDisplayProps> = ({
       {/* Pillar Breakdown */}
       <div className="space-y-4">
         <h4 className="text-sm font-medium text-gray-900 mb-3">Pillar Breakdown</h4>
-        {pillarScores.pillar_breakdown.map((pillar, index) => (
-          <div key={index} className="border border-gray-200 rounded-lg p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center space-x-3">
-                <div className="p-1.5 bg-gray-100 rounded-md">
-                  {getPillarIcon(pillar.pillar_name)}
+        {pillarScores.pillar_breakdown?.length > 0 ? (
+          pillarScores.pillar_breakdown.map((pillar, index) => (
+            <div key={index} className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center space-x-3">
+                  <div className="p-1.5 bg-gray-100 rounded-md">
+                    {getPillarIcon(pillar.pillar_name)}
+                  </div>
+                  <div>
+                    <h5 className="font-medium text-gray-900">{pillar.display_name}</h5>
+                    <p className="text-xs text-gray-500">
+                      {pillar.criteria_met}/{pillar.total_criteria} criteria met
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h5 className="font-medium text-gray-900">{pillar.display_name}</h5>
-                  <p className="text-xs text-gray-500">
-                    {pillar.criteria_met}/{pillar.total_criteria} criteria met
-                  </p>
+                
+                <div className="text-center">
+                  <div className={`text-lg font-semibold ${getScoreColor(pillar.score)}`}>
+                    {Math.round(pillar.score * 100)}%
+                  </div>
+                  <div className={`text-xs px-2 py-1 rounded-full ${getGradeColor(pillar.grade)} text-center`}>
+                    {pillar.grade}
+                  </div>
                 </div>
               </div>
               
-              <div className="text-center">
-                <div className={`text-lg font-semibold ${getScoreColor(pillar.score)}`}>
-                  {Math.round(pillar.score * 100)}%
-                </div>
-                <div className={`text-xs px-2 py-1 rounded-full ${getGradeColor(pillar.grade)} text-center`}>
-                  {pillar.grade}
-                </div>
+              {/* Progress Bar */}
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className={`h-2 rounded-full transition-all duration-300 ${
+                    pillar.score >= 0.9 ? 'bg-green-500' :
+                    pillar.score >= 0.8 ? 'bg-blue-500' :
+                    pillar.score >= 0.7 ? 'bg-yellow-500' :
+                    pillar.score >= 0.6 ? 'bg-orange-500' : 'bg-red-500'
+                  }`}
+                  style={{ width: `${pillar.score * 100}%` }}
+                />
+              </div>
+              
+              {/* Weight */}
+              <div className="mt-2 text-xs text-gray-500">
+                Weight: {Math.round(pillar.weight * 100)}% • 
+                Weighted Score: {Math.round(pillar.weighted_score * 100)}%
               </div>
             </div>
-            
-            {/* Progress Bar */}
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div 
-                className={`h-2 rounded-full transition-all duration-300 ${
-                  pillar.score >= 0.9 ? 'bg-green-500' :
-                  pillar.score >= 0.8 ? 'bg-blue-500' :
-                  pillar.score >= 0.7 ? 'bg-yellow-500' :
-                  pillar.score >= 0.6 ? 'bg-orange-500' : 'bg-red-500'
-                }`}
-                style={{ width: `${pillar.score * 100}%` }}
-              />
-            </div>
-            
-            {/* Weight */}
-            <div className="mt-2 text-xs text-gray-500">
-              Weight: {Math.round(pillar.weight * 100)}% • 
-              Weighted Score: {Math.round(pillar.weighted_score * 100)}%
-            </div>
+          ))
+        ) : (
+          <div className="text-center py-8 text-gray-500">
+            <p>No pillar breakdown data available</p>
           </div>
-        ))}
+        )}
       </div>
 
       {/* Recommendations */}

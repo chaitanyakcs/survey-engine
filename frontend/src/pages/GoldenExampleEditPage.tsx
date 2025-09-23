@@ -186,7 +186,7 @@ export const GoldenExampleEditPage: React.FC = () => {
         <Sidebar currentView="golden-examples" onViewChange={handleViewChange} />
         <div className={`flex-1 ${mainContentClasses} transition-all duration-300 ease-in-out flex items-center justify-center`}>
           <div className="flex flex-col items-center space-y-4">
-            <div className="animate-spin rounded-full h-12 w-12 border-4 border-purple-200 border-t-purple-600"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-amber-200 border-t-amber-600"></div>
             <p className="text-gray-600 text-lg">Loading golden example...</p>
           </div>
         </div>

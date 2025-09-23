@@ -81,15 +81,22 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
       }
 
       const data = await response.json();
+      
+      console.log('🔍 [SystemPromptViewer] API Response:', data);
+      console.log('🔍 [SystemPromptViewer] LLM Interactions:', data.llm_interactions);
 
       // Combine system prompts and LLM interactions into one array
       const combined: AuditItem[] = [
-        ...(data.prompts || []),
         ...(data.llm_interactions || [])
       ];
 
       // Sort by creation time (newest first)
       combined.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      console.log('🔍 [SystemPromptViewer] Combined items:', combined);
+      console.log('🔍 [SystemPromptViewer] Evaluation items:', combined.filter(item => 
+        isLLMInteraction(item) && item.purpose === 'evaluation'
+      ));
 
       setAllItems(combined);
 
@@ -167,7 +174,7 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
           <div className="flex items-center justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
             <span className="ml-3 text-gray-600">Loading system prompts...</span>
           </div>
         </div>
@@ -489,6 +496,17 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
                           {selectedItem.output_content}
                         </pre>
                       </div>
+                    </div>
+                  )}
+                  
+                  {/* Debug info for LLM interactions */}
+                  {isLLMInteraction(selectedItem) && (
+                    <div className="mb-4 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                      <strong>Debug Info:</strong><br/>
+                      Purpose: {selectedItem.purpose}<br/>
+                      Sub-purpose: {selectedItem.sub_purpose || 'None'}<br/>
+                      Has output_content: {selectedItem.output_content ? 'Yes' : 'No'}<br/>
+                      Output length: {selectedItem.output_content ? selectedItem.output_content.length : 0}
                     </div>
                   )}
 

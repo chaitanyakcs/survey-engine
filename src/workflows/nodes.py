@@ -5,6 +5,7 @@ from src.services.embedding_service import EmbeddingService
 from src.services.retrieval_service import RetrievalService
 from src.services.generation_service import GenerationService
 from src.services.validation_service import ValidationService
+from src.services.evaluator_service import EvaluatorService
 from src.utils.error_messages import UserFriendlyError
 from src.utils.survey_utils import get_questions_count
 import logging
@@ -158,8 +159,9 @@ class ContextBuilderNode:
 
 
 class GeneratorAgent:
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, connection_manager=None):
         self.db = db
+        self.connection_manager = connection_manager
         self.generation_service = GenerationService(db_session=db)
         import logging
         self.logger = logging.getLogger(__name__)
@@ -186,8 +188,17 @@ class GeneratorAgent:
                     SurveyRule.is_active == True
                 ).all()
                 
-                # Update the existing generation service with fresh database session
+                # Update the existing generation service with fresh database session and workflow info
                 self.generation_service.db_session = fresh_db
+                self.generation_service.workflow_id = state.workflow_id
+                self.generation_service.connection_manager = self.connection_manager
+
+                # Initialize WebSocket client if available
+                if self.connection_manager and state.workflow_id:
+                    from src.services.websocket_client import WebSocketNotificationService
+                    self.generation_service.ws_client = WebSocketNotificationService(self.connection_manager)
+                else:
+                    self.generation_service.ws_client = None
                 
             except Exception as db_error:
                 self.logger.warning(f"⚠️ [GeneratorAgent] Failed to load custom rules: {str(db_error)}")
@@ -234,17 +245,11 @@ class GeneratorAgent:
                     custom_rules=custom_rules
                 )
             
-            # Extract survey and pillar scores from generation result
+            # Extract survey from generation result
             generated_survey = generation_result.get("survey", {})
-            pillar_scores = generation_result.get("pillar_scores", {})
-            
+
             self.logger.info(f"✅ [GeneratorAgent] Generation completed. Survey keys: {list(generated_survey.keys()) if generated_survey else 'None'}")
-            self.logger.info(f"🏛️ [GeneratorAgent] Pillar scores present: {pillar_scores is not None and len(pillar_scores) > 0}")
-            self.logger.info(f"🏛️ [GeneratorAgent] Pillar scores: {pillar_scores.get('overall_grade', 'N/A')} ({pillar_scores.get('weighted_score', 0):.1%})")
-            self.logger.info(f"🏛️ [GeneratorAgent] Pillar scores type: {type(pillar_scores)}")
-            if isinstance(pillar_scores, dict):
-                self.logger.info(f"🏛️ [GeneratorAgent] Pillar scores keys: {list(pillar_scores.keys())}")
-            
+
             if generated_survey:
                 question_count = get_questions_count(generated_survey)
                 self.logger.info(f"📝 [GeneratorAgent] Generated {question_count} questions")
@@ -252,11 +257,10 @@ class GeneratorAgent:
                     self.logger.warning("⚠️ [GeneratorAgent] No questions found in generated survey")
             else:
                 self.logger.warning("⚠️ [GeneratorAgent] No survey data generated")
-            
+
             # Update the state with the generated data
             state.raw_survey = generated_survey
             state.generated_survey = generated_survey
-            state.pillar_scores = pillar_scores
             
             # Log the context details for debugging
             logger.info(f"🔍 [GeneratorAgent] Context received from state:")
@@ -268,11 +272,8 @@ class GeneratorAgent:
             result = {
                 "raw_survey": generated_survey,
                 "generated_survey": generated_survey,
-                "pillar_scores": pillar_scores,
                 "error_message": None
             }
-            
-            self.logger.info(f"🏛️ [GeneratorAgent] Returning result with pillar_scores: {result.get('pillar_scores') is not None}")
             
             # Close the fresh database session
             try:
@@ -591,4 +592,120 @@ class ResearcherNode:
         except Exception as e:
             return {
                 "error_message": f"Human review setup failed: {str(e)}"
+            }
+
+
+class ValidatorAgent:
+    def __init__(self, db: Session, connection_manager=None):
+        self.db = db
+        self.connection_manager = connection_manager
+        self.evaluator_service = EvaluatorService(db_session=db)
+        import logging
+        self.logger = logging.getLogger(__name__)
+
+    async def __call__(self, state: SurveyGenerationState) -> Dict[str, Any]:
+        """
+        Evaluate survey quality using the EvaluatorService
+        """
+        try:
+            self.logger.info("🔍 [ValidatorAgent] Starting survey quality evaluation...")
+
+            # Check if we have a generated survey
+            if not state.generated_survey:
+                self.logger.error("❌ [ValidatorAgent] No generated survey found in state")
+                return {
+                    "error_message": "No survey available for evaluation",
+                    "pillar_scores": {},
+                    "quality_gate_passed": False
+                }
+
+            # Get a fresh database session to avoid transaction issues
+            from src.database import get_db
+            fresh_db = next(get_db())
+
+            try:
+                # Update the evaluator service with fresh database session and workflow info
+                self.evaluator_service.db_session = fresh_db
+                self.evaluator_service.workflow_id = state.workflow_id
+                self.evaluator_service.connection_manager = self.connection_manager
+
+                # Initialize WebSocket client if available
+                if self.connection_manager and state.workflow_id:
+                    from src.services.websocket_client import WebSocketNotificationService
+                    self.evaluator_service.ws_client = WebSocketNotificationService(self.connection_manager)
+                else:
+                    self.evaluator_service.ws_client = None
+
+                self.logger.info(f"📊 [ValidatorAgent] Evaluating survey with {len(state.generated_survey.get('sections', []))} sections")
+
+                # Run the evaluation
+                evaluation_result = await self.evaluator_service.evaluate_survey(
+                    survey_data=state.generated_survey,
+                    rfq_text=state.rfq_text
+                )
+
+                # Extract pillar scores from evaluation result (the result IS the pillar scores)
+                pillar_scores = evaluation_result
+
+                self.logger.info(f"✅ [ValidatorAgent] Evaluation completed")
+                self.logger.info(f"🏛️ [ValidatorAgent] Pillar scores: {pillar_scores.get('overall_grade', 'N/A')} ({pillar_scores.get('weighted_score', 0):.1%})")
+
+                # Determine if quality gate passed based on weighted score
+                weighted_score = pillar_scores.get('weighted_score', 0)
+                quality_threshold = 0.75  # 75% threshold for quality gate
+                quality_gate_passed = weighted_score >= quality_threshold
+
+                self.logger.info(f"🎯 [ValidatorAgent] Quality gate: {'PASSED' if quality_gate_passed else 'FAILED'} (Score: {weighted_score:.1%}, Threshold: {quality_threshold:.1%})")
+
+                # Update the state with the evaluation results
+                state.pillar_scores = pillar_scores
+                state.quality_gate_passed = quality_gate_passed
+
+                # Also run basic validation (schema, methodology) for completeness
+                validation_results = {"schema_valid": True, "methodology_compliant": True}
+                if state.generated_survey:
+                    try:
+                        from src.services.validation_service import ValidationService
+                        validation_service = ValidationService(fresh_db)
+                        validation_results = await validation_service.validate_survey(
+                            survey=state.generated_survey,
+                            golden_examples=state.golden_examples,
+                            rfq_text=state.rfq_text
+                        )
+                        self.logger.info(f"📋 [ValidatorAgent] Schema validation: {'PASSED' if validation_results.get('schema_valid') else 'FAILED'}")
+                        self.logger.info(f"📋 [ValidatorAgent] Methodology validation: {'PASSED' if validation_results.get('methodology_compliant') else 'FAILED'}")
+                    except Exception as validation_error:
+                        self.logger.warning(f"⚠️ [ValidatorAgent] Basic validation failed: {validation_error}")
+
+                # Increment retry count if quality gate fails
+                updated_retry_count = state.retry_count
+                if not quality_gate_passed:
+                    updated_retry_count += 1
+                    self.logger.info(f"🔄 [ValidatorAgent] Quality gate failed, incrementing retry count to {updated_retry_count}")
+
+                result = {
+                    "pillar_scores": pillar_scores,
+                    "quality_gate_passed": quality_gate_passed,
+                    "validation_results": validation_results,
+                    "retry_count": updated_retry_count,
+                    "error_message": None
+                }
+
+                self.logger.info(f"🏛️ [ValidatorAgent] Returning result with quality_gate_passed: {quality_gate_passed}")
+
+            finally:
+                # Close the fresh database session
+                try:
+                    fresh_db.close()
+                except Exception as e:
+                    self.logger.warning(f"⚠️ [ValidatorAgent] Failed to close fresh database session: {e}")
+
+            return result
+
+        except Exception as e:
+            self.logger.error(f"❌ [ValidatorAgent] Exception during evaluation: {str(e)}", exc_info=True)
+            return {
+                "error_message": f"Survey evaluation failed: {str(e)}",
+                "pillar_scores": {},
+                "quality_gate_passed": False
             }

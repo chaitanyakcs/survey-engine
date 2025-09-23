@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from typing import Dict, Any, Optional, List
 import logging
 import uuid
+import json
 
 from ..database import get_db
 from ..services.field_extraction_service import field_extraction_service
@@ -13,6 +14,68 @@ from ..services.progress_service import progress_service
 from ..services.websocket_client import WebSocketNotificationService
 
 logger = logging.getLogger(__name__)
+
+# Field extraction connection manager
+class FieldExtractionConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[str, List[WebSocket]] = {}
+
+    async def connect(self, websocket: WebSocket, session_id: str):
+        await websocket.accept()
+        if session_id not in self.active_connections:
+            self.active_connections[session_id] = []
+        self.active_connections[session_id].append(websocket)
+        logger.info(f"🔌 [Field Extraction WebSocket] Connection established for session_id={session_id}. Total active: {len(self.active_connections[session_id])}")
+
+    def disconnect(self, websocket: WebSocket, session_id: str):
+        if session_id in self.active_connections:
+            self.active_connections[session_id].remove(websocket)
+            if not self.active_connections[session_id]:
+                del self.active_connections[session_id]
+        logger.info(f"🔌 [Field Extraction WebSocket] Connection closed for session_id={session_id}")
+
+    async def send_progress(self, session_id: str, message: dict):
+        if session_id in self.active_connections:
+            for connection in self.active_connections[session_id]:
+                try:
+                    await connection.send_text(json.dumps(message))
+                    logger.debug(f"📤 [Field Extraction WebSocket] Sent message to session_id={session_id}: {message.get('type', 'unknown')}")
+                except Exception as e:
+                    logger.warning(f"⚠️ [Field Extraction WebSocket] Failed to send message to session_id={session_id}: {str(e)}")
+
+field_extraction_manager = FieldExtractionConnectionManager()
+
+# RFQ parsing connection manager (reusing the same pattern)
+class RFQParsingConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[str, List[WebSocket]] = {}
+
+    async def connect(self, websocket: WebSocket, session_id: str):
+        logger.info(f"🔌 [RFQ Parsing WebSocket] Accepting connection for session_id={session_id}")
+        await websocket.accept()
+        logger.info(f"✅ [RFQ Parsing WebSocket] WebSocket accepted for session_id={session_id}")
+        if session_id not in self.active_connections:
+            self.active_connections[session_id] = []
+        self.active_connections[session_id].append(websocket)
+        logger.info(f"🔌 [RFQ Parsing WebSocket] Connection established for session_id={session_id}. Total active: {len(self.active_connections[session_id])}")
+
+    def disconnect(self, websocket: WebSocket, session_id: str):
+        if session_id in self.active_connections:
+            self.active_connections[session_id].remove(websocket)
+            if not self.active_connections[session_id]:
+                del self.active_connections[session_id]
+        logger.info(f"🔌 [RFQ Parsing WebSocket] Connection closed for session_id={session_id}")
+
+    async def send_progress(self, session_id: str, message: dict):
+        if session_id in self.active_connections:
+            for connection in self.active_connections[session_id]:
+                try:
+                    await connection.send_text(json.dumps(message))
+                    logger.debug(f"📤 [RFQ Parsing WebSocket] Sent message to session_id={session_id}: {message.get('type', 'unknown')}")
+                except Exception as e:
+                    logger.warning(f"⚠️ [RFQ Parsing WebSocket] Failed to send message to session_id={session_id}: {str(e)}")
+
+rfq_parsing_manager = RFQParsingConnectionManager()
 
 router = APIRouter(prefix="/field-extraction", tags=["Field Extraction"])
 
@@ -45,9 +108,8 @@ async def extract_fields(
     logger.info(f"📊 [Field Extraction API] Survey keys: {list(request.survey_json.keys())}")
     
     try:
-        # Initialize progress service with WebSocket client
-        ws_client = WebSocketNotificationService()
-        progress_service.ws_client = ws_client
+        # Initialize progress service with field extraction manager
+        progress_service.field_extraction_manager = field_extraction_manager
         
         # Send initial progress
         await progress_service.send_field_extraction_progress(
@@ -84,8 +146,7 @@ async def progress_websocket(websocket: WebSocket, session_id: str):
     """
     WebSocket endpoint for real-time progress updates during field extraction.
     """
-    await websocket.accept()
-    logger.info(f"🔌 [Field Extraction API] WebSocket connected for session: {session_id}")
+    await field_extraction_manager.connect(websocket, session_id)
     
     try:
         while True:
@@ -94,7 +155,9 @@ async def progress_websocket(websocket: WebSocket, session_id: str):
             logger.debug(f"📨 [Field Extraction API] Received WebSocket message: {data}")
             
     except WebSocketDisconnect:
-        logger.info(f"🔌 [Field Extraction API] WebSocket disconnected for session: {session_id}")
+        field_extraction_manager.disconnect(websocket, session_id)
     except Exception as e:
         logger.error(f"❌ [Field Extraction API] WebSocket error for session {session_id}: {str(e)}")
+        field_extraction_manager.disconnect(websocket, session_id)
         await websocket.close()
+

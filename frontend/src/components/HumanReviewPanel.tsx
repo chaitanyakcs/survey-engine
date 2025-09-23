@@ -47,6 +47,10 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
   const [editReason, setEditReason] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
 
+  // Timeout state
+  const [timeoutRemaining, setTimeoutRemaining] = useState(30 * 60); // 30 minutes in seconds
+  const [showTimeoutWarning, setShowTimeoutWarning] = useState(false);
+
   // Helper function to truncate text to approximately 4 lines
   const truncateToLines = (text: string, maxLines: number = 4) => {
     const lines = text.split('\n');
@@ -118,6 +122,66 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
       fetchReviewData();
     }
   }, [isActive, workflowId, workflow.workflow_id, fetchReviewData]);
+
+  // Timeout countdown effect
+  useEffect(() => {
+    if (!isActive || !activeReview || submitting) return;
+
+    const interval = setInterval(() => {
+      setTimeoutRemaining(prev => {
+        const newTime = prev - 1;
+
+        // Show warning at 5 minutes remaining
+        if (newTime === 5 * 60 && !showTimeoutWarning) {
+          setShowTimeoutWarning(true);
+          // Add toast notification
+          useAppStore.getState().addToast({
+            type: 'warning',
+            title: 'Review Timeout Warning',
+            message: 'You have 5 minutes remaining to complete the review. The workflow will auto-resume with the default prompt if no action is taken.',
+            duration: 10000
+          });
+        }
+
+        // Auto-resume at timeout
+        if (newTime <= 0) {
+          console.log('⏰ [HumanReviewPanel] Review timeout reached - auto-resuming with default prompt');
+
+          useAppStore.getState().addToast({
+            type: 'warning',
+            title: 'Review Timeout',
+            message: 'Review timed out after 30 minutes. Workflow resumed with default prompt.',
+            duration: 8000
+          });
+
+          // Auto-approve with timeout reason
+          const timeoutDecision: ReviewDecision = {
+            decision: 'approve',
+            notes: 'Auto-approved due to 30-minute timeout',
+            reason: 'Review timed out - proceeding with default prompt to prevent workflow hanging'
+          };
+
+          submitReviewDecision(activeReview.id, timeoutDecision).catch((error) => {
+            console.error('❌ [HumanReviewPanel] Failed to auto-approve on timeout:', error);
+          });
+
+          clearInterval(interval);
+          return 0;
+        }
+
+        return newTime;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isActive, activeReview, submitting, showTimeoutWarning, submitReviewDecision]);
+
+  // Format time remaining for display
+  const formatTimeRemaining = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${minutes}:${secs.toString().padStart(2, '0')}`;
+  };
 
   const handleApprove = async () => {
     if (!activeReview) return;
@@ -309,11 +373,47 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-gray-900">System Prompt Review</h2>
-        <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(activeReview.review_status)}`}>
-          {getStatusIcon(activeReview.review_status)}
-          <span className="ml-1 capitalize">{activeReview.review_status.replace('_', ' ')}</span>
+        <div className="flex items-center space-x-3">
+          {/* Timeout Display */}
+          {(activeReview.review_status === 'pending' || activeReview.review_status === 'in_review') && (
+            <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+              showTimeoutWarning
+                ? 'text-red-700 bg-red-100'
+                : timeoutRemaining <= 10 * 60
+                  ? 'text-yellow-700 bg-yellow-100'
+                  : 'text-gray-700 bg-gray-100'
+            }`}>
+              <ClockIcon className="w-3 h-3 mr-1" />
+              <span>
+                {showTimeoutWarning ? '⚠️ ' : ''}
+                {formatTimeRemaining(timeoutRemaining)} remaining
+              </span>
+            </div>
+          )}
+
+          {/* Status Badge */}
+          <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(activeReview.review_status)}`}>
+            {getStatusIcon(activeReview.review_status)}
+            <span className="ml-1 capitalize">{activeReview.review_status.replace('_', ' ')}</span>
+          </div>
         </div>
       </div>
+
+      {/* Timeout Warning Message */}
+      {showTimeoutWarning && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+          <div className="flex items-start">
+            <ExclamationTriangleIcon className="w-5 h-5 text-red-600 mr-2 mt-0.5" />
+            <div>
+              <h4 className="text-red-900 font-medium text-sm">Review Timeout Warning</h4>
+              <p className="text-red-700 text-xs mt-1">
+                Only <strong>{formatTimeRemaining(timeoutRemaining)}</strong> remaining!
+                The workflow will auto-resume with the default prompt if no action is taken.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Metadata */}
       <div className="flex gap-4 text-xs text-gray-600">
