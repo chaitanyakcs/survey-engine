@@ -79,6 +79,7 @@ class SettingsService:
             "require_approval_for_generation": False,
             "auto_approve_trusted_prompts": False,
             "prompt_review_timeout_hours": 24,
+            "enable_llm_evaluation": True,  # New setting to make LLM evaluation optional
             # Model configuration (overridable via UI)
             "generation_model": app_settings.generation_model,
             "evaluation_model": app_settings.generation_model,
@@ -125,7 +126,7 @@ class SettingsService:
                     return False
             
             # Validate specific values
-            if settings["evaluation_mode"] not in ["single_call", "multiple_calls", "hybrid"]:
+            if settings["evaluation_mode"] not in ["single_call", "multiple_calls", "hybrid", "aira_v1"]:
                 logger.error(f"❌ [SettingsService] Invalid evaluation_mode: {settings['evaluation_mode']}")
                 return False
                 
@@ -188,7 +189,6 @@ class SettingsService:
     def get_rfq_parsing_settings(self) -> Dict[str, Any]:
         """Get RFQ parsing settings (threshold and model)."""
         default_settings = {
-            "auto_apply_threshold": 0.8,
             "parsing_model": "openai/gpt-4o-mini"
         }
         try:
@@ -205,13 +205,6 @@ class SettingsService:
         """Update RFQ parsing settings."""
         try:
             # Validate
-            if "auto_apply_threshold" not in settings:
-                logger.error("❌ [SettingsService] Missing auto_apply_threshold")
-                return False
-            threshold = settings["auto_apply_threshold"]
-            if not isinstance(threshold, (int, float)) or threshold < 0 or threshold > 1:
-                logger.error(f"❌ [SettingsService] Invalid auto_apply_threshold: {threshold}")
-                return False
             if "parsing_model" not in settings or not isinstance(settings["parsing_model"], str):
                 logger.error("❌ [SettingsService] Invalid parsing_model")
                 return False
@@ -219,7 +212,7 @@ class SettingsService:
             success = self.set_setting(
                 "rfq_parsing_settings",
                 settings,
-                "RFQ parsing settings (auto-apply threshold and model)"
+                "RFQ parsing settings (model only)"
             )
             if success:
                 logger.info("✅ [SettingsService] RFQ parsing settings updated successfully")

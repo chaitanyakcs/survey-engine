@@ -414,12 +414,10 @@ async def execute_workflow_async(workflow_id: str, workflow_data: dict):
         survey_id = workflow_data.get('survey_id')
         
         # Step 1: Initialize workflow
-        await send_progress_with_retry(workflow_id, {
-            "type": "progress",
-            "step": "initializing_workflow",
-            "percent": 5,
-            "message": "Initializing LangGraph survey generation workflow..."
-        })
+        from src.services.progress_tracker import get_progress_tracker
+        progress_tracker = get_progress_tracker(workflow_id)
+        progress_data = progress_tracker.get_progress_data("initializing_workflow")
+        await send_progress_with_retry(workflow_id, progress_data)
         
         # Import and use the proper LangGraph workflow
         from src.services.workflow_service import WorkflowService
@@ -497,12 +495,10 @@ async def generate_survey_async(workflow_id: str, survey_id: str, request: dict)
     db = next(get_db())
     try:
         # Step 1: Initialize workflow
-        await manager.send_progress(workflow_id, {
-            "type": "progress",
-            "step": "initializing_workflow",
-            "percent": 5,
-            "message": "Initializing LangGraph survey generation workflow..."
-        })
+        from src.services.progress_tracker import get_progress_tracker
+        progress_tracker = get_progress_tracker(workflow_id)
+        progress_data = progress_tracker.get_progress_data("initializing_workflow")
+        await manager.send_progress(workflow_id, progress_data)
         
         # Import and use the proper LangGraph workflow
         from src.services.workflow_service import WorkflowService

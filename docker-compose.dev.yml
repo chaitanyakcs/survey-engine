@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: development_password
       POSTGRES_DB: survey_engine_db
     ports:
-      - "5433:5432"
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
@@ -46,13 +46,12 @@ services:
       REDIS_URL: redis://redis:6379
       REPLICATE_API_TOKEN: ${REPLICATE_API_TOKEN}
       DEBUG: "true"
+      ENABLE_STREAMING_GENERATION: "true"
       # No SERVICE specified = both services start
     depends_on:
       postgres:
         condition: service_healthy
-    volumes:
-      - ./src:/app/src:ro  # Mount source for development
-      - ./websocket_server.py:/app/websocket_server.py:ro
+    # No volume mounts - manual deployment only
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "bash", "-c", "curl -f http://localhost:8000/health && curl -f http://localhost:8001/health"]

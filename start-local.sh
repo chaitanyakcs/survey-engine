@@ -52,6 +52,13 @@ kill_existing_processes() {
         sleep 2
     fi
     
+    # Kill any processes using port 3000
+    if lsof -ti:3000 > /dev/null 2>&1; then
+        echo -e "${YELLOW}🔄 Killing processes using port 3000...${NC}"
+        lsof -ti:3000 | xargs kill -9 2>/dev/null || true
+        sleep 2
+    fi
+    
     echo -e "${GREEN}✅ Existing processes cleaned up${NC}"
 }
 
@@ -73,7 +80,14 @@ check_port_availability() {
         exit 1
     fi
     
-    echo -e "${GREEN}✅ Ports 4321 and 8000 are available${NC}"
+    # Check port 3000
+    if lsof -ti:3000 > /dev/null 2>&1; then
+        echo -e "${RED}❌ Port 3000 is still in use${NC}"
+        echo -e "${YELLOW}💡 Try running: lsof -ti:3000 | xargs kill -9${NC}"
+        exit 1
+    fi
+    
+    echo -e "${GREEN}✅ Ports 3000, 4321, and 8000 are available${NC}"
 }
 
 # Function to check environment variables
@@ -116,7 +130,7 @@ check_database() {
     # Set default DATABASE_URL if not provided
     if [ -z "$DATABASE_URL" ]; then
         echo -e "${YELLOW}⚠️  No DATABASE_URL found, using default local development settings${NC}"
-        export DATABASE_URL="postgresql://survey_engine:development_password@127.0.0.1:5433/survey_engine_db"
+        export DATABASE_URL="postgresql://chaitanya@localhost:5432/survey_engine_db"
         export REDIS_URL="redis://127.0.0.1:6379"
     fi
     
@@ -211,37 +225,58 @@ start_application() {
         # Start the consolidated application
         DATABASE_URL="$DATABASE_URL" REDIS_URL="$REDIS_URL" ./start.sh consolidated
     else
-        echo -e "${BLUE}🏠 Starting in development mode${NC}"
+        echo -e "${BLUE}🏠 Starting in development mode (Local without Docker)${NC}"
         
-        # For local development, start both nginx and FastAPI
-        echo -e "${BLUE}   - Nginx will run on port 4321${NC}"
-        echo -e "${BLUE}   - FastAPI will run on port $FASTAPI_PORT${NC}"
-        echo -e "${BLUE}   - Frontend will be served by nginx from build directory${NC}"
+        # For local development, start both FastAPI and React production build
+        echo -e "${BLUE}   - FastAPI will run on port 8000${NC}"
+        echo -e "${BLUE}   - React app will run on port 3000 (production build)${NC}"
         
-        # Check if frontend is built
-        if [ ! -d "frontend/build" ]; then
-            echo -e "${YELLOW}⚠️  Frontend not built, building now...${NC}"
-            cd frontend && npm run build && cd ..
-        fi
+        # Set environment variables for local development
+        export REPLICATE_API_TOKEN="${REPLICATE_API_TOKEN}"
+        export DATABASE_URL="${DATABASE_URL:-postgresql://chaitanya@localhost:5432/survey_engine_db}"
         
-        # Start FastAPI in background using uv
-        echo -e "${YELLOW}🔄 Starting FastAPI server with uv...${NC}"
-        DATABASE_URL="$DATABASE_URL" REDIS_URL="$REDIS_URL" uv run uvicorn src.main:app --host 0.0.0.0 --port $FASTAPI_PORT --reload &
+        # Start FastAPI in background
+        echo -e "${YELLOW}🔄 Starting FastAPI server...${NC}"
+        REPLICATE_API_TOKEN="$REPLICATE_API_TOKEN" DATABASE_URL="$DATABASE_URL" uvicorn src.main:app --host 0.0.0.0 --port 8000 &
         FASTAPI_PID=$!
         
         # Wait for FastAPI to be ready
         echo -e "${YELLOW}⏳ Waiting for FastAPI to be ready...${NC}"
         sleep 5
         
-        # Start nginx
-        echo -e "${YELLOW}🔄 Starting nginx...${NC}"
-        nginx -c "$(pwd)/nginx-local.conf" -g "daemon off;" &
+        # Check if FastAPI is running
+        if curl -s http://localhost:8000/health > /dev/null; then
+            echo -e "${GREEN}✅ FastAPI is running on port 8000${NC}"
+        else
+            echo -e "${RED}❌ FastAPI failed to start${NC}"
+            exit 1
+        fi
+        
+        # Build and serve React production build
+        echo -e "${YELLOW}🔄 Building React application...${NC}"
+        cd frontend && npm run build
+        cd ..
+        
+        # Start nginx to serve the built React app
+        echo -e "${YELLOW}🔄 Starting nginx to serve React app...${NC}"
+        nginx -c $(pwd)/nginx-local.conf &
         NGINX_PID=$!
         
+        # Wait for nginx to be ready
+        echo -e "${YELLOW}⏳ Waiting for nginx to be ready...${NC}"
+        sleep 3
+        
+        # Check if nginx is running
+        if curl -s http://localhost:3000 > /dev/null; then
+            echo -e "${GREEN}✅ React app is running on port 3000${NC}"
+        else
+            echo -e "${YELLOW}⚠️  React app may still be starting up...${NC}"
+        fi
+        
         echo -e "${GREEN}✅ Services started successfully!${NC}"
-        echo -e "${GREEN}   - Frontend: http://localhost:4321${NC}"
-        echo -e "${GREEN}   - API: http://localhost:4321/api${NC}"
-        echo -e "${GREEN}   - WebSocket: ws://localhost:4321/ws${NC}"
+        echo -e "${GREEN}   - Frontend: http://localhost:3000${NC}"
+        echo -e "${GREEN}   - API: http://localhost:8000${NC}"
+        echo -e "${GREEN}   - API Health: http://localhost:8000/health${NC}"
         echo -e "${YELLOW}Press Ctrl+C to stop all services${NC}"
         
         # Function to handle shutdown
@@ -259,9 +294,9 @@ start_application() {
             fi
             
             # Force kill any remaining processes on our ports
-            if lsof -ti:4321 > /dev/null 2>&1; then
-                echo -e "${YELLOW}🔄 Force killing remaining processes on port 4321...${NC}"
-                lsof -ti:4321 | xargs kill -9 2>/dev/null || true
+            if lsof -ti:3000 > /dev/null 2>&1; then
+                echo -e "${YELLOW}🔄 Force killing remaining processes on port 3000...${NC}"
+                lsof -ti:3000 | xargs kill -9 2>/dev/null || true
             fi
             if lsof -ti:8000 > /dev/null 2>&1; then
                 echo -e "${YELLOW}🔄 Force killing remaining processes on port 8000...${NC}"
@@ -386,7 +421,7 @@ case "${1:-startup}" in
         echo "  migrate    - Run database migrations only"
         echo "  seed       - Seed database only"
         echo "  preload    - Preload ML models only"
-        echo "  kill       - Kill existing processes on ports 4321 and 8000"
+        echo "  kill       - Kill existing processes on ports 3000, 4321, and 8000"
         echo "  setup-env  - Create .env file from .env.example template"
         echo "  help       - Show this help message"
         ;;

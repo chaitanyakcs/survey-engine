@@ -1,26 +1,21 @@
 # Development overrides for docker-compose
 # This file is automatically loaded by docker-compose
+# File watchers removed - manual deployment only
 
 services:
   backend:
     environment:
       DEBUG: "true"
-    volumes:
-      - ./src:/app/src:ro
-      - ./websocket_server.py:/app/websocket_server.py:ro
-      - ./start.sh:/app/start.sh:ro
+    # No volume mounts - manual deployment only
     command: ["/app/start.sh"]
 
   websocket:
     environment:
       DEBUG: "true"
-    volumes:
-      - ./websocket_server.py:/app/websocket_server.py:ro
-      - ./start.sh:/app/start.sh:ro
+    # No volume mounts - manual deployment only
     command: ["/app/start.sh"]
 
   frontend:
-    volumes:
-      - ./frontend/src:/app/src:ro
+    # No volume mounts - manual deployment only
     environment:
       - NODE_ENV=development

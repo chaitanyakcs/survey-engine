@@ -10,6 +10,7 @@ from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from uuid import UUID
 from src.services.websocket_client import WebSocketNotificationService
+from src.services.progress_tracker import get_progress_tracker
 from src.services.pillar_scoring_service import PillarScoringService
 from src.database import Survey
 import sys
@@ -98,13 +99,13 @@ class AsyncPillarEvaluationService:
             
             # Send progress update
             if workflow_id:
-                await self.ws_client.send_progress_update(workflow_id, {
+                progress_tracker = get_progress_tracker(workflow_id)
+                progress_data = progress_tracker.get_progress_data("evaluating_pillars")
+                progress_data.update({
                     "type": "pillar_evaluation_progress",
-                    "survey_id": survey_id,
-                    "step": "evaluating_pillars",
-                    "percent": 50,
-                    "message": "Evaluating survey against pillar criteria..."
+                    "survey_id": survey_id
                 })
+                await self.ws_client.send_progress_update(workflow_id, progress_data)
             
             # Run evaluation in background task
             evaluation_result = await self._run_evaluation_async(survey, workflow_id)
@@ -158,13 +159,10 @@ class AsyncPillarEvaluationService:
                 
                 # Send progress update
                 if workflow_id:
-                    await self.ws_client.send_progress_update(workflow_id, {
-                        "type": "pillar_evaluation_progress",
-                        "survey_id": str(survey.id),
-                        "step": "advanced_evaluation",
-                        "percent": 75,
-                        "message": "Running advanced pillar evaluation..."
-                    })
+                    progress_data = get_progress_tracker(workflow_id).get_progress_data("evaluating_pillars")
+                    progress_data["survey_id"] = str(survey.id)
+                    progress_data["message"] = "Running advanced pillar evaluation..."
+                    await self.ws_client.send_progress_update(workflow_id, progress_data)
                 
                 # Use advanced evaluators
                 evaluator = PillarBasedEvaluator(self.db)
@@ -181,13 +179,10 @@ class AsyncPillarEvaluationService:
                 
                 # Send progress update
                 if workflow_id:
-                    await self.ws_client.send_progress_update(workflow_id, {
-                        "type": "pillar_evaluation_progress",
-                        "survey_id": str(survey.id),
-                        "step": "legacy_evaluation",
-                        "percent": 75,
-                        "message": "Running legacy pillar evaluation..."
-                    })
+                    progress_data = get_progress_tracker(workflow_id).get_progress_data("evaluating_pillars")
+                    progress_data["survey_id"] = str(survey.id)
+                    progress_data["message"] = "Running legacy pillar evaluation..."
+                    await self.ws_client.send_progress_update(workflow_id, progress_data)
                 
                 # Use legacy system
                 pillar_scoring_service = PillarScoringService(self.db)

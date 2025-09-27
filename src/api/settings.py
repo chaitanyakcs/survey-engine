@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
 class EvaluationSettings(BaseModel):
-    evaluation_mode: str  # 'single_call', 'multiple_calls', 'hybrid'
+    evaluation_mode: str  # 'single_call', 'multiple_calls', 'hybrid', 'aira_v1'
     enable_cost_tracking: bool
     enable_parallel_processing: bool
     enable_ab_testing: bool
@@ -32,13 +32,16 @@ class EvaluationSettings(BaseModel):
     require_approval_for_generation: bool = False
     auto_approve_trusted_prompts: bool = False
     prompt_review_timeout_hours: int = 24
+    
+    # LLM Evaluation Settings
+    enable_llm_evaluation: bool = True  # New setting to make LLM evaluation optional
+    
     # Model configuration
     generation_model: str = app_settings.generation_model
     evaluation_model: str = app_settings.generation_model
     embedding_model: str = app_settings.embedding_model
 
 class RFQParsingSettings(BaseModel):
-    auto_apply_threshold: float = 0.8
     parsing_model: str = "openai/gpt-4o-mini"
 
 class CostMetrics(BaseModel):
@@ -88,8 +91,6 @@ async def get_rfq_parsing_settings(db: Session = Depends(get_db)):
 async def update_rfq_parsing_settings(settings: RFQParsingSettings, db: Session = Depends(get_db)):
     """Update RFQ parsing settings"""
     try:
-        if settings.auto_apply_threshold < 0 or settings.auto_apply_threshold > 1:
-            raise HTTPException(status_code=400, detail="auto_apply_threshold must be between 0 and 1")
         settings_service = SettingsService(db)
         success = settings_service.update_rfq_parsing_settings(settings.dict())
         if not success:
@@ -112,10 +113,6 @@ async def list_rfq_models():
             "openai/gpt-5",
             "openai/gpt-4o-mini",
             "openai/gpt-4o",
-            "anthropic/claude-4-sonnet",
-            "anthropic/claude-3.7-sonnet",
-            "anthropic/claude-3.5-sonnet",
-            "anthropic/claude-3.5-haiku",
             "meta/meta-llama-3.1-405b-instruct",
             "meta/meta-llama-3-70b-instruct",
             "meta/meta-llama-3-8b-instruct",
@@ -135,10 +132,6 @@ async def list_generation_models():
             "openai/gpt-5",
             "openai/gpt-4o-mini",
             "openai/gpt-4o",
-            "anthropic/claude-4-sonnet",
-            "anthropic/claude-3.7-sonnet",
-            "anthropic/claude-3.5-sonnet",
-            "anthropic/claude-3.5-haiku",
             "meta/meta-llama-3.1-405b-instruct",
             "meta/meta-llama-3-70b-instruct",
             "meta/meta-llama-3-8b-instruct",
@@ -159,10 +152,6 @@ async def list_evaluation_models():
             "openai/gpt-5",
             "openai/gpt-4o-mini",
             "openai/gpt-4o",
-            "anthropic/claude-4-sonnet",
-            "anthropic/claude-3.7-sonnet",
-            "anthropic/claude-3.5-sonnet",
-            "anthropic/claude-3.5-haiku",
             "meta/meta-llama-3.1-405b-instruct",
             "meta/meta-llama-3-70b-instruct",
             "meta/meta-llama-3-8b-instruct",
@@ -191,7 +180,7 @@ async def update_evaluation_settings(settings: EvaluationSettings, db: Session =
     logger.info(f"🔧 [Settings API] Updating evaluation settings: {settings.evaluation_mode}")
     try:
         # Validate settings
-        if settings.evaluation_mode not in ['single_call', 'multiple_calls', 'hybrid']:
+        if settings.evaluation_mode not in ['single_call', 'multiple_calls', 'hybrid', 'aira_v1']:
             raise HTTPException(status_code=400, detail="Invalid evaluation_mode")
         
         if settings.fallback_mode not in ['basic', 'multiple_calls', 'disabled']:

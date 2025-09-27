@@ -33,6 +33,12 @@ const MAIN_WORKFLOW_STEPS: MainWorkflowStep[] = [
     rightPanelType: 'substeps',
     subSteps: [
       {
+        key: 'initializing_workflow',
+        label: 'Initializing workflow',
+        backendStep: 'initializing_workflow',
+        message: 'Starting survey generation workflow...'
+      },
+      {
         key: 'parsing_rfq',
         label: 'Parsing RFQ requirements',
         backendStep: 'parsing_rfq',
@@ -61,6 +67,12 @@ const MAIN_WORKFLOW_STEPS: MainWorkflowStep[] = [
         label: 'Planning methodologies',
         backendStep: 'planning_methodologies',
         message: 'Selecting research approaches'
+      },
+      {
+        key: 'build_context',
+        label: 'Building context',
+        backendStep: 'build_context',
+        message: 'Finalizing context and templates'
       }
     ]
   },
@@ -104,9 +116,15 @@ const MAIN_WORKFLOW_STEPS: MainWorkflowStep[] = [
         message: 'AI creating survey questions'
       },
       {
+        key: 'llm_content_processing',
+        label: 'LLM content processing',
+        backendStep: 'llm_processing',
+        message: 'Processing AI-generated content'
+      },
+      {
         key: 'parsing_output',
         label: 'Parsing LLM output to questions',
-        backendStep: 'generating_questions',
+        backendStep: 'parsing_output',
         message: 'Structuring generated content'
       }
     ]
@@ -121,6 +139,18 @@ const MAIN_WORKFLOW_STEPS: MainWorkflowStep[] = [
     rightPanelType: 'substeps',
     subSteps: [
       {
+        key: 'validation_scoring',
+        label: 'Initializing quality evaluation',
+        backendStep: 'validation_scoring',
+        message: 'Running comprehensive evaluations and quality assessments'
+      },
+      {
+        key: 'evaluating_pillars',
+        label: 'Evaluating quality pillars',
+        backendStep: 'evaluating_pillars',
+        message: 'Analyzing quality across all pillars'
+      },
+      {
         key: 'single_call_evaluator',
         label: 'Single-call comprehensive evaluation',
         backendStep: 'single_call_evaluator',
@@ -133,6 +163,18 @@ const MAIN_WORKFLOW_STEPS: MainWorkflowStep[] = [
         message: 'Analyzing methodological rigor, content validity, and clarity'
       },
       {
+        key: 'advanced_evaluation',
+        label: 'Advanced evaluation',
+        backendStep: 'advanced_evaluation',
+        message: 'Running advanced quality assessment'
+      },
+      {
+        key: 'legacy_evaluation',
+        label: 'Legacy evaluation',
+        backendStep: 'legacy_evaluation',
+        message: 'Using legacy evaluation methods'
+      },
+      {
         key: 'fallback_evaluation',
         label: 'Quality assurance checks',
         backendStep: 'fallback_evaluation',
@@ -143,17 +185,23 @@ const MAIN_WORKFLOW_STEPS: MainWorkflowStep[] = [
   {
     key: 'completion',
     label: 'Survey Complete',
-    description: 'Your professional survey is ready',
+    description: 'Ready for deployment',
     icon: '🎉',
     color: 'gold',
     percentRange: [100, 100],
     rightPanelType: 'substeps',
     subSteps: [
       {
+        key: 'finalizing',
+        label: 'Finalizing generation',
+        backendStep: 'finalizing',
+        message: 'Finalizing survey generation...'
+      },
+      {
         key: 'completed',
-        label: 'Survey ready for deployment',
+        label: 'Ready for deployment',
         backendStep: 'completed',
-        message: 'Generation completed successfully'
+        message: 'Survey generated successfully'
       }
     ]
   }
@@ -291,7 +339,6 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
     const redistributePercentages = (steps: MainWorkflowStep[]) => {
       if (steps.length === 0) return steps;
 
-      const totalSteps = MAIN_WORKFLOW_STEPS.length;
       const enabledSteps = steps.length;
       const percentagePerStep = 100 / enabledSteps;
 
@@ -320,8 +367,52 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
   useEffect(() => {
     if (!workflow.current_step || enabledSteps.length === 0) return;
 
-    // Find current step index by directly matching backend step names
-    let newStepIndex = enabledSteps.findIndex(step => step.key === workflow.current_step);
+    // Special handling for completed workflow
+    if (workflowStatus === 'completed') {
+      // When completed, show the completion step (last step)
+      const completionStepIndex = enabledSteps.findIndex(step => step.key === 'completion');
+      if (completionStepIndex !== -1) {
+        setCurrentStepIndex(completionStepIndex);
+        return;
+      }
+    }
+
+    // Map backend step names to frontend step keys
+    const stepMapping: Record<string, string> = {
+      'generate': 'question_generation',
+      'validate': 'quality_evaluation',
+      'validation_scoring': 'quality_evaluation',
+      'initializing_workflow': 'building_context',
+      'parsing_rfq': 'building_context',
+      'generating_embeddings': 'building_context',
+      'rfq_parsed': 'building_context',
+      'matching_golden_examples': 'building_context',
+      'planning_methodologies': 'building_context',
+      'parse_rfq': 'building_context',
+      'retrieve_golden': 'building_context',
+      'build_context': 'building_context',
+      'preparing_generation': 'question_generation',
+      'generating_questions': 'question_generation',
+      'llm_processing': 'question_generation',
+      'parsing_output': 'question_generation',
+      'evaluating_pillars': 'quality_evaluation',
+      'single_call_evaluator': 'quality_evaluation',
+      'pillar_scores_analysis': 'quality_evaluation',
+      'advanced_evaluation': 'quality_evaluation',
+      'legacy_evaluation': 'quality_evaluation',
+      'fallback_evaluation': 'quality_evaluation',
+      'finalizing': 'completion',
+      'prompt_review': 'human_review',
+      'human_review': 'human_review',
+      'resuming_from_human_review': 'question_generation',
+      'resuming_generation': 'question_generation',
+      'completion_handler': 'completion',
+      'completed': 'completion'
+    };
+
+    // Find current step index by mapping backend step to frontend step
+    const frontendStepKey = stepMapping[workflow.current_step] || workflow.current_step;
+    let newStepIndex = enabledSteps.findIndex(step => step.key === frontendStepKey);
 
     // If direct match fails, try matching substeps
     if (newStepIndex === -1) {
@@ -334,7 +425,9 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
       newStepIndex,
       currentStepIndex,
       workflowStep: workflow.current_step,
+      frontendStepKey,
       workflowProgress: workflow.progress,
+      workflowStatus,
       enabledStepsKeys: enabledSteps.map(s => s.key)
     });
 
@@ -405,21 +498,9 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
     });
 
     setCompletedSteps(completed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflow.current_step, workflow.progress, workflowStatus, workflow.workflow_paused, enabledSteps]);
 
-  // No automatic redirection - we show survey preview inline now
-  // useEffect(() => {
-  //   if (workflowStatus === 'completed' && currentSurvey) {
-  //     console.log('🎉 [ProgressStepper] Workflow completed, triggering automatic actions');
-  //     // Small delay to let the UI update, then trigger completion action
-  //     const timer = setTimeout(() => {
-  //       console.log('🔍 [ProgressStepper] Auto-triggering onShowSurvey due to completion');
-  //       onShowSurvey?.();
-  //     }, 2000); // 2 second delay to show completion state
-  //     return () => clearTimeout(timer);
-  //   }
-  // }, [workflowStatus, currentSurvey, onShowSurvey]);
-  
   const getStepStatus = (index: number) => {
     if (workflowStatus === 'completed') return 'completed';
     
@@ -456,28 +537,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
     const mainStep = getCurrentMainStep();
     if (!mainStep || !workflow.current_step) return null;
 
-    // For evaluation steps, use more sophisticated matching
-    if (mainStep.key === 'quality_evaluation') {
-      // Check if workflow.current_step is one of the evaluation substep names
-      const evalSubStep = mainStep.subSteps.find(sub => sub.backendStep === workflow.current_step);
-      if (evalSubStep) {
-        return evalSubStep;
-      }
-
-      // If workflow.current_step is 'validation_scoring', determine active substep based on progress
-      if (workflow.current_step === 'validation_scoring') {
-        const progress = workflow.progress || 0;
-        if (progress >= 85) {
-          return mainStep.subSteps.find(sub => sub.key === 'fallback_evaluation') || mainStep.subSteps[2];
-        } else if (progress >= 82) {
-          return mainStep.subSteps.find(sub => sub.key === 'pillar_scores_analysis') || mainStep.subSteps[1];
-        } else {
-          return mainStep.subSteps.find(sub => sub.key === 'single_call_evaluator') || mainStep.subSteps[0];
-        }
-      }
-    }
-
-    // Find the sub-step that matches the current backend step
+    // Find the substep that matches the current backend step
     const matchingSubStep = mainStep.subSteps.find(sub => sub.backendStep === workflow.current_step);
     return matchingSubStep || mainStep.subSteps[0];
   };
@@ -537,7 +597,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
           </div>
           <div className="text-right">
             <div className="text-3xl font-bold bg-gradient-to-r from-yellow-600 to-amber-600 bg-clip-text text-transparent">
-              {workflow.progress || 0}%
+              {workflowStatus === 'completed' ? 100 : (workflow.progress || 0)}%
             </div>
             <div className="text-sm text-amber-600">Complete</div>
           </div>
@@ -548,7 +608,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
           <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
             <div 
               className="bg-gradient-to-r from-yellow-500 via-amber-500 to-orange-500 h-2 rounded-full transition-all duration-1000 ease-out relative"
-              style={{ width: `${workflow.progress || 0}%` }}
+              style={{ width: `${workflowStatus === 'completed' ? 100 : (workflow.progress || 0)}%` }}
             >
               <div className="absolute inset-0 bg-white/30 animate-pulse rounded-full"></div>
             </div>
@@ -681,7 +741,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                     {/* Estimated Time */}
                     <div className="inline-flex items-center px-3 py-1 bg-gradient-to-r from-yellow-50 to-amber-50 text-amber-700 rounded-full text-sm font-medium border border-amber-200">
                       <ClockIcon className="w-4 h-4 mr-2" />
-                      {workflow.progress || 0}% Complete
+                      {workflowStatus === 'completed' ? 100 : (workflow.progress || 0)}%
                     </div>
                   </div>
 
@@ -693,75 +753,181 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                   {/* Dynamic Right Panel Content Based on Step Type */}
                   {currentMainStep.rightPanelType === 'substeps' && (
                     <div>
-                      <h3 className="text-lg font-semibold text-amber-900 mb-4">Current Tasks</h3>
-                      <div className="space-y-3">
-                        {currentMainStep.subSteps.map((subStep, index) => {
-                          const isCurrentSubStep = currentSubStep?.key === subStep.key;
+                      {/* Show streaming UI for LLM processing */}
+                      {currentMainStep.key === 'question_generation' &&
+                       currentSubStep?.key === 'llm_processing' &&
+                       workflow.streamingStats && (
+                        <div className="space-y-4 mb-6">
+                          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
+                            <h3 className="text-lg font-semibold text-blue-900 mb-4 flex items-center">
+                              <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse mr-3"></div>
+                              AI Survey Generation in Progress
+                            </h3>
 
-                          // Enhanced completion logic for evaluation substeps
-                          let isCompletedSubStep = false;
-                          if (currentMainStep.key === 'quality_evaluation') {
-                            // For evaluation, check if current substep index is greater than this one
-                            const currentSubStepIndex = currentMainStep.subSteps.findIndex(s => s.key === currentSubStep?.key);
-                            isCompletedSubStep = currentSubStepIndex > index;
-
-                            // Also consider progress-based completion
-                            const progress = workflow.progress || 0;
-                            if (subStep.key === 'single_call_evaluator' && progress >= 82) {
-                              isCompletedSubStep = true;
-                            } else if (subStep.key === 'pillar_scores_analysis' && progress >= 85) {
-                              isCompletedSubStep = true;
-                            }
-                          } else {
-                            // Standard completion logic for other steps
-                            isCompletedSubStep = Boolean(workflow.current_step &&
-                              currentMainStep.subSteps.findIndex(s => s.backendStep === workflow.current_step) > index);
-                          }
-
-                          // Loading state: current step that's in progress
-                          const isLoadingSubStep = isCurrentSubStep && workflow.status === 'in_progress';
-
-                          return (
-                            <div key={subStep.key} className="flex items-center space-x-3 p-3 bg-gradient-to-r from-yellow-50 to-amber-50 rounded-lg border border-amber-200">
-                              <div className="flex-shrink-0">
-                                {isCompletedSubStep ? (
-                                  <CheckIcon className="w-5 h-5 text-amber-600" />
-                                ) : isLoadingSubStep ? (
-                                  <div className="relative">
-                                    <div className="w-5 h-5 border-2 border-amber-500 rounded-full border-t-transparent animate-spin"></div>
-                                    <div className="absolute inset-1 w-3 h-3 bg-amber-500 rounded-full animate-pulse"></div>
-                                  </div>
-                                ) : isCurrentSubStep ? (
-                                  <div className="w-5 h-5 border-2 border-amber-400 rounded-full border-dashed animate-pulse"></div>
-                                ) : (
-                                  <div className="w-5 h-5 rounded-full border-2 border-amber-300"></div>
-                                )}
+                            {/* Live Generation Stats */}
+                            <div className="grid grid-cols-2 gap-4 mb-4">
+                              <div className="bg-white/60 rounded-lg p-3 text-center">
+                                <div className="text-2xl font-bold text-blue-800">{workflow.streamingStats.questionCount}</div>
+                                <div className="text-xs text-blue-600">Questions Generated</div>
                               </div>
-                              <div className="flex-1">
-                                <span className={`text-sm font-medium ${
-                                  isCompletedSubStep ? 'text-amber-700' :
-                                  isLoadingSubStep ? 'text-amber-800 font-semibold' :
-                                  isCurrentSubStep ? 'text-amber-700' : 'text-amber-600'
-                                }`}>
-                                  {subStep.label}
-                                </span>
-                                {isLoadingSubStep && workflow.message && (
-                                  <p className="text-xs text-amber-700 mt-1 font-medium animate-pulse">🔄 {workflow.message}</p>
+                              <div className="bg-white/60 rounded-lg p-3 text-center">
+                                <div className="text-2xl font-bold text-blue-800">{workflow.streamingStats.sectionCount}</div>
+                                <div className="text-xs text-blue-600">Sections Created</div>
+                              </div>
+                            </div>
+
+                            {/* Current Activity */}
+                            <div className="bg-white/80 rounded-lg p-4 mb-4">
+                              <div className="flex items-center space-x-2 mb-2">
+                                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                                <span className="text-sm font-medium text-gray-800">Currently Creating</span>
+                              </div>
+                              <p className="text-sm text-gray-700 animate-pulse">
+                                {workflow.streamingStats.currentActivity || "Initializing survey generation..."}
+                              </p>
+                            </div>
+
+                            {/* Live Question Preview */}
+                            {workflow.streamingStats.latestQuestions.length > 0 && (
+                              <div className="bg-white/80 rounded-lg p-4 mb-4">
+                                <h4 className="text-sm font-medium text-gray-800 mb-3 flex items-center">
+                                  <svg className="w-4 h-4 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  Latest Questions
+                                </h4>
+                                <div className="space-y-3">
+                                  {workflow.streamingStats.latestQuestions.slice(-3).map((question, idx) => (
+                                    <div key={idx} className="flex items-start space-x-3 p-2 bg-green-50 rounded border-l-4 border-green-400">
+                                      <div className="flex-shrink-0 w-6 h-6 bg-green-100 rounded-full flex items-center justify-center text-xs font-medium text-green-700">
+                                        {workflow.streamingStats ? workflow.streamingStats.questionCount - workflow.streamingStats.latestQuestions.length + idx + 1 : idx + 1}
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-sm text-gray-800 leading-relaxed">{question.text}</p>
+                                        {question.type && (
+                                          <div className="mt-1 inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
+                                            {question.type.replace('_', ' ')}
+                                            {question.hasOptions && ' • with options'}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Section Progress */}
+                            {workflow.streamingStats.currentSections.length > 0 && (
+                              <div className="bg-white/80 rounded-lg p-4 mb-4">
+                                <h4 className="text-sm font-medium text-gray-800 mb-3 flex items-center">
+                                  <svg className="w-4 h-4 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                                  </svg>
+                                  Survey Sections
+                                </h4>
+                                <div className="space-y-2">
+                                  {workflow.streamingStats.currentSections.map((section, idx) => (
+                                    <div key={idx} className="flex items-center justify-between p-2 bg-purple-50 rounded">
+                                      <span className="text-sm font-medium text-purple-900">{section.title}</span>
+                                      <span className="text-xs text-purple-600 bg-purple-100 px-2 py-1 rounded">
+                                        {section.questionCount || 0} questions
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Generation Progress Bar */}
+                            <div className="bg-white/80 rounded-lg p-4">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm font-medium text-gray-700">Generation Progress</span>
+                                <span className="text-sm text-gray-600">{Math.round(workflow.streamingStats.estimatedProgress || 0)}%</span>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-2">
+                                <div
+                                  className="bg-gradient-to-r from-blue-500 to-purple-600 h-2 rounded-full transition-all duration-500 ease-out"
+                                  style={{ width: `${workflow.streamingStats.estimatedProgress || 0}%` }}
+                                />
+                              </div>
+                              <p className="text-xs text-gray-500 mt-1">
+                                Estimated based on content complexity and generation patterns
+                              </p>
+                              {workflow.streamingStats.elapsedTime && (
+                                <p className="text-xs text-gray-500">
+                                  Elapsed time: {Math.round(workflow.streamingStats.elapsedTime)}s
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+
+                      {/* Add completion section with quality results when workflow is completed */}
+                      {workflowStatus === 'completed' && (
+                        <div className="mt-6 pt-6 border-t border-amber-200">
+                          {/* Quality Assessment Results */}
+                          {currentSurvey?.pillar_scores && (
+                            <div className="mb-6">
+                              <h4 className="text-md font-semibold text-amber-900 mb-3">Quality Assessment</h4>
+                              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
+                                <div className="flex items-center justify-between mb-3">
+                                  <div className="flex items-center space-x-2">
+                                    <div className="text-2xl font-bold text-blue-800">
+                                      {currentSurvey.pillar_scores.overall_grade || 'B'}
+                                    </div>
+                                    <div className="text-sm text-blue-700">
+                                      ({Math.round((currentSurvey.pillar_scores.weighted_score || 0.8) * 100)}%)
+                                    </div>
+                                  </div>
+                                  <div className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                                    AI Quality Score
+                                  </div>
+                                </div>
+
+                                {/* Pillar Breakdown */}
+                                {currentSurvey.pillar_scores.pillar_breakdown && (
+                                  <div className="space-y-2">
+                                    {currentSurvey.pillar_scores.pillar_breakdown.map((pillar) => {
+                                      const formattedPillar = pillar.display_name || pillar.pillar_name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                                      const scoreValue = pillar.score || 0.8;
+                                      const passed = scoreValue >= 0.75;
+                                      return (
+                                        <div key={pillar.pillar_name} className="flex items-center justify-between text-xs">
+                                          <span className={passed ? 'text-blue-700' : 'text-orange-700'}>
+                                            {formattedPillar}
+                                          </span>
+                                          <div className="flex items-center space-x-1">
+                                            <span className={passed ? 'text-blue-700' : 'text-orange-700'}>
+                                              {Math.round(scoreValue * 100)}%
+                                            </span>
+                                            {passed ? (
+                                              <div className="w-3 h-3 text-green-500">✓</div>
+                                            ) : (
+                                              <div className="w-3 h-3 text-orange-500">⚠</div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
                                 )}
-                                {isCurrentSubStep && !isLoadingSubStep && workflow.message && (
-                                  <p className="text-xs text-amber-600 mt-1">{workflow.message}</p>
+
+                                {/* Quality Message */}
+                                {currentSurvey.pillar_scores.weighted_score && currentSurvey.pillar_scores.weighted_score < 0.75 && (
+                                  <div className="mt-3 text-xs text-orange-700 bg-orange-50 p-2 rounded border border-orange-200">
+                                    ⚠️ Some quality aspects could be improved, but the survey is ready to use.
+                                  </div>
                                 )}
                               </div>
                             </div>
-                          );
-                        })}
-                      </div>
+                          )}
 
-                      {/* Add completion buttons when workflow is completed */}
-                      {currentMainStep.key === 'completion' && workflowStatus === 'completed' && (
-                        <div className="mt-6 pt-6 border-t border-amber-200">
+                          {/* Action Buttons */}
                           <h4 className="text-md font-semibold text-amber-900 mb-4">Next Steps</h4>
-                          <div className="flex justify-center">
+                          <div className="flex flex-col sm:flex-row gap-3">
                             <button
                               onClick={() => {
                                 if (currentSurvey?.survey_id) {
@@ -769,12 +935,28 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                                   window.location.href = `/surveys?id=${currentSurvey.survey_id}`;
                                 }
                               }}
-                              className="bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-600 hover:to-amber-700 text-white px-8 py-3 rounded-lg font-medium transition-all duration-200 shadow-md hover:shadow-lg flex items-center justify-center"
+                              className="bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-600 hover:to-amber-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-200 shadow-md hover:shadow-lg flex items-center justify-center text-sm"
                             >
-                              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                               </svg>
                               View Survey
+                            </button>
+
+                            {/* Always show retry option */}
+                            <button
+                              onClick={() => {
+                                console.log('🔄 [ProgressStepper] User requested retry generation');
+                                if (onCancelGeneration) {
+                                  onCancelGeneration();
+                                }
+                              }}
+                              className="bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-700 px-6 py-2.5 rounded-lg font-medium transition-all duration-200 shadow-md hover:shadow-lg flex items-center justify-center text-sm border border-gray-300"
+                            >
+                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                              </svg>
+                              Try Again
                             </button>
                           </div>
                         </div>
@@ -908,7 +1090,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
                               </svg>
                             </div>
-                            <h4 className="text-lg font-semibold text-yellow-900 mb-2">Survey Generated Successfully!</h4>
+                            <h4 className="text-lg font-semibold text-yellow-900 mb-2">Survey Complete!</h4>
                             <p className="text-yellow-800 mb-4">
                               Your survey was created, but there's a temporary issue loading the preview.
                             </p>

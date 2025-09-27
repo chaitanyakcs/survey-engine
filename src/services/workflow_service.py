@@ -5,6 +5,7 @@ from src.workflows.workflow import create_workflow
 from src.services.embedding_service import EmbeddingService
 from src.services.websocket_client import WebSocketNotificationService
 from src.services.workflow_state_service import WorkflowStateService
+from src.services.progress_tracker import get_progress_tracker, cleanup_progress_tracker
 from src.config import settings
 from typing import Optional
 from uuid import uuid4
@@ -59,6 +60,7 @@ class WorkflowService:
         logger.info("🔧 [WorkflowService] Initializing workflow service")
         try:
             self.db = db
+            self.connection_manager = connection_manager
             logger.info("🔧 [WorkflowService] Database session assigned successfully")
 
             # Initialize circuit breaker for workflow execution
@@ -275,12 +277,9 @@ class WorkflowService:
             # Send initial progress update
             logger.info("📡 [WorkflowService] Sending initial progress update via WebSocket")
             try:
-                await self.ws_client.send_progress_update(initial_state.workflow_id, {
-                    "type": "progress",
-                    "step": "initializing_workflow",
-                    "percent": 5,
-                    "message": "Starting survey generation workflow..."
-                })
+                progress_tracker = get_progress_tracker(initial_state.workflow_id)
+                progress_data = progress_tracker.get_progress_data("initializing_workflow")
+                await self.ws_client.send_progress_update(initial_state.workflow_id, progress_data)
                 logger.info("✅ [WorkflowService] Initial progress update sent successfully")
             except Exception as ws_error:
                 logger.warning(f"⚠️ [WorkflowService] Failed to send WebSocket progress update: {str(ws_error)} - continuing anyway")
@@ -306,14 +305,11 @@ class WorkflowService:
                 if "WORKFLOW_PAUSED_FOR_HUMAN_REVIEW" in str(e):
                     logger.info("⏸️ [WorkflowService] Workflow paused for human review as expected")
                     # Send human review required message
-                    await self.ws_client.send_progress_update(workflow_id, {
-                        "type": "human_review_required",
-                        "step": "human_review",
-                        "percent": 50,
-                        "message": "Waiting for human review of system prompt...",
-                        "workflow_paused": True,
-                        "pending_human_review": True
-                    })
+                    progress_data = get_progress_tracker(workflow_id).get_progress_data("human_review")
+                    progress_data["message"] = "Waiting for human review of system prompt..."
+                    progress_data["workflow_paused"] = True
+                    progress_data["pending_human_review"] = True
+                    await self.ws_client.send_progress_update(workflow_id, progress_data)
                     
                     # Return a paused result
                     return WorkflowResult(
@@ -341,12 +337,9 @@ class WorkflowService:
                 logger.info("⏸️ [WorkflowService] Workflow paused for human review - not sending finalizing message")
             else:
                 # Send completion progress update only if workflow completed normally
-                await self.ws_client.send_progress_update(initial_state.workflow_id, {
-                    "type": "progress", 
-                    "step": "finalizing",
-                    "percent": 95,
-                    "message": "Processing results and finalizing survey..."
-                })
+                progress_tracker = get_progress_tracker(initial_state.workflow_id)
+                progress_data = progress_tracker.get_progress_data("finalizing")
+                await self.ws_client.send_progress_update(initial_state.workflow_id, progress_data)
             
             # Update survey with results (final_state is a dict from LangGraph)
             logger.info("💾 [WorkflowService] Updating survey record with workflow results")
@@ -421,12 +414,12 @@ class WorkflowService:
                 logger.info(f"📊 [WorkflowService] Workflow paused: {final_state.get('workflow_paused', False)}")
             else:
                 # Send 100% completion progress update
-                await self.ws_client.send_progress_update(initial_state.workflow_id, {
-                    "type": "progress",
-                    "step": "completed",
-                    "percent": 100,
-                    "message": "Survey generation completed successfully!"
-                })
+                progress_tracker = get_progress_tracker(initial_state.workflow_id)
+                completion_data = progress_tracker.get_completion_data("completed")
+                await self.ws_client.send_progress_update(initial_state.workflow_id, completion_data)
+                
+                # Clean up the progress tracker
+                cleanup_progress_tracker(initial_state.workflow_id)
                 
                 # Send completion notification
                 await self.ws_client.notify_workflow_completion(
@@ -473,12 +466,9 @@ class WorkflowService:
 
             # Send progress update
             try:
-                await ws_client.send_progress_update(workflow_id, {
-                    "type": "workflow_resuming",
-                    "step": "resuming_from_human_review",
-                    "percent": 55,
-                    "message": "Human review approved - resuming workflow..."
-                })
+                progress_data = get_progress_tracker(workflow_id).get_progress_data("preparing_generation")
+                progress_data["message"] = "Human review approved - resuming workflow..."
+                await ws_client.send_progress_update(workflow_id, progress_data)
             except Exception as ws_error:
                 logger.warning(f"⚠️ [WorkflowService] Failed to send progress update: {str(ws_error)}")
 
@@ -492,12 +482,9 @@ class WorkflowService:
 
             # Send progress update for generation
             try:
-                await ws_client.send_progress_update(workflow_id, {
-                    "type": "progress",
-                    "step": "generating_questions",
-                    "percent": 60,
-                    "message": "Creating questions and generating survey content..."
-                })
+                progress_tracker = get_progress_tracker(workflow_id)
+                progress_data = progress_tracker.get_progress_data("generating_questions")
+                await ws_client.send_progress_update(workflow_id, progress_data)
             except Exception as ws_error:
                 logger.warning(f"⚠️ [WorkflowService] Failed to send generation progress update: {str(ws_error)}")
 
@@ -523,12 +510,9 @@ class WorkflowService:
 
             # Send progress update for validation
             try:
-                await ws_client.send_progress_update(workflow_id, {
-                    "type": "progress",
-                    "step": "validation_scoring",
-                    "percent": 80,
-                    "message": "Running comprehensive evaluations and quality assessments..."
-                })
+                progress_tracker = get_progress_tracker(workflow_id)
+                progress_data = progress_tracker.get_progress_data("validation_scoring")
+                await ws_client.send_progress_update(workflow_id, progress_data)
             except Exception as ws_error:
                 logger.warning(f"⚠️ [WorkflowService] Failed to send validation progress update: {str(ws_error)}")
 
@@ -585,13 +569,15 @@ class WorkflowService:
 
             # Send completion message
             try:
-                await ws_client.send_progress_update(workflow_id, {
+                progress_tracker = get_progress_tracker(workflow_id)
+                completion_data = progress_tracker.get_completion_data("completed")
+                completion_data.update({
                     "type": "completed",
-                    "step": "completed",
-                    "percent": 100,
-                    "message": "Survey generation completed successfully!",
                     "survey_id": survey_id
                 })
+                await ws_client.send_progress_update(workflow_id, completion_data)
+                # Clean up the progress tracker
+                cleanup_progress_tracker(workflow_id)
             except Exception as ws_error:
                 logger.warning(f"⚠️ [WorkflowService] Failed to send completion message: {str(ws_error)}")
 

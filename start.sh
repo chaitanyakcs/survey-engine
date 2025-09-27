@@ -140,16 +140,10 @@ start_fastapi() {
     local port=${PORT:-8000}
     log_info "Starting FastAPI server on port $port..."
     
-    if [ "$DEBUG" = "true" ]; then
-        if ! $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --reload --timeout-keep-alive 600; then
-            log_error "Failed to start FastAPI server in debug mode"
-            exit 1
-        fi
-    else
-        if ! $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 600; then
-            log_error "Failed to start FastAPI server"
-            exit 1
-        fi
+    # Manual deployment only - no auto-reload
+    if ! $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 600; then
+        log_error "Failed to start FastAPI server"
+        exit 1
     fi
 }
 
@@ -212,11 +206,8 @@ start_consolidated() {
     # Step 3: Start FastAPI in foreground
     log_info "🔄 Step 3: Starting FastAPI server on port $fastapi_port..."
     log_success "🚀 All services ready! Starting FastAPI..."
-    if [ "$DEBUG" = "true" ]; then
-        $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $fastapi_port --reload --timeout-keep-alive 600
-    else
-        $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $fastapi_port --timeout-keep-alive 600
-    fi
+    # Manual deployment only - no auto-reload
+    $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $fastapi_port --timeout-keep-alive 600
 }
 
 # Function to start WebSocket server
@@ -284,11 +275,8 @@ start_both() {
     # Start FastAPI and capture output for debugging
     log_info "Starting FastAPI with command: $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 600"
     
-    if [ "$DEBUG" = "true" ]; then
-        $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --reload --timeout-keep-alive 600 2>&1 | tee /tmp/fastapi.log &
-    else
-        $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 600 2>&1 | tee /tmp/fastapi.log &
-    fi
+    # Manual deployment only - no auto-reload
+    $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 600 2>&1 | tee /tmp/fastapi.log &
     FASTAPI_PID=$!
     log_success "FastAPI server started with PID $FASTAPI_PID"
     

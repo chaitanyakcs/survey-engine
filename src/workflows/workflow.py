@@ -12,6 +12,7 @@ from .nodes import (
     HumanPromptReviewNode
 )
 from src.services.websocket_client import WebSocketNotificationService
+from src.services.progress_tracker import get_progress_tracker
 import logging
 
 logger = logging.getLogger(__name__)
@@ -37,27 +38,21 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     # Create wrapper functions that send progress updates
     async def parse_rfq_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
         """Parse RFQ with progress update"""
+        progress_tracker = get_progress_tracker(state.workflow_id)
+        
         try:
+            progress_data = progress_tracker.get_progress_data("building_context", "parsing_rfq")
             logger.info(f"📡 [Workflow] Sending progress update: parsing_rfq for workflow_id={state.workflow_id}")
-            await ws_client.send_progress_update(state.workflow_id, {
-                "type": "progress",
-                "step": "parsing_rfq",
-                "percent": 10,
-                "message": "Parsing RFQ and analyzing requirements..."
-            })
+            await ws_client.send_progress_update(state.workflow_id, progress_data)
             logger.info(f"✅ [Workflow] Progress update sent successfully: parsing_rfq")
         except Exception as e:
             logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
         
         # Send additional progress update for embedding generation
         try:
+            progress_data = progress_tracker.get_progress_data("building_context", "generating_embeddings")
             logger.info(f"📡 [Workflow] Sending progress update: generating_embeddings for workflow_id={state.workflow_id}")
-            await ws_client.send_progress_update(state.workflow_id, {
-                "type": "progress",
-                "step": "generating_embeddings",
-                "percent": 15,
-                "message": "Generating embeddings for semantic search..."
-            })
+            await ws_client.send_progress_update(state.workflow_id, progress_data)
             logger.info(f"✅ [Workflow] Progress update sent successfully: generating_embeddings")
         except Exception as e:
             logger.error(f"❌ [Workflow] Failed to send embedding progress update: {str(e)}")
@@ -66,13 +61,9 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
         
         # Send completion progress update
         try:
+            completion_data = progress_tracker.get_completion_data("building_context", "rfq_parsed")
             logger.info(f"📡 [Workflow] Sending progress update: rfq_parsed for workflow_id={state.workflow_id}")
-            await ws_client.send_progress_update(state.workflow_id, {
-                "type": "progress",
-                "step": "rfq_parsed",
-                "percent": 20,
-                "message": "RFQ analysis completed, starting golden example retrieval..."
-            })
+            await ws_client.send_progress_update(state.workflow_id, completion_data)
             logger.info(f"✅ [Workflow] Progress update sent successfully: rfq_parsed")
         except Exception as e:
             logger.error(f"❌ [Workflow] Failed to send RFQ completion progress update: {str(e)}")
@@ -81,14 +72,13 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     
     async def retrieve_golden_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
         """Retrieve golden examples with progress update"""
+        progress_tracker = get_progress_tracker(state.workflow_id)
+        
         try:
-            logger.info(f"📡 [Workflow] Sending progress update: matching_golden_examples for workflow_id={state.workflow_id}")
-            await ws_client.send_progress_update(state.workflow_id, {
-                "type": "progress",
-                "step": "matching_golden_examples",
-                "percent": 25,
-                "message": "Finding templates and matching relevant examples..."
-            })
+            logger.info(f"📡 [Workflow] Sending progress update: matching_examples for workflow_id={state.workflow_id}")
+            progress_data = progress_tracker.get_progress_data("building_context", "matching_examples")
+            progress_data["message"] = "Finding templates and matching relevant examples..."
+            await ws_client.send_progress_update(state.workflow_id, progress_data)
             logger.info(f"✅ [Workflow] Progress update sent successfully: matching_golden_examples")
         except Exception as e:
             logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
@@ -110,22 +100,35 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     
     async def build_context_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
         """Build context with progress update"""
+        progress_tracker = get_progress_tracker(state.workflow_id)
+        
         try:
             logger.info(f"📡 [Workflow] Sending progress update: planning_methodologies for workflow_id={state.workflow_id}")
-            await ws_client.send_progress_update(state.workflow_id, {
-                "type": "progress",
-                "step": "planning_methodologies",
-                "percent": 40,
-                "message": "Planning methods and selecting research approaches..."
-            })
+            progress_data = progress_tracker.get_progress_data("building_context", "generating_embeddings")
+            progress_data["message"] = "Planning methods and selecting research approaches..."
+            await ws_client.send_progress_update(state.workflow_id, progress_data)
             logger.info(f"✅ [Workflow] Progress update sent successfully: planning_methodologies")
         except Exception as e:
             logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
         
-        return await context_builder(state)
+        result = await context_builder(state)
+        
+        # Send build context completion progress
+        try:
+            logger.info(f"📡 [Workflow] Sending progress update: build_context for workflow_id={state.workflow_id}")
+            progress_data = progress_tracker.get_progress_data("building_context", "building_context")
+            progress_data["message"] = "Finalizing context and templates..."
+            await ws_client.send_progress_update(state.workflow_id, progress_data)
+            logger.info(f"✅ [Workflow] Progress update sent successfully: build_context")
+        except Exception as e:
+            logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
+        
+        return result
     
     async def prompt_review_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
         """Human prompt review with progress update"""
+        progress_tracker = get_progress_tracker(state.workflow_id)
+        
         logger.info(f"🔍 [Workflow] prompt_review_with_progress called for workflow: {state.workflow_id}")
         logger.info(f"🔍 [Workflow] Input state pending_human_review: {getattr(state, 'pending_human_review', False)}")
         logger.info(f"🔍 [Workflow] Input state workflow_paused: {getattr(state, 'workflow_paused', False)}")
@@ -153,12 +156,9 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
         if not enable_prompt_review:
             logger.info(f"⏭️ [Workflow] Human review disabled, skipping review step")
             try:
-                await ws_client.send_progress_update(state.workflow_id, {
-                    "type": "progress",
-                    "step": "preparing_generation",
-                    "percent": 50,
-                    "message": "Preparing survey generation..."
-                })
+                progress_data = progress_tracker.get_progress_data("preparing_generation")
+                progress_data["message"] = "Preparing survey generation..."
+                await ws_client.send_progress_update(state.workflow_id, progress_data)
                 logger.info(f"✅ [Workflow] Progress update sent: skipping human review")
             except Exception as e:
                 logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
@@ -173,13 +173,10 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
 
         # Human review is enabled, proceed with normal flow
         try:
+            progress_tracker = get_progress_tracker(state.workflow_id)
+            progress_data = progress_tracker.get_progress_data("human_review")
             logger.info(f"📡 [Workflow] Sending progress update: human_review for workflow_id={state.workflow_id}")
-            await ws_client.send_progress_update(state.workflow_id, {
-                "type": "progress",
-                "step": "human_review",
-                "percent": 50,
-                "message": "Reviewing AI-generated system prompt..."
-            })
+            await ws_client.send_progress_update(state.workflow_id, progress_data)
             logger.info(f"✅ [Workflow] Progress update sent successfully: human_review")
         except Exception as e:
             logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
@@ -208,15 +205,16 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
             # Check if we already sent a human review required message to prevent duplicates
             if not state.workflow_paused:
                 try:
-                    logger.info(f"🛑 [Workflow] Sending human review required message for workflow_id={state.workflow_id}")
-                    await ws_client.send_progress_update(state.workflow_id, {
+                    progress_tracker = get_progress_tracker(state.workflow_id)
+                    progress_data = progress_tracker.get_progress_data("human_review", "waiting_for_review")
+                    progress_data.update({
                         "type": "human_review_required",
-                        "step": "human_review",
-                        "percent": 50,
                         "message": "Waiting for human review of system prompt...",
                         "review_id": result.get('review_id'),
                         "workflow_paused": True
                     })
+                    logger.info(f"🛑 [Workflow] Sending human review required message for workflow_id={state.workflow_id}")
+                    await ws_client.send_progress_update(state.workflow_id, progress_data)
                     logger.info(f"✅ [Workflow] Human review required message sent successfully")
                 except Exception as e:
                     logger.error(f"❌ [Workflow] Failed to send human review required message: {str(e)}")
@@ -229,22 +227,31 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     
     async def generate_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
         """Generate survey with progress update"""
+        progress_tracker = get_progress_tracker(state.workflow_id)
+
+        # Step 1: Preparing generation
         try:
-            logger.info(f"📡 [Workflow] Sending progress update: generating_questions for workflow_id={state.workflow_id}")
-            await ws_client.send_progress_update(state.workflow_id, {
-                "type": "progress",
-                "step": "generating_questions",
-                "percent": 60,
-                "message": "Creating questions and generating survey content..."
-            })
-            logger.info(f"✅ [Workflow] Progress update sent successfully: generating_questions")
+            progress_data = progress_tracker.get_progress_data("preparing_generation")
+            logger.info(f"📡 [Workflow] Sending progress update: preparing_generation for workflow_id={state.workflow_id}")
+            await ws_client.send_progress_update(state.workflow_id, progress_data)
+            logger.info(f"✅ [Workflow] Progress update sent successfully: preparing_generation")
         except Exception as e:
             logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
-        
+
+        # Step 2: LLM Processing - let GenerationService handle detailed progress
         logger.info("🚀 [Workflow] About to call GeneratorAgent...")
         logger.info(f"📊 [Workflow] State before generation - context: {bool(state.context)}, golden_examples: {len(state.golden_examples) if state.golden_examples else 0}")
-        
+
         result = await generator(state)
+
+        # Step 3: Parsing Output
+        try:
+            progress_data = progress_tracker.get_progress_data("parsing_output")
+            logger.info(f"📡 [Workflow] Sending progress update: parsing_output for workflow_id={state.workflow_id}")
+            await ws_client.send_progress_update(state.workflow_id, progress_data)
+            logger.info(f"✅ [Workflow] Progress update sent successfully: parsing_output")
+        except Exception as e:
+            logger.error(f"❌ [Workflow] Failed to send parsing progress update: {str(e)}")
         
         logger.info(f"📊 [Workflow] GeneratorAgent result keys: {list(result.keys()) if result else 'None'}")
         logger.info(f"📊 [Workflow] GeneratorAgent error_message: {result.get('error_message', 'None') if result else 'None'}")
@@ -253,19 +260,40 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     
     async def validate_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
         """Validate survey with progress update"""
+        progress_tracker = get_progress_tracker(state.workflow_id)
+        
         try:
             logger.info(f"📡 [Workflow] Sending progress update: validation_scoring for workflow_id={state.workflow_id}")
-            await ws_client.send_progress_update(state.workflow_id, {
-                "type": "progress",
-                "step": "validation_scoring",
-                "percent": 80,
-                "message": "Running comprehensive evaluations and quality assessments..."
-            })
+            progress_data = progress_tracker.get_progress_data("validation_scoring")
+            progress_data["message"] = "Running comprehensive evaluations and quality assessments..."
+            await ws_client.send_progress_update(state.workflow_id, progress_data)
             logger.info(f"✅ [Workflow] Progress update sent successfully: validation_scoring")
         except Exception as e:
             logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
         
-        return await validator(state)
+        # Send evaluating pillars progress
+        try:
+            logger.info(f"📡 [Workflow] Sending progress update: evaluating_pillars for workflow_id={state.workflow_id}")
+            progress_data = progress_tracker.get_progress_data("evaluating_pillars")
+            progress_data["message"] = "Analyzing quality across all pillars..."
+            await ws_client.send_progress_update(state.workflow_id, progress_data)
+            logger.info(f"✅ [Workflow] Progress update sent successfully: evaluating_pillars")
+        except Exception as e:
+            logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
+        
+        result = await validator(state)
+        
+        # Send finalizing progress
+        try:
+            logger.info(f"📡 [Workflow] Sending progress update: finalizing for workflow_id={state.workflow_id}")
+            progress_data = progress_tracker.get_progress_data("finalizing")
+            progress_data["message"] = "Finalizing survey generation..."
+            await ws_client.send_progress_update(state.workflow_id, progress_data)
+            logger.info(f"✅ [Workflow] Progress update sent successfully: finalizing")
+        except Exception as e:
+            logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
+        
+        return result
     
     
     # Add nodes to workflow
@@ -283,7 +311,42 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     workflow.add_edge("parse_rfq", "retrieve_golden")
     workflow.add_edge("retrieve_golden", "build_context")
     workflow.add_edge("build_context", "prompt_review")
-    workflow.add_edge("generate", "validate")
+    # Conditional edge to check if LLM evaluation should be skipped
+    def should_skip_validation(state: SurveyGenerationState) -> str:
+        """
+        Check if LLM evaluation should be skipped based on settings
+        """
+        try:
+            from src.services.settings_service import SettingsService
+            from src.database import get_db
+            
+            # Get evaluation settings
+            db = next(get_db())
+            settings_service = SettingsService(db)
+            evaluation_settings = settings_service.get_evaluation_settings()
+            
+            enable_llm_evaluation = evaluation_settings.get('enable_llm_evaluation', True)
+            
+            if not enable_llm_evaluation:
+                logger.info(f"⏭️ [Workflow] LLM evaluation disabled, skipping validation step")
+                return "completion_handler"
+            else:
+                logger.info(f"✅ [Workflow] LLM evaluation enabled, proceeding to validation")
+                return "validate"
+        except Exception as e:
+            logger.error(f"❌ [Workflow] Error checking evaluation settings: {e}")
+            # Default to validation if there's an error
+            return "validate"
+
+    # Add conditional edge to check if validation should be skipped
+    workflow.add_conditional_edges(
+        "generate",
+        should_skip_validation,
+        {
+            "validate": "validate",
+            "completion_handler": "completion_handler"
+        }
+    )
     
     # Add a pause node for human review
     async def pause_for_review(state: SurveyGenerationState) -> Dict[str, Any]:
@@ -379,12 +442,8 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
             return "completion_handler"  # Send to completion on error
             
         if not state.quality_gate_passed:
-            if state.retry_count < state.max_retries:
-                logger.info(f"🔄 [Workflow] Quality gate failed, retrying generation (attempt {state.retry_count + 1}/{state.max_retries})")
-                return "generate"  # Retry generation
-            else:
-                logger.warning(f"⚠️ [Workflow] Max retries ({state.max_retries}) reached, completing workflow")
-                return "completion_handler"  # Max retries reached, complete workflow
+            logger.warning(f"❌ [Workflow] Quality gate failed, exiting workflow immediately (no retries)")
+            return "completion_handler"  # Exit immediately on quality failure
         
         logger.info(f"✅ [Workflow] Quality gate passed, routing to completion_handler")
         return "completion_handler"  # Quality gate passed, ready for completion
@@ -401,6 +460,8 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     # Completion handler to send proper WebSocket messages
     async def completion_handler(state: SurveyGenerationState) -> Dict[str, Any]:
         """Handle workflow completion and send appropriate WebSocket messages"""
+        progress_tracker = get_progress_tracker(state.workflow_id)
+        
         try:
             from src.services.websocket_client import WebSocketNotificationService
             ws_client = WebSocketNotificationService()
@@ -413,12 +474,9 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
             else:
                 # Workflow completed normally
                 logger.info(f"✅ [Workflow] Workflow completed successfully: {state.workflow_id}")
-                await ws_client.send_progress_update(state.workflow_id, {
-                    "type": "progress",
-                    "step": "completed",
-                    "percent": 100,
-                    "message": "Survey generation completed successfully!"
-                })
+                progress_data = progress_tracker.get_completion_data("completed")
+                progress_data["message"] = "Survey generation completed successfully!"
+                await ws_client.send_progress_update(state.workflow_id, progress_data)
                 return {"workflow_completed": True, "workflow_paused": False}
         except Exception as e:
             logger.error(f"❌ [Workflow] Error in completion handler: {str(e)}")

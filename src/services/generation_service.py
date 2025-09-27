@@ -12,9 +12,13 @@ import json
 import logging
 import uuid
 import time
+import re
+import asyncio
+import os
 
 from src.utils.llm_audit_decorator import audit_llm_call, LLMAuditContext
 from src.services.llm_audit_service import LLMAuditService
+from src.services.progress_tracker import get_progress_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +60,8 @@ class GenerationService:
         else:
             logger.info("✅ [GenerationService] Replicate API token is configured")
 
-        replicate.api_token = settings.replicate_api_token  # type: ignore
+        # Initialize Replicate client with proper authentication
+        self.replicate_client = replicate.Client(api_token=settings.replicate_api_token)
 
     def _get_generation_model(self) -> str:
         """Get generation model from database settings or fallback to config"""
@@ -149,13 +154,8 @@ class GenerationService:
             interaction_id = f"survey_generation_{uuid.uuid4().hex[:8]}"
             audit_service = LLMAuditService(self.db_session)
 
-            # Log the context details for debugging
-            logger.info(f"🔍 [GenerationService] Context received:")
-            logger.info(f"🔍 [GenerationService] Context type: {type(context)}")
+            # Log basic context info
             logger.info(f"🔍 [GenerationService] Context keys: {list(context.keys()) if context else 'None'}")
-            logger.info(f"🔍 [GenerationService] Context survey_id: {context.get('survey_id') if context else 'None'}")
-            logger.info(f"🔍 [GenerationService] Context rfq_id: {context.get('rfq_id') if context else 'None'}")
-            logger.info(f"🔍 [GenerationService] Context workflow_id: {context.get('workflow_id') if context else 'None'}")
 
             async with LLMAuditContext(
                 audit_service=audit_service,
@@ -166,11 +166,11 @@ class GenerationService:
                 input_prompt=prompt,
                 context_type="generation",
                 parent_workflow_id=context.get('workflow_id'),
-                parent_survey_id=context.get('survey_id'),
+                parent_survey_id=context.get('audit_survey_id'),
                 parent_rfq_id=context.get('rfq_id'),
                 hyperparameters={
                     "temperature": 0.7,
-                    "max_tokens": 4000,
+                    "max_tokens": 8000,
                     "top_p": 0.9,
                     "frequency_penalty": 0.0,
                     "presence_penalty": 0.0
@@ -185,23 +185,13 @@ class GenerationService:
                 tags=["survey", "generation", "replicate", "custom_prompt"]
             ) as audit_context:
                 try:
-                    start_time = time.time()
-                    output = await replicate.async_run(
-                        self.model,
-                        input={
-                            "prompt": prompt,
-                            "temperature": 0.7,
-                            "max_tokens": 4000,
-                            "top_p": 0.9
-                        }
-                    )
-                    response_time_ms = int((time.time() - start_time) * 1000)
+                    # Use streaming generation with custom prompt
+                    generation_result = await self._generate_survey_with_streaming(prompt, system_prompt)
 
-                    # Set output and metrics in audit context
-                    if isinstance(output, list):
-                        output_text = "\n".join(str(item) for item in output)
-                    else:
-                        output_text = str(output)
+                    # Extract metadata for audit context
+                    response_time_ms = generation_result["generation_metadata"]["response_time_ms"]
+                    survey_data = generation_result["survey"]
+                    output_text = json.dumps(survey_data, indent=2)
 
                     audit_context.set_output(
                         output_content=output_text,
@@ -212,16 +202,15 @@ class GenerationService:
                     logger.info(f"✅ [GenerationService] Survey generation completed in {response_time_ms}ms")
                     logger.info(f"📊 [GenerationService] Output length: {len(output_text)} characters")
 
-                    # Parse the generated survey
-                    survey_data = self._extract_survey_json(output_text)
-
+                    # Survey is already parsed in streaming method
                     return {
                         "survey": survey_data,
                         "generation_metadata": {
                             "model": self.model,
                             "response_time_ms": response_time_ms,
                             "custom_prompt_used": bool(system_prompt),
-                            "prompt_length": len(prompt)
+                            "prompt_length": len(prompt),
+                            "streaming_enabled": generation_result["generation_metadata"].get("streaming_enabled", False)
                         }
                     }
 
@@ -299,16 +288,13 @@ class GenerationService:
 
             logger.info("🌐 [GenerationService] Making API call to Replicate...")
             logger.info(f"🌐 [GenerationService] Model: {self.model}")
-            logger.info(f"🌐 [GenerationService] API token set: {bool(replicate.api_token)}")
+            logger.info(f"🌐 [GenerationService] Replicate client available: {bool(self.replicate_client)}")
 
             # Create audit context for this LLM interaction
             interaction_id = f"survey_generation_{uuid.uuid4().hex[:8]}"
             audit_service = LLMAuditService(self.db_session)
 
-            logger.info(f"🔍 [GenerationService] Context received: {context}")
-            logger.info(f"🔍 [GenerationService] Survey ID from context: {context.get('survey_id')}")
-            logger.info(f"🔍 [GenerationService] Workflow ID from context: {context.get('workflow_id')}")
-            logger.info(f"🔍 [GenerationService] RFQ ID from context: {context.get('rfq_id')}")
+            logger.info(f"🔍 [GenerationService] Context keys: {list(context.keys()) if context else 'None'}")
 
             async with LLMAuditContext(
                 audit_service=audit_service,
@@ -319,11 +305,11 @@ class GenerationService:
                 input_prompt=prompt,
                 context_type="generation",
                 parent_workflow_id=context.get('workflow_id'),
-                parent_survey_id=context.get('survey_id'),
+                parent_survey_id=context.get('audit_survey_id'),
                 parent_rfq_id=context.get('rfq_id'),
                 hyperparameters={
                     "temperature": 0.7,
-                    "max_tokens": 4000,
+                    "max_tokens": 8000,
                     "top_p": 0.9,
                     "frequency_penalty": 0.0,
                     "presence_penalty": 0.0
@@ -337,23 +323,15 @@ class GenerationService:
                 tags=["survey", "generation", "replicate"]
             ) as audit_context:
                 try:
-                    start_time = time.time()
-                    output = await replicate.async_run(
-                        self.model,
-                        input={
-                            "prompt": prompt,
-                            "temperature": 0.7,
-                            "max_tokens": 4000,
-                            "top_p": 0.9
-                        }
-                    )
-                    response_time_ms = int((time.time() - start_time) * 1000)
+                    # Use streaming generation instead of sync call
+                    generation_result = await self._generate_survey_with_streaming(prompt)
+
+                    # Extract metadata for audit context
+                    response_time_ms = generation_result["generation_metadata"]["response_time_ms"]
+                    survey_data = generation_result["survey"]
+                    output_content = json.dumps(survey_data, indent=2)
 
                     # Set output and metrics in audit context
-                    if isinstance(output, list):
-                        output_content = "".join(output)
-                    else:
-                        output_content = str(output)
 
                     audit_context.set_output(
                         output_content=output_content,
@@ -377,9 +355,13 @@ class GenerationService:
                     else:
                         raise Exception(f"API call failed: {str(api_error)}")
 
-                logger.info(f"✅ [GenerationService] Received response from {self.model}")
-                logger.info(f"📊 [GenerationService] Response type: {type(output)}")
-                logger.info(f"📊 [GenerationService] Response content: {str(output)[:200]}...")
+                logger.info(f"✅ [GenerationService] Streaming generation completed successfully")
+                logger.info(f"📊 [GenerationService] Generation metadata: {generation_result['generation_metadata']}")
+
+                # Return the already processed survey data
+                return {
+                    "survey": survey_data
+                }
 
                 # Handle different output formats from Replicate
                 if isinstance(output, list):
@@ -390,7 +372,6 @@ class GenerationService:
                     logger.info(f"📝 [GenerationService] String response, length: {len(survey_text)}")
 
                 logger.info(f"📊 [GenerationService] Final response length: {len(survey_text)} characters")
-                logger.info(f"📊 [GenerationService] Response preview: {survey_text[:500]}...")
 
                 # Log detailed JSON object count for debugging
                 opening_braces = survey_text.count('{')
@@ -422,7 +403,8 @@ class GenerationService:
                     logger.error(f"❌ [GenerationService] Response content: '{survey_text}'")
                     raise Exception("API returned empty or invalid response. Please check your API configuration and try again.")
 
-                logger.info("🔍 [GenerationService] Extracting survey JSON...")
+                # Extract survey JSON (sanitization happens inside _extract_survey_json)
+                logger.info("🔍 [GenerationService] Extracting survey JSON from raw LLM output...")
                 survey_json = self._extract_survey_json(survey_text)
 
                 final_question_count = get_questions_count(survey_json)
@@ -456,24 +438,162 @@ class GenerationService:
                 raise Exception(f"Survey generation failed: {str(e)}")
 
 
-    def _extract_survey_json(self, response_text: str) -> Dict[str, Any]:
+    def _smart_normalize_whitespace(self, json_text: str) -> str:
         """
-        Bulletproof JSON extraction with multiple fallback strategies
+        Smart JSON whitespace normalization that preserves string content
+        while fixing structural whitespace issues.
         """
-        logger.info(f"🔍 [GenerationService] Starting bulletproof JSON extraction (length: {len(response_text)})")
+        def fix_structural_whitespace(text):
+            result = []
+            in_string = False
+            escape_next = False
 
-        # Strategy 1: Clean JSON extraction with progressive fallbacks
+            for i, char in enumerate(text):
+                if escape_next:
+                    result.append(char)
+                    escape_next = False
+                    continue
+
+                if char == '\\' and in_string:
+                    result.append(char)
+                    escape_next = True
+                    continue
+
+                if char == '"':
+                    in_string = not in_string
+                    result.append(char)
+                    continue
+
+                if in_string:
+                    # Inside strings: preserve all characters including whitespace
+                    result.append(char)
+                else:
+                    # Outside strings: normalize whitespace and add proper spacing
+                    if char.isspace():
+                        # Only add space if needed for structural separation
+                        if result and not result[-1].isspace():
+                            # Check if we need a space based on context
+                            prev_char = result[-1] if result else ''
+                            next_char = text[i + 1] if i + 1 < len(text) else ''
+
+                            # Add space around structural elements but not inside values
+                            if (prev_char in ',:' or next_char in ',:{}[]') and prev_char not in '{}[]':
+                                result.append(' ')
+                    else:
+                        result.append(char)
+
+            return ''.join(result)
+
+        # Apply the structural whitespace fix
+        normalized = fix_structural_whitespace(json_text)
+
+        # Final cleanup: ensure proper spacing around structural elements
+        import re
+        # Add space after colons and commas if not already present
+        normalized = re.sub(r'(:)([^\s])', r'\1 \2', normalized)
+        normalized = re.sub(r'(,)([^\s\]}])', r'\1 \2', normalized)
+
+        # Remove extra spaces around brackets and braces
+        normalized = re.sub(r'\s*([{}[\]])\s*', r'\1', normalized)
+
+        return normalized
+
+    def _sanitize_raw_output(self, response_text: str) -> str:
+        """
+        Smart JSON sanitization that preserves string content while fixing structure.
+        Fixed to handle malformed JSON without adding extra closing braces.
+        """
+        import re
+
+        logger.info("🧹 [GenerationService] Starting Smart JSON sanitization...")
+        logger.info(f"🔍 [GenerationService] Input length: {len(response_text)}")
+
+        # Performance optimization: Skip processing if response is too large
+        if len(response_text) > 50000:
+            logger.warning(f"⚠️ [GenerationService] Response too large ({len(response_text)} chars), using minimal processing")
+            # Minimal processing for very large responses to prevent hanging
+            sanitized = response_text.replace('\n', ' ').replace('\r', ' ')
+            sanitized = re.sub(r'\s+', ' ', sanitized)
+            # Find JSON boundaries quickly
+            start = sanitized.find('{')
+            end = sanitized.rfind('}')
+            if start >= 0 and end > start:
+                sanitized = sanitized[start:end + 1]
+        else:
+            # Normal processing for reasonable-sized responses
+            # Remove markdown code blocks
+            sanitized = re.sub(r'^.*?```(?:json)?\s*', '', response_text, flags=re.DOTALL)
+            sanitized = re.sub(r'```.*$', '', sanitized, flags=re.DOTALL)
+
+            # Remove any leading text before the first {
+            sanitized = re.sub(r'^[^{]*', '', sanitized)
+
+            # Fix trailing text - find last } and trim properly (don't add extra braces!)
+            last_brace_pos = sanitized.rfind('}')
+            if last_brace_pos >= 0:
+                sanitized = sanitized[:last_brace_pos + 1]
+
+        # AGGRESSIVE control character and newline removal for malformed LLM JSON
+        # First pass: Remove ALL control characters including embedded newlines
+        sanitized = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', sanitized)
+
+        # Second pass: Remove problematic newlines that break JSON structure
+        # Replace sequences like: {\n\n \n " with: {"
+        sanitized = re.sub(r'\{\s*\n\s*\n\s*\n?\s*"', '{"', sanitized)
+        sanitized = re.sub(r'"\s*\n\s*\n?\s*:', '":', sanitized)
+        sanitized = re.sub(r':\s*\n\s*\n?\s*"', ':"', sanitized)
+        sanitized = re.sub(r'",\s*\n\s*\n?\s*"', '","', sanitized)
+
+        # Third pass: Normalize any remaining structural whitespace
+        sanitized = re.sub(r'\s*\n\s*', ' ', sanitized)  # Replace newlines with single spaces
+        sanitized = re.sub(r'\s{2,}', ' ', sanitized)    # Collapse multiple spaces
+
+        # Smart whitespace normalization that preserves string content
+        # Performance optimization: Use simpler normalization for large responses
+        if len(sanitized) > 15000:
+            logger.warning(f"⚠️ [GenerationService] Large response ({len(sanitized)} chars), using fast normalization")
+            # Fast normalization for large responses to prevent hanging
+            sanitized = re.sub(r'\s+', ' ', sanitized)  # Collapse all whitespace to single spaces
+            sanitized = re.sub(r'\s*([{}[\]:,])\s*', r'\1', sanitized)  # Remove spaces around JSON syntax
+            sanitized = re.sub(r'([{}[\],])\s*(["}])', r'\1\2', sanitized)  # Remove spaces between JSON elements
+        else:
+            # Use detailed smart normalization for smaller responses
+            sanitized = self._smart_normalize_whitespace(sanitized)
+
+        # Remove trailing commas
+        sanitized = re.sub(r',\s*}', '}', sanitized)
+        sanitized = re.sub(r',\s*]', ']', sanitized)
+
+        logger.info(f"🧹 [GenerationService] Smart sanitization complete. Length: {len(response_text)} -> {len(sanitized)}")
+        logger.info(f"🔍 [GenerationService] Sanitized text: {sanitized[:200]}...")
+
+        return sanitized
+
+    def _extract_survey_json(self, raw_text: str) -> Dict[str, Any]:
+        """
+        Extract survey JSON from raw LLM output.
+        This method handles sanitization internally since it's called from multiple places.
+        """
+        logger.info(f"🔍 [GenerationService] Starting JSON extraction from raw text (length: {len(raw_text)})")
+
+        # CRITICAL FIX: Always sanitize input since this method is called with raw LLM output
+        logger.info("🧹 [GenerationService] Auto-sanitizing input text...")
+        sanitized_text = self._sanitize_raw_output(raw_text)
+        logger.info(f"🧹 [GenerationService] Sanitization complete: {len(raw_text)} -> {len(sanitized_text)} chars")
+
+        logger.info(f"🔍 [GenerationService] Sanitized text preview: {sanitized_text[:200]}...")
+
+        # Streamlined strategies for sanitized text
+        # Since LLM now returns JSON format, prioritize direct JSON parsing
         strategies = [
-            ("Balanced JSON extraction", self._extract_balanced_json_robust),
-            ("Cleaned balanced extraction", self._extract_cleaned_json),
-            ("Progressive JSON repair", self._extract_with_progressive_repair),
-            ("Force rebuild from parts", self._force_rebuild_survey_json)
+            ("Direct JSON parsing", self._extract_direct_json),
+            ("Force rebuild from parts (fallback)", self._force_rebuild_survey_json)
         ]
 
         for strategy_name, extraction_func in strategies:
             try:
                 logger.info(f"🔧 [GenerationService] Trying {strategy_name}...")
-                result = extraction_func(response_text)
+                result = extraction_func(sanitized_text)
                 if result:
                     logger.info(f"✅ [GenerationService] {strategy_name} succeeded!")
                     self._validate_and_fix_survey_structure(result)
@@ -486,7 +606,55 @@ class GenerationService:
 
         # If all strategies fail, create a minimal valid survey
         logger.error("❌ [GenerationService] All JSON extraction strategies failed")
-        return self._create_minimal_survey(response_text)
+        return self._create_minimal_survey(sanitized_text)
+
+    def _extract_direct_json(self, sanitized_text: str) -> Optional[Dict[str, Any]]:
+        """
+        Direct JSON parsing for pre-sanitized text.
+        This should work for most cases since the text is already cleaned.
+        """
+        logger.info(f"🔍 [GenerationService] Direct JSON: Attempting to parse {len(sanitized_text)} characters")
+        logger.info(f"🔍 [GenerationService] Direct JSON: First 200 chars: {sanitized_text[:200]}...")
+        logger.info(f"🔍 [GenerationService] Direct JSON: Last 200 chars: ...{sanitized_text[-200:]}")
+
+        try:
+            # First try direct parsing
+            result = json.loads(sanitized_text)
+            logger.info(f"✅ [GenerationService] Direct JSON parsing succeeded! Keys: {list(result.keys())}")
+
+            # Count questions for verification
+            if 'sections' in result:
+                total_questions = sum(len(section.get('questions', [])) for section in result.get('sections', []))
+                logger.info(f"✅ [GenerationService] Direct JSON found {total_questions} total questions")
+            elif 'questions' in result:
+                total_questions = len(result.get('questions', []))
+                logger.info(f"✅ [GenerationService] Direct JSON found {total_questions} total questions (flat format)")
+
+            return result
+
+        except json.JSONDecodeError as e:
+            logger.warning(f"⚠️ [GenerationService] Direct JSON parsing failed: {e}")
+            logger.info(f"🔍 [GenerationService] JSON error at position {e.pos}: {sanitized_text[max(0, e.pos-50):e.pos+50]}")
+
+            # Try to fix common JSON issues
+            try:
+                # Fix line breaks within string values
+                import re
+                fixed_text = re.sub(r'"([^"]*)\n([^"]*)"', r'"\1 \2"', sanitized_text)
+                fixed_text = re.sub(r'"([^"]*)\n([^"]*)"', r'"\1 \2"', fixed_text)  # Run twice for nested breaks
+
+                # Remove any remaining newlines within quoted strings
+                fixed_text = re.sub(r'"([^"]*)\n([^"]*)"', r'"\1 \2"', fixed_text)
+
+                logger.info(f"🔧 [GenerationService] Attempting to parse fixed JSON...")
+                fixed_result = json.loads(fixed_text)
+                logger.info(f"✅ [GenerationService] Fixed JSON parsing succeeded!")
+                return fixed_result
+
+            except json.JSONDecodeError as e2:
+                logger.warning(f"⚠️ [GenerationService] Fixed JSON parsing also failed: {e2}")
+                logger.info(f"🔍 [GenerationService] Fixed JSON error at position {e2.pos}: {fixed_text[max(0, e2.pos-50):e2.pos+50]}")
+                return None
 
     def _log_question_extraction_metrics(self, response_text: str) -> None:
         """
@@ -614,46 +782,95 @@ class GenerationService:
             logger.warning(f"⚠️ Balanced extraction error: {e}")
             return None
 
-    def _extract_cleaned_json(self, response_text: str) -> Optional[Dict[str, Any]]:
+    def _extract_cleaned_json(self, sanitized_text: str) -> Optional[Dict[str, Any]]:
         """
-        Extract JSON after aggressive cleaning
-        """
-        try:
-            import re
-
-            # Remove common LLM artifacts
-            cleaned = re.sub(r'^.*?```json\s*', '', response_text, flags=re.DOTALL)
-            cleaned = re.sub(r'```.*$', '', cleaned, flags=re.DOTALL)
-            cleaned = re.sub(r'^[^{]*', '', cleaned)
-            cleaned = re.sub(r'[^}]*$', '}', cleaned)
-
-            # Remove control characters
-            cleaned = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', cleaned)
-
-            # Try to parse
-            return json.loads(cleaned)
-        except Exception:
-            return None
-
-    def _extract_with_progressive_repair(self, response_text: str) -> Optional[Dict[str, Any]]:
-        """
-        Progressive repair approach - fix one issue at a time
+        Simplified cleaned JSON extraction for pre-sanitized text.
+        Since the text is already sanitized, this is just a fallback with minimal additional cleaning.
         """
         try:
-            import re
-
-            # Extract potential JSON block
-            start_idx = response_text.find('{')
-            end_idx = response_text.rfind('}') + 1
-            if start_idx == -1 or end_idx <= start_idx:
+            # Since text is already sanitized, just try direct parsing first
+            return json.loads(sanitized_text)
+        except json.JSONDecodeError:
+            # If direct parsing fails, try one more round of whitespace fixing
+            try:
+                import re
+                # Apply additional whitespace fixes if needed
+                cleaned = self._fix_malformed_json_whitespace(sanitized_text)
+                return json.loads(cleaned)
+            except Exception:
                 return None
 
-            json_text = response_text[start_idx:end_idx]
+    def _fix_malformed_json_whitespace(self, json_text: str) -> str:
+        """
+        Fix malformed JSON with excessive whitespace and line breaks
+        """
+        import re
+        
+        # First, fix newlines within quoted strings - this is the main issue
+        # Pattern: "text" : "content\nwith\nnewlines" -> "text": "content with newlines"
+        def fix_newlines_in_strings(match):
+            key = match.group(1).strip()
+            content = match.group(2)
+            # Replace all newlines and excessive whitespace within the string content
+            cleaned_content = re.sub(r'\s+', ' ', content).strip()
+            return f'"{key}": "{cleaned_content}"'
+        
+        # This pattern matches: "key" : "content with newlines"
+        json_text = re.sub(r'"([^"]+)"\s*:\s*"([^"]*)"', fix_newlines_in_strings, json_text)
+        
+        # Fix strings that are broken across lines with more complex patterns
+        # Pattern: "text" : "broken\nacross\nlines" -> "text": "broken across lines"
+        def fix_broken_strings(match):
+            content = match.group(1).replace(chr(10), " ").replace(chr(13), " ").strip()
+            return f'": "{content}"'
+        
+        json_text = re.sub(r'"\s*:\s*"\s*([^"]*?)\s*"', fix_broken_strings, json_text)
+        
+        # Fix strings that are broken with excessive whitespace
+        # Pattern: "text" : "word1\n\n\nword2" -> "text": "word1 word2"
+        def fix_whitespace_strings(match):
+            content = re.sub(r'\s+', ' ', match.group(1)).strip()
+            return f'": "{content}"'
+        
+        json_text = re.sub(r'"\s*:\s*"([^"]*?)"', fix_whitespace_strings, json_text)
+        
+        # Remove excessive whitespace around colons and commas
+        json_text = re.sub(r'\s*:\s*', ': ', json_text)
+        json_text = re.sub(r'\s*,\s*', ', ', json_text)
+        
+        # Fix broken object/array structures
+        # Remove line breaks between object properties
+        json_text = re.sub(r'}\s*\n\s*{', '}, {', json_text)
+        json_text = re.sub(r']\s*\n\s*\[', '], [', json_text)
+        
+        # Fix broken string concatenation
+        # Pattern: "word1"\n"word2" -> "word1 word2"
+        json_text = re.sub(r'"\s*\n\s*"', ' ', json_text)
+        
+        # Clean up any remaining excessive whitespace
+        json_text = re.sub(r'\s+', ' ', json_text)
+        
+        # Fix common JSON syntax issues
+        json_text = re.sub(r',\s*}', '}', json_text)  # Remove trailing commas
+        json_text = re.sub(r',\s*]', ']', json_text)  # Remove trailing commas in arrays
+        
+        return json_text
 
-            # Progressive repair steps
+    def _extract_with_progressive_repair(self, sanitized_text: str) -> Optional[Dict[str, Any]]:
+        """
+        Progressive repair approach for pre-sanitized text.
+        Since basic sanitization is done, focus on JSON-specific repairs.
+        """
+        try:
+            import re
+
+            # Since text is already sanitized, start with the text as-is
+            json_text = sanitized_text
+
+            # Progressive repair steps (focused on JSON-specific issues)
             repairs = [
-                # Remove control characters
-                lambda t: re.sub(r'[\x00-\x1f\x7f-\x9f]', '', t),
+                # Fix malformed whitespace (most common issue)
+                lambda t: self._fix_malformed_json_whitespace(t),
                 # Fix missing commas between properties
                 lambda t: re.sub(r'"\s*\n\s*"([^"]*"):', r'",\n        "\1:', t),
                 # Fix missing commas between array elements
@@ -680,7 +897,7 @@ class GenerationService:
         except Exception:
             return None
 
-    def _force_rebuild_survey_json(self, response_text: str) -> Optional[Dict[str, Any]]:
+    def _force_rebuild_survey_json(self, sanitized_text: str) -> Optional[Dict[str, Any]]:
         """
         Force rebuild survey from extractable parts
         """
@@ -690,8 +907,8 @@ class GenerationService:
             logger.info("🔧 [GenerationService] Force rebuilding survey from parts")
 
             # Extract basic fields
-            title_match = re.search(r'"title"\s*:\s*"([^"]*)"', response_text)
-            desc_match = re.search(r'"description"\s*:\s*"([^"]*)"', response_text)
+            title_match = re.search(r'"title"\s*:\s*"([^"]*)"', sanitized_text)
+            desc_match = re.search(r'"description"\s*:\s*"([^"]*)"', sanitized_text)
 
             survey = {
                 "title": title_match.group(1) if title_match else "Generated Survey",
@@ -699,17 +916,33 @@ class GenerationService:
                 "sections": []
             }
 
-            # Try to extract sections or questions
-            sections = self._extract_sections_by_force(response_text)
-            if sections:
-                survey["sections"] = sections
-            else:
-                # Fall back to extracting individual questions
-                questions = self._extract_questions_by_force(response_text)
+            # Check if content is markdown format (no JSON sections)
+            # Since LLM returns markdown format, prioritize markdown extraction
+            logger.info("🔍 [GenerationService] LLM returns markdown format, extracting questions directly")
+            try:
+                questions = self._extract_questions_by_force(sanitized_text)
                 if questions:
+                    logger.info(f"✅ [GenerationService] Successfully extracted {len(questions)} questions from markdown")
                     # Group questions intelligently instead of one big section
                     grouped_sections = self._group_questions_into_sections(questions)
                     survey["sections"] = grouped_sections
+                else:
+                    logger.warning("⚠️ [GenerationService] No questions extracted from markdown")
+                    survey["sections"] = []
+            except Exception as question_error:
+                logger.warning(f"⚠️ [GenerationService] Error in markdown question extraction: {question_error}")
+                # Try direct extraction as fallback
+                try:
+                    questions = self._extract_questions_from_text_force(sanitized_text)
+                    if questions:
+                        logger.info(f"✅ [GenerationService] Recovered {len(questions)} questions with direct extraction")
+                        grouped_sections = self._group_questions_into_sections(questions)
+                        survey["sections"] = grouped_sections
+                    else:
+                        survey["sections"] = []
+                except Exception as recovery_error:
+                    logger.warning(f"⚠️ [GenerationService] Recovery also failed: {recovery_error}")
+                    survey["sections"] = []
 
             # Add metadata
             survey["estimated_time"] = 5
@@ -744,9 +977,18 @@ class GenerationService:
         for pattern in section_patterns:
             matches = re.finditer(pattern, text, re.DOTALL)
             for match in matches:
-                section_id = int(match.group(1))
-                section_title = match.group(2)
-                questions_text = match.group(3)
+                try:
+                    # Check if we have the expected number of groups
+                    if len(match.groups()) < 3:
+                        logger.warning(f"⚠️ [GenerationService] Pattern match has only {len(match.groups())} groups, expected 3")
+                        continue
+                        
+                    section_id = int(match.group(1))
+                    section_title = match.group(2)
+                    questions_text = match.group(3)
+                except (IndexError, ValueError) as e:
+                    logger.warning(f"⚠️ [GenerationService] Pattern match failed: {e}")
+                    continue
 
                 # Skip if we've already processed this section
                 if section_id in processed_sections:
@@ -781,6 +1023,7 @@ class GenerationService:
         import time
 
         logger.info("🔍 [GenerationService] === QUESTION EXTRACTION TRACKING ===")
+        logger.info(f"🔍 [GenerationService] Input text length: {len(text)} characters")
 
         # Add timeout to prevent infinite loops
         start_time = time.time()
@@ -809,112 +1052,329 @@ class GenerationService:
             # Patterns for questions without explicit IDs
             ("Text only patterns", r'"text"\s*:\s*"([^"]*)"'),
             ("Question only patterns", r'"question"\s*:\s*"([^"]*)"'),
+            
+            # Markdown format patterns (common LLM output format)
+            ("Markdown numbered questions", r'(\d+)\)\s*([^?\n]+[?])'),
+            ("Markdown numbered questions multiline", r'(\d+)\)\s*([^?\n]+(?:\n[^?\n]+)*[?])'),
+            ("Markdown bullet questions", r'[-*]\s*([^?\n]+[?])'),
+            ("Markdown simple questions", r'^([^?\n]+[?])\s*$', re.MULTILINE),
         ]
 
         all_matches = []
         questions = []
         dropped_questions = []
 
-        for i, (pattern_name, pattern) in enumerate(patterns):
+        for i, pattern_item in enumerate(patterns):
+            # Handle patterns that might have regex flags as third element
+            if len(pattern_item) == 3:
+                pattern_name, pattern, flags = pattern_item
+            else:
+                pattern_name, pattern = pattern_item
+                flags = 0
             # Check timeout
             if time.time() - start_time > max_processing_time:
                 logger.warning(f"⚠️ [GenerationService] Timeout reached after {max_processing_time}s, stopping question extraction")
                 break
 
-            matches = list(re.finditer(pattern, text, re.DOTALL))
-            logger.info(f"🔍 [GenerationService] Pattern '{pattern_name}': {len(matches)} matches found")
+            try:
+                matches = list(re.finditer(pattern, text, re.DOTALL | flags))
+                logger.info(f"🔍 [GenerationService] Pattern '{pattern_name}': {len(matches)} matches found")
 
-            for match in matches:
-                # Check timeout in inner loop too
-                if time.time() - start_time > max_processing_time:
-                    logger.warning(f"⚠️ [GenerationService] Timeout reached during pattern processing, stopping")
-                    break
-                if i < 2:  # First two patterns have different group orders
-                    q_id = match.group(1) if i == 0 else match.group(2)
-                    q_text = match.group(2) if i == 0 else match.group(1)
-                else:
-                    q_id = match.group(1) if i == 2 else match.group(2)
-                    q_text = match.group(2) if i == 2 else match.group(1)
+                for match in matches:
+                    # Check timeout in inner loop too
+                    if time.time() - start_time > max_processing_time:
+                        logger.warning(f"⚠️ [GenerationService] Timeout reached during pattern processing, stopping")
+                        break
+                    
+                    # Handle different pattern types with proper error handling
+                    try:
+                        logger.info(f"🔍 [GenerationService] Processing pattern {i} '{pattern_name}' with {len(match.groups())} groups: {match.groups()}")
+                    
+                        if i < 4:  # JSON patterns with ID+Text or Text+ID
+                            q_id = match.group(1) if i < 2 else match.group(2)
+                            q_text = match.group(2) if i < 2 else match.group(1)
+                        elif i < 8:  # Partial JSON patterns
+                            q_id = match.group(1) if i < 6 else match.group(2)
+                            q_text = match.group(2) if i < 6 else match.group(1)
+                        elif i < 12:  # Flexible JSON patterns
+                            q_id = match.group(1) if i < 10 else match.group(2)
+                            q_text = match.group(2) if i < 10 else match.group(1)
+                        elif i < 14:  # Text/Question only patterns
+                            q_id = None
+                            q_text = match.group(1)
+                        else:  # Markdown patterns
+                            if i == 14:  # Markdown numbered questions
+                                q_id = f"q{match.group(1)}"
+                                q_text = match.group(2)
+                            elif i == 15:  # Markdown numbered questions multiline
+                                q_id = f"q{match.group(1)}"
+                                q_text = match.group(2)
+                            else:  # Markdown bullet or simple questions
+                                q_id = None
+                                q_text = match.group(1)
+                        
+                        logger.info(f"🔍 [GenerationService] Extracted q_id='{q_id}', q_text='{q_text[:50]}...'")
+                        
+                    except (IndexError, AttributeError) as e:
+                        logger.warning(f"⚠️ [GenerationService] Error unpacking match groups for pattern '{pattern_name}': {e}")
+                        try:
+                            logger.warning(f"⚠️ [GenerationService] Match groups: {match.groups()}")
+                        except:
+                            logger.warning(f"⚠️ [GenerationService] Match groups: Not available")
+                        continue
+                    except Exception as e:
+                        logger.error(f"❌ [GenerationService] Unexpected error in pattern processing: {e}")
+                        try:
+                            logger.error(f"❌ [GenerationService] Pattern: {pattern_name}, Match: {match.groups()}")
+                        except:
+                            logger.error(f"❌ [GenerationService] Pattern: {pattern_name}, Match: Not available")
+                        import traceback
+                        logger.error(f"❌ [GenerationService] Traceback: {traceback.format_exc()}")
+                        continue
 
-                # Clean the text - handle excessive newlines and formatting issues
-                original_text = q_text
-                # Remove escaped newlines and excessive whitespace
-                q_text = re.sub(r'\\n', ' ', q_text)
-                # Remove actual newlines and excessive whitespace
-                q_text = re.sub(r'\n+', ' ', q_text)
-                # Normalize all whitespace to single spaces
-                q_text = re.sub(r'\s+', ' ', q_text).strip()
-                # Remove leading/trailing punctuation that might be artifacts
-                q_text = re.sub(r'^[^\w\s]+|[^\w\s]+$', '', q_text).strip()
+                        # Clean the text - handle excessive newlines and formatting issues
+                        original_text = q_text
+                        # Remove escaped newlines and excessive whitespace
+                        q_text = re.sub(r'\\n', ' ', q_text)
+                        # Remove actual newlines and excessive whitespace
+                        q_text = re.sub(r'\n+', ' ', q_text)
+                        # Normalize all whitespace to single spaces
+                        q_text = re.sub(r'\s+', ' ', q_text).strip()
+                        # Remove leading/trailing punctuation that might be artifacts
+                        q_text = re.sub(r'^[^\w\s]+|[^\w\s]+$', '', q_text).strip()
 
-                all_matches.append({
-                    "pattern": pattern_name,
-                    "id": q_id,
-                    "text": q_text,
-                    "original_text": original_text,
-                    "match_text": match.group(0)[:200]
-                })
+                        all_matches.append({
+                            "pattern": pattern_name,
+                            "id": q_id,
+                            "text": q_text,
+                            "original_text": original_text,
+                            "match_text": match.group(0)[:200]
+                        })
 
-                # Validation checks
-                drop_reason = None
-                if not q_text:
-                    drop_reason = "Empty text after cleaning"
-                elif len(q_text) <= 5:
-                    drop_reason = f"Text too short ({len(q_text)} chars)"
-                elif len(q_text) > 500:
-                    drop_reason = f"Text too long ({len(q_text)} chars)"
-                elif not any(char.isalpha() for char in q_text):
-                    drop_reason = "No alphabetic characters"
+                        # Validation checks
+                        drop_reason = None
+                        if not q_text:
+                            drop_reason = "Empty text after cleaning"
+                        elif len(q_text) <= 5:
+                            drop_reason = f"Text too short ({len(q_text)} chars)"
+                        elif len(q_text) > 500:
+                            drop_reason = f"Text too long ({len(q_text)} chars)"
+                        elif not any(char.isalpha() for char in q_text):
+                            drop_reason = "No alphabetic characters"
 
-                if drop_reason:
-                    dropped_questions.append({
-                        "id": q_id,
-                        "text": q_text[:100],
-                        "reason": drop_reason,
-                        "pattern": pattern_name
-                    })
-                    logger.warning(f"⚠️ [GenerationService] Dropped question '{q_id}': {drop_reason}")
-                else:
-                    question = {
-                        "id": q_id or f"q{len(questions) + 1}",
-                        "text": q_text,
-                        "type": "text",
-                        "required": True,
-                        "category": "general"
-                    }
-                    questions.append(question)
+                        if drop_reason:
+                            dropped_questions.append({
+                                "id": q_id,
+                                "text": q_text[:100],
+                                "reason": drop_reason,
+                                "pattern": pattern_name
+                            })
+                            logger.warning(f"⚠️ [GenerationService] Dropped question '{q_id}': {drop_reason}")
+                        else:
+                            # Extract options from the original match text
+                            try:
+                                if i >= 14:  # Markdown patterns - extract options from surrounding text
+                                    options = self._extract_options_from_markdown(text, match.start(), match.end())
+                                else:  # JSON patterns
+                                    options = self._extract_options_from_question_text(match.group(0))
+                            except Exception as options_error:
+                                logger.warning(f"⚠️ [GenerationService] Error extracting options: {options_error}")
+                                options = []
+                            
+                            if options:
+                                logger.info(f"🔍 [GenerationService] Extracted {len(options)} options for question '{q_id}': {options}")
+                            
+                            try:
+                                question = {
+                                    "id": q_id or f"q{len(questions) + 1}",
+                                    "text": q_text,
+                                    "type": "multiple_choice" if options else "text",
+                                    "options": options,
+                                    "required": True,
+                                    "category": "general"
+                                }
+                                questions.append(question)
+                            except Exception as question_error:
+                                logger.warning(f"⚠️ [GenerationService] Error creating question: {question_error}")
+                                logger.warning(f"⚠️ [GenerationService] Question data: q_id='{q_id}', q_text='{q_text[:50]}...', options={len(options) if options else 0}")
+                        continue
+
+            except Exception as pattern_error:
+                logger.warning(f"⚠️ [GenerationService] Error processing pattern '{pattern_name}': {pattern_error}")
+                logger.warning(f"⚠️ [GenerationService] Pattern index: {i}, Pattern: {pattern}")
+                import traceback
+                logger.warning(f"⚠️ [GenerationService] Traceback: {traceback.format_exc()}")
+                continue
 
         logger.info(f"🔍 [GenerationService] Total matches found: {len(all_matches)}")
         logger.info(f"🔍 [GenerationService] Valid questions before dedup: {len(questions)}")
         logger.info(f"🔍 [GenerationService] Questions dropped (validation): {len(dropped_questions)}")
+        
+        # Debug: Show the questions we extracted
+        for i, q in enumerate(questions):
+            logger.info(f"🔍 [GenerationService] Question {i+1}: id='{q.get('id', 'N/A')}', text='{q.get('text', 'N/A')[:50]}...', options={len(q.get('options', []))}")
 
         # Remove duplicates based on text similarity
         unique_questions = []
         duplicate_count = 0
 
-        for q in questions:
-            is_duplicate = False
-            for uq in unique_questions:
-                if self._texts_similar(q["text"], uq["text"]):
-                    is_duplicate = True
-                    duplicate_count += 1
-                    logger.info(f"🔍 [GenerationService] Duplicate found: '{q['id']}' similar to '{uq['id']}'")
+        try:
+            logger.info(f"🔍 [GenerationService] Starting deduplication with {len(questions)} questions")
+            
+            for i, q in enumerate(questions):
+                try:
+                    logger.info(f"🔍 [GenerationService] Processing question {i+1}: {q.get('id', 'N/A')}")
+                    is_duplicate = False
+                    for j, uq in enumerate(unique_questions):
+                        try:
+                            if self._texts_similar(q["text"], uq["text"]):
+                                is_duplicate = True
+                                duplicate_count += 1
+                                logger.info(f"🔍 [GenerationService] Duplicate found: '{q['id']}' similar to '{uq['id']}'")
+                                break
+                        except Exception as sim_error:
+                            logger.warning(f"⚠️ [GenerationService] Error in similarity check: {sim_error}")
+                            logger.warning(f"⚠️ [GenerationService] Question q: {q}")
+                            logger.warning(f"⚠️ [GenerationService] Question uq: {uq}")
+                            continue
+                            
+                    if not is_duplicate:
+                        unique_questions.append(q)
+                        
+                except Exception as q_error:
+                    logger.warning(f"⚠️ [GenerationService] Error processing question {i+1}: {q_error}")
+                    logger.warning(f"⚠️ [GenerationService] Question data: {q}")
+                    # Continue with next question instead of failing completely
+                    continue
+
+            logger.info(f"🔍 [GenerationService] Questions dropped (duplicates): {duplicate_count}")
+            logger.info(f"✅ [GenerationService] Final unique questions: {len(unique_questions)}")
+
+            # Log samples of dropped questions
+            if dropped_questions:
+                logger.info("❌ [GenerationService] Sample dropped questions:")
+                for dropped in dropped_questions[:5]:  # Show first 5
+                    logger.info(f"❌ [GenerationService] - '{dropped['id']}': {dropped['reason']} | Text: '{dropped['text']}'")
+
+            logger.info("🔍 [GenerationService] =====================================")
+
+            return unique_questions
+            
+        except Exception as e:
+            logger.warning(f"⚠️ [GenerationService] Error in question deduplication: {e}")
+            logger.warning(f"⚠️ [GenerationService] Error type: {type(e)}")
+            logger.warning(f"⚠️ [GenerationService] Questions so far: {len(questions)}")
+            logger.warning(f"⚠️ [GenerationService] All matches: {len(all_matches)}")
+            # Return the questions we have so far instead of failing
+            logger.info(f"✅ [GenerationService] Returning {len(questions)} questions despite deduplication error")
+            return questions
+
+    def _extract_options_from_question_text(self, question_text: str) -> List[str]:
+        """
+        Extract options/choices from question text using regex patterns
+        """
+        import re
+        options = []
+        
+        try:
+            # Look for options array patterns
+            options_patterns = [
+                r'"options"\s*:\s*\[(.*?)\]',  # "options": ["opt1", "opt2"]
+                r'"choices"\s*:\s*\[(.*?)\]',  # "choices": ["opt1", "opt2"]
+                r'"answers"\s*:\s*\[(.*?)\]',  # "answers": ["opt1", "opt2"]
+                r'"scale"\s*:\s*\[(.*?)\]',    # "scale": ["opt1", "opt2"]
+                r'"items"\s*:\s*\[(.*?)\]',    # "items": ["opt1", "opt2"]
+                r'"values"\s*:\s*\[(.*?)\]',   # "values": ["opt1", "opt2"]
+            ]
+            
+            for pattern in options_patterns:
+                match = re.search(pattern, question_text, re.DOTALL)
+                if match:
+                    options_text = match.group(1)
+                    # Extract individual options
+                    option_matches = re.findall(r'"([^"]*)"', options_text)
+                    for opt in option_matches:
+                        if opt.strip():
+                            options.append(opt.strip())
                     break
-            if not is_duplicate:
-                unique_questions.append(q)
+            
+            # If no options array found, look for individual option patterns
+            if not options:
+                # Look for patterns like "option1", "option2" or "choice1", "choice2"
+                individual_patterns = [
+                    r'"option\d*"\s*:\s*"([^"]*)"',
+                    r'"choice\d*"\s*:\s*"([^"]*)"',
+                    r'"answer\d*"\s*:\s*"([^"]*)"',
+                    r'"item\d*"\s*:\s*"([^"]*)"',
+                    r'"value\d*"\s*:\s*"([^"]*)"',
+                ]
+                
+                for pattern in individual_patterns:
+                    matches = re.findall(pattern, question_text)
+                    for match in matches:
+                        if match.strip():
+                            options.append(match.strip())
+            
+            # Limit to reasonable number of options
+            return options[:10]
+            
+        except Exception as e:
+            logger.warning(f"⚠️ [GenerationService] Error extracting options: {e}")
+            return []
 
-        logger.info(f"🔍 [GenerationService] Questions dropped (duplicates): {duplicate_count}")
-        logger.info(f"✅ [GenerationService] Final unique questions: {len(unique_questions)}")
-
-        # Log samples of dropped questions
-        if dropped_questions:
-            logger.info("❌ [GenerationService] Sample dropped questions:")
-            for dropped in dropped_questions[:5]:  # Show first 5
-                logger.info(f"❌ [GenerationService] - '{dropped['id']}': {dropped['reason']} | Text: '{dropped['text']}'")
-
-        logger.info("🔍 [GenerationService] =====================================")
-
-        return unique_questions
+    def _extract_options_from_markdown(self, text: str, question_start: int, question_end: int) -> List[str]:
+        """
+        Extract options from markdown format text around a question
+        """
+        import re
+        options = []
+        
+        try:
+            # Look for bullet points or dashes after the question
+            # Find the text after the question until the next question or end
+            text_after_question = text[question_end:]
+            
+            # Look for bullet points or dashes
+            bullet_patterns = [
+                r'^[-*]\s*([^?\n]+)$',  # - Option text
+                r'^[-*]\s*([^?\n]+)\s*$',  # - Option text (with spaces)
+            ]
+            
+            for pattern in bullet_patterns:
+                matches = re.finditer(pattern, text_after_question, re.MULTILINE)
+                for match in matches:
+                    option_text = match.group(1).strip()
+                    # Stop if we hit another question (starts with number or bullet)
+                    if re.match(r'^\d+\)', option_text) or re.match(r'^[-*]', option_text):
+                        break
+                    if option_text and len(option_text) > 2:
+                        options.append(option_text)
+                        if len(options) >= 10:  # Limit options
+                            break
+                if options:
+                    break
+            
+            # If no bullet points found, look for numbered options
+            if not options:
+                numbered_pattern = r'^(\d+[\.\)])\s*([^?\n]+)$'
+                matches = re.finditer(numbered_pattern, text_after_question, re.MULTILINE)
+                for match in matches:
+                    try:
+                        option_text = match.group(2).strip()
+                        if option_text and len(option_text) > 2:
+                            options.append(option_text)
+                            if len(options) >= 10:  # Limit options
+                                break
+                    except (IndexError, AttributeError) as e:
+                        logger.warning(f"⚠️ [GenerationService] Error extracting numbered option: {e}")
+                        logger.warning(f"⚠️ [GenerationService] Match groups: {match.groups()}")
+                        continue
+            
+            return options[:10]
+            
+        except Exception as e:
+            logger.warning(f"⚠️ [GenerationService] Error extracting markdown options: {e}")
+            return []
 
     def _texts_similar(self, text1: str, text2: str, threshold: float = 0.8) -> bool:
         """Check if two texts are similar"""
@@ -1122,16 +1582,20 @@ class GenerationService:
             "satisfaction": [],
             "preferences": [],
             "feedback": [],
+            "product": [],
+            "concept": [],
             "general": []
         }
 
         # Keywords to identify question types
         topic_keywords = {
-            "demographics": ["age", "gender", "location", "education", "income", "occupation", "demographic"],
-            "experience": ["experience", "how long", "previous", "background", "history", "used"],
-            "satisfaction": ["satisfied", "happy", "pleased", "rating", "rate", "score", "scale"],
-            "preferences": ["prefer", "favorite", "choose", "select", "like", "want", "desire"],
-            "feedback": ["improve", "suggest", "feedback", "recommend", "opinion", "thoughts", "comment"]
+            "demographics": ["age", "gender", "location", "education", "income", "occupation", "demographic", "describes you", "best describes", "which of the following"],
+            "experience": ["experience", "how long", "previous", "background", "history", "used", "past", "often have you", "how often", "frequency"],
+            "satisfaction": ["satisfied", "happy", "pleased", "rating", "rate", "score", "scale", "satisfaction", "satisfied with", "how satisfied"],
+            "preferences": ["prefer", "favorite", "choose", "select", "like", "want", "desire", "preference", "would you prefer", "which would you choose"],
+            "feedback": ["improve", "suggest", "feedback", "recommend", "opinion", "thoughts", "comment", "suggestions", "recommendations"],
+            "product": ["product", "camera", "device", "feature", "functionality", "capability", "performance", "quality", "design"],
+            "concept": ["concept", "introduction", "new", "innovation", "review", "description", "presentation", "show", "demonstrate"]
         }
 
         for question in questions:
@@ -1147,23 +1611,37 @@ class GenerationService:
             if not assigned:
                 topic_groups["general"].append(question)
 
-        # Create sections from groups, but enforce minimum 2 questions per section
+        # Create sections from groups
         sections = []
         section_id = 1
-        leftover_questions = []
+
+        # Debug: Log the topic_groups structure
+        logger.info(f"🔍 [GenerationService] Topic groups structure: {topic_groups}")
+        logger.info(f"🔍 [GenerationService] Topic groups type: {type(topic_groups)}")
+        logger.info(f"🔍 [GenerationService] Topic groups keys: {list(topic_groups.keys())}")
+        
+        for topic, group_questions in topic_groups.items():
+            logger.info(f"🔍 [GenerationService] Topic '{topic}': {type(group_questions)} with {len(group_questions) if isinstance(group_questions, list) else 'N/A'} items")
 
         title_map = {
-            "demographics": "Demographics",
+            "demographics": "Demographics & Screening",
             "experience": "Background & Experience",
             "satisfaction": "Satisfaction & Rating",
             "preferences": "Preferences & Choices",
             "feedback": "Feedback & Suggestions",
+            "product": "Product Features & Capabilities",
+            "concept": "Product Introduction & Concepts",
             "general": "General Questions"
         }
 
-        # Only create sections for groups with 2+ questions
+        # Create sections for groups with questions
         for topic, group_questions in topic_groups.items():
-            if len(group_questions) >= 2:
+            # Ensure group_questions is a list
+            if not isinstance(group_questions, list):
+                logger.warning(f"⚠️ [GenerationService] Invalid group_questions type for topic '{topic}': {type(group_questions)}")
+                continue
+                
+            if len(group_questions) >= 1:  # Create section for any group with questions
                 sections.append({
                     "id": section_id,
                     "title": title_map[topic],
@@ -1171,33 +1649,15 @@ class GenerationService:
                     "questions": group_questions
                 })
                 section_id += 1
-            else:
-                # Add single questions to leftover pile
-                leftover_questions.extend(group_questions)
 
-        # If we have leftover questions, group them logically
-        if leftover_questions:
-            if len(sections) == 0:
-                # No sections created yet, put all questions in one section
-                sections.append({
-                    "id": 1,
-                    "title": "Survey Questions",
-                    "description": "All survey questions",
-                    "questions": leftover_questions
-                })
-            elif len(leftover_questions) >= 3:
-                # Many leftovers, create a general section
-                sections.append({
-                    "id": section_id,
-                    "title": "Additional Questions",
-                    "description": "Additional survey questions",
-                    "questions": leftover_questions
-                })
-            else:
-                # Few leftovers, distribute to existing sections
-                for i, question in enumerate(leftover_questions):
-                    section_index = i % len(sections)
-                    sections[section_index]["questions"].append(question)
+        # If no sections were created (shouldn't happen with new logic), fallback to single section
+        if len(sections) == 0:
+            sections.append({
+                "id": 1,
+                "title": "Survey Questions",
+                "description": "All survey questions",
+                "questions": questions
+            })
 
         logger.info(f"🔧 [GenerationService] Grouped {len(questions)} questions into {len(sections)} logical sections")
 
@@ -1207,7 +1667,7 @@ class GenerationService:
 
         return sections
 
-    def _create_minimal_survey(self, response_text: str) -> Dict[str, Any]:
+    def _create_minimal_survey(self, sanitized_text: str) -> Dict[str, Any]:
         """
         Create a minimal valid survey as absolute fallback
         """
@@ -1215,7 +1675,7 @@ class GenerationService:
 
         # Try one last time to extract any text that looks like questions
         import re
-        question_texts = re.findall(r'"([^"]{20,200})"', response_text)
+        question_texts = re.findall(r'"([^"]{20,200})"', sanitized_text)
 
         questions = []
         for i, text in enumerate(question_texts[:10]):  # Max 10 questions
@@ -1243,3 +1703,442 @@ class GenerationService:
             "golden_examples": [],
             "metadata": {"target_responses": 100, "methodology": ["survey"]}
         }
+
+    # ============================================================================
+    # STREAMING GENERATION METHODS (OPTIONAL - DISABLED BY DEFAULT)
+    # ============================================================================
+
+    async def _generate_survey_with_streaming(self, prompt: str, system_prompt: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Generate survey using reliable sync mode (streaming disabled by default)
+        """
+        try:
+            logger.info(f"🚀 [GenerationService] Starting sync survey generation")
+            start_time = time.time()
+
+            # Check if streaming is explicitly enabled via environment variable
+            # Set ENABLE_STREAMING_GENERATION=true to enable streaming (not recommended)
+            enable_streaming = os.getenv('ENABLE_STREAMING_GENERATION', 'false').lower() == 'true'
+            
+            if enable_streaming:
+                logger.info(f"🔄 [GenerationService] Streaming mode enabled via environment variable")
+                # Send initial progress update
+                if self.ws_client and self.workflow_id:
+                    progress_tracker = get_progress_tracker(self.workflow_id)
+                    progress_data = progress_tracker.get_progress_data("llm_processing")
+                    await self.ws_client.send_progress_update(self.workflow_id, progress_data)
+
+                # Try streaming first, fallback to sync if it fails
+                try:
+                    return await self._stream_with_replicate(prompt, start_time)
+                except Exception as streaming_error:
+                    logger.warning(f"⚠️ [GenerationService] Streaming failed: {streaming_error}")
+                    logger.info(f"🔄 [GenerationService] Falling back to sync mode")
+                    return await self._generate_with_sync_fallback(prompt)
+            else:
+                # Use reliable sync mode by default
+                logger.info(f"🔄 [GenerationService] Using reliable sync mode (streaming disabled)")
+                return await self._generate_with_sync_fallback(prompt)
+
+        except Exception as e:
+            logger.error(f"❌ [GenerationService] Generation failed: {str(e)}")
+            # Final fallback to original sync method
+            return await self._generate_with_sync_fallback(prompt)
+
+    async def _stream_with_replicate(self, prompt: str, start_time: float) -> Dict[str, Any]:
+        """Stream content from Replicate with real-time analysis"""
+
+        # Send initial generating_questions progress
+        if self.ws_client and self.workflow_id:
+            progress_tracker = get_progress_tracker(self.workflow_id)
+            progress_data = progress_tracker.get_progress_data("generating_questions")
+            await self.ws_client.send_progress_update(self.workflow_id, progress_data)
+
+        # Create streaming prediction
+        prediction = await self.replicate_client.predictions.async_create(
+            model=self.model,
+            input={
+                "prompt": prompt,
+                "temperature": 0.7,
+                "max_tokens": 8000,
+                "top_p": 0.9
+            },
+            stream=True
+        )
+
+        logger.info(f"📡 [GenerationService] Streaming prediction created: {prediction.id}")
+
+        # Collect streamed content
+        accumulated_content = ""
+        last_analysis_time = start_time
+        event_count = 0
+        output_events = 0
+
+        try:
+            # Stream the response (Replicate returns a sync generator; iterate synchronously)
+            for event in prediction.stream():
+                event_count += 1
+                
+                # Enhanced event type detection with better logging
+                event_type = getattr(event, "event", None) or getattr(event, "type", None)
+                event_data = getattr(event, "data", "")
+                
+                # Log event details for debugging
+                logger.debug(f"🛈 [GenerationService] Event {event_count}: type='{event_type}', data_length={len(str(event_data))}")
+                
+                # Handle different event types more robustly
+                if event_type == 'output' or event_type == 'data' or (not event_type and event_data):
+                    output_events += 1
+                    # Add new content
+                    new_content = str(event_data)
+                    accumulated_content += new_content
+                    
+                    logger.debug(f"📝 [GenerationService] Output event {output_events}: added {len(new_content)} chars, total: {len(accumulated_content)}")
+
+                    current_time = time.time()
+                    elapsed_time = current_time - start_time
+
+                    # Analyze every 2-3 seconds or when significant content is added
+                    if (current_time - last_analysis_time >= 2.5 or
+                        len(new_content) > 100 or
+                        '"text"' in new_content):
+
+                        await self._analyze_streaming_content(accumulated_content, elapsed_time)
+                        last_analysis_time = current_time
+
+                elif event_type == 'error':
+                    logger.error(f"❌ [GenerationService] Streaming error: {event_data}")
+                    raise Exception(f"Streaming error: {event_data}")
+                elif event_type == 'done' or event_type == 'completed':
+                    logger.info(f"✅ [GenerationService] Streaming completed after {event_count} events, {output_events} output events")
+                    break
+                else:
+                    # Non-output events (e.g., logs) can be safely ignored or logged at debug level
+                    logger.debug(f"🛈 [GenerationService] Non-output event: {event_type}")
+
+            # Check if we actually collected any content
+            if not accumulated_content.strip():
+                logger.warning(f"⚠️ [GenerationService] No content collected from streaming after {event_count} events")
+                logger.warning(f"⚠️ [GenerationService] Output events received: {output_events}")
+                
+                # If no content was collected, this is likely a streaming API issue
+                # Fall back to async polling method
+                logger.info(f"🔄 [GenerationService] Falling back to async polling due to empty content")
+                raise Exception("STREAMING_NO_CONTENT")
+
+        except Exception as e:
+            if "STREAMING_NO_CONTENT" in str(e):
+                # Re-raise to trigger fallback
+                raise e
+            else:
+                logger.error(f"❌ [GenerationService] Streaming failed: {str(e)}")
+                raise e
+
+        # Final analysis
+        total_time = time.time() - start_time
+        await self._analyze_streaming_content(accumulated_content, total_time)
+
+        # Validate that we have meaningful content
+        if not accumulated_content.strip() or len(accumulated_content.strip()) < 50:
+            logger.error(f"❌ [GenerationService] Insufficient content collected: {len(accumulated_content)} chars")
+            raise Exception("STREAMING_INSUFFICIENT_CONTENT")
+
+        # Parse and return the result
+        survey_data = self._extract_survey_json(accumulated_content)
+
+        return {
+            "survey": survey_data,
+            "generation_metadata": {
+                "model": self.model,
+                "response_time_ms": int(total_time * 1000),
+                "streaming_enabled": True,
+                "content_length": len(accumulated_content),
+                "event_count": event_count,
+                "output_events": output_events
+            }
+        }
+
+    async def _generate_with_async_polling(self, prompt: str, start_time: float) -> Dict[str, Any]:
+        """Generate using async polling with progress updates"""
+
+        # Send initial generating_questions progress
+        if self.ws_client and self.workflow_id:
+            progress_tracker = get_progress_tracker(self.workflow_id)
+            progress_data = progress_tracker.get_progress_data("generating_questions")
+            await self.ws_client.send_progress_update(self.workflow_id, progress_data)
+
+        # Create prediction without streaming
+        prediction = await self.replicate_client.predictions.async_create(
+            model=self.model,
+            input={
+                "prompt": prompt,
+                "temperature": 0.7,
+                "max_tokens": 8000,
+                "top_p": 0.9
+            }
+        )
+
+        logger.info(f"📡 [GenerationService] Async prediction created: {prediction.id}")
+
+        # Poll with progress updates
+        while prediction.status not in ["succeeded", "failed", "canceled"]:
+            await asyncio.sleep(2)  # Poll every 2 seconds
+            await prediction.async_reload()
+
+            if self.ws_client and self.workflow_id:
+                progress_tracker = get_progress_tracker(self.workflow_id)
+                progress_data = progress_tracker.get_progress_data("llm_processing", "async_polling")
+                progress_data["message"] = f"AI generating survey... {time.time() - start_time:.0f}s elapsed"
+                await self.ws_client.send_progress_update(self.workflow_id, progress_data)
+
+        if prediction.status == "failed":
+            raise Exception(f"Prediction failed: {prediction.error}")
+
+        # Get final result
+        if isinstance(prediction.output, list):
+            output_text = "\n".join(str(item) for item in prediction.output)
+        else:
+            output_text = str(prediction.output)
+
+        survey_data = self._extract_survey_json(output_text)
+
+        total_time = time.time() - start_time
+        return {
+            "survey": survey_data,
+            "generation_metadata": {
+                "model": self.model,
+                "response_time_ms": int(total_time * 1000),
+                "streaming_enabled": False,
+                "async_polling": True
+            }
+        }
+
+    async def _generate_with_sync_fallback(self, prompt: str) -> Dict[str, Any]:
+        """Reliable sync method for survey generation"""
+        logger.info("🔄 [GenerationService] Using reliable sync generation method")
+
+        # Send initial generating_questions progress
+        if self.ws_client and self.workflow_id:
+            progress_tracker = get_progress_tracker(self.workflow_id)
+            progress_data = progress_tracker.get_progress_data("generating_questions")
+            await self.ws_client.send_progress_update(self.workflow_id, progress_data)
+
+        start_time = time.time()
+        
+        # Send progress update for LLM processing
+        if self.ws_client and self.workflow_id:
+            progress_tracker = get_progress_tracker(self.workflow_id)
+            progress_data = progress_tracker.get_progress_data("llm_processing")
+            await self.ws_client.send_progress_update(self.workflow_id, progress_data)
+
+        output = await self.replicate_client.async_run(
+            self.model,
+            input={
+                "prompt": prompt,
+                "temperature": 0.7,
+                "max_tokens": 8000,
+                "top_p": 0.9
+            }
+        )
+
+        if isinstance(output, list):
+            output_text = "\n".join(str(item) for item in output)
+        else:
+            output_text = str(output)
+
+        # Send progress update for parsing
+        if self.ws_client and self.workflow_id:
+            progress_tracker = get_progress_tracker(self.workflow_id)
+            progress_data = progress_tracker.get_progress_data("parsing_output")
+            await self.ws_client.send_progress_update(self.workflow_id, progress_data)
+
+        survey_data = self._extract_survey_json(output_text)
+
+        return {
+            "survey": survey_data,
+            "generation_metadata": {
+                "model": self.model,
+                "response_time_ms": int((time.time() - start_time) * 1000),
+                "streaming_enabled": False,
+                "sync_mode": True,
+                "raw_response": output_text,
+                "content_length": len(output_text)
+            }
+        }
+
+    # ============================================================================
+    # STREAMING ANALYSIS METHODS
+    # ============================================================================
+
+    async def _analyze_streaming_content(self, partial_content: str, elapsed_time: float = 0) -> None:
+        """
+        Analyze partial JSON content and send meaningful progress updates
+        """
+        try:
+            # Extract meaningful data from partial content
+            questions = self._extract_questions_from_partial(partial_content)
+            sections = self._extract_sections_from_partial(partial_content)
+            title = self._extract_title_from_partial(partial_content)
+
+            # Determine current activity
+            activity = self._determine_current_activity(partial_content, len(questions), len(sections), elapsed_time)
+
+            # Calculate estimated progress
+            estimated_progress = self._calculate_streaming_progress(len(questions), len(sections), elapsed_time)
+
+            # Send detailed WebSocket update
+            if self.ws_client and self.workflow_id:
+                progress_tracker = get_progress_tracker(self.workflow_id)
+                progress_data = progress_tracker.get_progress_data("llm_processing", "streaming")
+                await self.ws_client.send_progress_update(self.workflow_id, {
+                    "type": "llm_content_update",
+                    "step": "llm_processing",
+                    "percent": progress_data["percent"],
+                    "data": {
+                        "questionCount": len(questions),
+                        "sectionCount": len(sections),
+                        "currentActivity": activity,
+                        "latestQuestions": [
+                            {
+                                "text": q.get("text", ""),
+                                "type": q.get("type", "text"),
+                                "hasOptions": len(q.get("options", [])) > 0
+                            } for q in questions[-3:]  # Last 3 questions
+                        ],
+                        "currentSections": [
+                            {
+                                "title": s.get("title", ""),
+                                "questionCount": len(s.get("questions", []))
+                            } for s in sections
+                        ],
+                        "surveyTitle": title,
+                        "estimatedProgress": estimated_progress,
+                        "elapsedTime": elapsed_time
+                    },
+                    "message": f"Generated {len(questions)} questions across {len(sections)} sections"
+                })
+                logger.info(f"📊 [GenerationService] Streaming update sent: {len(questions)} questions, {len(sections)} sections")
+
+        except Exception as e:
+            logger.warning(f"⚠️ [GenerationService] Failed to analyze streaming content: {str(e)}")
+
+    def _extract_questions_from_partial(self, partial_content: str) -> List[Dict[str, Any]]:
+        """Extract question objects from partial JSON content"""
+        questions = []
+
+        try:
+            # Look for complete question objects
+            question_pattern = r'\{\s*"id"\s*:\s*"[^"]*"\s*,\s*"text"\s*:\s*"([^"]+)"\s*,\s*"type"\s*:\s*"([^"]*)"[^}]*\}'
+            matches = re.finditer(question_pattern, partial_content, re.DOTALL)
+
+            for match in matches:
+                question_text = match.group(1)
+                question_type = match.group(2)
+
+                # Extract options if present
+                question_obj = {
+                    "text": question_text,
+                    "type": question_type,
+                    "options": []
+                }
+
+                # Look for options array near this question
+                options_pattern = r'"options"\s*:\s*\[([^\]]*)\]'
+                options_match = re.search(options_pattern, match.group(0))
+                if options_match:
+                    options_content = options_match.group(1)
+                    options = re.findall(r'"([^"]*)"', options_content)
+                    question_obj["options"] = options
+
+                questions.append(question_obj)
+
+        except Exception as e:
+            logger.debug(f"Question extraction error: {e}")
+
+        return questions
+
+    def _extract_sections_from_partial(self, partial_content: str) -> List[Dict[str, Any]]:
+        """Extract section objects from partial JSON content"""
+        sections = []
+
+        try:
+            # Look for section objects with title and questions
+            section_pattern = r'\{\s*"id"\s*:\s*[^,]*,\s*"title"\s*:\s*"([^"]+)"[^}]*"questions"\s*:\s*\[([^\]]*)\]'
+            matches = re.finditer(section_pattern, partial_content, re.DOTALL)
+
+            for match in matches:
+                section_title = match.group(1)
+                questions_content = match.group(2)
+
+                # Count questions in this section
+                question_count = len(re.findall(r'\{[^}]*"text"[^}]*\}', questions_content))
+
+                sections.append({
+                    "title": section_title,
+                    "questions": [],  # Don't need full questions, just metadata
+                    "questionCount": question_count
+                })
+
+        except Exception as e:
+            logger.debug(f"Section extraction error: {e}")
+
+        return sections
+
+    def _extract_title_from_partial(self, partial_content: str) -> Optional[str]:
+        """Extract survey title from partial JSON content"""
+        try:
+            title_match = re.search(r'"title"\s*:\s*"([^"]+)"', partial_content)
+            return title_match.group(1) if title_match else None
+        except Exception:
+            return None
+
+    def _determine_current_activity(self, content: str, question_count: int, section_count: int, elapsed_time: float) -> str:
+        """Determine what the AI is currently working on based on content analysis"""
+
+        # Check recent content (last 500 chars) for activity clues
+        recent_content = content[-500:] if len(content) > 500 else content
+
+        # Activity determination logic
+        if elapsed_time < 5:
+            return "Initializing survey generation..."
+        elif '"title"' in content and '"description"' in content and question_count == 0:
+            return "Creating survey title and description..."
+        elif section_count == 0 and question_count == 0:
+            return "Structuring survey framework..."
+        elif section_count == 1 and question_count < 3:
+            return "Generating opening questions..."
+        elif '"options"' in recent_content:
+            return "Adding multiple choice options..."
+        elif question_count < 8:
+            return f"Developing questions for section {section_count}..."
+        elif '"type"' in recent_content:
+            return "Configuring question types and validation..."
+        elif question_count >= 8:
+            return "Finalizing survey structure and metadata..."
+        else:
+            return f"Building comprehensive survey content..."
+
+    def _calculate_streaming_progress(self, question_count: int, section_count: int, elapsed_time: float) -> float:
+        """Calculate estimated progress based on content analysis"""
+
+        # Base progress on actual content generated
+        content_progress = 0
+
+        # Question count contribution (0-60%)
+        if question_count > 0:
+            # Assume target of ~15 questions for full survey
+            question_progress = min(60, int((question_count / 15.0) * 60))
+            content_progress += question_progress
+
+        # Section count contribution (0-20%)
+        if section_count > 0:
+            # Assume target of ~3-4 sections
+            section_progress = min(20, int((section_count / 4.0) * 20))
+            content_progress += section_progress
+
+        # Time-based progress (0-20%)
+        # Assume typical generation takes 30-60 seconds
+        time_progress = min(20, int((elapsed_time / 45.0) * 20))
+        content_progress += time_progress
+
+        return min(100, content_progress)

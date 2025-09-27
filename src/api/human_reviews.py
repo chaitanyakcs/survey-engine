@@ -12,6 +12,7 @@ from sqlalchemy import and_, desc
 
 from ..models.human_review import HumanReviewCreate, HumanReviewUpdate, HumanReviewResponse, ReviewDecision, PendingReviewsSummary, ReviewStatus, EditPromptRequest
 from ..database import get_db, HumanReview
+from ..services.progress_tracker import get_progress_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -431,12 +432,9 @@ async def resume_paused_workflow(workflow_id: str, db: Session):
                 # Send notification that workflow is resuming
                 from src.main import manager  # Import the connection manager
                 ws_client = WebSocketNotificationService(manager)
-                await ws_client.send_progress_update(workflow_id, {
-                    "type": "progress",
-                    "step": "resuming_generation",
-                    "percent": 60,
-                    "message": "Human review approved - resuming survey generation..."
-                })
+                progress_data = get_progress_tracker(workflow_id).get_progress_data("generating_questions")
+                progress_data["message"] = "Human review approved - resuming survey generation..."
+                await ws_client.send_progress_update(workflow_id, progress_data)
 
                 # Get the effective prompt from the review (edited or original)
                 effective_prompt = get_effective_prompt(review)
@@ -485,14 +483,11 @@ async def resume_paused_workflow(workflow_id: str, db: Session):
                     workflow_service = WorkflowService(db, manager)
                     
                     # Send notification that workflow is about to resume
-                    await ws_client.send_progress_update(workflow_id, {
-                        "type": "workflow_resuming",
-                        "step": "resuming_generation",
-                        "percent": 60,
-                        "message": "Human review approved - resuming survey generation...",
-                        "workflow_paused": False,
-                        "pending_human_review": False
-                    })
+                    progress_data = get_progress_tracker(workflow_id).get_progress_data("generating_questions")
+                    progress_data["message"] = "Human review approved - resuming survey generation..."
+                    progress_data["workflow_paused"] = False
+                    progress_data["pending_human_review"] = False
+                    await ws_client.send_progress_update(workflow_id, progress_data)
 
                     # Execute the remaining workflow steps directly
                     asyncio.create_task(

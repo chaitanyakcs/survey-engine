@@ -75,79 +75,100 @@ class EvaluatorService:
         """
         logger.info("🏛️ [EvaluatorService] Starting comprehensive survey evaluation...")
 
-        # Send initial progress update
-        await self._send_progress_update(75, "Starting comprehensive quality evaluation...", "validation_scoring")
+        # Send initial progress update using ProgressTracker
+        if self.workflow_id:
+            from src.services.progress_tracker import get_progress_tracker
+            progress_tracker = get_progress_tracker(self.workflow_id)
+            progress_data = progress_tracker.get_progress_data("validation_scoring")
+            progress_data["message"] = "Starting comprehensive quality evaluation..."
+            await self._send_progress_update_with_data(progress_data)
 
         try:
             # Try evaluation methods in order of preference
             result = await self._try_evaluation_chain(survey_data, rfq_text)
 
-            # Send completion progress
-            await self._send_progress_update(95, "Quality evaluation completed successfully!", "validation_scoring")
+            # Send completion progress using ProgressTracker
+            if self.workflow_id:
+                from src.services.progress_tracker import get_progress_tracker
+                progress_tracker = get_progress_tracker(self.workflow_id)
+                progress_data = progress_tracker.get_progress_data("validation_scoring")
+                progress_data["message"] = "Quality evaluation completed successfully!"
+                await self._send_progress_update_with_data(progress_data)
 
             logger.info(f"✅ [EvaluatorService] Evaluation completed: {result.get('overall_grade', 'N/A')} ({result.get('weighted_score', 0):.1%})")
             return result
 
         except Exception as e:
             logger.error(f"❌ [EvaluatorService] Evaluation failed: {str(e)}")
-            await self._send_progress_update(90, "Evaluation encountered issues, using basic scoring...", "fallback_evaluation")
+            if self.workflow_id:
+                from src.services.progress_tracker import get_progress_tracker
+                progress_tracker = get_progress_tracker(self.workflow_id)
+                progress_data = progress_tracker.get_progress_data("validation_scoring")
+                progress_data["message"] = "Evaluation encountered issues, using basic scoring..."
+                await self._send_progress_update_with_data(progress_data)
 
             # Return basic fallback scores
             return self._create_fallback_scores(survey_data)
 
     async def _try_evaluation_chain(self, survey_data: Dict[str, Any], rfq_text: str) -> Dict[str, Any]:
-        """Try evaluation methods in order: single-call → API → legacy → basic"""
+        """Try evaluation methods in order: single-call → legacy → basic (no multi-call)."""
 
-        # Get evaluation mode from settings
-        evaluation_mode = "single_call"  # Default to cost-effective mode
-        try:
-            if self.db_session:
-                from src.services.settings_service import SettingsService
-                settings_service = SettingsService(self.db_session)
-                eval_settings = settings_service.get_evaluation_settings()
-                evaluation_mode = eval_settings.get('evaluation_mode', 'single_call')
-        except Exception as e:
-            logger.warning(f"⚠️ [EvaluatorService] Failed to get evaluation mode: {e}")
+        # Force single-call mode regardless of DB settings to avoid multiple LLM calls
+        evaluation_mode = "single_call"
 
         # Try 1: Single-call evaluation (cost efficient)
         if evaluation_mode == "single_call":
             try:
-                await self._send_progress_update(78, "Running AI-powered comprehensive quality assessment", "single_call_evaluator")
+                if self.workflow_id:
+                    from src.services.progress_tracker import get_progress_tracker
+                    progress_tracker = get_progress_tracker(self.workflow_id)
+                    progress_data = progress_tracker.get_progress_data("evaluating_pillars", "single_call_evaluator")
+                    progress_data["message"] = "Running AI-powered comprehensive quality assessment"
+                    await self._send_progress_update_with_data(progress_data)
                 result = await self._evaluate_with_single_call(survey_data, rfq_text)
                 if result:
+                    # Send pillar scores analysis progress
+                    if self.workflow_id:
+                        from src.services.progress_tracker import get_progress_tracker
+                        progress_tracker = get_progress_tracker(self.workflow_id)
+                        progress_data = progress_tracker.get_progress_data("evaluating_pillars", "pillar_scores_analysis")
+                        progress_data["message"] = "Analyzing pillar scores and methodological rigor"
+                        await self._send_progress_update_with_data(progress_data)
                     return result
             except Exception as e:
                 logger.warning(f"⚠️ [EvaluatorService] Single-call evaluation failed: {e}")
+                # Send advanced evaluation progress for fallback
+                if self.workflow_id:
+                    from src.services.progress_tracker import get_progress_tracker
+                    progress_tracker = get_progress_tracker(self.workflow_id)
+                    progress_data = progress_tracker.get_progress_data("evaluating_pillars", "advanced_evaluation")
+                    progress_data["message"] = "Running advanced quality assessment"
+                    await self._send_progress_update_with_data(progress_data)
 
-        # Try 2: Advanced multi-call evaluation
-        try:
-            await self._send_progress_update(82, "Analyzing methodological rigor, content validity, and clarity", "pillar_scores_analysis")
-            result = await self._evaluate_with_advanced_system(survey_data, rfq_text)
-            if result:
-                return result
-        except Exception as e:
-            logger.warning(f"⚠️ [EvaluatorService] Advanced evaluation failed: {e}")
+        # Skip advanced multi-call and API-based evaluations to prevent 5 separate LLM calls
 
-        # Try 3: Pillar-scores API
+        # Try 2: Legacy evaluation system (local, non-LLM)
         try:
-            await self._send_progress_update(85, "Analyzing methodological rigor, content validity, and clarity", "pillar_scores_analysis")
-            result = await self._evaluate_with_api(survey_data, rfq_text)
-            if result:
-                return result
-        except Exception as e:
-            logger.warning(f"⚠️ [EvaluatorService] API evaluation failed: {e}")
-
-        # Try 4: Legacy evaluation system
-        try:
-            await self._send_progress_update(88, "Ensuring evaluation completeness and reliability", "fallback_evaluation")
+            if self.workflow_id:
+                from src.services.progress_tracker import get_progress_tracker
+                progress_tracker = get_progress_tracker(self.workflow_id)
+                progress_data = progress_tracker.get_progress_data("evaluating_pillars", "legacy_evaluation")
+                progress_data["message"] = "Using legacy evaluation methods"
+                await self._send_progress_update_with_data(progress_data)
             result = await self._evaluate_with_legacy(survey_data, rfq_text)
             if result:
                 return result
         except Exception as e:
             logger.warning(f"⚠️ [EvaluatorService] Legacy evaluation failed: {e}")
 
-        # Fallback: Basic scores
+        # Fallback: Basic scores (local)
         logger.warning("🚨 [EvaluatorService] All evaluation methods failed, using basic fallback")
+        if self.workflow_id:
+            from src.services.progress_tracker import get_progress_tracker
+            progress_tracker = get_progress_tracker(self.workflow_id)
+            progress_data = progress_tracker.get_progress_data("evaluating_pillars", "fallback_evaluation")
+            progress_data["message"] = "Ensuring evaluation completeness and reliability"
+            await self._send_progress_update_with_data(progress_data)
         return self._create_fallback_scores(survey_data)
 
     async def _evaluate_with_single_call(self, survey_data: Dict[str, Any], rfq_text: str) -> Optional[Dict[str, Any]]:
@@ -188,7 +209,8 @@ class EvaluatorService:
         """Evaluation using pillar-scores API"""
         try:
             from src.api.pillar_scores import _evaluate_with_advanced_system
-            result = await _evaluate_with_advanced_system(survey_data, rfq_text, self.db_session)
+            # Prevent circular fallback by disabling aira_v1
+            result = await _evaluate_with_advanced_system(survey_data, rfq_text, self.db_session, allow_aira_v1=False)
             return self._format_api_result(result)
         except Exception as e:
             logger.error(f"❌ [EvaluatorService] API evaluation error: {e}")
@@ -478,6 +500,14 @@ class EvaluatorService:
                     "percent": percent,
                     "message": message
                 })
+            except Exception as e:
+                logger.warning(f"⚠️ [EvaluatorService] Failed to send progress update: {e}")
+
+    async def _send_progress_update_with_data(self, progress_data: dict):
+        """Send progress update using complete progress data from ProgressTracker"""
+        if self.ws_client and self.workflow_id:
+            try:
+                await self.ws_client.send_progress_update(self.workflow_id, progress_data)
             except Exception as e:
                 logger.warning(f"⚠️ [EvaluatorService] Failed to send progress update: {e}")
 

@@ -14,7 +14,7 @@ import {
 } from '@heroicons/react/24/outline';
 
 interface EvaluationSettings {
-  evaluation_mode: 'single_call' | 'multiple_calls' | 'hybrid';
+  evaluation_mode: 'single_call' | 'multiple_calls' | 'hybrid' | 'aira_v1';
   enable_cost_tracking: boolean;
   enable_parallel_processing: boolean;
   enable_ab_testing: boolean;
@@ -28,6 +28,10 @@ interface EvaluationSettings {
   require_approval_for_generation: boolean;
   auto_approve_trusted_prompts: boolean;
   prompt_review_timeout_hours: number;
+  
+  // LLM Evaluation Settings
+  enable_llm_evaluation: boolean;
+  
   // Model configuration
   generation_model: string;
   evaluation_model: string;
@@ -35,7 +39,6 @@ interface EvaluationSettings {
 }
 
 interface RFQParsingSettings {
-  auto_apply_threshold: number;
   parsing_model: string;
 }
 
@@ -60,6 +63,10 @@ export const SettingsPage: React.FC = () => {
     require_approval_for_generation: false,
     auto_approve_trusted_prompts: false,
     prompt_review_timeout_hours: 24,
+    
+    // LLM Evaluation Settings
+    enable_llm_evaluation: true,
+    
     generation_model: 'openai/gpt-5',
     evaluation_model: 'openai/gpt-5',
     embedding_model: 'all-MiniLM-L6-v2'
@@ -67,7 +74,7 @@ export const SettingsPage: React.FC = () => {
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [rfqParsing, setRfqParsing] = useState<RFQParsingSettings>({ auto_apply_threshold: 0.8, parsing_model: 'openai/gpt-4o-mini' });
+  const [rfqParsing, setRfqParsing] = useState<RFQParsingSettings>({ parsing_model: 'openai/gpt-4o-mini' });
   const [rfqModels, setRfqModels] = useState<string[]>([]);
   const [generationModels, setGenerationModels] = useState<string[]>([]);
   const [evaluationModels, setEvaluationModels] = useState<string[]>([]);
@@ -177,7 +184,8 @@ export const SettingsPage: React.FC = () => {
       const response = await fetch('/api/v1/settings/generation/models');
       if (response.ok) {
         const data = await response.json();
-        setGenerationModels(data);
+        // Filter out any Anthropics/Claude models if present
+        setGenerationModels(data.filter((m: string) => !m.toLowerCase().includes('anthropic') && !m.toLowerCase().includes('claude')));
       }
     } catch (error) {
       console.error('Failed to fetch generation models:', error);
@@ -189,7 +197,8 @@ export const SettingsPage: React.FC = () => {
       const response = await fetch('/api/v1/settings/evaluation/models');
       if (response.ok) {
         const data = await response.json();
-        setEvaluationModels(data);
+        // Filter out any Anthropics/Claude models if present
+        setEvaluationModels(data.filter((m: string) => !m.toLowerCase().includes('anthropic') && !m.toLowerCase().includes('claude')));
       }
     } catch (error) {
       console.error('Failed to fetch evaluation models:', error);
@@ -236,6 +245,9 @@ export const SettingsPage: React.FC = () => {
       require_approval_for_generation: false,
       auto_approve_trusted_prompts: false,
       prompt_review_timeout_hours: 24,
+      
+      // LLM Evaluation Settings
+      enable_llm_evaluation: true,
       
       // Model configuration
       generation_model: 'openai/gpt-4o-mini',
@@ -374,21 +386,6 @@ export const SettingsPage: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Auto-apply threshold */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Auto-apply Threshold (0-1)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    value={rfqParsing.auto_apply_threshold}
-                    onChange={(e) => setRfqParsing({ ...rfqParsing, auto_apply_threshold: Number(e.target.value) })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Fields with confidence ≥ threshold are auto-filled.</p>
-                </div>
-
                 {/* Parsing Model */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">LLM Model for Parsing</label>
@@ -580,9 +577,68 @@ export const SettingsPage: React.FC = () => {
               )}
             </div>
 
+            {/* LLM Evaluation Settings */}
+            <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6">
+              <div className="flex items-center space-x-3 mb-6">
+                <ChartBarIcon className="w-6 h-6 text-blue-600" />
+                <h2 className="text-xl font-semibold text-gray-900">LLM Evaluation Settings</h2>
+              </div>
+              
+              {/* Enable LLM Evaluation */}
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl mb-6">
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900">Enable LLM Evaluation</h3>
+                  <p className="text-gray-600">Run AI-powered quality evaluation on generated surveys using pillar-based scoring</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.enable_llm_evaluation}
+                    onChange={(e) => setSettings({ ...settings, enable_llm_evaluation: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-blue-500 peer-checked:to-indigo-500"></div>
+                </label>
+              </div>
+
+              {!settings.enable_llm_evaluation && (
+                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
+                  <div className="flex items-start space-x-3">
+                    <InformationCircleIcon className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <h4 className="text-sm font-medium text-yellow-800">LLM Evaluation Disabled</h4>
+                      <p className="text-sm text-yellow-700 mt-1">
+                        When disabled, surveys will be generated without AI quality evaluation. 
+                        This will speed up generation but skip pillar-based quality scoring.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Survey Evaluation Mode */}
             <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-6">Survey Evaluation</h2>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-gray-900">Survey Evaluation</h2>
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm text-gray-500">Current Mode:</span>
+                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                    settings.evaluation_mode === 'single_call' 
+                      ? 'bg-green-100 text-green-800'
+                      : settings.evaluation_mode === 'aira_v1'
+                      ? 'bg-purple-100 text-purple-800'
+                      : settings.evaluation_mode === 'multiple_calls'
+                      ? 'bg-blue-100 text-blue-800'
+                      : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {settings.evaluation_mode === 'single_call' ? 'Single Call' :
+                     settings.evaluation_mode === 'aira_v1' ? 'AiRA v1 Framework' :
+                     settings.evaluation_mode === 'multiple_calls' ? 'Parallel Evaluation' :
+                     settings.evaluation_mode}
+                  </span>
+                </div>
+              </div>
               
               <div className="space-y-4">
                 {[
@@ -594,15 +650,6 @@ export const SettingsPage: React.FC = () => {
                     icon: <CheckCircleIcon className="w-6 h-6 text-green-600" />,
                     pros: ['Fastest evaluation', 'Lower API costs', 'Consistent scoring'],
                     cons: ['Less granular feedback']
-                  },
-                  {
-                    value: 'multiple_calls',
-                    title: 'Parallel Evaluation',
-                    description: 'Separate AI evaluations for each quality pillar running in parallel. More detailed analysis.',
-                    color: 'blue',
-                    icon: <CogIcon className="w-6 h-6 text-blue-600" />,
-                    pros: ['Detailed pillar feedback', 'Parallel processing', 'Specialized analysis'],
-                    cons: ['Higher API costs', 'Slightly slower']
                   }
                 ].map((mode) => (
                   <div
@@ -610,9 +657,13 @@ export const SettingsPage: React.FC = () => {
                     className={`border-2 rounded-xl p-4 cursor-pointer transition-all duration-200 ${
                       settings.evaluation_mode === mode.value
                         ? mode.color === 'green' 
-                          ? 'border-yellow-500 bg-gradient-to-br from-yellow-50 to-amber-50'
+                          ? 'border-green-500 bg-gradient-to-br from-green-50 to-emerald-50'
+                          : mode.color === 'purple'
+                          ? 'border-purple-500 bg-gradient-to-br from-purple-50 to-violet-50'
+                          : mode.color === 'blue'
+                          ? 'border-blue-500 bg-gradient-to-br from-blue-50 to-cyan-50'
                           : 'border-amber-500 bg-gradient-to-br from-amber-50 to-orange-50'
-                        : 'border-gray-200 hover:border-yellow-300 hover:bg-yellow-50'
+                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                     }`}
                     onClick={() => setSettings({ ...settings, evaluation_mode: mode.value as any })}
                   >
@@ -655,26 +706,7 @@ export const SettingsPage: React.FC = () => {
                 ))}
               </div>
 
-              {/* Parallel Processing Toggle */}
-              {settings.evaluation_mode === 'multiple_calls' && (
-                <div className="mt-6 p-4 bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl border border-yellow-200">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-lg font-medium text-gray-900">Enable Parallel Processing</h3>
-                      <p className="text-gray-600">Run pillar evaluations simultaneously for faster results</p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={settings.enable_parallel_processing}
-                        onChange={(e) => setSettings({ ...settings, enable_parallel_processing: e.target.checked })}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-yellow-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-yellow-500 peer-checked:to-amber-500"></div>
-                    </label>
-                  </div>
-                </div>
-              )}
+              {/* Multiple calls and AiRA v1 UI removed */}
             </div>
 
             {/* Information Panel */}
