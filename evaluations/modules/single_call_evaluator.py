@@ -65,7 +65,7 @@ class SingleCallEvaluator:
             
             # Make single LLM call
             if self.llm_client:
-                response = await self.llm_client.analyze(prompt, max_tokens=4000)
+                response = await self.llm_client.analyze(prompt, max_tokens=4000, parent_survey_id=survey_id, parent_rfq_id=rfq_id)
                 if response.success:
                     try:
                         # Try to parse JSON response
@@ -97,14 +97,6 @@ class SingleCallEvaluator:
     async def _build_comprehensive_prompt(self, survey: Dict[str, Any], rfq_text: str, survey_id: str, rfq_id: str) -> str:
         """Build comprehensive prompt for single-call evaluation"""
         
-        # Get pillar rules context
-        pillar_rules_context = ""
-        if self.pillar_rules_service:
-            try:
-                pillar_rules_context = self.pillar_rules_service.get_comprehensive_evaluation_context()
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to load pillar rules: {e}")
-        
         # Extract questions for analysis
         questions = extract_all_questions(survey)
         questions_text = "\n".join([f"{i+1}. {q.get('text', '')} (Type: {q.get('type', 'unknown')})" for i, q in enumerate(questions)])
@@ -121,49 +113,18 @@ RFQ CONTEXT:
 SURVEY QUESTIONS:
 {questions_text}
 
-PILLAR RULES CONTEXT:
-{pillar_rules_context}
+EVALUATION PILLARS (with weights):
+1. CONTENT VALIDITY (20%) - Does the survey address research objectives?
+2. METHODOLOGICAL RIGOR (25%) - Is the methodology sound and unbiased?
+3. CLARITY & COMPREHENSIBILITY (25%) - Are questions clear and understandable?
+4. STRUCTURAL COHERENCE (20%) - Is the structure logical and well-organized?
+5. DEPLOYMENT READINESS (10%) - Is the survey ready to deploy?
 
-EVALUATION FRAMEWORK:
-Evaluate all 5 pillars and provide scores (0.0-1.0) and detailed analysis:
-
-1. CONTENT VALIDITY (20% weight) - Does the survey address the research objectives?
-   - Objective coverage and alignment with RFQ
-   - Research goal fulfillment
-   - Question relevance to stated objectives
-   - Coverage gaps and over-coverage areas
-
-2. METHODOLOGICAL RIGOR (25% weight) - Is the methodology sound?
-   - Bias detection and prevention (leading questions, social desirability, etc.)
-   - Question sequencing and logical flow
-   - Methodology compliance (screening, warm-up, sensitive questions placement)
-   - Statistical power considerations and sample size alignment
-
-3. CLARITY & COMPREHENSIBILITY (25% weight) - Are questions clear and understandable?
-   - Language clarity and simplicity
-   - Question wording quality and precision
-   - Response format clarity and consistency
-   - Accessibility considerations and readability
-
-4. STRUCTURAL COHERENCE (20% weight) - Is the structure logical and well-organized?
-   - Logical flow and progression from general to specific
-   - Question type appropriateness for data needed
-   - Scale consistency and response format standardization
-   - Section organization and topic grouping
-
-5. DEPLOYMENT READINESS (10% weight) - Is the survey ready to deploy?
-   - Technical completeness and functionality
-   - User experience quality and navigation
-   - Implementation readiness and technical requirements
-   - Quality assurance and testing considerations
-
-ANALYSIS REQUIREMENTS:
-- Provide specific scores (0.0-1.0) for each pillar
+EVALUATION PROCESS:
+- Score each pillar 0.0-1.0 (1.0 = perfect adherence)
+- Provide specific examples of compliance/non-compliance
 - Calculate weighted overall score
-- Identify specific strengths and weaknesses per pillar
-- Provide actionable recommendations for improvement
-- Highlight cross-pillar insights and interdependencies
-- Consider the target audience and research context
+- Generate actionable recommendations
 
 RESPOND WITH JSON:
 {{

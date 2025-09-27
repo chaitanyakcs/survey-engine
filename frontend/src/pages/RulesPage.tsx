@@ -5,7 +5,7 @@ import { useSidebarLayout } from '../hooks/useSidebarLayout';
 import { ToastContainer } from '../components/Toast';
 import { useAppStore } from '../store/useAppStore';
 import { MethodologyRules } from '../components/MethodologyRules';
-import { QualityRules } from '../components/QualityRules';
+// QualityRules component removed - replaced by comprehensive generation rules system
 import { PillarRulesSection } from '../components/PillarRulesSection';
 import { SystemPromptComponent } from '../components/SystemPrompt';
 
@@ -17,16 +17,7 @@ interface MethodologyRule {
   best_practices?: string[];
 }
 
-interface QualityRuleItem {
-  id: string;
-  text: string;
-  created_at?: string;
-  updated_at?: string;
-}
-
-interface QualityRule {
-  [category: string]: QualityRuleItem[];
-}
+// QualityRule interfaces removed - replaced by comprehensive generation rules system
 
 interface SystemPrompt {
   id: string;
@@ -38,7 +29,7 @@ interface SystemPrompt {
 export const RulesPage: React.FC = () => {
   const { toasts, removeToast, addToast } = useAppStore();
   const [methodologies, setMethodologies] = useState<Record<string, MethodologyRule>>({});
-  const [qualityRules, setQualityRules] = useState<QualityRule>({});
+  // Quality rules state removed - replaced by comprehensive generation rules system
   const [systemPrompt, setSystemPrompt] = useState<SystemPrompt>({ id: '', prompt_text: '', created_at: '', updated_at: '' });
   const [loading, setLoading] = useState(true);
   const { mainContentClasses } = useSidebarLayout();
@@ -56,9 +47,9 @@ export const RulesPage: React.FC = () => {
   // Collapse/expand states for sections
   const [expandedSections, setExpandedSections] = useState({
     methodology: false,
-    quality: false,
     pillars: false,
     systemPrompt: false
+    // quality section removed - replaced by comprehensive generation rules system
   });
 
   const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings') => {
@@ -71,24 +62,7 @@ export const RulesPage: React.FC = () => {
     }
   };
 
-  const fetchQualityRules = useCallback(async () => {
-    try {
-      const timestamp = new Date().getTime();
-      const qualityRes = await fetch(`/api/v1/rules/quality-rules?t=${timestamp}`, {
-        method: 'GET',
-        headers: {
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
-        }
-      });
-      if (qualityRes.ok) {
-        const qualityData = await qualityRes.json();
-        setQualityRules(qualityData);
-      }
-    } catch (error) {
-      console.error('Failed to fetch quality rules:', error);
-    }
-  }, []);
+  // fetchQualityRules function removed - replaced by comprehensive generation rules system
 
   const fetchRules = useCallback(async (isRetry = false) => {
     try {
@@ -111,16 +85,8 @@ export const RulesPage: React.FC = () => {
       const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
       
       try {
-        const [methodologiesRes, qualityRes, systemPromptRes] = await Promise.all([
+        const [methodologiesRes, systemPromptRes] = await Promise.all([
           fetch(`/api/v1/rules/methodologies?t=${timestamp}`, {
-            method: 'GET',
-            headers: {
-              'Cache-Control': 'no-cache',
-              'Pragma': 'no-cache'
-            },
-            signal: controller.signal
-          }),
-          fetch(`/api/v1/rules/quality-rules?t=${timestamp}`, {
             method: 'GET',
             headers: {
               'Cache-Control': 'no-cache',
@@ -137,18 +103,17 @@ export const RulesPage: React.FC = () => {
             signal: controller.signal
           })
         ]);
+        // Quality rules fetch removed - replaced by comprehensive generation rules system
 
         clearTimeout(timeoutId);
 
-        if (!methodologiesRes.ok || !qualityRes.ok) {
+        if (!methodologiesRes.ok) {
           throw new Error('Failed to fetch rules');
         }
 
         const methodologiesData = await methodologiesRes.json();
-        const qualityData = await qualityRes.json();
-
         setMethodologies(methodologiesData.rules || {});
-        setQualityRules(qualityData);
+        // Quality rules processing removed - replaced by comprehensive generation rules system
 
         // Fetch system prompt
         if (systemPromptRes.ok) {
@@ -193,7 +158,7 @@ export const RulesPage: React.FC = () => {
     fetchRules();
   }, [fetchRules]);
 
-  const toggleSection = (section: 'methodology' | 'quality' | 'pillars' | 'systemPrompt') => {
+  const toggleSection = (section: 'methodology' | 'pillars' | 'systemPrompt') => {
     setExpandedSections(prev => ({
       ...prev,
       [section]: !prev[section]
@@ -343,44 +308,7 @@ export const RulesPage: React.FC = () => {
               )}
             </div>
 
-            {/* Quality Rules */}
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 overflow-hidden hover:shadow-xl transition-all duration-300">
-              <div 
-                className="bg-gradient-to-r from-yellow-500 via-amber-500 to-orange-500 px-6 py-6 text-white cursor-pointer"
-                onClick={() => toggleSection('quality')}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <h2 className="text-2xl font-bold">Quality Standards</h2>
-                      <p className="text-amber-100 mt-1">Customizable quality rules for survey generation</p>
-                    </div>
-                  </div>
-                  <ChevronDownIcon 
-                    className={`w-6 h-6 transition-transform duration-200 ${
-                      expandedSections.quality ? 'rotate-180' : ''
-                    }`} 
-                  />
-                </div>
-              </div>
-              {expandedSections.quality && (
-                <div className="p-6">
-                  <QualityRules
-                    qualityRules={qualityRules}
-                    onUpdateQualityRules={setQualityRules}
-                    onFetchQualityRules={fetchQualityRules}
-                    saving={saving}
-                    setSaving={setSaving}
-                    onShowDeleteConfirm={showDeleteConfirm}
-                  />
-                </div>
-              )}
-            </div>
+            {/* Quality Rules section removed - replaced by comprehensive generation rules system */}
 
             {/* Pillar Rules */}
             <PillarRulesSection

@@ -120,7 +120,9 @@ class ContextBuilderNode:
             logger.info(f"🔍 [ContextBuilderNode] RFQ ID: {state.rfq_id}")
             
             context = {
-                "survey_id": str(state.survey_id) if state.survey_id else None,
+                # Note: survey_id is used only for audit tracking, not content generation
+                "audit_survey_id": str(state.survey_id) if state.survey_id else None,
+                "workflow_id": str(state.workflow_id) if state.workflow_id else None,
                 "rfq_id": str(state.rfq_id) if state.rfq_id else None,
                 "rfq_details": {
                     "text": state.rfq_text,
@@ -134,15 +136,16 @@ class ContextBuilderNode:
                 "template_fallbacks": state.template_questions
             }
             
-            logger.info(f"🔍 [ContextBuilderNode] Final context survey_id: {context.get('survey_id')}")
+            logger.info(f"🔍 [ContextBuilderNode] Final context audit_survey_id: {context.get('audit_survey_id')}")
             logger.info(f"🔍 [ContextBuilderNode] Context keys: {list(context.keys())}")
-            
+
             # Update the state with the context
             state.context = context
-            
+
             # Log the context details for debugging
             logger.info(f"🔍 [ContextBuilderNode] Context built successfully")
-            logger.info(f"🔍 [ContextBuilderNode] Survey ID in context: {context.get('survey_id')}")
+            logger.info(f"🔍 [ContextBuilderNode] Audit Survey ID in context: {context.get('audit_survey_id')}")
+            logger.info(f"🔍 [ContextBuilderNode] Workflow ID in context: {context.get('workflow_id')}")
             logger.info(f"🔍 [ContextBuilderNode] Context keys: {list(context.keys())}")
             logger.info(f"🔍 [ContextBuilderNode] State survey_id: {state.survey_id}")
             logger.info(f"🔍 [ContextBuilderNode] State context keys: {list(state.context.keys()) if state.context else 'None'}")
@@ -221,7 +224,7 @@ class GeneratorAgent:
             self.logger.info(f"🔍 [GeneratorAgent] About to call generation service with context:")
             self.logger.info(f"🔍 [GeneratorAgent] Context type: {type(state.context)}")
             self.logger.info(f"🔍 [GeneratorAgent] Context keys: {list(state.context.keys()) if state.context else 'None'}")
-            self.logger.info(f"🔍 [GeneratorAgent] Context survey_id: {state.context.get('survey_id') if state.context else 'None'}")
+            self.logger.info(f"🔍 [GeneratorAgent] Context audit_survey_id: {state.context.get('audit_survey_id') if state.context else 'None'}")
             self.logger.info(f"🔍 [GeneratorAgent] Context rfq_id: {state.context.get('rfq_id') if state.context else 'None'}")
             self.logger.info(f"🔍 [GeneratorAgent] Context workflow_id: {state.context.get('workflow_id') if state.context else 'None'}")
             
@@ -266,7 +269,7 @@ class GeneratorAgent:
             logger.info(f"🔍 [GeneratorAgent] Context received from state:")
             logger.info(f"🔍 [GeneratorAgent] State survey_id: {state.survey_id}")
             logger.info(f"🔍 [GeneratorAgent] State context: {state.context}")
-            logger.info(f"🔍 [GeneratorAgent] Context survey_id: {state.context.get('survey_id') if state.context else 'None'}")
+            logger.info(f"🔍 [GeneratorAgent] Context audit_survey_id: {state.context.get('audit_survey_id') if state.context else 'None'}")
             logger.info(f"🔍 [GeneratorAgent] Context keys: {list(state.context.keys()) if state.context else 'None'}")
             
             result = {
@@ -661,8 +664,8 @@ class ValidatorAgent:
                 state.pillar_scores = pillar_scores
                 state.quality_gate_passed = quality_gate_passed
 
-                # Also run basic validation (schema, methodology) for completeness
-                validation_results = {"schema_valid": True, "methodology_compliant": True}
+                # Also run basic validation (schema, methodology) for informational purposes only
+                validation_results = {"schema_valid": True, "methodology_compliant": True, "schema_warnings": []}
                 if state.generated_survey:
                     try:
                         from src.services.validation_service import ValidationService
@@ -672,22 +675,38 @@ class ValidatorAgent:
                             golden_examples=state.golden_examples,
                             rfq_text=state.rfq_text
                         )
-                        self.logger.info(f"📋 [ValidatorAgent] Schema validation: {'PASSED' if validation_results.get('schema_valid') else 'FAILED'}")
-                        self.logger.info(f"📋 [ValidatorAgent] Methodology validation: {'PASSED' if validation_results.get('methodology_compliant') else 'FAILED'}")
-                    except Exception as validation_error:
-                        self.logger.warning(f"⚠️ [ValidatorAgent] Basic validation failed: {validation_error}")
 
-                # Increment retry count if quality gate fails
+                        # Log validation results but don't block workflow
+                        if validation_results.get('schema_valid'):
+                            self.logger.info(f"📋 [ValidatorAgent] Schema validation: PASSED")
+                        else:
+                            self.logger.info(f"⚠️ [ValidatorAgent] Schema validation: FAILED (non-blocking - survey will proceed)")
+                            validation_results["schema_warnings"] = ["Survey JSON structure may need manual review"]
+
+                        if validation_results.get('methodology_compliant'):
+                            self.logger.info(f"📋 [ValidatorAgent] Methodology validation: PASSED")
+                        else:
+                            self.logger.info(f"⚠️ [ValidatorAgent] Methodology validation: FAILED (non-blocking - survey will proceed)")
+
+                    except Exception as validation_error:
+                        self.logger.warning(f"⚠️ [ValidatorAgent] Basic validation failed (non-blocking): {validation_error}")
+                        validation_results["schema_warnings"] = [f"Validation error: {str(validation_error)}"]
+
+                # Don't increment retry count - let user decide whether to retry
+                # Evaluation is informational, not blocking
                 updated_retry_count = state.retry_count
+
                 if not quality_gate_passed:
-                    updated_retry_count += 1
-                    self.logger.info(f"🔄 [ValidatorAgent] Quality gate failed, incrementing retry count to {updated_retry_count}")
+                    self.logger.info(f"🔍 [ValidatorAgent] Quality below threshold ({weighted_score:.1%}), but continuing workflow - user can choose to retry")
+                else:
+                    self.logger.info(f"✅ [ValidatorAgent] Quality above threshold ({weighted_score:.1%})")
 
                 result = {
                     "pillar_scores": pillar_scores,
-                    "quality_gate_passed": quality_gate_passed,
+                    "quality_gate_passed": quality_gate_passed,  # Informational only
                     "validation_results": validation_results,
-                    "retry_count": updated_retry_count,
+                    "retry_count": updated_retry_count,  # Unchanged
+                    "workflow_should_continue": True,  # Always continue regardless of quality
                     "error_message": None
                 }
 

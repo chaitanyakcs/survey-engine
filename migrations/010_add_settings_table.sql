@@ -27,5 +27,6 @@ INSERT INTO settings (setting_key, setting_value, description, is_active) VALUES
     "prompt_review_mode": "disabled",
     "require_approval_for_generation": false,
     "auto_approve_trusted_prompts": false,
-    "prompt_review_timeout_hours": 24
+    "prompt_review_timeout_hours": 24,
+    "enable_llm_evaluation": true
 }', 'Default evaluation and prompt review settings', true);

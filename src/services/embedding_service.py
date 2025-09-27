@@ -50,7 +50,7 @@ class EmbeddingService:
             # Replicate embedding model
             if not settings.replicate_api_token:
                 raise ValueError("REPLICATE_API_TOKEN is required for Replicate models but not set")
-            replicate.api_token = settings.replicate_api_token  # type: ignore
+            self.replicate_client = replicate.Client(api_token=settings.replicate_api_token)
             self.use_replicate = True
             self.model = None
         else:
@@ -200,7 +200,7 @@ class EmbeddingService:
                     tags=["embedding", "text_processing"]
                 ) as audit_context:
                     start_time = time.time()
-                    output = await replicate.async_run(
+                    output = await self.replicate_client.async_run(
                         model_to_use,
                         input={"text": text}
                     )
@@ -213,7 +213,7 @@ class EmbeddingService:
                     )
             else:
                 # Fallback without auditing
-                output = await replicate.async_run(
+                output = await self.replicate_client.async_run(
                     model_to_use,
                     input={"text": text}
                 )

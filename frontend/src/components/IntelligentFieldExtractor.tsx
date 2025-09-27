@@ -47,7 +47,10 @@ export const IntelligentFieldExtractor: React.FC<IntelligentFieldExtractorProps>
   useEffect(() => {
     if (isExtracting) {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/api/v1/field-extraction/progress/${sessionId}`;
+      const backendHost = process.env.NODE_ENV === 'production' 
+        ? window.location.host 
+        : 'localhost:8000';
+      const wsUrl = `${protocol}//${backendHost}/api/v1/field-extraction/progress/${sessionId}`;
       
       console.log('🔌 [Field Extractor] Connecting to WebSocket:', wsUrl);
       const websocket = new WebSocket(wsUrl);

@@ -335,23 +335,8 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
       }
     });
 
-    // Recalculate step percentages to ensure smooth distribution
-    const redistributePercentages = (steps: MainWorkflowStep[]) => {
-      if (steps.length === 0) return steps;
-
-      const enabledSteps = steps.length;
-      const percentagePerStep = 100 / enabledSteps;
-
-      return steps.map((step, index) => ({
-        ...step,
-        percentRange: [
-          Math.round(index * percentagePerStep),
-          Math.round((index + 1) * percentagePerStep)
-        ] as [number, number]
-      }));
-    };
-
-    const stepsWithAdjustedPercentages = redistributePercentages(filteredSteps);
+    // Use the predefined progress ranges from ProgressTracker
+    const stepsWithAdjustedPercentages = filteredSteps;
 
     console.log('🔍 [ProgressStepper] Dynamic step filtering result:', {
       originalSteps: MAIN_WORKFLOW_STEPS.length,
@@ -753,6 +738,57 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                   {/* Dynamic Right Panel Content Based on Step Type */}
                   {currentMainStep.rightPanelType === 'substeps' && (
                     <div>
+                      {/* Substeps List */}
+                      <div className="space-y-3 mb-6">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Process Steps</h3>
+                        {currentMainStep.subSteps.map((subStep, index) => {
+                          const isActive = subStep.backendStep === workflow.current_step && workflowStatus === 'in_progress';
+                          const isCompleted = workflowStatus === 'completed' || 
+                            (workflow.progress && workflow.progress > (currentMainStep.percentRange[0] + (index + 1) * (currentMainStep.percentRange[1] - currentMainStep.percentRange[0]) / currentMainStep.subSteps.length));
+                          
+                          return (
+                            <div
+                              key={subStep.key}
+                              data-testid={`substep-${subStep.backendStep}`}
+                              className={`flex items-center space-x-3 p-3 rounded-lg border transition-all duration-200 ${
+                                isActive
+                                  ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 shadow-sm'
+                                  : isCompleted
+                                  ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-200'
+                                  : 'bg-gray-50 border-gray-200'
+                              }`}
+                            >
+                              <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
+                                isActive
+                                  ? 'bg-blue-500 text-white animate-pulse'
+                                  : isCompleted
+                                  ? 'bg-green-500 text-white'
+                                  : 'bg-gray-300 text-gray-600'
+                              }`}>
+                                {isCompleted ? '✓' : index + 1}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <h4 className={`text-sm font-medium ${
+                                  isActive ? 'text-blue-900' : isCompleted ? 'text-green-900' : 'text-gray-700'
+                                }`}>
+                                  {subStep.label}
+                                </h4>
+                                <p className={`text-xs ${
+                                  isActive ? 'text-blue-700' : isCompleted ? 'text-green-700' : 'text-gray-500'
+                                }`}>
+                                  {isActive ? workflow.message || subStep.message : subStep.message}
+                                </p>
+                              </div>
+                              {isActive && (
+                                <div className="flex-shrink-0">
+                                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
                       {/* Show streaming UI for LLM processing */}
                       {currentMainStep.key === 'question_generation' &&
                        currentSubStep?.key === 'llm_processing' &&

@@ -407,7 +407,7 @@ class LLMAuditService:
                 sub_purpose=sub_purpose,
                 temperature=hyperparameters.get('temperature', 0.7),
                 top_p=hyperparameters.get('top_p', 0.9),
-                max_tokens=hyperparameters.get('max_tokens', 4000),
+                max_tokens=hyperparameters.get('max_tokens', 8000),
                 frequency_penalty=hyperparameters.get('frequency_penalty', 0.0),
                 presence_penalty=hyperparameters.get('presence_penalty', 0.0),
                 stop_sequences=hyperparameters.get('stop_sequences', []),

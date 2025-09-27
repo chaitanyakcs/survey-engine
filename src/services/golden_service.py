@@ -3,6 +3,9 @@ from src.database import GoldenRFQSurveyPair
 from src.services.embedding_service import EmbeddingService
 from typing import Dict, List, Any, Optional
 from uuid import UUID
+from src.config import settings
+import replicate
+import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -12,6 +15,10 @@ class GoldenService:
     def __init__(self, db: Session):
         self.db = db
         self.embedding_service = EmbeddingService()
+        # Initialize Replicate client
+        if not settings.replicate_api_token:
+            raise ValueError("REPLICATE_API_TOKEN is required but not set")
+        self.replicate_client = replicate.Client(api_token=settings.replicate_api_token)
     
     def list_golden_pairs(self, skip: int = 0, limit: int = 100) -> List[GoldenRFQSurveyPair]:
         """
@@ -24,10 +31,109 @@ class GoldenService:
             .limit(limit)
             .all()
         )
+
+    async def generate_rfq_from_survey(
+        self,
+        survey_json: Dict[str, Any],
+        methodology_tags: Optional[List[str]] = None,
+        industry_category: Optional[str] = None,
+        research_goal: Optional[str] = None
+    ) -> str:
+        """
+        Generate RFQ text from a survey JSON using LLM
+        """
+        logger.info(f"🤖 [GoldenService] Generating RFQ from survey")
+        logger.info(f"📊 [GoldenService] Survey has {len(survey_json.get('questions', []))} questions")
+        logger.info(f"🏷️ [GoldenService] Methodology tags: {methodology_tags}")
+        logger.info(f"🏭 [GoldenService] Industry category: {industry_category}")
+        logger.info(f"🎯 [GoldenService] Research goal: {research_goal}")
+
+        try:
+            # Extract key information from survey
+            survey_title = survey_json.get('title', 'Survey')
+            survey_description = survey_json.get('description', '')
+            questions = survey_json.get('questions', [])
+
+            # Build context for RFQ generation
+            question_summary = []
+            for i, q in enumerate(questions[:5]):  # Limit to first 5 questions for context
+                q_text = q.get('text', f'Question {i+1}')
+                q_type = q.get('type', 'text')
+                question_summary.append(f"- {q_text[:100]}... (Type: {q_type})")
+
+            methodology_text = ", ".join(methodology_tags) if methodology_tags else "general survey research"
+
+            # Create prompt for RFQ generation
+            prompt = f"""You are a market research professional writing an RFQ (Request for Quotation) for a survey project.
+Based on the provided survey structure, generate a realistic and detailed RFQ that a client might send to a research vendor.
+
+SURVEY INFORMATION:
+Title: {survey_title}
+Description: {survey_description}
+Industry: {industry_category or 'Not specified'}
+Research Goal: {research_goal or 'Market research'}
+Methodology: {methodology_text}
+
+SURVEY STRUCTURE ({len(questions)} questions total):
+{chr(10).join(question_summary[:5])}
+
+Generate a realistic RFQ that includes:
+1. Project background and objectives
+2. Target audience/market segment
+3. Key research questions to address
+4. Methodology requirements (mention {methodology_text})
+5. Timeline expectations
+6. Sample size requirements
+7. Deliverables expected
+
+Write in a professional, business tone as if from a client company seeking research services. Make it specific enough to generate the survey shown above, but realistic for a business context.
+
+RFQ Text:"""
+
+            logger.info(f"🚀 [GoldenService] Calling Replicate API for RFQ generation")
+
+            output = await self.replicate_client.async_run(
+                settings.generation_model,
+                input={
+                    "prompt": prompt,
+                    "temperature": 0.3,  # Lower temperature for more consistent, professional output
+                    "max_tokens": 1500,
+                    "top_p": 0.9
+                }
+            )
+
+            # Extract text from output
+            if isinstance(output, list):
+                generated_rfq = "".join(str(item) for item in output)
+            else:
+                generated_rfq = str(output)
+
+            # Clean up the generated RFQ
+            generated_rfq = generated_rfq.strip()
+
+            # Remove any unwanted prefixes
+            if generated_rfq.startswith("RFQ Text:"):
+                generated_rfq = generated_rfq[9:].strip()
+
+            logger.info(f"✅ [GoldenService] RFQ generated successfully, length: {len(generated_rfq)}")
+            logger.info(f"📝 [GoldenService] Generated RFQ preview: {generated_rfq[:200]}...")
+
+            return generated_rfq
+
+        except Exception as e:
+            logger.error(f"❌ [GoldenService] Failed to generate RFQ: {str(e)}", exc_info=True)
+            # Return a fallback RFQ if generation fails
+            fallback_rfq = f"""We need market research for {industry_category or 'our industry'} focusing on {research_goal or 'market insights'}.
+The research should use {methodology_text} methodology and cover the key areas addressed in our survey requirements.
+Target audience: {survey_json.get('metadata', {}).get('target_audience', 'General market')}.
+We need a comprehensive survey with approximately {len(questions)} questions to gather actionable insights."""
+
+            logger.info(f"🔄 [GoldenService] Using fallback RFQ due to generation error")
+            return fallback_rfq
     
     async def create_golden_pair(
         self,
-        rfq_text: str,
+        rfq_text: Optional[str],
         survey_json: Dict[str, Any],
         title: Optional[str] = None,
         methodology_tags: Optional[List[str]] = None,
@@ -46,13 +152,26 @@ class GoldenService:
         logger.info(f"🏭 [GoldenService] Industry category: {industry_category}")
         logger.info(f"🎯 [GoldenService] Research goal: {research_goal}")
         logger.info(f"⭐ [GoldenService] Quality score: {quality_score}")
-        
+
         try:
+            # Generate RFQ if not provided
+            if not rfq_text or not rfq_text.strip():
+                logger.info(f"🤖 [GoldenService] RFQ text is missing, generating from survey")
+                rfq_text = await self.generate_rfq_from_survey(
+                    survey_json=survey_json,
+                    methodology_tags=methodology_tags,
+                    industry_category=industry_category,
+                    research_goal=research_goal
+                )
+                logger.info(f"✅ [GoldenService] RFQ generated, length: {len(rfq_text)}")
+            else:
+                logger.info(f"📝 [GoldenService] Using provided RFQ text")
+
             logger.info(f"🧠 [GoldenService] Generating embedding for RFQ text")
             # Generate embedding for RFQ text
             rfq_embedding = await self.embedding_service.get_embedding(rfq_text)
             logger.info(f"✅ [GoldenService] Embedding generated successfully, length: {len(rfq_embedding) if rfq_embedding else 0}")
-            
+
             logger.info(f"💾 [GoldenService] Creating GoldenRFQSurveyPair record")
             # Create golden pair record
             golden_pair = GoldenRFQSurveyPair(

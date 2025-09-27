@@ -52,6 +52,7 @@ const PILLAR_INFO = {
 
 const PRIORITY_COLORS = {
   critical: { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-300', indicator: '🔴' },
+  core: { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-300', indicator: '🔴' },
   high: { bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300', indicator: '🟡' },
   medium: { bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-300', indicator: '🟡' },
   low: { bg: 'bg-gray-100', text: 'text-gray-800', border: 'border-gray-300', indicator: '⚪' }
@@ -469,8 +470,8 @@ const PillarRulesManager: React.FC<PillarRulesManagerProps> = ({ onShowDeleteCon
                       <div className="flex-1">
                         <div className="flex items-center space-x-3 mb-2">
                           <h5 className="font-medium text-gray-900">{rule.rule_name}</h5>
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${PRIORITY_COLORS[rule.priority].bg} ${PRIORITY_COLORS[rule.priority].text} ${PRIORITY_COLORS[rule.priority].border} border`}>
-                            {PRIORITY_COLORS[rule.priority].indicator} {rule.priority.toUpperCase()}
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${PRIORITY_COLORS[rule.priority]?.bg || 'bg-gray-100'} ${PRIORITY_COLORS[rule.priority]?.text || 'text-gray-800'} ${PRIORITY_COLORS[rule.priority]?.border || 'border-gray-300'} border`}>
+                            {PRIORITY_COLORS[rule.priority]?.indicator || '⚪'} {rule.priority.toUpperCase()}
                           </span>
                         </div>
                         <p className="text-gray-600 text-sm mb-3">{rule.rule_description}</p>

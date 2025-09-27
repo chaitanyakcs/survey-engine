@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { AppStore, RFQRequest, EnhancedRFQRequest, RFQTemplate, RFQQualityAssessment, WorkflowState, ProgressMessage, GoldenExampleRequest, ToastMessage, SurveyAnnotations, getQuestionCount, PendingReview, ReviewDecision, DocumentContent, DocumentAnalysis, RFQFieldMapping, DocumentAnalysisResponse, DetailedError, ErrorCode } from '../types';
+import { AppStore, RFQRequest, EnhancedRFQRequest, RFQTemplate, RFQQualityAssessment, WorkflowState, ProgressMessage, GoldenExampleRequest, ToastMessage, SurveyAnnotations, getQuestionCount, PendingReview, ReviewDecision, DocumentContent, DocumentAnalysis, RFQFieldMapping, DocumentAnalysisResponse, DetailedError, ErrorCode, StreamingStats } from '../types';
 import { ErrorClassifier } from '../types/errors';
 import { apiService } from '../services/api';
 import { rfqTemplateService } from '../services/RFQTemplateService';
@@ -371,11 +371,19 @@ export const useAppStore = create<AppStore>((set, get) => ({
   loadPillarScoresAsync: async (surveyId: string) => {
     try {
       console.log('🏛️ [Store] Loading pillar scores asynchronously:', surveyId);
+      console.log('🏛️ [Store] Current survey state:', {
+        hasCurrentSurvey: !!get().currentSurvey,
+        currentSurveyId: get().currentSurvey?.survey_id,
+        targetSurveyId: surveyId
+      });
+      
       const pillarScores = await apiService.fetchPillarScores(surveyId);
+      console.log('🏛️ [Store] Pillar scores received from API:', pillarScores);
 
       // Update the current survey with pillar scores
       const currentState = get();
       if (currentState.currentSurvey && currentState.currentSurvey.survey_id === surveyId) {
+        console.log('🏛️ [Store] Updating current survey with pillar scores');
         set({
           currentSurvey: {
             ...currentState.currentSurvey,
@@ -383,19 +391,33 @@ export const useAppStore = create<AppStore>((set, get) => ({
           }
         });
         console.log('✅ [Store] Pillar scores loaded and updated in survey');
+      } else {
+        console.warn('⚠️ [Store] Current survey mismatch or not found:', {
+          hasCurrentSurvey: !!currentState.currentSurvey,
+          currentSurveyId: currentState.currentSurvey?.survey_id,
+          targetSurveyId: surveyId
+        });
       }
 
       return pillarScores;
     } catch (error) {
-      console.warn('⚠️ [Store] Failed to load pillar scores (non-blocking):', error);
+      console.error('❌ [Store] Failed to load pillar scores (non-blocking):', error);
+      console.error('❌ [Store] Error details:', {
+        name: error instanceof Error ? error.name : 'Unknown',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
       return null;
     }
   },
 
   connectWebSocket: (workflowId: string) => {
-    // Use relative URL so it works in both local and production environments
+    // Connect to backend WebSocket server (port 8000)
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/survey/${workflowId}`;
+    const backendHost = process.env.NODE_ENV === 'production' 
+      ? window.location.host 
+      : 'localhost:8000';
+    const wsUrl = `${protocol}//${backendHost}/ws/survey/${workflowId}`;
     
     let retryCount = 0;
     const maxRetries = 10; // Increased retries for workflow timeouts
@@ -442,7 +464,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
             get().addToast({
               type: 'success',
               title: '🎉 Survey Complete!',
-              message: 'Your professional survey is ready to collect insights!',
+              message: 'Ready to collect insights!',
               duration: 8000
             });
 
@@ -463,7 +485,20 @@ export const useAppStore = create<AppStore>((set, get) => ({
             const currentWorkflow = get().workflow;
             if (currentWorkflow.survey_id) {
               console.log('📥 [WebSocket] Fetching survey after progress completion');
-              get().fetchSurvey(currentWorkflow.survey_id).catch((error) => {
+              get().fetchSurvey(currentWorkflow.survey_id).then(() => {
+                // After successfully fetching the survey, load pillar scores with a small delay
+                console.log('🏛️ [WebSocket] Survey fetched after progress completion, loading pillar scores');
+                if (currentWorkflow.survey_id) {
+                  // Add a small delay to prevent API call conflicts
+                  setTimeout(() => {
+                    if (currentWorkflow.survey_id) {
+                      get().loadPillarScoresAsync(currentWorkflow.survey_id).catch((error) => {
+                        console.warn('⚠️ [WebSocket] Failed to load pillar scores after progress completion:', error);
+                      });
+                    }
+                  }, 2000); // Increased delay to 2 seconds to prevent overwhelming backend
+                }
+              }).catch((error) => {
                 console.warn('⚠️ [WebSocket] Failed to fetch survey after progress completion:', error);
               });
             }
@@ -491,6 +526,34 @@ export const useAppStore = create<AppStore>((set, get) => ({
           }
 
           console.log('✅ [Frontend] Progress state updated');
+        } else if (message.type === 'llm_content_update') {
+          console.log('📝 [Frontend] Streaming content update received:', {
+            step: message.step,
+            percent: message.percent,
+            data: message.data
+          });
+
+          // Update streaming stats in workflow state
+          set((state) => ({
+            workflow: {
+              ...state.workflow,
+              current_step: message.step,
+              progress: message.percent,
+              message: message.message,
+              streamingStats: {
+                questionCount: message.data?.questionCount || 0,
+                sectionCount: message.data?.sectionCount || 0,
+                currentActivity: message.data?.currentActivity || '',
+                latestQuestions: message.data?.latestQuestions || [],
+                currentSections: message.data?.currentSections || [],
+                estimatedProgress: message.data?.estimatedProgress || 0,
+                surveyTitle: message.data?.surveyTitle,
+                elapsedTime: message.data?.elapsedTime
+              }
+            }
+          }));
+
+          console.log('✅ [Frontend] Streaming stats updated');
         } else if (message.type === 'human_review_required') {
           console.log('🛑 [WebSocket] Human review required:', message);
           
@@ -605,7 +668,20 @@ export const useAppStore = create<AppStore>((set, get) => ({
             }
           };
 
-          fetchWithRetry(message.survey_id).catch((error) => {
+          fetchWithRetry(message.survey_id).then(() => {
+            // After successfully fetching the survey, load pillar scores with a small delay
+            console.log('🏛️ [WebSocket] Survey fetched, loading pillar scores');
+            if (message.survey_id) {
+              // Add a small delay to prevent API call conflicts
+              setTimeout(() => {
+                if (message.survey_id) {
+                  get().loadPillarScoresAsync(message.survey_id).catch((error) => {
+                    console.warn('⚠️ [WebSocket] Failed to load pillar scores after survey completion:', error);
+                  });
+                }
+              }, 2000); // Increased delay to 2 seconds to prevent overwhelming backend
+            }
+          }).catch((error) => {
             console.error('❌ [WebSocket] Failed to fetch survey after retries:', error);
             get().addToast({
               type: 'error',
@@ -626,7 +702,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
             }
             console.log('🔌 [WebSocket] Closing WebSocket after delay');
             ws.close(1000, 'Workflow completed');
-          }, 3000); // 3 second delay
+          }, 1000); // Reduced to 1 second delay to prevent blocking
         } else if (message.type === 'error') {
           console.error('Workflow error:', message);
 

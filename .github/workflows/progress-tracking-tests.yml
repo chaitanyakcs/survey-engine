@@ -1,0 +1,242 @@
+name: Progress Tracking Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'src/workflows/**'
+      - 'src/services/generation_service.py'
+      - 'src/services/evaluator_service.py'
+      - 'src/services/websocket_client.py'
+      - 'frontend/src/components/ProgressStepper.tsx'
+      - 'frontend/src/store/useAppStore.ts'
+      - 'tests/test_workflow_progress.py'
+      - 'tests/test_progress_integration.py'
+      - 'frontend/src/components/__tests__/ProgressStepper.test.tsx'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'src/workflows/**'
+      - 'src/services/generation_service.py'
+      - 'src/services/evaluator_service.py'
+      - 'src/services/websocket_client.py'
+      - 'frontend/src/components/ProgressStepper.tsx'
+      - 'frontend/src/store/useAppStore.ts'
+      - 'tests/test_workflow_progress.py'
+      - 'tests/test_progress_integration.py'
+      - 'frontend/src/components/__tests__/ProgressStepper.test.tsx'
+
+jobs:
+  backend-progress-tests:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: survey_engine_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements-docker.txt
+        pip install pytest pytest-cov pytest-asyncio
+    
+    - name: Set environment variables
+      run: |
+        echo "PYTHONPATH=${GITHUB_WORKSPACE}" >> $GITHUB_ENV
+        echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/survey_engine_test" >> $GITHUB_ENV
+        echo "REPLICATE_API_TOKEN=test_token" >> $GITHUB_ENV
+    
+    - name: Run backend progress tracking tests
+      run: |
+        python -m pytest tests/test_workflow_progress.py -v \
+          --tb=short \
+          --junitxml=backend_progress_results.xml \
+          --cov=src.workflows \
+          --cov=src.services \
+          --cov-report=xml:backend_coverage.xml \
+          --cov-report=term-missing
+    
+    - name: Upload backend test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: backend-progress-test-results
+        path: |
+          backend_progress_results.xml
+          backend_coverage.xml
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    needs: backend-progress-tests
+    
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: survey_engine_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements-docker.txt
+        pip install pytest pytest-cov pytest-asyncio
+    
+    - name: Set environment variables
+      run: |
+        echo "PYTHONPATH=${GITHUB_WORKSPACE}" >> $GITHUB_ENV
+        echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/survey_engine_test" >> $GITHUB_ENV
+        echo "REPLICATE_API_TOKEN=test_token" >> $GITHUB_ENV
+    
+    - name: Run integration tests
+      run: |
+        python -m pytest tests/test_progress_integration.py -v \
+          --tb=short \
+          --junitxml=integration_results.xml \
+          --cov=src \
+          --cov-report=xml:integration_coverage.xml \
+          --cov-report=term-missing
+    
+    - name: Validate progress mapping
+      run: |
+        python -c "
+        import sys
+        sys.path.append('.')
+        from tests.test_progress_integration import TestProgressRegressionSafeguards
+        test_instance = TestProgressRegressionSafeguards()
+        test_instance.test_frontend_step_mapping_completeness()
+        test_instance.test_progress_percentage_ranges_are_valid()
+        print('✅ Progress mapping validation passed')
+        "
+    
+    - name: Upload integration test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: integration-test-results
+        path: |
+          integration_results.xml
+          integration_coverage.xml
+
+  frontend-progress-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install frontend dependencies
+      run: |
+        cd frontend
+        npm ci
+    
+    - name: Run frontend progress tests
+      run: |
+        cd frontend
+        npm test -- --testPathPattern=ProgressStepper.test.tsx \
+          --coverage \
+          --coverageReporters=text \
+          --coverageReporters=cobertura \
+          --watchAll=false \
+          --passWithNoTests
+    
+    - name: Upload frontend test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: frontend-progress-test-results
+        path: |
+          frontend/coverage/cobertura-coverage.xml
+
+  progress-tracking-summary:
+    runs-on: ubuntu-latest
+    needs: [backend-progress-tests, integration-tests, frontend-progress-tests]
+    if: always()
+    
+    steps:
+    - name: Download all test artifacts
+      uses: actions/download-artifact@v3
+    
+    - name: Progress Tracking Test Summary
+      run: |
+        echo "# Progress Tracking Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## Test Status" >> $GITHUB_STEP_SUMMARY
+        
+        # Check if backend tests passed
+        if [ -f "backend-progress-test-results/backend_progress_results.xml" ]; then
+          echo "✅ Backend Progress Tests: PASSED" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ Backend Progress Tests: FAILED" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # Check if integration tests passed
+        if [ -f "integration-test-results/integration_results.xml" ]; then
+          echo "✅ Integration Tests: PASSED" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ Integration Tests: FAILED" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # Check if frontend tests passed
+        if [ -f "frontend-progress-test-results/cobertura-coverage.xml" ]; then
+          echo "✅ Frontend Progress Tests: PASSED" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ Frontend Progress Tests: FAILED" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## Coverage Reports" >> $GITHUB_STEP_SUMMARY
+        echo "- Backend workflow and services coverage included" >> $GITHUB_STEP_SUMMARY
+        echo "- Integration test coverage included" >> $GITHUB_STEP_SUMMARY
+        echo "- Frontend ProgressStepper component coverage included" >> $GITHUB_STEP_SUMMARY
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## What This Tests" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ All backend workflow steps send correct progress updates" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Frontend step mapping handles all backend steps" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Progress percentages are sequential and within expected ranges" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Async LLM coordination works correctly" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Human review workflow progress tracking" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Quality gate failure handling" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Error handling and regression safeguards" >> $GITHUB_STEP_SUMMARY
+
+

@@ -11,9 +11,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/rules", tags=["Rules"])
 
 
-class CustomRuleRequest(BaseModel):
-    type: str
-    rule: str
+# CustomRuleRequest removed - no longer needed
 
 
 class RuleValidationRequest(BaseModel):
@@ -39,165 +37,16 @@ async def get_available_methodologies(db: Session = Depends(get_db)):
     }
 
 
-@router.get("/quality-rules")
-async def get_quality_rules(db: Session = Depends(get_db)):
-    """Get current quality rules including custom rules from database with IDs"""
-    try:
-        from src.database.models import SurveyRule
-        
-        # Get active quality rules with their IDs
-        active_rules = db.query(SurveyRule).filter(
-            SurveyRule.rule_type == "quality",
-            SurveyRule.is_active == True
-        ).all()
-        logger.info(f"Found {len(active_rules)} active quality rules in database")
-        
-        # Build response with rule IDs
-        quality_rules_with_ids = {}
-        for rule in active_rules:
-            category = rule.category
-            if category not in quality_rules_with_ids:
-                quality_rules_with_ids[category] = []
-            
-            # Extract rule text from rule_content or use rule_description
-            rule_text = ""
-            if rule.rule_content and isinstance(rule.rule_content, dict):
-                rule_text = rule.rule_content.get('rule_text', '')
-            elif rule.rule_description:
-                rule_text = rule.rule_description
-            
-            if rule_text:
-                quality_rules_with_ids[category].append({
-                    "id": str(rule.id),
-                    "text": rule_text,
-                    "created_at": rule.created_at.isoformat() if rule.created_at else None,
-                    "updated_at": rule.updated_at.isoformat() if rule.updated_at else None
-                })
-        
-        logger.info(f"Returning {len(quality_rules_with_ids)} quality rule categories with IDs")
-        return quality_rules_with_ids
-        
-    except Exception as e:
-        logger.error(f"Failed to fetch quality rules: {str(e)}")
-        # Fallback to in-memory rules
-        prompt_service = PromptService()
-        return prompt_service.quality_rules
+# Quality rules API removed - replaced by comprehensive generation rules system
 
 
-@router.get("/custom-rules")
-async def get_custom_rules(db: Session = Depends(get_db)):
-    """Get all custom rules from database"""
-    try:
-        from src.database.models import SurveyRule
-        
-        # Query all active custom rules from database
-        custom_rules = db.query(SurveyRule).filter(
-            SurveyRule.rule_type == "custom",
-            SurveyRule.is_active == True
-        ).all()
-        
-        # Format rules for frontend
-        rules = []
-        for rule in custom_rules:
-            rules.append({
-                "id": str(rule.id),
-                "rule_id": str(rule.id),
-                "type": rule.category,
-                "rule": rule.rule_description,
-                "rule_name": rule.rule_name,
-                "created_by": rule.created_by,
-                "priority": rule.priority
-            })
-        
-        return {"rules": rules}
-        
-    except Exception as e:
-        logger.error(f"Failed to fetch custom rules: {str(e)}")
-        return {"rules": []}
+# Custom rules API removed - replaced by comprehensive generation rules system
 
 
-@router.post("/custom-rule")
-async def add_custom_rule(
-    request: CustomRuleRequest,
-    db: Session = Depends(get_db)
-):
-    """Add a custom rule to the system"""
-    try:
-        from src.database.models import SurveyRule
-        import uuid
-        
-        # Create new rule in database
-        new_rule = SurveyRule(
-            id=uuid.uuid4(),
-            rule_type="custom",
-            category=request.type,
-            rule_name=f"Custom {request.type.replace('_', ' ').title()} Rule",
-            rule_description=request.rule,
-            rule_content={"rule_text": request.rule},
-            is_active=True,
-            priority=0,
-            created_by="user"
-        )
-        
-        db.add(new_rule)
-        db.commit()
-        db.refresh(new_rule)
-        
-        # Also add to in-memory service for immediate use
-        prompt_service = PromptService()
-        prompt_service.add_custom_rule(request.type, request.rule)
-        
-        logger.info(f"Added custom rule to database: {request.type} - {request.rule}")
-        
-        return {
-            "message": "Custom rule added successfully",
-            "rule_id": str(new_rule.id),
-            "rule_type": request.type,
-            "rule": request.rule
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to add custom rule: {str(e)}")
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to add custom rule: {str(e)}")
+# Custom rules API removed - replaced by comprehensive generation rules system
 
 
-@router.delete("/custom-rule/{rule_id}")
-async def delete_custom_rule(
-    rule_id: str,
-    db: Session = Depends(get_db)
-):
-    """Delete a custom rule from the system"""
-    try:
-        from src.database.models import SurveyRule
-        import uuid
-        
-        # Find the rule
-        rule = db.query(SurveyRule).filter(
-            SurveyRule.id == uuid.UUID(rule_id),
-            SurveyRule.rule_type == "custom"
-        ).first()
-        
-        if not rule:
-            raise HTTPException(status_code=404, detail="Custom rule not found")
-        
-        # Soft delete by setting is_active to False
-        rule.is_active = False
-        db.commit()
-        
-        logger.info(f"Deleted custom rule: {rule_id}")
-        
-        return {
-            "message": "Custom rule deleted successfully",
-            "rule_id": rule_id
-        }
-        
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid rule ID format")
-    except Exception as e:
-        logger.error(f"Failed to delete custom rule: {str(e)}")
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to delete custom rule: {str(e)}")
+# Delete custom rule endpoint removed - replaced by comprehensive generation rules system
 
 
 @router.post("/validate", response_model=RuleValidationResponse)
@@ -243,12 +92,12 @@ async def get_methodology_guidelines(methodology_name: str):
         raise HTTPException(status_code=500, detail=f"Failed to get guidelines: {str(e)}")
 
 
-@router.get("/system-prompt")
-async def get_system_prompt(
+@router.get("/system-prompt/generate")
+async def generate_system_prompt(
     methodology_tags: Optional[List[str]] = None,
     custom_rules: Optional[Dict[str, Any]] = None
 ):
-    """Get the current system prompt with rules"""
+    """Generate a system prompt with rules (for testing/demo purposes)"""
     try:
         prompt_service = PromptService()
         
@@ -280,20 +129,7 @@ async def get_system_prompt(
         raise HTTPException(status_code=500, detail=f"Failed to generate system prompt: {str(e)}")
 
 
-class QualityRuleRequest(BaseModel):
-    category: str
-    rule_text: str
-
-
-class QualityRuleUpdateRequest(BaseModel):
-    rule_id: str
-    rule_text: str
-
-
-from typing import Union
-
-class QualityRuleDeleteRequest(BaseModel):
-    rule_id: str
+# Quality rule request models removed - no longer needed
 
 
 class SystemPromptRequest(BaseModel):
@@ -325,111 +161,13 @@ class MethodologyRuleUpdateRequest(BaseModel):
     best_practices: Optional[List[str]] = None
 
 
-@router.post("/quality-rules")
-async def add_quality_rule(request: QualityRuleRequest, db: Session = Depends(get_db)):
-    """Add a new quality rule to a category"""
-    try:
-        from src.database.models import SurveyRule
-        import uuid
-        
-        # Create new quality rule
-        new_rule = SurveyRule(
-            id=uuid.uuid4(),
-            rule_type="quality",
-            category=request.category,
-            rule_name=f"{request.category} rule",
-            rule_description=request.rule_text,
-            rule_content={"rule_text": request.rule_text},
-            is_active=True,
-            priority=0,
-            created_by="user"
-        )
-        
-        db.add(new_rule)
-        db.commit()
-        db.refresh(new_rule)
-        
-        logger.info(f"Added quality rule to {request.category}: {request.rule_text}")
-        return {"message": "Quality rule added successfully", "rule_id": str(new_rule.id)}
-        
-    except Exception as e:
-        logger.error(f"Failed to add quality rule: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to add quality rule: {str(e)}")
+# Add quality rule endpoint removed - replaced by comprehensive generation rules system
 
 
-@router.put("/quality-rules")
-async def update_quality_rule(request: QualityRuleUpdateRequest, db: Session = Depends(get_db)):
-    """Update an existing quality rule"""
-    try:
-        from src.database.models import SurveyRule
-        import uuid
-        
-        # Find the rule to update by ID
-        rule_to_update = db.query(SurveyRule).filter(
-            SurveyRule.id == uuid.UUID(request.rule_id),
-            SurveyRule.rule_type == "quality",
-            SurveyRule.is_active == True
-        ).first()
-        
-        if not rule_to_update:
-            raise HTTPException(status_code=404, detail="Rule not found")
-        
-        rule_to_update.rule_description = request.rule_text
-        rule_to_update.rule_content = {"rule_text": request.rule_text}
-        
-        db.commit()
-        
-        logger.info(f"Updated quality rule {request.rule_id}: {request.rule_text}")
-        return {"message": "Quality rule updated successfully"}
-        
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid rule ID format")
-    except Exception as e:
-        logger.error(f"Failed to update quality rule: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update quality rule: {str(e)}")
+# Update quality rule endpoint removed - replaced by comprehensive generation rules system
 
 
-@router.delete("/quality-rules")
-async def delete_quality_rule(request: QualityRuleDeleteRequest, db: Session = Depends(get_db)):
-    """Delete a quality rule by ID"""
-    logger.info(f"🗑️ [BACKEND] Starting quality rule deletion request: {request.dict()}")
-    
-    try:
-        from src.database.models import SurveyRule
-        import uuid
-        
-        # Find the rule to delete by ID
-        rule_to_delete = db.query(SurveyRule).filter(
-            SurveyRule.id == uuid.UUID(request.rule_id),
-            SurveyRule.rule_type == "quality",
-            SurveyRule.is_active == True
-        ).first()
-        
-        if not rule_to_delete:
-            logger.error(f"❌ [BACKEND] No rule found with ID: {request.rule_id}")
-            raise HTTPException(status_code=404, detail="Rule not found")
-        
-        logger.info(f"🗑️ [BACKEND] Found rule to delete: {rule_to_delete.id} - {rule_to_delete.rule_description[:50]}...")
-        
-        # Mark as inactive instead of deleting
-        rule_to_delete.is_active = False
-        
-        try:
-            db.commit()
-            logger.info(f"✅ [BACKEND] Database commit successful")
-        except Exception as commit_error:
-            logger.error(f"❌ [BACKEND] Database commit failed: {str(commit_error)}")
-            db.rollback()
-            raise HTTPException(status_code=500, detail=f"Failed to commit deletion: {str(commit_error)}")
-        
-        logger.info(f"✅ [BACKEND] Successfully deleted quality rule: {request.rule_id}")
-        return {"message": "Quality rule deleted successfully"}
-        
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid rule ID format")
-    except Exception as e:
-        logger.error(f"Failed to delete quality rule: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete quality rule: {str(e)}")
+# Delete quality rule endpoint removed - replaced by comprehensive generation rules system
 
 
 @router.get("/system-prompt")
@@ -697,13 +435,13 @@ class PillarRuleUpdateRequest(BaseModel):
 
 @router.get("/pillar-rules")
 async def get_all_pillar_rules(db: Session = Depends(get_db)):
-    """Get all pillar-based rules organized by pillar category"""
+    """Get all pillar-based rules organized by pillar category (includes both pillar and generation rules)"""
     try:
         from src.database.models import SurveyRule
         
-        # Get all pillar rules from database
+        # Get both pillar and generation rules from database
         pillar_rules = db.query(SurveyRule).filter(
-            SurveyRule.rule_type == "pillar",
+            SurveyRule.rule_type.in_(["pillar", "generation"]),
             SurveyRule.is_active == True
         ).order_by(SurveyRule.category, SurveyRule.priority.desc()).all()
         
@@ -725,7 +463,8 @@ async def get_all_pillar_rules(db: Session = Depends(get_db)):
                     "rule_text": rule.rule_description,
                     "priority": rule.rule_content.get("priority", "medium") if rule.rule_content else "medium",
                     "created_at": rule.created_at.isoformat() if rule.created_at else "",
-                    "created_by": rule.created_by
+                    "created_by": rule.created_by,
+                    "rule_type": rule.rule_type  # Add rule type to distinguish pillar vs generation
                 })
                 organized_rules[rule.category]["count"] += 1
         
@@ -934,57 +673,7 @@ async def delete_pillar_rule(rule_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Failed to delete pillar rule: {str(e)}")
 
 
-@router.post("/quality-rules/cleanup-invalid-ids")
-async def cleanup_invalid_rule_ids(db: Session = Depends(get_db)):
-    """Remove any rules with invalid (non-UUID) IDs from the database"""
-    try:
-        from src.database.models import SurveyRule
-        import uuid
-        
-        # Get all rules
-        all_rules = db.query(SurveyRule).all()
-        logger.info(f"🔍 [CLEANUP] Found {len(all_rules)} total rules to check")
-        
-        invalid_rules = []
-        for rule in all_rules:
-            rule_id_str = str(rule.id)
-            try:
-                # Try to parse as UUID
-                uuid.UUID(rule_id_str)
-                logger.info(f"✅ [CLEANUP] Valid UUID: {rule_id_str[:8]}... - {rule.rule_type}/{rule.category}")
-            except ValueError:
-                invalid_rules.append(rule)
-                logger.warning(f"❌ [CLEANUP] Invalid ID found: {rule.id} - {rule.rule_type}/{rule.category}")
-        
-        if not invalid_rules:
-            logger.info(f"✅ [CLEANUP] All {len(all_rules)} rules have valid UUID IDs")
-            return {
-                "message": "No cleanup needed - all rules have valid UUIDs", 
-                "total_rules": len(all_rules),
-                "invalid_rules_found": 0
-            }
-        
-        # Remove invalid rules
-        deleted_count = 0
-        for rule in invalid_rules:
-            logger.info(f"🗑️ [CLEANUP] Deleting rule with invalid ID: {rule.id} - {rule.rule_description[:50]}...")
-            db.delete(rule)
-            deleted_count += 1
-        
-        db.commit()
-        logger.info(f"✅ [CLEANUP] Successfully deleted {deleted_count} rules with invalid IDs")
-        
-        return {
-            "message": f"Successfully cleaned up {deleted_count} rules with invalid IDs",
-            "total_rules_checked": len(all_rules),
-            "invalid_rules_deleted": deleted_count,
-            "valid_rules_remaining": len(all_rules) - deleted_count
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ [CLEANUP] Failed to cleanup invalid rule IDs: {str(e)}")
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to cleanup invalid rule IDs: {str(e)}")
+# Quality rules cleanup endpoint removed - no longer needed
 
 
 @router.post("/pillar-rules/deduplicate")

@@ -114,7 +114,7 @@ class CreateHyperparameterConfigRequest(BaseModel):
     sub_purpose: Optional[str] = Field(None, description="Specific sub-purpose")
     temperature: float = Field(0.7, ge=0.0, le=2.0)
     top_p: float = Field(0.9, ge=0.0, le=1.0)
-    max_tokens: int = Field(4000, gt=0)
+    max_tokens: int = Field(8000, gt=0)
     frequency_penalty: float = Field(0.0, ge=-2.0, le=2.0)
     presence_penalty: float = Field(0.0, ge=-2.0, le=2.0)
     stop_sequences: List[str] = Field(default_factory=list)

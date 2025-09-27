@@ -66,7 +66,10 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
 
       // Connect to RFQ parsing WebSocket for real progress updates
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws/rfq-parsing/${sessionId}`;
+      const backendHost = process.env.NODE_ENV === 'production' 
+        ? window.location.host 
+        : 'localhost:8000';
+      const wsUrl = `${protocol}//${backendHost}/ws/rfq-parsing/${sessionId}`;
       console.log('🔌 [Document Upload] Connecting to WebSocket for real progress:', wsUrl);
 
       let websocket: WebSocket | null = null;

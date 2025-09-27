@@ -5,11 +5,10 @@ import PillarRulesManager from './PillarRulesManager';
 interface PillarRulesSectionProps {
   expandedSections: {
     methodology: boolean;
-    quality: boolean;
     pillars: boolean;
     systemPrompt: boolean;
   };
-  onToggleSection: (section: 'methodology' | 'quality' | 'pillars' | 'systemPrompt') => void;
+  onToggleSection: (section: 'methodology' | 'pillars' | 'systemPrompt') => void;
   onShowDeleteConfirm: (config: {
     show: boolean;
     type: 'rule' | 'methodology' | 'system-prompt' | 'pillar-rule';

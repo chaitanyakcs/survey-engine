@@ -285,7 +285,7 @@ export interface SurveyMetadata {
 
 // WebSocket Progress Types
 export interface ProgressMessage {
-  type: 'progress' | 'completed' | 'error' | 'human_review_required' | 'workflow_resuming';
+  type: 'progress' | 'completed' | 'error' | 'human_review_required' | 'workflow_resuming' | 'llm_content_update';
   step?: string;
   percent?: number;
   message?: string;
@@ -296,6 +296,23 @@ export interface ProgressMessage {
   system_prompt?: string;
   pending_human_review?: boolean;
   prompt_approved?: boolean;
+  data?: {
+    questionCount?: number;
+    sectionCount?: number;
+    currentActivity?: string;
+    latestQuestions?: Array<{
+      text: string;
+      type?: string;
+      hasOptions?: boolean;
+    }>;
+    currentSections?: Array<{
+      title: string;
+      questionCount: number;
+    }>;
+    estimatedProgress?: number;
+    surveyTitle?: string;
+    elapsedTime?: number;
+  };
 }
 
 // UI State Types
@@ -316,6 +333,25 @@ export interface WorkflowState {
   prompt_approved?: boolean;
   survey_fetch_failed?: boolean; // When survey fetch fails after completion
   survey_fetch_error?: string; // Error message from failed survey fetch
+  streamingStats?: StreamingStats; // Real-time generation progress
+}
+
+export interface StreamingStats {
+  questionCount: number;
+  sectionCount: number;
+  currentActivity: string;
+  latestQuestions: Array<{
+    text: string;
+    type?: string;
+    hasOptions?: boolean;
+  }>;
+  currentSections: Array<{
+    title: string;
+    questionCount: number;
+  }>;
+  estimatedProgress: number;
+  surveyTitle?: string;
+  elapsedTime?: number;
 }
 
 // Golden Examples Types

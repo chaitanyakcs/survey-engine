@@ -9,6 +9,12 @@ from typing import Dict, List
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
+
+# Suppress SQLAlchemy engine logs
+logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
+logging.getLogger('sqlalchemy.pool').setLevel(logging.WARNING)
+logging.getLogger('sqlalchemy.dialects').setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 app = FastAPI(

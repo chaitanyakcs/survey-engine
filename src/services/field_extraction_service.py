@@ -28,7 +28,7 @@ class FieldExtractionService:
                 technical_details="REPLICATE_API_TOKEN environment variable is not set",
                 action_required="Configure AI service provider (Replicate or OpenAI)"
             )
-        replicate.api_token = settings.replicate_api_token
+        self.replicate_client = replicate.Client(api_token=settings.replicate_api_token)
         self.db_session = db_session  # Set db_session BEFORE calling _get_generation_model
         self.model = self._get_generation_model()
         
@@ -222,7 +222,7 @@ Return ONLY a JSON object with this exact structure:
                 ) as audit_context:
                     logger.info(f"🤖 [Field Extraction] Calling LLM for field extraction with auditing")
                     start_time = time.time()
-                    output = await replicate.async_run(
+                    output = await self.replicate_client.async_run(
                         self.model,
                         input={
                             "prompt": prompt,
@@ -241,7 +241,7 @@ Return ONLY a JSON object with this exact structure:
             else:
                 # Fallback without auditing
                 logger.info(f"🤖 [Field Extraction] Calling LLM for field extraction without auditing")
-                output = await replicate.async_run(
+                output = await self.replicate_client.async_run(
                     self.model,
                     input={
                         "prompt": prompt,

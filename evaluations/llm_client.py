@@ -12,6 +12,14 @@ import time
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 
+# Load environment variables
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    print("🔧 Environment variables loaded from .env file")
+except ImportError:
+    print("⚠️  python-dotenv not available - using system environment only")
+
 # Import Replicate client (same as demo_server)
 try:
     import replicate
@@ -19,15 +27,8 @@ try:
 except ImportError:
     REPLICATE_AVAILABLE = False
 
-# Import audit components
-try:
-    import sys
-    sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
-    from utils.llm_audit_decorator import LLMAuditContext
-    from services.llm_audit_service import LLMAuditService
-    AUDIT_AVAILABLE = True
-except ImportError:
-    AUDIT_AVAILABLE = False
+# Audit components will be imported when needed to avoid circular imports
+AUDIT_AVAILABLE = True  # We'll try to import when needed
 
 @dataclass
 class LLMResponse:
@@ -52,9 +53,11 @@ class EvaluationLLMClient:
         self.model = self._get_evaluation_model()
         
         if self.replicate_available and self.replicate_token:
-            replicate.api_token = self.replicate_token
+            # Initialize Replicate client with proper authentication
+            self.replicate_client = replicate.Client(api_token=self.replicate_token)
             print("🤖 LLM client initialized with Replicate API")
         else:
+            self.replicate_client = None
             print("⚠️  LLM client in fallback mode (no Replicate token)")
     
     def _get_evaluation_model(self) -> str:
@@ -91,20 +94,22 @@ class EvaluationLLMClient:
         except Exception:
             return 'openai/gpt-4o-mini'
     
-    async def analyze(self, prompt: str, max_tokens: int = 1000) -> LLMResponse:
+    async def analyze(self, prompt: str, max_tokens: int = 1000, parent_survey_id: str = None, parent_rfq_id: str = None) -> LLMResponse:
         """
         Analyze content using LLM (alias for generate_evaluation)
         
         Args:
             prompt: Analysis prompt
             max_tokens: Maximum response tokens
+            parent_survey_id: Parent survey ID for audit linking
+            parent_rfq_id: Parent RFQ ID for audit linking
             
         Returns:
             LLMResponse with analysis content
         """
-        return await self.generate_evaluation(prompt, max_tokens)
+        return await self.generate_evaluation(prompt, max_tokens, parent_survey_id, parent_rfq_id)
     
-    async def generate_evaluation(self, prompt: str, max_tokens: int = 1000) -> LLMResponse:
+    async def generate_evaluation(self, prompt: str, max_tokens: int = 1000, parent_survey_id: str = None, parent_rfq_id: str = None) -> LLMResponse:
         """
         Generate evaluation using LLM
         
@@ -116,13 +121,33 @@ class EvaluationLLMClient:
             LLMResponse with evaluation content
         """
         
-        if not self.replicate_available or not self.replicate_token:
+        if not self.replicate_available or not self.replicate_token or not self.replicate_client:
             return self._fallback_evaluation(prompt)
         
         try:
             # Create audit context for this LLM interaction
             interaction_id = f"evaluation_{uuid.uuid4().hex[:8]}"
-            audit_service = LLMAuditService(self.db_session) if (self.audit_available and self.db_session) else None
+            audit_service = None
+            
+            # Try to create audit service if we have a database session
+            if self.db_session:
+                try:
+                    # Import audit components when needed to avoid circular imports
+                    import sys
+                    src_path = os.path.join(os.path.dirname(__file__), '..', 'src')
+                    if src_path not in sys.path:
+                        sys.path.insert(0, src_path)
+                    
+                    from src.utils.llm_audit_decorator import LLMAuditContext
+                    from src.services.llm_audit_service import LLMAuditService
+                    
+                    audit_service = LLMAuditService(self.db_session)
+                    print(f"🔍 [EvaluationLLMClient] Audit service created successfully")
+                except Exception as e:
+                    print(f"⚠️ [EvaluationLLMClient] Failed to create audit service: {e}")
+                    audit_service = None
+            else:
+                print(f"⚠️ [EvaluationLLMClient] No database session available for audit")
             
             if audit_service:
                 async with LLMAuditContext(
@@ -134,6 +159,8 @@ class EvaluationLLMClient:
                     input_prompt=prompt,
                     sub_purpose="survey_evaluation",
                     context_type="survey_data",
+                    parent_survey_id=parent_survey_id,
+                    parent_rfq_id=parent_rfq_id,
                     hyperparameters={
                         "max_tokens": max_tokens,
                         "temperature": 0.3,
@@ -150,7 +177,7 @@ class EvaluationLLMClient:
                     start_time = time.time()
                     # Use the same model as survey generation for consistency
                     response = await asyncio.to_thread(
-                        replicate.run,
+                        self.replicate_client.run,
                         self.model,
                         input={
                             "prompt": prompt,
@@ -171,9 +198,10 @@ class EvaluationLLMClient:
                     # Process the output and set audit context
                     response_time_ms = int((time.time() - start_time) * 1000)
                     audit_context.set_output(
-                        output_content=content,
-                        response_time_ms=response_time_ms
+                        output_content=content
                     )
+                    # Store response time in metadata
+                    audit_context.metadata['response_time_ms'] = response_time_ms
                     
                     print(f"🔍 LLM Response content length: {len(content)}")
                     print(f"🔍 LLM Response content preview: {content[:200]}...")
@@ -183,10 +211,11 @@ class EvaluationLLMClient:
                         metadata={"model": self.model, "tokens": max_tokens}
                     )
             else:
-                # Fallback without auditing
+                # Fallback without auditing - but still make the API call
+                print(f"⚠️ [EvaluationLLMClient] Proceeding without audit context")
                 # Use the same model as survey generation for consistency
                 response = await asyncio.to_thread(
-                    replicate.run,
+                    self.replicate_client.run,
                     self.model,
                     input={
                         "prompt": prompt,
@@ -230,6 +259,7 @@ class EvaluationLLMClient:
             metadata={"fallback": True}
         )
     
+
     def _generate_heuristic_evaluation(self, prompt: str) -> str:
         """
         Generate basic heuristic evaluation when LLM unavailable

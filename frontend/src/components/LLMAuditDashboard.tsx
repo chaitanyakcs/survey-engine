@@ -5,7 +5,9 @@ import {
   CheckCircleIcon, 
   XCircleIcon,
   EyeIcon,
-  CogIcon
+  CogIcon,
+  ClipboardDocumentIcon,
+  CheckIcon
 } from '@heroicons/react/24/outline';
 
 interface LLMAuditRecord {
@@ -61,6 +63,7 @@ const LLMAuditDashboard: React.FC<LLMAuditDashboardProps> = ({ onClose }) => {
   // const [costSummary, setCostSummary] = useState<CostSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedRecord, setSelectedRecord] = useState<LLMAuditRecord | null>(null);
+  const [activeTab, setActiveTab] = useState<'prompt' | 'output' | 'metadata'>('prompt');
   const [filters, setFilters] = useState({
     purpose: '',
     model_name: '',
@@ -68,6 +71,7 @@ const LLMAuditDashboard: React.FC<LLMAuditDashboardProps> = ({ onClose }) => {
     page: 1,
     page_size: 20
   });
+  const [copiedTab, setCopiedTab] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAuditData();
@@ -114,6 +118,16 @@ const LLMAuditDashboard: React.FC<LLMAuditDashboardProps> = ({ onClose }) => {
       'document_parsing': 'bg-orange-100 text-orange-800',
     };
     return colors[purpose] || 'bg-gray-100 text-gray-800';
+  };
+
+  const copyToClipboard = async (text: string, tabName: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedTab(tabName);
+      setTimeout(() => setCopiedTab(null), 2000); // Reset after 2 seconds
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+    }
   };
 
   if (loading) {
@@ -314,7 +328,10 @@ const LLMAuditDashboard: React.FC<LLMAuditDashboardProps> = ({ onClose }) => {
                       </td>
                       <td className="px-4 py-4 w-20 text-sm font-medium">
                         <button
-                          onClick={() => setSelectedRecord(record)}
+                          onClick={() => {
+                            setSelectedRecord(record);
+                            setActiveTab('prompt');
+                          }}
                           className="text-yellow-600 hover:text-yellow-900 flex items-center whitespace-nowrap"
                         >
                           <EyeIcon className="h-4 w-4 mr-1" />
@@ -374,7 +391,8 @@ const LLMAuditDashboard: React.FC<LLMAuditDashboardProps> = ({ onClose }) => {
               </div>
               
               <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
-                <div className="grid grid-cols-2 gap-6">
+                {/* Basic Info and Performance - Always visible */}
+                <div className="grid grid-cols-2 gap-6 mb-6">
                   <div>
                     <h4 className="font-semibold text-gray-900 mb-2">Basic Info</h4>
                     <div className="space-y-2 text-sm">
@@ -401,7 +419,8 @@ const LLMAuditDashboard: React.FC<LLMAuditDashboardProps> = ({ onClose }) => {
                   </div>
                 </div>
 
-                <div className="mt-6">
+                {/* Hyperparameters - Always visible */}
+                <div className="mb-6">
                   <h4 className="font-semibold text-gray-900 mb-2">Hyperparameters</h4>
                   <div className="grid grid-cols-3 gap-4 text-sm">
                     <div><span className="font-medium">Temperature:</span> {selectedRecord.temperature || 'N/A'}</div>
@@ -410,36 +429,135 @@ const LLMAuditDashboard: React.FC<LLMAuditDashboardProps> = ({ onClose }) => {
                   </div>
                 </div>
 
-                <div className="mt-6">
-                  <h4 className="font-semibold text-gray-900 mb-2">Input Prompt</h4>
-                  <div className="bg-gray-50 rounded-lg p-4 max-h-40 overflow-y-auto">
-                    <pre className="text-sm text-gray-700 whitespace-pre-wrap">
-                      {selectedRecord.input_prompt}
-                    </pre>
-                  </div>
+                {/* Tab Navigation */}
+                <div className="border-b border-gray-200 mb-4">
+                  <nav className="-mb-px flex space-x-8">
+                    <button
+                      onClick={() => setActiveTab('prompt')}
+                      className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                        activeTab === 'prompt'
+                          ? 'border-blue-500 text-blue-600'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      Input Prompt
+                    </button>
+                    {selectedRecord.output_content && (
+                      <button
+                        onClick={() => setActiveTab('output')}
+                        className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                          activeTab === 'output'
+                            ? 'border-blue-500 text-blue-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                      >
+                        Output Content
+                      </button>
+                    )}
+                    {selectedRecord.interaction_metadata && Object.keys(selectedRecord.interaction_metadata).length > 0 && (
+                      <button
+                        onClick={() => setActiveTab('metadata')}
+                        className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                          activeTab === 'metadata'
+                            ? 'border-blue-500 text-blue-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                      >
+                        Metadata
+                      </button>
+                    )}
+                  </nav>
                 </div>
 
-                {selectedRecord.output_content && (
-                  <div className="mt-6">
-                    <h4 className="font-semibold text-gray-900 mb-2">Output Content</h4>
-                    <div className="bg-gray-50 rounded-lg p-4 max-h-40 overflow-y-auto">
-                      <pre className="text-sm text-gray-700 whitespace-pre-wrap">
-                        {selectedRecord.output_content}
-                      </pre>
+                {/* Tab Content */}
+                <div className="min-h-[400px]">
+                  {activeTab === 'prompt' && (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="font-semibold text-gray-900">Input Prompt</h4>
+                        <button
+                          onClick={() => copyToClipboard(selectedRecord.input_prompt, 'prompt')}
+                          className="flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+                        >
+                          {copiedTab === 'prompt' ? (
+                            <>
+                              <CheckIcon className="h-4 w-4 mr-1 text-green-600" />
+                              Copied!
+                            </>
+                          ) : (
+                            <>
+                              <ClipboardDocumentIcon className="h-4 w-4 mr-1" />
+                              Copy
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      <div className="bg-gray-50 rounded-lg p-4 max-h-[400px] overflow-y-auto">
+                        <pre className="text-sm text-gray-700 whitespace-pre-wrap">
+                          {selectedRecord.input_prompt}
+                        </pre>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {selectedRecord.interaction_metadata && Object.keys(selectedRecord.interaction_metadata).length > 0 && (
-                  <div className="mt-6">
-                    <h4 className="font-semibold text-gray-900 mb-2">Metadata</h4>
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <pre className="text-sm text-gray-700">
-                        {JSON.stringify(selectedRecord.interaction_metadata, null, 2)}
-                      </pre>
+                  {activeTab === 'output' && selectedRecord.output_content && (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="font-semibold text-gray-900">Output Content</h4>
+                        <button
+                          onClick={() => copyToClipboard(selectedRecord.output_content || '', 'output')}
+                          className="flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+                        >
+                          {copiedTab === 'output' ? (
+                            <>
+                              <CheckIcon className="h-4 w-4 mr-1 text-green-600" />
+                              Copied!
+                            </>
+                          ) : (
+                            <>
+                              <ClipboardDocumentIcon className="h-4 w-4 mr-1" />
+                              Copy
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      <div className="bg-gray-50 rounded-lg p-4 max-h-[400px] overflow-y-auto">
+                        <pre className="text-sm text-gray-700 whitespace-pre-wrap">
+                          {selectedRecord.output_content}
+                        </pre>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+
+                  {activeTab === 'metadata' && selectedRecord.interaction_metadata && Object.keys(selectedRecord.interaction_metadata).length > 0 && (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="font-semibold text-gray-900">Metadata</h4>
+                        <button
+                          onClick={() => copyToClipboard(JSON.stringify(selectedRecord.interaction_metadata, null, 2), 'metadata')}
+                          className="flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+                        >
+                          {copiedTab === 'metadata' ? (
+                            <>
+                              <CheckIcon className="h-4 w-4 mr-1 text-green-600" />
+                              Copied!
+                            </>
+                          ) : (
+                            <>
+                              <ClipboardDocumentIcon className="h-4 w-4 mr-1" />
+                              Copy
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      <div className="bg-gray-50 rounded-lg p-4 max-h-[400px] overflow-y-auto">
+                        <pre className="text-sm text-gray-700">
+                          {JSON.stringify(selectedRecord.interaction_metadata, null, 2)}
+                        </pre>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

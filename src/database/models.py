@@ -7,7 +7,13 @@ from .connection import Base
 import uuid
 
 # Import proper pgvector SQLAlchemy type
-from pgvector.sqlalchemy import Vector
+try:
+    from pgvector.sqlalchemy import Vector
+except ImportError:
+    # Handle import error gracefully for testing
+    import warnings
+    warnings.warn("pgvector.sqlalchemy not available, using fallback")
+    from sqlalchemy import Text as Vector  # Fallback for testing
 
 
 class GoldenRFQSurveyPair(Base):
@@ -434,7 +440,7 @@ class LLMHyperparameterConfig(Base):
     # Hyperparameters
     temperature = Column(DECIMAL(3, 2), default=0.7)
     top_p = Column(DECIMAL(3, 2), default=0.9)
-    max_tokens = Column(Integer, default=4000)
+    max_tokens = Column(Integer, default=8000)
     frequency_penalty = Column(DECIMAL(3, 2), default=0.0)
     presence_penalty = Column(DECIMAL(3, 2), default=0.0)
     stop_sequences = Column(JSONB, default='[]')  # Array of stop sequences

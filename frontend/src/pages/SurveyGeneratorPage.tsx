@@ -25,7 +25,7 @@ export const SurveyGeneratorPage: React.FC = () => {
       workflowSurveyId: workflow.survey_id,
       currentView
     });
-  }, [workflow.status, currentSurvey, currentView]);
+  }, [workflow.status, currentSurvey, currentView, workflow.survey_id]);
 
 
   // Fallback: Fetch survey if workflow is completed but survey is not loaded
@@ -33,7 +33,20 @@ export const SurveyGeneratorPage: React.FC = () => {
     // Only attempt to fetch if survey hasn't failed before
     if (workflow.status === 'completed' && !currentSurvey && workflow.survey_id && !workflow.survey_fetch_failed) {
       console.log('🔄 [SurveyGeneratorPage] Workflow completed but survey not loaded, fetching survey:', workflow.survey_id);
-      useAppStore.getState().fetchSurvey(workflow.survey_id).catch((error) => {
+      useAppStore.getState().fetchSurvey(workflow.survey_id).then(() => {
+        // After successfully fetching the survey, load pillar scores with a small delay
+        console.log('🏛️ [SurveyGeneratorPage] Survey fetched, loading pillar scores');
+        if (workflow.survey_id) {
+          // Add a small delay to prevent API call conflicts
+          setTimeout(() => {
+            if (workflow.survey_id) {
+              loadPillarScoresAsync(workflow.survey_id).catch((error) => {
+                console.warn('⚠️ [SurveyGeneratorPage] Failed to load pillar scores after fallback fetch:', error);
+              });
+            }
+          }, 2000); // Increased delay to 2 seconds to prevent overwhelming backend
+        }
+      }).catch((error) => {
         console.error('❌ [SurveyGeneratorPage] Failed to fetch survey:', error);
         // If survey doesn't exist, clean up the workflow state
         if (error.message.includes('404') || error.message.includes('Not Found')) {
@@ -42,7 +55,7 @@ export const SurveyGeneratorPage: React.FC = () => {
         }
       });
     }
-  }, [workflow.status, currentSurvey, workflow.survey_id, workflow.survey_fetch_failed, resetWorkflow]);
+  }, [workflow.status, currentSurvey, workflow.survey_id, workflow.survey_fetch_failed, resetWorkflow, loadPillarScoresAsync]);
 
   // Load survey from URL parameters if present
   React.useEffect(() => {
@@ -65,9 +78,7 @@ export const SurveyGeneratorPage: React.FC = () => {
       setCurrentView('survey');
     }
     
-    // Only process survey loading if we have a survey ID in URL and no current survey
-    // Skip this if workflow is completed to avoid unnecessary re-renders
-    if (surveyId && surveyId !== 'undefined' && surveyId !== 'null' && !currentSurvey && workflow.status !== 'completed') {
+    if (surveyId && surveyId !== 'undefined' && surveyId !== 'null' && !currentSurvey) {
       console.log('📥 [SurveyGeneratorPage] Loading survey from URL parameter:', surveyId);
       useAppStore.getState().fetchSurvey(surveyId).then(async () => {
         // Load annotations after survey is loaded
@@ -248,8 +259,8 @@ export const SurveyGeneratorPage: React.FC = () => {
             {workflow.status === 'completed' && (
               <div>
                 <div className="px-6 mb-4 text-center">
-                  <h2 className="text-xl font-semibold text-black mb-2">Survey Generation Complete!</h2>
-                  <p className="text-gray-600">Your professional survey has been generated successfully and is ready for deployment.</p>
+                  <h2 className="text-xl font-semibold text-black mb-2">Survey Complete!</h2>
+                  <p className="text-gray-600">Your professional survey is ready for deployment.</p>
                 </div>
 
                 <div className="px-6">

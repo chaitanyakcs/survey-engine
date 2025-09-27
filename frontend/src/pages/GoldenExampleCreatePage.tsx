@@ -30,6 +30,7 @@ export const GoldenExampleCreatePage: React.FC = () => {
   const [isUploadingRfq, setIsUploadingRfq] = useState(false);
   const [rfqUploadStatus, setRfqUploadStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [rfqUploadMessage, setRfqUploadMessage] = useState('');
+  const [autoGenerateRfq, setAutoGenerateRfq] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [lastUploadedFile, setLastUploadedFile] = useState<File | null>(null);
   
@@ -66,20 +67,29 @@ export const GoldenExampleCreatePage: React.FC = () => {
     setExtractionProgress(progress);
   };
 
-  // Show field extractor when both RFQ and Survey are available
+  // Show field extractor when Survey is available and either RFQ is provided or auto-generate is enabled
   useEffect(() => {
     const hasRfq = Boolean(formData.rfq_text && formData.rfq_text.trim().length > 0);
-    const hasSurvey = Boolean(formData.survey_json && 
-                     formData.survey_json.questions && 
+    const hasSurvey = Boolean(formData.survey_json &&
+                     formData.survey_json.questions &&
                      formData.survey_json.questions.length > 0);
-    
-    setShowFieldExtractor(hasRfq && hasSurvey);
-  }, [formData.rfq_text, formData.survey_json]);
+
+    setShowFieldExtractor(hasSurvey && (hasRfq || autoGenerateRfq));
+  }, [formData.rfq_text, formData.survey_json, autoGenerateRfq]);
 
   const handleCreateExample = async () => {
     console.log('🏆 [Golden Create] Starting golden example creation');
+
+    // Prepare the submission data
+    const submissionData = {
+      ...formData,
+      // If auto-generate is enabled, send empty string to trigger generation
+      rfq_text: autoGenerateRfq ? '' : formData.rfq_text
+    };
+
     console.log('📝 [Golden Create] Form data:', {
-      rfq_text_length: formData.rfq_text?.length || 0,
+      auto_generate_rfq: autoGenerateRfq,
+      rfq_text_length: submissionData.rfq_text.length,
       survey_json_keys: Object.keys(formData.survey_json || {}),
       methodology_tags: formData.methodology_tags,
       industry_category: formData.industry_category,
@@ -87,11 +97,11 @@ export const GoldenExampleCreatePage: React.FC = () => {
       quality_score: formData.quality_score
     });
     console.log('📊 [Golden Create] Survey JSON:', formData.survey_json);
-    
+
     setIsLoading(true);
     try {
       console.log('🚀 [Golden Create] Calling createGoldenExample API');
-      await createGoldenExample(formData);
+      await createGoldenExample(submissionData);
       console.log('✅ [Golden Create] Golden example created successfully');
       // Navigate back to golden examples list
       window.location.href = '/golden-examples';
@@ -364,108 +374,145 @@ export const GoldenExampleCreatePage: React.FC = () => {
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <label className="block text-sm font-medium text-gray-700">RFQ Text</label>
-                    <div className="flex space-x-2">
-                      <button
-                        type="button"
-                        onClick={() => setRfqInputMode('text')}
-                        className={`px-3 py-1 text-xs rounded-lg font-medium transition-all duration-200 ${
-                          rfqInputMode === 'text' 
-                            ? 'bg-yellow-600 text-white shadow-sm' 
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                      >
-                        Text Input
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setRfqInputMode('upload')}
-                        className={`px-3 py-1 text-xs rounded-lg font-medium transition-all duration-200 ${
-                          rfqInputMode === 'upload' 
-                            ? 'bg-yellow-600 text-white shadow-sm' 
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                      >
-                        Upload DOCX
-                      </button>
+                    <div className="flex items-center space-x-4">
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id="auto-generate-rfq"
+                          checked={autoGenerateRfq}
+                          onChange={(e) => {
+                            setAutoGenerateRfq(e.target.checked);
+                            if (e.target.checked) {
+                              setFormData({ ...formData, rfq_text: '' });
+                            }
+                          }}
+                          className="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300 rounded"
+                        />
+                        <label htmlFor="auto-generate-rfq" className="text-xs text-gray-600">
+                          Auto-generate from survey
+                        </label>
+                      </div>
+                      {!autoGenerateRfq && (
+                        <div className="flex space-x-2">
+                          <button
+                            type="button"
+                            onClick={() => setRfqInputMode('text')}
+                            className={`px-3 py-1 text-xs rounded-lg font-medium transition-all duration-200 ${
+                              rfqInputMode === 'text'
+                                ? 'bg-yellow-600 text-white shadow-sm'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                          >
+                            Text Input
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRfqInputMode('upload')}
+                            className={`px-3 py-1 text-xs rounded-lg font-medium transition-all duration-200 ${
+                              rfqInputMode === 'upload'
+                                ? 'bg-yellow-600 text-white shadow-sm'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                          >
+                            Upload DOCX
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  {rfqInputMode === 'text' ? (
-                    <textarea
-                      value={formData.rfq_text}
-                      onChange={(e) => setFormData({ ...formData, rfq_text: e.target.value })}
-                      className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all duration-200"
-                      rows={3}
-                      placeholder="Enter the RFQ description..."
-                    />
-                  ) : (
-                    <div className="space-y-3">
-                      <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-yellow-400 hover:bg-yellow-50/30 transition-all duration-200">
-                        <input
-                          type="file"
-                          accept=".docx"
-                          onChange={handleRfqFileUpload}
-                          className="hidden"
-                          id="rfq-docx-upload"
-                          disabled={isUploadingRfq}
-                        />
-                        <label htmlFor="rfq-docx-upload" className="cursor-pointer">
-                          {isUploadingRfq ? (
-                            <div className="flex flex-col items-center">
-                              <div className="relative mb-3">
-                                <div className="w-12 h-12 border-4 border-yellow-200 rounded-full"></div>
-                                <div className="absolute top-0 left-0 w-12 h-12 border-4 border-yellow-600 rounded-full border-t-transparent animate-spin"></div>
+{!autoGenerateRfq ? (
+                    rfqInputMode === 'text' ? (
+                      <textarea
+                        value={formData.rfq_text}
+                        onChange={(e) => setFormData({ ...formData, rfq_text: e.target.value })}
+                        className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all duration-200"
+                        rows={3}
+                        placeholder="Enter the RFQ description..."
+                      />
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-yellow-400 hover:bg-yellow-50/30 transition-all duration-200">
+                          <input
+                            type="file"
+                            accept=".docx"
+                            onChange={handleRfqFileUpload}
+                            className="hidden"
+                            id="rfq-docx-upload"
+                            disabled={isUploadingRfq}
+                          />
+                          <label htmlFor="rfq-docx-upload" className="cursor-pointer">
+                            {isUploadingRfq ? (
+                              <div className="flex flex-col items-center">
+                                <div className="relative mb-3">
+                                  <div className="w-12 h-12 border-4 border-yellow-200 rounded-full"></div>
+                                  <div className="absolute top-0 left-0 w-12 h-12 border-4 border-yellow-600 rounded-full border-t-transparent animate-spin"></div>
+                                </div>
+                                <div className="text-center">
+                                  <p className="text-sm font-medium text-gray-900">Processing document...</p>
+                                  <p className="text-xs text-gray-500">Please wait while we extract the RFQ text</p>
+                                </div>
                               </div>
-                              <div className="text-center">
-                                <p className="text-sm font-medium text-gray-900">Processing document...</p>
-                                <p className="text-xs text-gray-500">Please wait while we extract the RFQ text</p>
+                            ) : (
+                              <div className="flex flex-col items-center">
+                                <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center mb-3">
+                                  <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                  </svg>
+                                </div>
+                                <div className="text-center">
+                                  <p className="text-sm font-medium text-gray-900">Upload DOCX file</p>
+                                  <p className="text-xs text-gray-500">Click to browse or drag and drop your DOCX file here</p>
+                                </div>
                               </div>
-                            </div>
-                          ) : (
-                            <div className="flex flex-col items-center">
-                              <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center mb-3">
-                                <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                                </svg>
-                              </div>
-                              <div className="text-center">
-                                <p className="text-sm font-medium text-gray-900">Upload DOCX file</p>
-                                <p className="text-xs text-gray-500">Click to browse or drag and drop your DOCX file here</p>
-                              </div>
-                            </div>
-                          )}
-                        </label>
-                      </div>
-
-                      {/* RFQ Upload Status Messages */}
-                      {rfqUploadStatus !== 'idle' && (
-                        <div className={`p-3 rounded-lg ${
-                          rfqUploadStatus === 'success' 
-                            ? 'bg-green-50 border border-green-200' 
-                            : 'bg-red-50 border border-red-200'
-                        }`}>
-                          <div className="flex items-center space-x-2">
-                            <div className={`w-4 h-4 rounded-full flex items-center justify-center ${
-                              rfqUploadStatus === 'success' ? 'bg-green-500' : 'bg-red-500'
-                            }`}>
-                              {rfqUploadStatus === 'success' ? (
-                                <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
-                              ) : (
-                                <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                              )}
-                            </div>
-                            <p className={`text-xs font-medium ${
-                              rfqUploadStatus === 'success' ? 'text-green-800' : 'text-red-800'
-                            }`}>
-                              {rfqUploadMessage}
-                            </p>
-                          </div>
+                            )}
+                          </label>
                         </div>
-                      )}
+
+                        {/* RFQ Upload Status Messages */}
+                        {rfqUploadStatus !== 'idle' && (
+                          <div className={`p-3 rounded-lg ${
+                            rfqUploadStatus === 'success'
+                              ? 'bg-green-50 border border-green-200'
+                              : 'bg-red-50 border border-red-200'
+                          }`}>
+                            <div className="flex items-center space-x-2">
+                              <div className={`w-4 h-4 rounded-full flex items-center justify-center ${
+                                rfqUploadStatus === 'success' ? 'bg-green-500' : 'bg-red-500'
+                              }`}>
+                                {rfqUploadStatus === 'success' ? (
+                                  <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                ) : (
+                                  <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                )}
+                              </div>
+                              <p className={`text-xs font-medium ${
+                                rfqUploadStatus === 'success' ? 'text-green-800' : 'text-red-800'
+                              }`}>
+                                {rfqUploadMessage}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  ) : (
+                    <div className="p-6 bg-blue-50 border border-blue-200 rounded-xl">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                          <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-blue-900">RFQ will be auto-generated</p>
+                          <p className="text-xs text-blue-700">An RFQ will be automatically created from your survey content and metadata</p>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>

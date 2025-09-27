@@ -87,7 +87,14 @@ class APIService {
 
   async fetchPillarScores(surveyId: string): Promise<any> {
     try {
+      console.log('🔍 [API] Starting pillar scores fetch for survey:', surveyId);
+      console.log('🔍 [API] API_BASE_URL:', API_BASE_URL);
+      console.log('🔍 [API] Full URL:', `${API_BASE_URL}/v1/pillar-scores/${surveyId}`);
+      
       const response = await fetch(`${API_BASE_URL}/v1/pillar-scores/${surveyId}`);
+      
+      console.log('🔍 [API] Pillar scores response status:', response.status);
+      console.log('🔍 [API] Pillar scores response ok:', response.ok);
 
       if (!response.ok) {
         throw new Error(`Failed to fetch pillar scores: ${response.statusText}`);
@@ -97,7 +104,12 @@ class APIService {
       console.log('🔍 [API] Fetched pillar scores:', pillarScores);
       return pillarScores;
     } catch (error) {
-      console.warn('⚠️ [API] Failed to fetch pillar scores:', error);
+      console.error('❌ [API] Failed to fetch pillar scores:', error);
+      console.error('❌ [API] Error details:', {
+        name: error instanceof Error ? error.name : 'Unknown',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
       throw error;
     }
   }

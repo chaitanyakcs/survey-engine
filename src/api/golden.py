@@ -28,7 +28,7 @@ class GoldenPairResponse(BaseModel):
 
 class CreateGoldenPairRequest(BaseModel):
     title: Optional[str] = None
-    rfq_text: str
+    rfq_text: Optional[str] = None  # Made optional - will be auto-generated if not provided
     survey_json: Dict[Any, Any]
     methodology_tags: Optional[List[str]] = None
     industry_category: Optional[str] = None
@@ -89,9 +89,14 @@ async def create_golden_pair(
         logger.info(f"🔧 [Golden Pair API] Initializing GoldenService")
         golden_service = GoldenService(db)
         
+        # Handle missing RFQ text
+        rfq_text = request.rfq_text
+        if not rfq_text or not rfq_text.strip():
+            logger.info(f"🤖 [Golden Pair API] RFQ text is empty, will auto-generate from survey")
+
         logger.info(f"💾 [Golden Pair API] Calling golden_service.create_golden_pair")
         golden_pair = await golden_service.create_golden_pair(
-            rfq_text=request.rfq_text,
+            rfq_text=rfq_text,
             survey_json=request.survey_json,
             title=request.title,
             methodology_tags=request.methodology_tags,

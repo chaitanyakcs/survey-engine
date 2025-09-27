@@ -68,6 +68,7 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
   const [error, setError] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<AuditItem | null>(null);
   const [filter, setFilter] = useState<'all' | 'prompts' | 'llm'>('all');
+  const [activeTab, setActiveTab] = useState<'prompt' | 'output' | 'metadata'>('prompt');
 
   const fetchSystemPrompts = useCallback(async () => {
     try {
@@ -301,7 +302,10 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
                 {filteredItems.map((item) => (
                   <button
                     key={item.id}
-                    onClick={() => setSelectedItem(item)}
+                    onClick={() => {
+                      setSelectedItem(item);
+                      setActiveTab('prompt');
+                    }}
                     className={`w-full text-left p-3 rounded-lg border transition-colors ${
                       selectedItem?.id === item.id
                         ? 'border-indigo-500 bg-indigo-50'
@@ -476,49 +480,92 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
 
                 {/* Content */}
                 <div className="flex-1 p-4 overflow-y-auto">
-                  <div className="mb-4">
-                    <h4 className="text-sm font-medium text-gray-900 mb-2">
-                      {isSystemPromptAudit(selectedItem) ? 'System Prompt' : 'Input Prompt'}
-                    </h4>
-                    <div className="overflow-x-auto">
-                      <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono bg-gray-50 p-4 rounded-lg border border-gray-200 min-w-0">
-                        {getItemContent(selectedItem)}
-                      </pre>
-                    </div>
+                  {/* Tab Navigation */}
+                  <div className="border-b border-gray-200 mb-4">
+                    <nav className="-mb-px flex space-x-8">
+                      <button
+                        onClick={() => setActiveTab('prompt')}
+                        className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                          activeTab === 'prompt'
+                            ? 'border-blue-500 text-blue-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                      >
+                        {isSystemPromptAudit(selectedItem) ? 'System Prompt' : 'Input Prompt'}
+                      </button>
+                      {isLLMInteraction(selectedItem) && selectedItem.output_content && (
+                        <button
+                          onClick={() => setActiveTab('output')}
+                          className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                            activeTab === 'output'
+                              ? 'border-blue-500 text-blue-600'
+                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                          }`}
+                        >
+                          Output Content
+                        </button>
+                      )}
+                      {isLLMInteraction(selectedItem) && selectedItem.interaction_metadata && Object.keys(selectedItem.interaction_metadata).length > 0 && (
+                        <button
+                          onClick={() => setActiveTab('metadata')}
+                          className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                            activeTab === 'metadata'
+                              ? 'border-blue-500 text-blue-600'
+                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                          }`}
+                        >
+                          Metadata
+                        </button>
+                      )}
+                    </nav>
                   </div>
 
-                  {/* Output content for LLM interactions */}
-                  {isLLMInteraction(selectedItem) && selectedItem.output_content && (
-                    <div className="mb-4">
-                      <h4 className="text-sm font-medium text-gray-900 mb-2">Output Content</h4>
-                      <div className="overflow-x-auto">
-                        <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono bg-gray-50 p-4 rounded-lg border border-gray-200 min-w-0">
-                          {selectedItem.output_content}
-                        </pre>
+                  {/* Tab Content */}
+                  <div className="min-h-[400px]">
+                    {activeTab === 'prompt' && (
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-900 mb-2">
+                          {isSystemPromptAudit(selectedItem) ? 'System Prompt' : 'Input Prompt'}
+                        </h4>
+                        <div className="overflow-x-auto">
+                          <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono bg-gray-50 p-4 rounded-lg border border-gray-200 min-w-0 max-h-[400px] overflow-y-auto">
+                            {getItemContent(selectedItem)}
+                          </pre>
+                        </div>
                       </div>
-                    </div>
-                  )}
-                  
-                  {/* Debug info for LLM interactions */}
+                    )}
+
+                    {activeTab === 'output' && isLLMInteraction(selectedItem) && selectedItem.output_content && (
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-900 mb-2">Output Content</h4>
+                        <div className="overflow-x-auto">
+                          <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono bg-gray-50 p-4 rounded-lg border border-gray-200 min-w-0 max-h-[400px] overflow-y-auto">
+                            {selectedItem.output_content}
+                          </pre>
+                        </div>
+                      </div>
+                    )}
+
+                    {activeTab === 'metadata' && isLLMInteraction(selectedItem) && selectedItem.interaction_metadata && Object.keys(selectedItem.interaction_metadata).length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-900 mb-2">Metadata</h4>
+                        <div className="overflow-x-auto">
+                          <pre className="text-sm text-gray-700 bg-gray-50 p-4 rounded-lg border border-gray-200 min-w-0 max-h-[400px] overflow-y-auto">
+                            {JSON.stringify(selectedItem.interaction_metadata, null, 2)}
+                          </pre>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Debug info for LLM interactions - Always visible at bottom */}
                   {isLLMInteraction(selectedItem) && (
-                    <div className="mb-4 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                    <div className="mt-4 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
                       <strong>Debug Info:</strong><br/>
                       Purpose: {selectedItem.purpose}<br/>
                       Sub-purpose: {selectedItem.sub_purpose || 'None'}<br/>
                       Has output_content: {selectedItem.output_content ? 'Yes' : 'No'}<br/>
                       Output length: {selectedItem.output_content ? selectedItem.output_content.length : 0}
-                    </div>
-                  )}
-
-                  {/* Metadata for LLM interactions */}
-                  {isLLMInteraction(selectedItem) && selectedItem.interaction_metadata && Object.keys(selectedItem.interaction_metadata).length > 0 && (
-                    <div className="mb-4">
-                      <h4 className="text-sm font-medium text-gray-900 mb-2">Metadata</h4>
-                      <div className="overflow-x-auto">
-                        <pre className="text-sm text-gray-700 bg-gray-50 p-4 rounded-lg border border-gray-200 min-w-0">
-                          {JSON.stringify(selectedItem.interaction_metadata, null, 2)}
-                        </pre>
-                      </div>
                     </div>
                   )}
                 </div>

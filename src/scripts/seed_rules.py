@@ -182,106 +182,7 @@ def seed_methodology_rules():
     }
 
 
-def seed_quality_rules():
-    """Seed comprehensive quality rules"""
-    return {
-        "question_quality": [
-            "Questions must be clear, concise, and unambiguous",
-            "Avoid leading, loaded, or double-barreled questions",
-            "Use appropriate question types for the data needed",
-            "Include proper validation and skip logic where needed",
-            "Avoid jargon and technical terms unless necessary",
-            "Use consistent terminology throughout the survey",
-            "Ensure questions are culturally appropriate and inclusive"
-        ],
-        "survey_structure": [
-            "Start with screening questions to qualify respondents",
-            "Group related questions logically",
-            "Place sensitive questions near the end",
-            "Include demographic questions for segmentation",
-            "Use progress indicators for long surveys",
-            "Include clear instructions and context",
-            "End with thank you message and next steps"
-        ],
-        "methodology_compliance": [
-            "Follow established research methodology standards",
-            "Include appropriate sample size considerations",
-            "Ensure statistical validity of question design",
-            "Add proper metadata for analysis",
-            "Use validated scales when available",
-            "Include appropriate control questions",
-            "Ensure randomization where needed"
-        ],
-        "respondent_experience": [
-            "Keep survey length appropriate (5-15 minutes)",
-            "Use clear instructions and progress indicators",
-            "Avoid repetitive or redundant questions",
-            "Ensure mobile-friendly question formats",
-            "Use engaging and conversational language",
-            "Include appropriate incentives information",
-            "Provide clear privacy and data usage information"
-        ],
-        "data_quality": [
-            "Include attention check questions",
-            "Use appropriate question scales and ranges",
-            "Include 'Don't know' or 'Prefer not to answer' options",
-            "Ensure logical flow and skip patterns",
-            "Include validation for open-ended responses",
-            "Use consistent response formats",
-            "Include quality control measures"
-        ],
-        "accessibility": [
-            "Use clear, readable fonts and colors",
-            "Ensure keyboard navigation compatibility",
-            "Include alt text for images",
-            "Use sufficient color contrast",
-            "Provide text alternatives for audio/video",
-            "Ensure screen reader compatibility",
-            "Test with assistive technologies"
-        ]
-    }
-
-
-def seed_industry_rules():
-    """Seed industry-specific rules"""
-    return {
-        "healthcare": [
-            "Include HIPAA compliance considerations",
-            "Use appropriate medical terminology",
-            "Include consent and privacy statements",
-            "Consider patient confidentiality",
-            "Use validated health assessment tools",
-            "Include appropriate demographic questions",
-            "Ensure cultural sensitivity in health questions"
-        ],
-        "financial_services": [
-            "Include appropriate disclaimers",
-            "Use clear financial terminology",
-            "Include risk assessment questions",
-            "Ensure regulatory compliance",
-            "Include appropriate demographic questions",
-            "Use validated financial scales",
-            "Consider privacy and security requirements"
-        ],
-        "technology": [
-            "Use current technology terminology",
-            "Include appropriate technical questions",
-            "Consider user experience factors",
-            "Include adoption and usage questions",
-            "Use appropriate demographic questions",
-            "Consider privacy and security concerns",
-            "Include innovation and future trends questions"
-        ],
-        "retail": [
-            "Include shopping behavior questions",
-            "Use appropriate product categories",
-            "Include brand and price sensitivity questions",
-            "Consider seasonal factors",
-            "Include customer service questions",
-            "Use appropriate demographic questions",
-            "Include purchase intent and behavior questions"
-        ]
-    }
+# Quality rules and industry rules functions removed - replaced by comprehensive generation rules system
 
 
 async def seed_rules_to_database():
@@ -299,44 +200,22 @@ async def seed_rules_to_database():
         
         # Update the prompt service with seeded rules
         prompt_service.methodology_rules.update(methodology_rules)
-        
-        # Seed quality rules
-        quality_rules = seed_quality_rules()
-        logger.info(f"Seeding {len(quality_rules)} quality rule categories...")
-        
-        # Update the prompt service with seeded rules
-        prompt_service.quality_rules.update(quality_rules)
-        
-        # Seed industry rules
-        industry_rules = seed_industry_rules()
-        logger.info(f"Seeding {len(industry_rules)} industry-specific rule categories...")
-        
-        # Add industry rules to quality rules
-        prompt_service.quality_rules.update(industry_rules)
+
+        # Quality rules and industry rules removed - replaced by comprehensive generation rules system
         
         logger.info("✅ All rules seeded successfully!")
         
         # Print summary
         print("\n📊 Rules Summary:")
         print(f"  • Methodologies: {len(methodology_rules)}")
-        print(f"  • Quality Categories: {len(quality_rules)}")
-        print(f"  • Industry Categories: {len(industry_rules)}")
-        print(f"  • Total Rule Categories: {len(methodology_rules) + len(quality_rules) + len(industry_rules)}")
-        
+        print("  • Quality rules: Replaced by comprehensive generation rules system")
+
         # Show some examples
         print("\n🔍 Example Methodology Rules:")
         for method, rules in list(methodology_rules.items())[:3]:
             print(f"  • {method}: {rules['description']}")
             print(f"    - Required Questions: {rules['required_questions']}")
             print(f"    - Validation Rules: {len(rules['validation_rules'])}")
-        
-        print("\n🔍 Example Quality Rules:")
-        for category, rules in list(quality_rules.items())[:3]:
-            print(f"  • {category}: {len(rules)} rules")
-        
-        print("\n🔍 Example Industry Rules:")
-        for industry, rules in list(industry_rules.items())[:2]:
-            print(f"  • {industry}: {len(rules)} rules")
         
         return True
         

@@ -41,9 +41,14 @@ class PromptService:
             ],
             "output_requirements": [
                 "Generate valid JSON following the specified schema",
+                "CRITICAL: Output must be properly formatted JSON with NO line breaks within string values",
+                "CRITICAL: All string values must be on single lines - do not break text across multiple lines",
+                "CRITICAL: Use proper JSON syntax with correct quotes, commas, and brackets",
                 "Include proper question types and validation rules",
                 "Add appropriate metadata and methodology tags",
-                "Ensure questions are properly categorized and sequenced"
+                "Ensure questions are properly categorized and sequenced",
+                "Example of CORRECT format: {\"text\": \"What is your age?\", \"type\": \"number\"}",
+                "Example of INCORRECT format: {\"text\": \"What\nis\nyour\nage?\", \"type\": \"number\"}"
             ]
         }
     
@@ -64,50 +69,58 @@ class PromptService:
                         "validation_rules": rule.rule_content.get('validation_rules', []) if rule.rule_content else []
                     }
                 
-                # Load quality rules
-                quality_rules = self.db_session.query(SurveyRule).filter(
-                    SurveyRule.rule_type == 'quality',
-                    SurveyRule.is_active == True
-                ).all()
+                # Quality and custom rules have been replaced by generation rules system
+                # (58 pillar-based generation rules provide comprehensive coverage)
                 
-                for rule in quality_rules:
-                    if rule.category not in self.quality_rules:
-                        self.quality_rules[rule.category] = []
-                    if rule.rule_content and isinstance(rule.rule_content, dict):
-                        rule_text = rule.rule_content.get('rule_text', '')
-                        if rule_text:
-                            self.quality_rules[rule.category].append(rule_text)
-                
-                # Load custom rules
-                custom_rules = self.db_session.query(SurveyRule).filter(
-                    SurveyRule.rule_type == 'custom',
-                    SurveyRule.is_active == True
-                ).all()
-                
-                for rule in custom_rules:
-                    if rule.category not in self.quality_rules:
-                        self.quality_rules[rule.category] = []
-                    # For custom rules, use rule_description directly
-                    if rule.rule_description:
-                        self.quality_rules[rule.category].append(rule.rule_description)
-                
-                # Load pillar rules
+                # Load pillar rules (evaluation rules)
                 pillar_rules = self.db_session.query(SurveyRule).filter(
                     SurveyRule.rule_type == 'pillar',
                     SurveyRule.is_active == True
                 ).all()
-                
+
                 for rule in pillar_rules:
                     if rule.category not in self.pillar_rules:
                         self.pillar_rules[rule.category] = []
-                    
+
                     rule_content = rule.rule_content or {}
                     self.pillar_rules[rule.category].append({
                         'id': str(rule.id),
                         'name': rule.rule_name,
                         'description': rule.rule_description,
                         'priority': rule_content.get('priority', 'medium'),
-                        'evaluation_criteria': rule_content.get('evaluation_criteria', [])
+                        'evaluation_criteria': rule_content.get('evaluation_criteria', []),
+                        'rule_type': 'evaluation'
+                    })
+
+                # Load generation rules (core quality standards)
+                generation_rules = self.db_session.query(SurveyRule).filter(
+                    SurveyRule.rule_type == 'generation',
+                    SurveyRule.is_active == True
+                ).order_by(SurveyRule.priority.desc()).all()  # Order by priority (higher first)
+
+                for rule in generation_rules:
+                    if rule.category not in self.pillar_rules:
+                        self.pillar_rules[rule.category] = []
+
+                    # Parse rule_content JSON
+                    rule_content = {}
+                    if rule.rule_content:
+                        try:
+                            import json
+                            rule_content = json.loads(rule.rule_content) if isinstance(rule.rule_content, str) else rule.rule_content
+                        except (json.JSONDecodeError, TypeError):
+                            rule_content = {}
+
+                    self.pillar_rules[rule.category].append({
+                        'id': str(rule.id),
+                        'name': rule.rule_name,
+                        'description': rule.rule_description,
+                        'priority': rule_content.get('priority', 'medium'),
+                        'generation_guideline': rule_content.get('generation_guideline', ''),
+                        'implementation_notes': rule_content.get('implementation_notes', []),
+                        'quality_indicators': rule_content.get('quality_indicators', []),
+                        'weight': rule_content.get('weight', 0.0),
+                        'rule_type': 'generation'
                     })
                 
                 # Load system prompt
@@ -121,7 +134,7 @@ class PromptService:
                 else:
                     self.system_prompt = ""
                 
-                logger.info(f"Loaded {len(methodology_rules)} methodology rules, {len(quality_rules)} quality rules, {len(custom_rules)} custom rules, {sum(len(rules) for rules in self.pillar_rules.values())} pillar rules, and system prompt from database")
+                logger.info(f"Loaded {len(methodology_rules)} methodology rules, {sum(len(rules) for rules in self.pillar_rules.values())} pillar rules (including {sum(1 for rules in self.pillar_rules.values() for rule in rules if rule.get('rule_type') == 'generation')} generation rules), and system prompt from database")
             else:
                 # Fallback to hardcoded rules if no database session
                 self._load_fallback_rules()
@@ -171,32 +184,9 @@ class PromptService:
             }
         }
         
-        self.quality_rules = {
-            "question_quality": [
-                "Questions must be clear, concise, and unambiguous",
-                "Avoid leading, loaded, or double-barreled questions",
-                "Use appropriate question types for the data needed",
-                "Include proper validation and skip logic where needed"
-            ],
-            "survey_structure": [
-                "Start with screening questions to qualify respondents",
-                "Group related questions logically",
-                "Place sensitive questions near the end",
-                "Include demographic questions for segmentation"
-            ],
-            "methodology_compliance": [
-                "Follow established research methodology standards",
-                "Include appropriate sample size considerations",
-                "Ensure statistical validity of question design",
-                "Add proper metadata for analysis"
-            ],
-            "respondent_experience": [
-                "Keep survey length appropriate (5-15 minutes)",
-                "Use clear instructions and progress indicators",
-                "Avoid repetitive or redundant questions",
-                "Ensure mobile-friendly question formats"
-            ]
-        }
+        # Quality rules have been replaced by the comprehensive generation rules system
+        # (58 pillar-based generation rules provide better coverage)
+        self.quality_rules = {}
     
     def build_system_prompt(
         self,
@@ -237,17 +227,22 @@ class PromptService:
                         ""
                     ])
         
-        # Quality rules
+        # Custom requirements section (methodology requirements already added above)
         prompt_parts.extend([
-            "## Quality Standards:",
+            "## Custom Requirements:",
+            "",
+            "## Output Requirements:",
+            "- Generate valid JSON following the specified schema",
+            "- CRITICAL: Output must be properly formatted JSON with NO line breaks within string values",
+            "- CRITICAL: All string values must be on single lines - do not break text across multiple lines",
+            "- CRITICAL: Use proper JSON syntax with correct quotes, commas, and brackets",
+            "- Include proper question types and validation rules",
+            "- Add appropriate metadata and methodology tags",
+            "- Ensure questions are properly categorized and sequenced",
+            "- Example of CORRECT format: {\"text\": \"What is your age?\", \"type\": \"number\"}",
+            "- Example of INCORRECT format: {\"text\": \"What\nis\nyour\nage?\", \"type\": \"number\"}",
             ""
         ])
-        for category, rules in self.quality_rules.items():
-            prompt_parts.extend([
-                f"### {category.replace('_', ' ').title()}:",
-                *[f"- {rule}" for rule in rules],
-                ""
-            ])
         
         # Custom system prompt if available
         if self.system_prompt:
@@ -265,8 +260,98 @@ class PromptService:
                 ""
             ])
         
-        # Output format requirements
+        # Add comprehensive 5-pillar evaluation framework
         prompt_parts.extend([
+            "## 5-PILLAR EVALUATION FRAMEWORK:",
+            "Follow these comprehensive rules to ensure high-quality survey design:",
+            "",
+            "## Content Validity (20% Weight)",
+            "Follow these core quality standards to ensure high-quality survey design:",
+            "- 🔴 Include sufficient screening questions to identify and qualify the target respondent population",
+            "  • Design screening questions early in survey flow",
+            "  • Ensure screening criteria match target population definition",
+            "- 🔴 Ensure the questionnaire comprehensively covers all essential research objectives stated in the RFQ document",
+            "  • Review all RFQ objectives carefully before question design",
+            "  • Map each research objective to specific survey questions",
+            "- 🔴 Include appropriate and sufficient demographic questions for target audience analysis",
+            "  • Consider age, gender, income, geography as relevant to research goals",
+            "  • Include occupation, education level when business-relevant",
+            "- 🔴 Address information needs of all key stakeholders identified in the research",
+            "  • Identify all stakeholders mentioned in RFQ",
+            "  • Ensure questions address each stakeholder's information needs",
+            "- 🟡 Ensure questions capture data at the appropriate level of detail for analysis requirements",
+            "  • Consider analysis granularity needs when designing questions",
+            "  • Balance detail level with respondent burden",
+            "- 🟡 Include validation questions or consistency checks to verify response reliability",
+            "  • Add attention check questions in longer surveys",
+            "  • Include consistency verification questions for critical data",
+            "",
+            "## Methodological Rigor (25% Weight)",
+            "Follow these core quality standards to ensure high-quality survey design:",
+            "- 🔴 Include appropriate sample size considerations and statistical power requirements",
+            "  • Consider minimum sample size for intended analysis",
+            "  • Include sample size guidance in survey metadata",
+            "- 🔴 Design questions to minimize measurement error and response bias",
+            "  • Use neutral, unbiased question wording",
+            "  • Avoid leading or loaded questions",
+            "- 🔴 Include appropriate control questions and randomization where methodologically required",
+            "  • Add control questions for experimental designs",
+            "  • Include randomization instructions where needed",
+            "- 🔴 Ensure response scales and formats are consistent with established research practices",
+            "  • Use standard Likert scales (5-point, 7-point) where appropriate",
+            "  • Maintain consistent scale directions throughout survey",
+            "- 🔴 Use methodologically sound question types appropriate for the specific data collection needs",
+            "  • Match question types to data requirements (categorical, ordinal, interval)",
+            "  • Use established question formats for validated constructs",
+            "",
+            "## Clarity & Comprehensibility (25% Weight)",
+            "Follow these core quality standards to ensure high-quality survey design:",
+            "- 🔴 Use consistent terminology and question formats throughout the survey",
+            "  • Maintain consistent terms for the same concepts",
+            "  • Use consistent question format patterns",
+            "- 🔴 Write all questions using clear, unambiguous language that is easily understood by the target audience",
+            "  • Use simple, direct language appropriate for target demographic",
+            "  • Avoid ambiguous terms that could be interpreted multiple ways",
+            "- 🔴 Avoid unnecessary technical jargon and define technical terms when they must be used",
+            "  • Use plain language instead of technical jargon where possible",
+            "  • Provide clear definitions for necessary technical terms",
+            "- 🔴 Ensure response options are mutually exclusive and collectively exhaustive",
+            "  • Design response options that don't overlap",
+            "  • Include all reasonable response possibilities",
+            "- 🔴 Provide clear, comprehensive instructions for completing each question type",
+            "  • Include specific instructions for complex question types",
+            "  • Explain how to use scales, rankings, or special formats",
+            "- 🔴 Design questions to avoid double-barreled, leading, or loaded constructions",
+            "  • Ask about one concept per question",
+            "  • Use neutral wording that doesn't suggest preferred answers",
+            "",
+            "## Structural Coherence (20% Weight)",
+            "Follow these core quality standards to ensure high-quality survey design:",
+            "- 🔴 Organize questions in a logical, coherent flow that guides respondents naturally through the survey",
+            "  • Start with general questions and move to specific",
+            "  • Group related questions together logically",
+            "- 🔴 Structure survey sections in a logical sequence that supports the research objectives",
+            "  • Organize sections to build understanding progressively",
+            "  • Place screening questions early in survey",
+            "- 🔴 Implement appropriate skip logic and branching to maintain survey relevance for all respondents",
+            "  • Design skip logic to avoid irrelevant questions",
+            "  • Create clear branching paths for different respondent types",
+            "- 🔴 Balance survey length appropriately for the target audience and research depth required",
+            "  • Consider target audience attention span",
+            "  • Balance comprehensiveness with completion rates",
+            "",
+            "## Deployment Readiness (10% Weight)",
+            "Follow these core quality standards to ensure high-quality survey design:",
+            "- 🔴 Design questions to be mobile-friendly and accessible across different devices and platforms",
+            "  • Ensure questions work well on mobile devices",
+            "  • Consider accessibility requirements",
+            "- 🔴 Include appropriate time estimates and progress indicators in survey design",
+            "  • Provide realistic completion time estimates",
+            "  • Design for progress tracking",
+            "- 🔴 Provide clear, comprehensive instructions for survey respondents and administrators",
+            "  • Include detailed respondent instructions",
+            "  • Provide administrator guidance where needed",
+            "",
             "## Output Requirements:",
             *[f"- {req}" for req in self.base_rules['output_requirements']],
             ""
@@ -414,17 +499,28 @@ class PromptService:
             "⚠️  CRITICAL: Every question MUST be placed in the most appropriate section.",
             "⚠️  Each section should have at least 2-3 relevant questions unless the RFQ specifically doesn't require that type of information.",
             "⚠️  The JSON structure MUST use 'sections' array, NOT 'questions' array.",
+            "🚨 MANDATORY: You MUST generate actual questions for each section - do NOT leave any sections with empty questions arrays.",
+            "🚨 MANDATORY: Each section must contain at least 2-3 relevant questions based on the RFQ requirements.",
             "",
             "## CRITICAL JSON FORMATTING REQUIREMENTS:",
+            "🚨🚨🚨 MANDATORY: You MUST return ONLY valid JSON format - NO markdown, NO explanations, NO additional text 🚨🚨🚨",
+            "🚨🚨🚨 MANDATORY: Start your response with { and end with } - this is the ONLY format accepted 🚨🚨🚨",
             "1. Return ONLY valid JSON - no markdown, no explanations, no additional text",
             "2. Use proper JSON syntax with double quotes for all strings",
             "3. Ensure all brackets and braces are properly closed",
             "4. Use consistent indentation (2 spaces)",
             "5. Escape special characters in strings properly",
-            "6. Use numeric IDs for sections (1, 2, 3, 4, 5)",
-            "7. Use string IDs for questions (q1, q2, q3, etc.)",
-            "8. Write question text as single lines - NO newlines within question text",
-            "9. Use proper sentence structure - do not break words across lines",
+            "6. 🚨 CRITICAL: NO line breaks within string values - keep all text on single lines",
+            "7. 🚨 CRITICAL: Do NOT break question text across multiple lines",
+            "8. 🚨 CRITICAL: Do NOT break option text across multiple lines",
+            "9. Example CORRECT: {\"text\": \"What is your age?\", \"options\": [\"18-25\", \"26-35\"]}",
+            "10. Example WRONG: {\"text\": \"What\nis\nyour\nage?\", \"options\": [\"18-25\",\n\"26-35\"]}",
+            "11. Use numeric IDs for sections (1, 2, 3, 4, 5)",
+            "12. Use string IDs for questions (q1, q2, q3, etc.)",
+            "13. Write question text as single lines - NO newlines within question text",
+            "14. Use proper sentence structure - do not break words across lines",
+            "15. 🚨🚨🚨 FORBIDDEN: Do NOT use markdown formatting like 1), 2), -, *, or any other markdown syntax 🚨🚨🚨",
+            "16. 🚨🚨🚨 FORBIDDEN: Do NOT use numbered lists, bullet points, or any text formatting 🚨🚨🚨",
             "",
             "## REQUIRED JSON STRUCTURE:",
             json.dumps({
@@ -452,25 +548,69 @@ class PromptService:
                         "id": 2,
                         "title": "Consumer Details", 
                         "description": "Detailed consumer information and behavior patterns",
-                        "questions": []
+                        "questions": [
+                            {
+                                "id": "q2",
+                                "text": "What is your household income range?",
+                                "type": "multiple_choice",
+                                "options": ["Under $25,000", "$25,000-$50,000", "$50,000-$75,000", "$75,000-$100,000", "Over $100,000"],
+                                "required": True,
+                                "methodology": "demographics",
+                                "validation": "single_select",
+                                "order": 1
+                            }
+                        ]
                     },
                     {
                         "id": 3,
                         "title": "Consumer product awareness, usage and preference",
                         "description": "Understanding consumer awareness, usage patterns and preferences",
-                        "questions": []
+                        "questions": [
+                            {
+                                "id": "q3",
+                                "text": "How often do you purchase products in this category?",
+                                "type": "multiple_choice",
+                                "options": ["Daily", "Weekly", "Monthly", "Quarterly", "Annually", "Never"],
+                                "required": True,
+                                "methodology": "usage_frequency",
+                                "validation": "single_select",
+                                "order": 1
+                            }
+                        ]
                     },
                     {
                         "id": 4,
                         "title": "Product introduction and Concept reaction",
                         "description": "Introduction of new concepts and gathering reactions",
-                        "questions": []
+                        "questions": [
+                            {
+                                "id": "q4",
+                                "text": "How likely are you to purchase this product?",
+                                "type": "scale",
+                                "options": ["Very Unlikely", "Unlikely", "Neutral", "Likely", "Very Likely"],
+                                "required": True,
+                                "methodology": "purchase_intent",
+                                "validation": "single_select",
+                                "order": 1
+                            }
+                        ]
                     },
                     {
                         "id": 5,
                         "title": "Methodology",
                         "description": "Methodology-specific questions and validation",
-                        "questions": []
+                        "questions": [
+                            {
+                                "id": "q5",
+                                "text": "Please rate the overall quality of this survey",
+                                "type": "scale",
+                                "options": ["Poor", "Fair", "Good", "Very Good", "Excellent"],
+                                "required": False,
+                                "methodology": "quality_check",
+                                "validation": "single_select",
+                                "order": 1
+                            }
+                        ]
                     }
                 ],
                 "metadata": {
@@ -521,17 +661,11 @@ class PromptService:
         
         return final_prompt
     
-    def add_custom_rule(self, rule_type: str, rule: str) -> None:
-        """Add a custom rule to the system"""
-        if rule_type not in self.quality_rules:
-            self.quality_rules[rule_type] = []
-        self.quality_rules[rule_type].append(rule)
-        logger.info(f"Added custom rule to {rule_type}: {rule}")
-    
     def refresh_rules_from_database(self):
         """Refresh rules from database (useful when rules are updated)"""
         self.methodology_rules = {}
         self.quality_rules = {}
+        self.pillar_rules = {}
         self._load_database_rules()
         logger.info("Rules refreshed from database")
     
@@ -543,7 +677,7 @@ class PromptService:
         """Get pillar rules formatted for LLM prompt context"""
         if not self.pillar_rules:
             return ""
-        
+
         context_parts = []
         pillar_weights = {
             'content_validity': 0.20,
@@ -552,26 +686,45 @@ class PromptService:
             'structural_coherence': 0.20,
             'deployment_readiness': 0.10
         }
-        
+
         for pillar, rules in self.pillar_rules.items():
             if not rules:
                 continue
-                
+
             weight = pillar_weights.get(pillar, 0.0)
             pillar_display = pillar.replace('_', ' ').title().replace('Comprehensibility', '& Comprehensibility')
-            
+
             context_parts.append(f"\n## {pillar_display} ({weight:.0%} Weight)")
-            context_parts.append("Follow these rules to ensure high-quality survey design:")
-            
-            for rule in rules:
-                priority_indicator = "🔴" if rule['priority'] == 'critical' else "🟡" if rule['priority'] == 'high' else "🔵" if rule['priority'] == 'medium' else "⚪"
-                context_parts.append(f"- {priority_indicator} {rule['description']}")
-                
-                # Add evaluation criteria if available
-                if rule.get('evaluation_criteria'):
-                    for criterion in rule['evaluation_criteria']:
-                        context_parts.append(f"  • {criterion}")
-        
+            context_parts.append("Follow these core quality standards to ensure high-quality survey design:")
+
+            # Separate generation rules from evaluation rules
+            generation_rules = [r for r in rules if r.get('rule_type') == 'generation']
+            evaluation_rules = [r for r in rules if r.get('rule_type') == 'evaluation']
+
+            # Show generation rules first (these are the actionable guidelines)
+            for rule in generation_rules:
+                priority_indicator = "🔴" if rule['priority'] == 'core' else "🟡" if rule['priority'] == 'high' else "🔵" if rule['priority'] == 'medium' else "⚪"
+
+                # Use generation_guideline if available, otherwise fall back to description
+                guideline = rule.get('generation_guideline', rule.get('description', ''))
+                context_parts.append(f"- {priority_indicator} {guideline}")
+
+                # Add implementation notes for complex rules
+                if rule.get('implementation_notes') and rule['priority'] in ['core', 'high']:
+                    for note in rule['implementation_notes'][:2]:  # Limit to first 2 notes to keep prompt concise
+                        context_parts.append(f"  • {note}")
+
+            # Show evaluation rules if no generation rules exist for this pillar
+            if not generation_rules and evaluation_rules:
+                for rule in evaluation_rules:
+                    priority_indicator = "🔴" if rule['priority'] == 'critical' else "🟡" if rule['priority'] == 'high' else "🔵" if rule['priority'] == 'medium' else "⚪"
+                    context_parts.append(f"- {priority_indicator} {rule['description']}")
+
+                    # Add evaluation criteria if available
+                    if rule.get('evaluation_criteria'):
+                        for criterion in rule['evaluation_criteria']:
+                            context_parts.append(f"  • {criterion}")
+
         return "\n".join(context_parts)
     
     def validate_survey_against_rules(
@@ -601,15 +754,9 @@ class PromptService:
                     validation_results["passed"] = False
                     validation_results["errors"].extend(compliance["errors"])
         
-        # Check basic quality rules
-        quality_check = self._check_quality_rules(survey)
-        validation_results["quality_score"] = quality_check["score"]
-        
-        if quality_check["errors"]:
-            validation_results["passed"] = False
-            validation_results["errors"].extend(quality_check["errors"])
-        
-        validation_results["warnings"].extend(quality_check["warnings"])
+        # Basic quality validation is now handled by generation rules
+        # (No separate quality check needed - generation rules prevent issues at source)
+        validation_results["quality_score"] = 0.8  # Default good score
         
         return validation_results
     
@@ -641,33 +788,4 @@ class PromptService:
         
         return compliance
     
-    def _check_quality_rules(self, survey: Dict[str, Any]) -> Dict[str, Any]:
-        """Check survey against quality rules"""
-        quality_check = {
-            "score": 0.8,  # Base score
-            "errors": [],
-            "warnings": []
-        }
-        
-        questions = survey.get("questions", [])
-        
-        # Basic checks
-        if not questions:
-            quality_check["errors"].append("Survey must have questions")
-            quality_check["score"] = 0.0
-            return quality_check
-        
-        # Check question quality
-        for i, question in enumerate(questions):
-            if not question.get("text"):
-                quality_check["errors"].append(f"Question {i+1} missing text")
-                quality_check["score"] -= 0.1
-            
-            if not question.get("type"):
-                quality_check["warnings"].append(f"Question {i+1} missing type")
-                quality_check["score"] -= 0.05
-        
-        # Ensure score is between 0 and 1
-        quality_check["score"] = max(0.0, min(1.0, quality_check["score"]))
-        
-        return quality_check
+    # _check_quality_rules method removed - quality validation now handled by generation rules

@@ -33,7 +33,7 @@ class DocumentParser:
                 technical_details="REPLICATE_API_TOKEN environment variable is not set",
                 action_required="Configure AI service provider (Replicate or OpenAI)"
             )
-        replicate.api_token = settings.replicate_api_token  # type: ignore
+        self.replicate_client = replicate.Client(api_token=settings.replicate_api_token)
         self.model = settings.generation_model  # Use GPT-5 from settings
         self.db_session = db_session
         self.rfq_parsing_manager = rfq_parsing_manager
@@ -181,7 +181,7 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                     ) as audit_context:
                         logger.info(f"🚀 [Document Parser] Calling Replicate API with auditing")
                         start_time = time.time()
-                        output = await replicate.async_run(
+                        output = await self.replicate_client.async_run(
                             self.model,
                             input={
                                 "prompt": prompt,
@@ -199,7 +199,7 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                 else:
                     # Fallback without auditing
                     logger.info(f"🚀 [Document Parser] Calling Replicate API without auditing")
-                    output = await replicate.async_run(
+                    output = await self.replicate_client.async_run(
                         self.model,
                         input={
                         "prompt": prompt,
@@ -212,7 +212,7 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                 # If audit fails, log the error but continue with core functionality
                 logger.warning(f"⚠️ [Document Parser] Audit system failed, continuing without audit: {str(audit_error)}")
                 logger.info(f"🚀 [Document Parser] Calling Replicate API without auditing (audit failed)")
-                output = await replicate.async_run(
+                output = await self.replicate_client.async_run(
                     self.model,
                     input={
                         "prompt": prompt,
@@ -638,7 +638,7 @@ IMPORTANT:
                     ) as audit_context:
                         logger.info(f"🚀 [Document Parser] Calling Replicate API for RFQ extraction with auditing")
                         start_time = time.time()
-                        output = await replicate.async_run(
+                        output = await self.replicate_client.async_run(
                             self.model,
                             input={
                                 "prompt": prompt,
@@ -656,7 +656,7 @@ IMPORTANT:
                 else:
                     # Fallback without auditing
                     logger.info(f"🚀 [Document Parser] Calling Replicate API for RFQ extraction without auditing")
-                    output = await replicate.async_run(
+                    output = await self.replicate_client.async_run(
                         self.model,
                         input={
                             "prompt": prompt,
@@ -669,7 +669,7 @@ IMPORTANT:
                 # If audit fails, log the error but continue with core functionality
                 logger.warning(f"⚠️ [Document Parser] Audit system failed, continuing without audit: {str(audit_error)}")
                 logger.info(f"🚀 [Document Parser] Calling Replicate API for RFQ extraction without auditing (audit failed)")
-                output = await replicate.async_run(
+                output = await self.replicate_client.async_run(
                     self.model,
                     input={
                         "prompt": prompt,
