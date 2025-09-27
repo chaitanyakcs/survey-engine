@@ -162,12 +162,10 @@ async def get_embedding(text: str, workflow_id: str = None, manager = None) -> L
     
     try:
         if workflow_id and manager:
-            await manager.send_progress(workflow_id, {
-                "type": "progress",
-                "step": "generating_embeddings",
-                "percent": 15,
-                "message": "Generating semantic embeddings for RFQ text... (using fallback)"
-            })
+            from src.services.progress_tracker import get_progress_tracker
+            progress_tracker = get_progress_tracker(workflow_id)
+            progress_data = progress_tracker.get_progress_data("building_context", "generating_embeddings")
+            await manager.send_progress(workflow_id, progress_data)
             
         # Add a small delay to make the progress visible
         await asyncio.sleep(0.5)
@@ -193,12 +191,10 @@ async def retrieve_golden_examples(rfq_embedding: List[float], db: Session, max_
     """Retrieve most similar golden examples using vector similarity"""
     try:
         if workflow_id and manager:
-            await manager.send_progress(workflow_id, {
-                "type": "progress",
-                "step": "searching_golden_examples",
-                "percent": 30,
-                "message": "Searching golden examples database using vector similarity..."
-            })
+            from src.services.progress_tracker import get_progress_tracker
+            progress_tracker = get_progress_tracker(workflow_id)
+            progress_data = progress_tracker.get_progress_data("building_context", "matching_examples")
+            await manager.send_progress(workflow_id, progress_data)
             
         # Add delay to make progress visible
         await asyncio.sleep(0.7)
@@ -206,12 +202,10 @@ async def retrieve_golden_examples(rfq_embedding: List[float], db: Session, max_
         golden_pairs = db.query(GoldenRFQSurveyPair).all()
         
         if workflow_id and manager:
-            await manager.send_progress(workflow_id, {
-                "type": "progress",
-                "step": "calculating_similarities",
-                "percent": 35,
-                "message": f"Calculating similarity scores for {len(golden_pairs)} golden examples..."
-            })
+            from src.services.progress_tracker import get_progress_tracker
+            progress_tracker = get_progress_tracker(workflow_id)
+            progress_data = progress_tracker.get_progress_data("building_context", "matching_examples")
+            await manager.send_progress(workflow_id, progress_data)
             
         # Add another delay for similarity calculation
         await asyncio.sleep(0.5)
@@ -247,12 +241,10 @@ async def retrieve_golden_examples(rfq_embedding: List[float], db: Session, max_
             db.commit()
         
         if workflow_id and manager and golden_examples:
-            await manager.send_progress(workflow_id, {
-                "type": "progress", 
-                "step": "golden_examples_found",
-                "percent": 40,
-                "message": f"Found {len(golden_examples)} relevant examples (similarity: {golden_examples[0]['similarity_score']:.2f})"
-            })
+            from src.services.progress_tracker import get_progress_tracker
+            progress_tracker = get_progress_tracker(workflow_id)
+            progress_data = progress_tracker.get_completion_data("building_context", "golden_retrieved")
+            await manager.send_progress(workflow_id, progress_data)
         
         return golden_examples
     
@@ -526,12 +518,10 @@ async def generate_survey_async(workflow_id: str, survey_id: str, request: dict)
         similarity_scores = []  # Will be populated by workflow nodes
         
         # Step 2: Post-processing and validation
-        await manager.send_progress(workflow_id, {
-            "type": "progress",
-            "step": "post_processing",
-            "percent": 80,
-            "message": "Processing survey results and calculating quality scores..."
-        })
+        from src.services.progress_tracker import get_progress_tracker
+        progress_tracker = get_progress_tracker(workflow_id)
+        progress_data = progress_tracker.get_progress_data("validation_scoring")
+        await manager.send_progress(workflow_id, progress_data)
         
         # Get the completed survey from database
         survey_record = db.query(Survey).filter(Survey.id == survey_id).first()
@@ -551,12 +541,10 @@ async def generate_survey_async(workflow_id: str, survey_id: str, request: dict)
             confidence_score = min(0.95, 0.70 + (used_golden_examples * 0.05))
             
         # Step 3: Finalization
-        await manager.send_progress(workflow_id, {
-            "type": "progress",
-            "step": "finalizing",
-            "percent": 95,
-            "message": "Finalizing survey generation..."
-        })
+        from src.services.progress_tracker import get_progress_tracker
+        progress_tracker = get_progress_tracker(workflow_id)
+        progress_data = progress_tracker.get_progress_data("finalizing")
+        await manager.send_progress(workflow_id, progress_data)
         
         # Update survey status to completed
         survey_record.status = "completed"

@@ -29,7 +29,7 @@ const MAIN_WORKFLOW_STEPS: MainWorkflowStep[] = [
     description: 'Analyzing requirements and gathering templates',
     icon: '🔗',
     color: 'gold',
-    percentRange: [0, 40],
+    percentRange: [10, 25],
     rightPanelType: 'substeps',
     subSteps: [
       {
@@ -83,7 +83,7 @@ const MAIN_WORKFLOW_STEPS: MainWorkflowStep[] = [
     icon: '👥',
     color: 'gold',
     conditional: true,
-    percentRange: [40, 50],
+    percentRange: [65, 75],
     rightPanelType: 'human_review',
     subSteps: [
       {
@@ -100,7 +100,7 @@ const MAIN_WORKFLOW_STEPS: MainWorkflowStep[] = [
     description: 'Creating your survey content',
     icon: '✍️',
     color: 'gold',
-    percentRange: [50, 80],
+    percentRange: [35, 65],
     rightPanelType: 'substeps',
     subSteps: [
       {
@@ -135,7 +135,7 @@ const MAIN_WORKFLOW_STEPS: MainWorkflowStep[] = [
     description: 'Comprehensive quality assessment',
     icon: '🔍',
     color: 'gold',
-    percentRange: [80, 100],
+    percentRange: [75, 95],
     rightPanelType: 'substeps',
     subSteps: [
       {
