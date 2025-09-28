@@ -217,17 +217,44 @@ async def delete_survey(
     survey_id: str,
     db: Session = Depends(get_db)
 ):
-    """Delete a survey"""
+    """Delete a survey and clean up related records"""
     try:
         survey = db.query(Survey).filter(Survey.id == survey_id).first()
         if not survey:
             raise HTTPException(status_code=404, detail="Survey not found")
         
+        # Delete related human review records first
+        from src.database.models import HumanReview
+        db.query(HumanReview).filter(HumanReview.survey_id == survey_id).delete()
+        
+        # Delete the survey
         db.delete(survey)
         db.commit()
         
+        logger.info(f"🗑️ [Survey API] Survey {survey_id} and related records deleted successfully")
         return {"status": "success", "message": "Survey deleted successfully"}
         
     except Exception as e:
         db.rollback()
+        logger.error(f"❌ [Survey API] Failed to delete survey {survey_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to delete survey: {str(e)}")
+
+
+@router.post("/workflow/{workflow_id}/cleanup")
+async def cleanup_workflow(
+    workflow_id: str,
+    db: Session = Depends(get_db)
+):
+    """Clean up progress tracker and related resources for a workflow"""
+    try:
+        from src.services.progress_tracker import cleanup_progress_tracker
+        
+        # Clean up progress tracker
+        cleanup_progress_tracker(workflow_id)
+        
+        logger.info(f"🧹 [Survey API] Cleaned up resources for workflow: {workflow_id}")
+        return {"status": "success", "message": "Workflow cleanup completed"}
+        
+    except Exception as e:
+        logger.error(f"❌ [Survey API] Failed to cleanup workflow {workflow_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to cleanup workflow: {str(e)}")

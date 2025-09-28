@@ -2119,26 +2119,39 @@ class GenerationService:
             return f"Building comprehensive survey content..."
 
     def _calculate_streaming_progress(self, question_count: int, section_count: int, elapsed_time: float) -> float:
-        """Calculate estimated progress based on content analysis"""
+        """Calculate estimated progress within the LLM processing range using progress tracker"""
 
-        # Base progress on actual content generated
-        content_progress = 0
+        # Import progress tracker
+        from .progress_tracker import get_progress_tracker
+        tracker = get_progress_tracker(self.workflow_id or "generation")
 
-        # Question count contribution (0-60%)
+        # Get the LLM processing range from progress tracker
+        llm_range = tracker.PROGRESS_RANGES.get("llm_processing", (35, 60))
+        min_progress, max_progress = llm_range
+        range_size = max_progress - min_progress
+
+        # Calculate progress within the LLM processing range based on content
+        content_factor = 0
+
+        # Question count contribution (0-60% of range)
         if question_count > 0:
             # Assume target of ~15 questions for full survey
-            question_progress = min(60, int((question_count / 15.0) * 60))
-            content_progress += question_progress
+            question_factor = min(0.6, question_count / 15.0)
+            content_factor += question_factor * 0.6
 
-        # Section count contribution (0-20%)
+        # Section count contribution (0-20% of range)
         if section_count > 0:
             # Assume target of ~3-4 sections
-            section_progress = min(20, int((section_count / 4.0) * 20))
-            content_progress += section_progress
+            section_factor = min(0.2, section_count / 4.0)
+            content_factor += section_factor * 0.2
 
-        # Time-based progress (0-20%)
+        # Time-based progress (0-20% of range)
         # Assume typical generation takes 30-60 seconds
-        time_progress = min(20, int((elapsed_time / 45.0) * 20))
-        content_progress += time_progress
+        time_factor = min(0.2, elapsed_time / 45.0)
+        content_factor += time_factor * 0.2
 
-        return min(100, content_progress)
+        # Calculate final progress within the LLM processing range
+        progress_within_range = min(1.0, content_factor)
+        final_progress = min_progress + (progress_within_range * range_size)
+
+        return min(max_progress, final_progress)

@@ -187,9 +187,9 @@ export const SurveyGeneratorPage: React.FC = () => {
                       <span className="text-sm font-medium">Generating Survey...</span>
                     </div>
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         console.log('🔄 [SurveyGeneratorPage] Canceling generation');
-                        resetWorkflow();
+                        await resetWorkflow();
                       }}
                       className="inline-flex items-center px-4 py-2 rounded-lg font-medium transition-all duration-200 bg-red-100 hover:bg-red-200 text-red-700 border border-red-300 hover:border-red-400"
                     >
@@ -219,20 +219,13 @@ export const SurveyGeneratorPage: React.FC = () => {
 
             {/* Generation Progress Phase */}
             {(workflow.status === 'started' || workflow.status === 'in_progress') && (
-              <div>
-                <div className="px-6 mb-4 text-center">
-                  <h2 className="text-xl font-semibold text-black mb-2">Generating Your Survey</h2>
-                  <p className="text-gray-600">Our AI is creating your survey using advanced methodologies and best practices.</p>
-                </div>
-                
-                <div className="px-6">
-                  <ProgressStepper 
-                    onCancelGeneration={() => {
-                      console.log('🔄 [SurveyGeneratorPage] Canceling generation');
-                      resetWorkflow();
-                    }}
-                  />
-                </div>
+              <div className="px-6">
+                <ProgressStepper 
+                  onCancelGeneration={() => {
+                    console.log('🔄 [SurveyGeneratorPage] Canceling generation');
+                    resetWorkflow();
+                  }}
+                />
               </div>
             )}
 
@@ -257,20 +250,13 @@ export const SurveyGeneratorPage: React.FC = () => {
 
             {/* Survey Completion Phase */}
             {workflow.status === 'completed' && (
-              <div>
-                <div className="px-6 mb-4 text-center">
-                  <h2 className="text-xl font-semibold text-black mb-2">Survey Complete!</h2>
-                  <p className="text-gray-600">Your professional survey is ready for deployment.</p>
-                </div>
-
-                <div className="px-6">
-                  <ProgressStepper
-                    onCancelGeneration={() => {
-                      console.log('🔄 [SurveyGeneratorPage] Resetting workflow');
-                      resetWorkflow();
-                    }}
-                  />
-                </div>
+              <div className="px-6">
+                <ProgressStepper
+                  onCancelGeneration={() => {
+                    console.log('🔄 [SurveyGeneratorPage] Resetting workflow');
+                    resetWorkflow();
+                  }}
+                />
               </div>
             )}
 

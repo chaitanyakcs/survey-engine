@@ -98,3 +98,7 @@ data/
 tmp/
 temp/
 .tmp/
+
+# Project-specific folders
+QNR_labeling/
+Eval_framework/

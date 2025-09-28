@@ -318,6 +318,64 @@ This roadmap outlines planned enhancements and improvements across all aspects o
 
 ---
 
+## 🧪 LangSmith Integration & Advanced Evaluation
+
+*Current State: Sophisticated evaluation system with 5-pillar framework, advanced evaluators, and comprehensive audit trails*
+
+### 1. LangSmith Foundation & Monitoring 🔴
+**Complexity**: Moderate ⏱️ (2-3 weeks)
+- **Description**: Integrate LangSmith SDK with existing Replicate-based evaluation infrastructure
+- **Features**:
+  - Wrap existing `GenerationService`, `EvaluatorService`, and `FieldExtractionService` with LangSmith tracing
+  - Dual logging to both PostgreSQL (existing) and LangSmith (new) for comprehensive tracking
+  - Convert existing `SingleCallEvaluator` and `PillarBasedEvaluator` to LangSmith scoring functions
+  - Production monitoring for live survey generation quality and cost tracking
+- **Impact**: High - Adds enterprise-grade monitoring to proven evaluation system
+- **Current Assets**: Advanced chain-of-thought evaluators, weighted pillar scoring, comprehensive audit system
+- **Dependencies**: LangSmith SDK setup, API configuration
+- **Status**: 📋 Planned
+
+### 2. Enhanced Analytics & Benchmarking 🔴
+**Complexity**: Moderate ⏱️ (2-3 weeks)
+- **Description**: Industry-standard benchmarking and cost optimization for existing evaluation pipeline
+- **Features**:
+  - Benchmark comparison system using existing pillar scores against industry standards
+  - Detailed Replicate API cost analysis and optimization recommendations
+  - A/B testing framework for comparing different evaluation strategies
+  - Quality regression detection with automated alerts for declining performance
+- **Impact**: High - Optimizes existing $1000s/month evaluation costs
+- **Current Assets**: `LLMAuditService` with comprehensive cost tracking, `PillarScoringService` with weighted scoring
+- **Dependencies**: LangSmith foundation, historical evaluation data
+- **Status**: 📋 Planned
+
+### 3. Production Intelligence & Optimization 🟡
+**Complexity**: Moderate ⏱️ (2-3 weeks)
+- **Description**: AI-powered optimization of existing prompt and evaluation systems
+- **Features**:
+  - Prompt optimization using LangSmith insights to improve existing SOTA prompt system
+  - Systematic Replicate model comparison and selection optimization
+  - Evaluation pipeline enhancement using performance analytics
+  - Business-friendly dashboards for stakeholder visibility into technical metrics
+- **Impact**: Medium-High - Continuously improves existing high-quality evaluation system
+- **Current Assets**: SOTA prompt generator (87% size reduction), sophisticated evaluation modules
+- **Dependencies**: Enhanced analytics, sufficient production data
+- **Status**: 📋 Planned
+
+### 4. Evaluation System Consolidation 🟡
+**Complexity**: Simple ⏱️ (1-2 weeks)
+- **Description**: Streamline and consolidate existing evaluation infrastructure
+- **Features**:
+  - Integrate advanced evaluators (`AdvancedContentValidityEvaluator`, `AdvancedMethodologicalRigorEvaluator`) as primary evaluation methods
+  - Enhance async evaluation service with better progress tracking and error handling
+  - Optimize evaluation cost through intelligent evaluator selection (SingleCall vs Pillar-based)
+  - Improve evaluation result storage and retrieval in PostgreSQL
+- **Impact**: Medium - Optimizes existing sophisticated evaluation system
+- **Current Assets**: Multiple evaluation strategies, async evaluation service, comprehensive audit trails
+- **Dependencies**: LangSmith monitoring data
+- **Status**: 📋 Planned
+
+---
+
 ## 🔮 Future Considerations
 
 *Items for future roadmap iterations*
@@ -344,27 +402,31 @@ This roadmap outlines planned enhancements and improvements across all aspects o
 
 ## Implementation Strategy
 
-### Phase 1 (Q1 2025) - Critical Resilience
-**Focus**: Survey generation resilience and error handling
+### Phase 1 (Q1 2025) - Critical Resilience & Evaluation Foundation
+**Focus**: Survey generation resilience, error handling, and evaluation monitoring
 - 🚨 Graceful Degradation Implementation
 - 🚨 Error Classification & Debug System
 - 🚨 State Management & Navigation Fixes
 - 🚨 Evaluation Error Isolation
+- 🧪 LangSmith Foundation & Monitoring
 
 ### Phase 2 (Q2 2025) - Foundation & Intelligence
-**Focus**: System reliability and advanced autofill
+**Focus**: System reliability, advanced autofill, and evaluation analytics
 - Granular Progress & Recovery UI
 - Performance Monitoring Dashboard
 - Comprehensive Test Suite
 - Multi-Document Intelligence
 - Contextual Learning from User Feedback
+- 🧪 Enhanced Analytics & Benchmarking
 
-### Phase 3 (Q3 2025) - Optimization
-**Focus**: Advanced features and business intelligence
+### Phase 3 (Q3 2025) - Optimization & Intelligence
+**Focus**: Advanced features, business intelligence, and AI-powered optimization
 - Smart Section Requirement Detection
 - Enhanced Confidence Intelligence
 - ROI Measurement Automation
 - Advanced Quality Analytics
+- 🧪 Production Intelligence & Optimization
+- 🧪 Evaluation System Consolidation
 
 ### Phase 4 (Q4 2025) - Enhancement
 **Focus**: Polish and advanced features
@@ -384,12 +446,20 @@ This roadmap outlines planned enhancements and improvements across all aspects o
 - [ ] API response time: <2 seconds
 - [ ] Test coverage: >80%
 
+### Evaluation & Monitoring Targets
+- [ ] Pillar evaluation accuracy: >90% (vs manual expert evaluation)
+- [ ] LangSmith integration: 100% LLM call tracing coverage
+- [ ] Cost optimization: 20% reduction in Replicate API costs
+- [ ] Quality regression detection: <24 hour alert time
+- [ ] Evaluation processing time: <60 seconds for full 5-pillar analysis
+
 ### Business Targets
 - [ ] Time reduction: >90% (from 3-4 hours to <30 minutes)
 - [ ] Methodology compliance: >80%
 - [ ] User satisfaction: >4.0/5.0
 - [ ] Error rate: <1%
 - [ ] User adoption: 90% of target users
+- [ ] Survey quality consistency: >85% surveys scoring Grade A or B
 
 ---
 

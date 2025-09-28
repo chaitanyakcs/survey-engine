@@ -742,9 +742,15 @@ IMPORTANT:
     async def parse_document_for_rfq(self, docx_content: bytes, filename: str = None, session_id: str = None) -> Dict[str, Any]:
         """Parse DOCX document specifically for RFQ data extraction."""
         logger.info(f"🎯 [Document Parser] Starting RFQ-specific document parsing")
+
+        # Import progress tracker
+        from .progress_tracker import get_progress_tracker
+        tracker = get_progress_tracker(session_id or "document_parse")
+
         try:
             # Send initial progress
-            await self._send_progress(session_id, "extracting", 10, "Extracting text from document...")
+            progress_data = tracker.get_progress_data("extracting_document")
+            await self._send_progress(session_id, "extracting", progress_data["percent"], progress_data["message"])
 
             # Extract text from DOCX
             logger.info(f"📄 [Document Parser] Extracting text from DOCX")
@@ -757,18 +763,21 @@ IMPORTANT:
 
             logger.info(f"✅ [Document Parser] Text extraction successful, length: {len(document_text)} chars")
 
-            # Send progress update for LLM processing
-            await self._send_progress(session_id, "prompting", 25, "Preparing AI analysis prompt...")
+            # Send progress update for document processing
+            progress_data = tracker.get_progress_data("processing_document")
+            await self._send_progress(session_id, "prompting", progress_data["percent"], progress_data["message"])
 
             # Extract RFQ-specific data
             logger.info(f"🎯 [Document Parser] Extracting RFQ data from text")
-            await self._send_progress(session_id, "llm_processing", 40, "AI is analyzing document structure...")
+            progress_data = tracker.get_progress_data("analyzing_document")
+            await self._send_progress(session_id, "llm_processing", progress_data["percent"], progress_data["message"])
 
             rfq_data = await self.extract_rfq_data(document_text)
             logger.info(f"✅ [Document Parser] RFQ data extraction completed")
 
-            # Send progress for data processing
-            await self._send_progress(session_id, "parsing", 80, "Processing AI response...")
+            # Send progress for parsing completion
+            progress_data = tracker.get_progress_data("parsing_complete")
+            await self._send_progress(session_id, "parsing", progress_data["percent"], progress_data["message"])
 
             # Structure the response for frontend consumption
             result = {
@@ -788,7 +797,8 @@ IMPORTANT:
             logger.info(f"📊 [Document Parser] Field mappings found: {len(rfq_data.get('field_mappings', []))}")
 
             # Send completion progress
-            await self._send_progress(session_id, "completed", 100, "RFQ extraction completed successfully!")
+            completion_data = tracker.get_completion_data("parsing_complete")
+            await self._send_progress(session_id, "completed", completion_data["percent"], completion_data["message"])
 
             return result
 

@@ -274,13 +274,19 @@ class WorkflowService:
             self._ensure_workflow_initialized()
             logger.info(f"✅ [WorkflowService] Workflow is properly initialized: {type(self.workflow)}")
             
-            # Send initial progress update
+            # Send initial progress update (only if not already started)
             logger.info("📡 [WorkflowService] Sending initial progress update via WebSocket")
             try:
                 progress_tracker = get_progress_tracker(initial_state.workflow_id)
-                progress_data = progress_tracker.get_progress_data("initializing_workflow")
-                await self.ws_client.send_progress_update(initial_state.workflow_id, progress_data)
-                logger.info("✅ [WorkflowService] Initial progress update sent successfully")
+
+                # CRITICAL FIX: Only send initializing_workflow if we haven't progressed beyond it
+                if progress_tracker.current_progress == 0 or progress_tracker.current_step is None:
+                    progress_data = progress_tracker.get_progress_data("initializing_workflow")
+                    await self.ws_client.send_progress_update(initial_state.workflow_id, progress_data)
+                    logger.info("✅ [WorkflowService] Initial progress update sent successfully")
+                else:
+                    logger.info(f"⏭️ [WorkflowService] Skipping initial progress update - tracker already at {progress_tracker.current_progress}% (step: {progress_tracker.current_step})")
+
             except Exception as ws_error:
                 logger.warning(f"⚠️ [WorkflowService] Failed to send WebSocket progress update: {str(ws_error)} - continuing anyway")
                 # Don't fail the whole workflow for WebSocket issues
@@ -464,9 +470,11 @@ class WorkflowService:
                 else:
                     logger.warning("⚠️ [WorkflowService] Failed to rebuild context, proceeding with existing state")
 
-            # Send progress update
+            # Send progress update - complete human review and start generation
             try:
-                progress_data = get_progress_tracker(workflow_id).get_progress_data("preparing_generation")
+                progress_tracker = get_progress_tracker(workflow_id)
+                # Complete human review step first (30-35%)
+                progress_data = progress_tracker.get_completion_data("human_review")
                 progress_data["message"] = "Human review approved - resuming workflow..."
                 await ws_client.send_progress_update(workflow_id, progress_data)
             except Exception as ws_error:
@@ -480,10 +488,11 @@ class WorkflowService:
             generator = GeneratorAgent(self.db, connection_manager=self.connection_manager)
             validator = ValidatorAgent(self.db, connection_manager=self.connection_manager)
 
-            # Send progress update for generation
+            # Send progress update for generation - continue from where human review ended
             try:
                 progress_tracker = get_progress_tracker(workflow_id)
                 progress_data = progress_tracker.get_progress_data("generating_questions")
+                progress_data["message"] = "Starting survey generation..."
                 await ws_client.send_progress_update(workflow_id, progress_data)
             except Exception as ws_error:
                 logger.warning(f"⚠️ [WorkflowService] Failed to send generation progress update: {str(ws_error)}")
@@ -508,27 +517,60 @@ class WorkflowService:
                     if hasattr(initial_state, key):
                         setattr(initial_state, key, value)
 
-            # Send progress update for validation
+            # Send progress update for validation - continue from where generation ended
             try:
                 progress_tracker = get_progress_tracker(workflow_id)
-                progress_data = progress_tracker.get_progress_data("validation_scoring")
+                # Complete generation step first
+                progress_data = progress_tracker.get_completion_data("generating_questions")
+                progress_data["message"] = "Generation completed - starting validation..."
                 await ws_client.send_progress_update(workflow_id, progress_data)
+                
+                # Check if LLM evaluation is enabled before sending validation progress
+                from src.services.settings_service import SettingsService
+                settings_service = SettingsService(self.db)
+                evaluation_settings = settings_service.get_evaluation_settings()
+                enable_llm_evaluation = evaluation_settings.get('enable_llm_evaluation', True)
+                
+                if enable_llm_evaluation:
+                    # Then start validation
+                    progress_data = progress_tracker.get_progress_data("validation_scoring")
+                    await ws_client.send_progress_update(workflow_id, progress_data)
+                else:
+                    # Skip validation and go directly to completion
+                    progress_data = progress_tracker.get_progress_data("finalizing")
+                    progress_data["message"] = "Skipping validation - LLM evaluation disabled"
+                    await ws_client.send_progress_update(workflow_id, progress_data)
             except Exception as ws_error:
                 logger.warning(f"⚠️ [WorkflowService] Failed to send validation progress update: {str(ws_error)}")
 
-            # Execute validation step directly
-            logger.info("🚀 [WorkflowService] Starting direct validation execution")
-            try:
-                validation_result = await validator(initial_state)
-                logger.info(f"✅ [WorkflowService] Validation completed. Result keys: {list(validation_result.keys()) if isinstance(validation_result, dict) else 'not dict'}")
-            except Exception as val_error:
-                logger.error(f"❌ [WorkflowService] Validation step failed: {str(val_error)}", exc_info=True)
-                # Send error notification
-                await ws_client.send_progress_update(workflow_id, {
-                    "type": "error",
-                    "message": f"Survey validation failed: {str(val_error)}"
-                })
-                raise val_error
+            # Use the same settings check from above
+            
+            if not enable_llm_evaluation:
+                logger.info("⏭️ [WorkflowService] LLM evaluation disabled, skipping validation step")
+                # Create a mock validation result to maintain workflow consistency
+                validation_result = {
+                    "pillar_scores": {},
+                    "quality_gate_passed": True,  # Skip validation means pass
+                    "validation_results": {"skipped": "LLM evaluation disabled"},
+                    "retry_count": 0,
+                    "workflow_should_continue": True,
+                    "error_message": None
+                }
+                logger.info("✅ [WorkflowService] Validation skipped - LLM evaluation disabled")
+            else:
+                # Execute validation step directly
+                logger.info("🚀 [WorkflowService] Starting direct validation execution")
+                try:
+                    validation_result = await validator(initial_state)
+                    logger.info(f"✅ [WorkflowService] Validation completed. Result keys: {list(validation_result.keys()) if isinstance(validation_result, dict) else 'not dict'}")
+                except Exception as val_error:
+                    logger.error(f"❌ [WorkflowService] Validation step failed: {str(val_error)}", exc_info=True)
+                    # Send error notification
+                    await ws_client.send_progress_update(workflow_id, {
+                        "type": "error",
+                        "message": f"Survey validation failed: {str(val_error)}"
+                    })
+                    raise val_error
 
             # Update the state with validation results
             if isinstance(validation_result, dict):

@@ -505,18 +505,20 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
             console.log('✅ [Frontend] Workflow marked as completed via progress message');
           } else {
-            // Normal progress update
-            const newWorkflowState = {
-              current_step: message.step,
-              progress: message.percent,
-              message: message.message
-            };
-            set((state) => ({
-              workflow: {
-                ...state.workflow,
-                ...newWorkflowState
-              }
-            }));
+          // Normal progress update
+          console.log('🔍 [Frontend] Updating workflow state with step:', message.step);
+          const newWorkflowState = {
+            current_step: message.step,
+            progress: message.percent,
+            message: message.message
+          };
+          set((state) => ({
+            workflow: {
+              ...state.workflow,
+              ...newWorkflowState
+            }
+          }));
+          console.log('✅ [Frontend] Workflow state updated with step:', message.step);
           }
 
           // Persist workflow state for recovery
@@ -1296,13 +1298,45 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
   },
 
-  resetWorkflow: () => {
+  resetWorkflow: async () => {
     console.log('🔄 [Store] Resetting workflow to idle state');
 
     // Clear any pending timeout
-    const { workflowTimeoutId } = get();
+    const { workflowTimeoutId, workflow } = get();
     if (workflowTimeoutId) {
       clearTimeout(workflowTimeoutId);
+    }
+
+    // If there's an active survey, delete it from the database
+    if (workflow.survey_id) {
+      try {
+        console.log('🗑️ [Store] Deleting cancelled survey from database:', workflow.survey_id);
+        const response = await fetch(`/api/v1/survey/${workflow.survey_id}`, {
+          method: 'DELETE'
+        });
+        
+        if (response.ok) {
+          console.log('✅ [Store] Survey deleted successfully');
+        } else {
+          console.warn('⚠️ [Store] Failed to delete survey, but continuing with reset');
+        }
+      } catch (error) {
+        console.error('❌ [Store] Error deleting survey:', error);
+        // Continue with reset even if deletion fails
+      }
+    }
+
+    // Clean up progress tracker if workflow_id exists
+    if (workflow.workflow_id) {
+      try {
+        console.log('🧹 [Store] Cleaning up progress tracker for workflow:', workflow.workflow_id);
+        await fetch(`/api/v1/survey/workflow/${workflow.workflow_id}/cleanup`, {
+          method: 'POST'
+        });
+      } catch (error) {
+        console.warn('⚠️ [Store] Failed to cleanup progress tracker:', error);
+        // Continue with reset even if cleanup fails
+      }
     }
 
     // Clear workflow state

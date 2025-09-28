@@ -256,6 +256,13 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
         logger.info(f"📊 [Workflow] GeneratorAgent result keys: {list(result.keys()) if result else 'None'}")
         logger.info(f"📊 [Workflow] GeneratorAgent error_message: {result.get('error_message', 'None') if result else 'None'}")
         
+        # CRITICAL: If generation failed, we need to ensure the error is properly set in the state
+        # LangGraph will merge the result into the state, but we need to make sure error_message is included
+        if result and result.get('error_message'):
+            logger.error(f"❌ [Workflow] Generation failed, error will be propagated to state: {result['error_message']}")
+            # The error_message will be automatically merged into the state by LangGraph
+            # No need to manually set it here
+        
         return result
     
     async def validate_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
@@ -314,9 +321,21 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     # Conditional edge to check if LLM evaluation should be skipped
     def should_skip_validation(state: SurveyGenerationState) -> str:
         """
-        Check if LLM evaluation should be skipped based on settings
+        Check if validation should be skipped based on settings or generation errors
         """
         try:
+            logger.info(f"🔍 [Workflow] should_skip_validation called - error_message: {state.error_message}, generated_survey: {bool(state.generated_survey)}")
+            
+            # First check if generation failed - if so, skip validation
+            if state.error_message:
+                logger.info(f"🔍 [Workflow] Generation failed with error: {state.error_message}, skipping validation")
+                return "completion_handler"
+            
+            # Check if no survey was generated - if so, skip validation
+            if not state.generated_survey:
+                logger.info("🔍 [Workflow] No survey generated, skipping validation")
+                return "completion_handler"
+            
             from src.services.settings_service import SettingsService
             from src.database import get_db
             
@@ -471,6 +490,14 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
                 logger.info(f"⏸️ [Workflow] Workflow paused for human review: {state.workflow_id}")
                 # The pause message was already sent by prompt_review_with_progress
                 return {"workflow_completed": False, "workflow_paused": True}
+            elif state.error_message:
+                # Workflow completed with error
+                logger.error(f"❌ [Workflow] Workflow completed with error: {state.workflow_id} - {state.error_message}")
+                progress_data = progress_tracker.get_completion_data("completed")
+                progress_data["message"] = f"Survey generation failed: {state.error_message}"
+                progress_data["error"] = True
+                await ws_client.send_progress_update(state.workflow_id, progress_data)
+                return {"workflow_completed": True, "workflow_paused": False, "error": True, "error_message": state.error_message}
             else:
                 # Workflow completed normally
                 logger.info(f"✅ [Workflow] Workflow completed successfully: {state.workflow_id}")

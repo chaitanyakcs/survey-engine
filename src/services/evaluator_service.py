@@ -75,6 +75,22 @@ class EvaluatorService:
         """
         logger.info("🏛️ [EvaluatorService] Starting comprehensive survey evaluation...")
 
+        # Get evaluation lock to prevent duplicate evaluations
+        evaluation_lock = None
+        if hasattr(self, 'survey_id') and self.survey_id:
+            try:
+                from src.api.pillar_scores import _get_evaluation_lock, _cleanup_evaluation_lock
+                evaluation_lock = _get_evaluation_lock(self.survey_id)
+                
+                # Try to acquire lock with timeout
+                if not evaluation_lock.acquire(blocking=True, timeout=30):
+                    logger.warning(f"⚠️ [EvaluatorService] Could not acquire evaluation lock for survey {self.survey_id}, evaluation may already be in progress")
+                    # Continue without lock - the API endpoint will handle the race condition
+                else:
+                    logger.info(f"🔓 [EvaluatorService] Acquired evaluation lock for survey {self.survey_id}")
+            except Exception as e:
+                logger.warning(f"⚠️ [EvaluatorService] Could not get evaluation lock: {e}")
+
         # Send initial progress update using ProgressTracker
         if self.workflow_id:
             from src.services.progress_tracker import get_progress_tracker
@@ -109,6 +125,18 @@ class EvaluatorService:
 
             # Return basic fallback scores
             return self._create_fallback_scores(survey_data)
+        
+        finally:
+            # Release evaluation lock if we acquired it
+            if evaluation_lock and evaluation_lock.locked():
+                try:
+                    from src.api.pillar_scores import _cleanup_evaluation_lock
+                    evaluation_lock.release()
+                    if hasattr(self, 'survey_id') and self.survey_id:
+                        _cleanup_evaluation_lock(self.survey_id)
+                    logger.info(f"🔓 [EvaluatorService] Released evaluation lock for survey {getattr(self, 'survey_id', 'unknown')}")
+                except Exception as e:
+                    logger.warning(f"⚠️ [EvaluatorService] Error releasing evaluation lock: {e}")
 
     async def _try_evaluation_chain(self, survey_data: Dict[str, Any], rfq_text: str) -> Dict[str, Any]:
         """Try evaluation methods in order: single-call → legacy → basic (no multi-call)."""
@@ -181,7 +209,9 @@ class EvaluatorService:
             evaluator = SingleCallEvaluator(llm_client=llm_client, db_session=self.db_session)
 
             # Run single-call evaluation
-            result = await evaluator.evaluate_survey(survey_data, rfq_text)
+            survey_id = getattr(self, 'survey_id', None)
+            rfq_id = getattr(self, 'rfq_id', None)
+            result = await evaluator.evaluate_survey(survey_data, rfq_text, survey_id=survey_id, rfq_id=rfq_id)
 
             # Convert to standard format
             return self._format_single_call_result(result)
@@ -199,7 +229,9 @@ class EvaluatorService:
             return None
 
         try:
-            result = await self.advanced_evaluator.evaluate_survey(survey_data, rfq_text)
+            survey_id = getattr(self, 'survey_id', None)
+            rfq_id = getattr(self, 'rfq_id', None)
+            result = await self.advanced_evaluator.evaluate_survey(survey_data, rfq_text, survey_id=survey_id, rfq_id=rfq_id)
             return self._format_advanced_result(result)
         except Exception as e:
             logger.error(f"❌ [EvaluatorService] Advanced evaluation error: {e}")
@@ -210,7 +242,9 @@ class EvaluatorService:
         try:
             from src.api.pillar_scores import _evaluate_with_advanced_system
             # Prevent circular fallback by disabling aira_v1
-            result = await _evaluate_with_advanced_system(survey_data, rfq_text, self.db_session, allow_aira_v1=False)
+            survey_id = getattr(self, 'survey_id', None)
+            rfq_id = getattr(self, 'rfq_id', None)
+            result = await _evaluate_with_advanced_system(survey_data, rfq_text, self.db_session, survey_id=survey_id, rfq_id=rfq_id, allow_aira_v1=False)
             return self._format_api_result(result)
         except Exception as e:
             logger.error(f"❌ [EvaluatorService] API evaluation error: {e}")

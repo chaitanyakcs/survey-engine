@@ -36,19 +36,19 @@ class ProgressService:
     
     async def send_field_extraction_progress(self, session_id: str, step: str, message: str, extracted_data: Optional[Dict[str, Any]] = None):
         """Send field extraction progress update."""
-        progress_mapping = {
-            "analyzing_rfq": {"percent": 10, "message": "Analyzing RFQ content..."},
-            "analyzing_survey": {"percent": 20, "message": "Analyzing survey structure..."},
-            "extracting_methodologies": {"percent": 30, "message": "Identifying methodologies..."},
-            "classifying_industry": {"percent": 40, "message": "Classifying industry category..."},
-            "determining_goals": {"percent": 50, "message": "Determining research goals..."},
-            "assessing_quality": {"percent": 60, "message": "Assessing survey quality..."},
-            "generating_title": {"percent": 70, "message": "Generating suggested title..."},
-            "validating_fields": {"percent": 80, "message": "Validating extracted fields..."},
-            "completed": {"percent": 100, "message": "Field extraction completed!"}
-        }
-        
-        step_info = progress_mapping.get(step, {"percent": 0, "message": message})
+        # Import progress tracker
+        from .progress_tracker import get_progress_tracker
+        tracker = get_progress_tracker(session_id or "field_extraction")
+
+        # Use progress tracker instead of hardcoded percentages
+        if step == "completed":
+            step_info = tracker.get_completion_data("extraction_complete")
+        else:
+            step_info = tracker.get_progress_data(step)
+
+        # Override message if provided
+        if message:
+            step_info["message"] = message
         
         # Send via field extraction WebSocket if available
         if hasattr(self, 'field_extraction_manager') and self.field_extraction_manager:

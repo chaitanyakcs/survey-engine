@@ -631,6 +631,8 @@ class ValidatorAgent:
                 self.evaluator_service.db_session = fresh_db
                 self.evaluator_service.workflow_id = state.workflow_id
                 self.evaluator_service.connection_manager = self.connection_manager
+                self.evaluator_service.survey_id = state.survey_id
+                self.evaluator_service.rfq_id = state.rfq_id
 
                 # Initialize WebSocket client if available
                 if self.connection_manager and state.workflow_id:

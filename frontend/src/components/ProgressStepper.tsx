@@ -83,7 +83,7 @@ const MAIN_WORKFLOW_STEPS: MainWorkflowStep[] = [
     icon: '👥',
     color: 'gold',
     conditional: true,
-    percentRange: [65, 75],
+    percentRange: [30, 35],
     rightPanelType: 'human_review',
     subSteps: [
       {
@@ -100,7 +100,7 @@ const MAIN_WORKFLOW_STEPS: MainWorkflowStep[] = [
     description: 'Creating your survey content',
     icon: '✍️',
     color: 'gold',
-    percentRange: [35, 65],
+    percentRange: [35, 60],
     rightPanelType: 'substeps',
     subSteps: [
       {
@@ -111,15 +111,9 @@ const MAIN_WORKFLOW_STEPS: MainWorkflowStep[] = [
       },
       {
         key: 'llm_processing',
-        label: 'LLM invocation and processing',
-        backendStep: 'generating_questions',
-        message: 'AI creating survey questions'
-      },
-      {
-        key: 'llm_content_processing',
-        label: 'LLM content processing',
-        backendStep: 'llm_processing',
-        message: 'Processing AI-generated content'
+        label: 'LLM Processing',
+        backendStep: 'generating_questions', // Primary step
+        message: 'AI creating and processing survey questions'
       },
       {
         key: 'parsing_output',
@@ -135,50 +129,32 @@ const MAIN_WORKFLOW_STEPS: MainWorkflowStep[] = [
     description: 'Comprehensive quality assessment',
     icon: '🔍',
     color: 'gold',
-    percentRange: [75, 95],
+    percentRange: [65, 85],
     rightPanelType: 'substeps',
     subSteps: [
       {
         key: 'validation_scoring',
         label: 'Initializing quality evaluation',
         backendStep: 'validation_scoring',
-        message: 'Running comprehensive evaluations and quality assessments'
+        message: 'Setting up comprehensive quality assessment'
       },
       {
-        key: 'evaluating_pillars',
-        label: 'Evaluating quality pillars',
-        backendStep: 'evaluating_pillars',
-        message: 'Analyzing quality across all pillars'
-      },
-      {
-        key: 'single_call_evaluator',
-        label: 'Single-call comprehensive evaluation',
+        key: 'llm_evaluation',
+        label: 'AI Quality Assessment',
         backendStep: 'single_call_evaluator',
-        message: 'Running AI-powered comprehensive quality assessment'
+        message: 'Running AI-powered comprehensive quality evaluation'
       },
       {
-        key: 'pillar_scores_analysis',
-        label: 'Pillar-based quality scoring',
-        backendStep: 'pillar_scores_analysis',
-        message: 'Analyzing methodological rigor, content validity, and clarity'
+        key: 'pillar_analysis',
+        label: 'Pillar Analysis & Scoring',
+        backendStep: 'evaluating_pillars',
+        message: 'Analyzing quality across all pillars and methodologies'
       },
       {
-        key: 'advanced_evaluation',
-        label: 'Advanced evaluation',
-        backendStep: 'advanced_evaluation',
-        message: 'Running advanced quality assessment'
-      },
-      {
-        key: 'legacy_evaluation',
-        label: 'Legacy evaluation',
-        backendStep: 'legacy_evaluation',
-        message: 'Using legacy evaluation methods'
-      },
-      {
-        key: 'fallback_evaluation',
-        label: 'Quality assurance checks',
+        key: 'quality_assurance',
+        label: 'Quality Assurance',
         backendStep: 'fallback_evaluation',
-        message: 'Ensuring evaluation completeness and reliability'
+        message: 'Final quality checks and validation'
       }
     ]
   },
@@ -364,33 +340,46 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
 
     // Map backend step names to frontend step keys
     const stepMapping: Record<string, string> = {
+      // Workflow node names
       'generate': 'question_generation',
       'validate': 'quality_evaluation',
-      'validation_scoring': 'quality_evaluation',
+      'parse_rfq': 'building_context',
+      'retrieve_golden': 'building_context',
+      'build_context': 'building_context',
+      'prompt_review': 'human_review',
+      
+      // Progress tracker step names
       'initializing_workflow': 'building_context',
       'parsing_rfq': 'building_context',
       'generating_embeddings': 'building_context',
       'rfq_parsed': 'building_context',
       'matching_golden_examples': 'building_context',
       'planning_methodologies': 'building_context',
-      'parse_rfq': 'building_context',
-      'retrieve_golden': 'building_context',
-      'build_context': 'building_context',
+      'building_context': 'building_context',
+      
+      'human_review': 'human_review',
+      
       'preparing_generation': 'question_generation',
       'generating_questions': 'question_generation',
       'llm_processing': 'question_generation',
       'parsing_output': 'question_generation',
+      'resuming_generation': 'question_generation',
+      
+      'validation_scoring': 'quality_evaluation',
       'evaluating_pillars': 'quality_evaluation',
       'single_call_evaluator': 'quality_evaluation',
       'pillar_scores_analysis': 'quality_evaluation',
       'advanced_evaluation': 'quality_evaluation',
       'legacy_evaluation': 'quality_evaluation',
       'fallback_evaluation': 'quality_evaluation',
+      
+      // Map additional evaluation steps to the combined substeps
+      'llm_evaluation': 'quality_evaluation',
+      'pillar_analysis': 'quality_evaluation',
+      'quality_assurance': 'quality_evaluation',
+      
       'finalizing': 'completion',
-      'prompt_review': 'human_review',
-      'human_review': 'human_review',
       'resuming_from_human_review': 'question_generation',
-      'resuming_generation': 'question_generation',
       'completion_handler': 'completion',
       'completed': 'completion'
     };
@@ -413,8 +402,21 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
       frontendStepKey,
       workflowProgress: workflow.progress,
       workflowStatus,
-      enabledStepsKeys: enabledSteps.map(s => s.key)
+      enabledStepsKeys: enabledSteps.map(s => s.key),
+      stepMappingResult: stepMapping[workflow.current_step],
+      isStepMapped: stepMapping[workflow.current_step] !== undefined
     });
+
+    // Additional debug logging for human review resumption
+    if (workflow.current_step === 'generating_questions' || workflow.current_step === 'resuming_from_human_review') {
+      console.log('🔄 [ProgressStepper] Human review resumption debug:', {
+        currentStep: workflow.current_step,
+        workflowStatus,
+        newStepIndex,
+        currentStepIndex,
+        enabledSteps: enabledSteps.map(s => ({ key: s.key, subSteps: s.subSteps?.map(sub => sub.backendStep) }))
+      });
+    }
 
     // Apply smooth transition logic to prevent jumps
     if (newStepIndex !== -1) {
@@ -430,6 +432,10 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
 
         if (currentStep?.key === 'human_review' && targetStep) {
           // Allow transition from human_review to next step
+          setCurrentStepIndex(newStepIndex);
+        } else if (currentStep?.key === 'quality_evaluation' && targetStep?.key === 'question_generation') {
+          // Allow transition from quality_evaluation back to question_generation after human review completion
+          console.log('✅ [ProgressStepper] Allowing transition from quality_evaluation to question_generation after human review');
           setCurrentStepIndex(newStepIndex);
         } else {
           // Otherwise, keep current step to prevent jarring jumps
@@ -575,10 +581,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
             <div className="p-3 bg-gradient-to-r from-yellow-500 to-amber-600 rounded-xl">
               <SparklesIcon className="w-6 h-6 text-white" />
             </div>
-            <div>
-              <h1 className="text-2xl font-bold text-amber-900">Survey Generation</h1>
-              <p className="text-amber-700">AI-powered survey creation in progress</p>
-            </div>
+            <h1 className="text-2xl font-bold text-amber-900">Survey Generation</h1>
           </div>
           <div className="text-right">
             <div className="text-3xl font-bold bg-gradient-to-r from-yellow-600 to-amber-600 bg-clip-text text-transparent">
@@ -604,7 +607,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
       {/* Main Content - Split Screen */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Panel - Progress Steps */}
-        <div className="w-1/2 border-r border-gray-200/50 bg-white/40 backdrop-blur-sm">
+        <div className="w-1/4 border-r border-gray-200/50 bg-white/40 backdrop-blur-sm">
           <div className="h-full overflow-y-auto">
             <div className="p-8">
               <h2 className="text-lg font-semibold text-amber-900 mb-6">Progress Timeline</h2>
@@ -700,7 +703,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
         </div>
 
         {/* Right Panel - Current Step Details */}
-        <div className="w-1/2 bg-white/60 backdrop-blur-sm">
+        <div className="w-3/4 bg-white/60 backdrop-blur-sm">
           <div className="h-full overflow-y-auto">
             <div className="p-8">
               {isHumanReviewActive ? (
@@ -723,17 +726,8 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                       </div>
                     </div>
                     
-                    {/* Estimated Time */}
-                    <div className="inline-flex items-center px-3 py-1 bg-gradient-to-r from-yellow-50 to-amber-50 text-amber-700 rounded-full text-sm font-medium border border-amber-200">
-                      <ClockIcon className="w-4 h-4 mr-2" />
-                      {workflowStatus === 'completed' ? 100 : (workflow.progress || 0)}%
-                    </div>
                   </div>
 
-                  {/* Description */}
-                  <div className="bg-gradient-to-r from-yellow-50 to-amber-50 rounded-xl p-6 border border-amber-100">
-                    <p className="text-amber-800 leading-relaxed">{currentMainStep.description}</p>
-                  </div>
 
                   {/* Dynamic Right Panel Content Based on Step Type */}
                   {currentMainStep.rightPanelType === 'substeps' && (
@@ -742,9 +736,54 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                       <div className="space-y-3 mb-6">
                         <h3 className="text-lg font-semibold text-gray-900 mb-4">Process Steps</h3>
                         {currentMainStep.subSteps.map((subStep, index) => {
-                          const isActive = subStep.backendStep === workflow.current_step && workflowStatus === 'in_progress';
+                          // Handle multiple backend steps for the same substep
+                          const isActive = (
+                            (subStep.backendStep === workflow.current_step) ||
+                            (subStep.key === 'llm_processing' && (workflow.current_step === 'generating_questions' || workflow.current_step === 'resuming_generation'))
+                          ) && workflowStatus === 'in_progress';
+                          
+                          // Debug logging for substep status
+                          if (subStep.key === 'llm_processing') {
+                            console.log('🔍 [ProgressStepper] LLM Processing substep check:', {
+                              backendStep: subStep.backendStep,
+                              currentStep: workflow.current_step,
+                              workflowStatus,
+                              isActive,
+                              isMatch: subStep.backendStep === workflow.current_step,
+                              isResumingGeneration: workflow.current_step === 'resuming_generation'
+                            });
+                          }
+                          
+                          // Mark substeps as completed if:
+                          // 1. The entire workflow is completed, OR
+                          // 2. We're on a later substep (current step is after this substep)
+                          const currentSubStepIndex = currentMainStep.subSteps.findIndex(s => s.backendStep === workflow.current_step);
+                          
+                          // Additional check: if we're on a step that comes after this substep in the workflow
+                          const stepOrder = ['preparing_generation', 'generating_questions', 'resuming_generation', 'parsing_output'];
+                          const currentStepOrderIndex = workflow.current_step ? stepOrder.indexOf(workflow.current_step) : -1;
+                          const thisStepOrderIndex = stepOrder.indexOf(subStep.backendStep);
+                          
                           const isCompleted = workflowStatus === 'completed' || 
-                            (workflow.progress && workflow.progress > (currentMainStep.percentRange[0] + (index + 1) * (currentMainStep.percentRange[1] - currentMainStep.percentRange[0]) / currentMainStep.subSteps.length));
+                            (currentSubStepIndex !== -1 && currentSubStepIndex > index) ||
+                            (currentStepOrderIndex !== -1 && thisStepOrderIndex !== -1 && currentStepOrderIndex > thisStepOrderIndex) ||
+                            // Special case: resuming_generation should be treated as generating_questions for completion logic
+                            (workflow.current_step === 'resuming_generation' && subStep.backendStep === 'preparing_generation');
+                          
+                          // Debug logging for substep completion
+                          if (subStep.key === 'preparing_generation') {
+                            console.log('🔍 [ProgressStepper] Preparing generation substep check:', {
+                              subStepKey: subStep.key,
+                              backendStep: subStep.backendStep,
+                              currentStep: workflow.current_step,
+                              currentSubStepIndex,
+                              index,
+                              currentStepOrderIndex,
+                              thisStepOrderIndex,
+                              isCompleted,
+                              workflowStatus
+                            });
+                          }
                           
                           return (
                             <div
@@ -839,7 +878,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                                         {workflow.streamingStats ? workflow.streamingStats.questionCount - workflow.streamingStats.latestQuestions.length + idx + 1 : idx + 1}
                                       </div>
                                       <div className="flex-1 min-w-0">
-                                        <p className="text-sm text-gray-800 leading-relaxed">{question.text}</p>
+                                        <p className="text-sm text-gray-800 leading-relaxed">{question.text || 'Question text not available'}</p>
                                         {question.type && (
                                           <div className="mt-1 inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
                                             {question.type.replace('_', ' ')}
@@ -865,7 +904,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                                 <div className="space-y-2">
                                   {workflow.streamingStats.currentSections.map((section, idx) => (
                                     <div key={idx} className="flex items-center justify-between p-2 bg-purple-50 rounded">
-                                      <span className="text-sm font-medium text-purple-900">{section.title}</span>
+                                      <span className="text-sm font-medium text-purple-900">{section.title || 'Section'}</span>
                                       <span className="text-xs text-purple-600 bg-purple-100 px-2 py-1 rounded">
                                         {section.questionCount || 0} questions
                                       </span>
@@ -1030,13 +1069,13 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                                             {sectionIndex + 1}.{questionIndex + 1}
                                           </span>
                                           <div className="flex-1">
-                                            <p className="text-sm text-gray-700">{question.text}</p>
+                                            <p className="text-sm text-gray-700">{question.text || 'Question text not available'}</p>
                                             {question.options && question.options.length > 0 && (
                                               <div className="mt-2 space-y-1">
                                                 {question.options.map((option, optionIndex) => (
                                                   <div key={optionIndex} className="flex items-center space-x-2 text-xs text-gray-600">
                                                     <span className="w-4 h-4 border border-gray-300 rounded flex-shrink-0"></span>
-                                                    <span>{option}</span>
+                                                    <span>{typeof option === 'string' ? option : ((option as any).text || (option as any).label || 'Option')}</span>
                                                   </div>
                                                 ))}
                                               </div>
@@ -1060,13 +1099,13 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                                           {questionIndex + 1}.
                                         </span>
                                         <div className="flex-1">
-                                          <p className="text-sm text-gray-700">{question.text}</p>
+                                          <p className="text-sm text-gray-700">{question.text || 'Question text not available'}</p>
                                           {question.options && question.options.length > 0 && (
                                             <div className="mt-2 space-y-1">
                                               {question.options.map((option, optionIndex) => (
                                                 <div key={optionIndex} className="flex items-center space-x-2 text-xs text-gray-600">
                                                   <span className="w-4 h-4 border border-gray-300 rounded flex-shrink-0"></span>
-                                                  <span>{option}</span>
+                                                  <span>{typeof option === 'string' ? option : ((option as any).text || (option as any).label || 'Option')}</span>
                                                 </div>
                                               ))}
                                             </div>
@@ -1181,20 +1220,6 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                     </div>
                   )}
 
-                  {/* Real-time Status Message */}
-                  {workflow.message && currentMainStep.rightPanelType !== 'survey_preview' && (
-                    <div className="bg-gradient-to-r from-yellow-50 to-amber-50 border border-amber-200 rounded-xl p-4">
-                      <div className="flex items-start space-x-3">
-                        <div className="flex-shrink-0">
-                          <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse mt-2"></div>
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-medium text-amber-900 mb-1">Current Activity</h4>
-                          <p className="text-sm text-amber-700">{workflow.message}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
               ) : (
                 <div className="flex items-center justify-center h-full">

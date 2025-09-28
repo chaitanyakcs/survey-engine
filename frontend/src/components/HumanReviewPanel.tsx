@@ -492,12 +492,20 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
                 <textarea
                   value={editedPrompt}
                   onChange={(e) => setEditedPrompt(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-xs leading-relaxed font-mono resize-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                  rows={12}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-xs leading-relaxed font-mono resize-y focus:ring-1 focus:ring-blue-500 focus:border-blue-500 min-h-[300px] max-h-[600px]"
+                  rows={20}
                   placeholder="Enter the revised system prompt..."
                 />
-                <div className="mt-2 text-xs text-gray-500">
-                  {editedPrompt.length} characters {editedPrompt.length < 10 && '(minimum 10 required)'}
+                <div className="mt-2 flex justify-between text-xs">
+                  <span className={`${editedPrompt.length < 10 ? 'text-red-500' : editedPrompt.length > 45000 ? 'text-yellow-600' : 'text-gray-500'}`}>
+                    {editedPrompt.length.toLocaleString()} characters
+                    {editedPrompt.length < 10 && ' (minimum 10 required)'}
+                    {editedPrompt.length > 50000 && ' (exceeds 50,000 limit)'}
+                    {editedPrompt.length > 45000 && editedPrompt.length <= 50000 && ' (approaching limit)'}
+                  </span>
+                  <span className="text-gray-400">
+                    Max: 50,000 characters
+                  </span>
                 </div>
               </div>
 
@@ -536,7 +544,7 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
                   </button>
                   <button
                     onClick={handleSaveEdit}
-                    disabled={savingEdit || editedPrompt.trim().length < 10}
+                    disabled={savingEdit || editedPrompt.trim().length < 10 || editedPrompt.length > 50000}
                     className="px-3 py-1 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {savingEdit ? 'Saving...' : 'Save Changes'}
@@ -547,10 +555,10 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
           ) : (
             // Display Mode
             <div className="space-y-2">
-              <div className={`text-gray-800 text-xs leading-relaxed whitespace-pre-wrap font-mono ${!showFullPrompt ? 'line-clamp-4' : ''}`}>
+              <div className={`text-gray-800 text-xs leading-relaxed whitespace-pre-wrap font-mono ${!showFullPrompt ? 'max-h-32 overflow-hidden' : 'max-h-96 overflow-y-auto'} border border-gray-200 rounded p-3 bg-gray-50`}>
                 {(() => {
                   const currentPrompt = activeReview.edited_prompt_data || activeReview.prompt_data;
-                  return showFullPrompt ? currentPrompt : currentPrompt.substring(0, 200) + '...';
+                  return currentPrompt; // Always show full prompt, just limit height with scrolling
                 })()}
               </div>
 

@@ -483,7 +483,7 @@ async def resume_paused_workflow(workflow_id: str, db: Session):
                     workflow_service = WorkflowService(db, manager)
                     
                     # Send notification that workflow is about to resume
-                    progress_data = get_progress_tracker(workflow_id).get_progress_data("generating_questions")
+                    progress_data = get_progress_tracker(workflow_id).get_progress_data("resuming_from_human_review")
                     progress_data["message"] = "Human review approved - resuming survey generation..."
                     progress_data["workflow_paused"] = False
                     progress_data["pending_human_review"] = False
@@ -598,11 +598,19 @@ async def cancel_paused_workflow(workflow_id: str, db: Session, reason: Optional
                 return
 
             if survey:
-                survey.status = "failed"
+                # Delete the survey and related records instead of marking as failed
+                survey_id = survey.id
+                
+                # Delete related human review records first
+                db.query(HumanReview).filter(HumanReview.survey_id == str(survey_id)).delete()
+                
+                # Delete the survey
+                db.delete(survey)
                 db.commit()
-                logger.info(f"📊 [HumanReview] Survey {survey.id} marked as failed due to review rejection")
+                
+                logger.info(f"🗑️ [HumanReview] Survey {survey_id} deleted due to review rejection")
 
-                # Send failure notification via WebSocket
+                # Send cancellation notification via WebSocket
                 from src.services.websocket_client import WebSocketNotificationService
                 ws_client = WebSocketNotificationService()
                 await ws_client.notify_workflow_error(
@@ -610,7 +618,7 @@ async def cancel_paused_workflow(workflow_id: str, db: Session, reason: Optional
                     f"Workflow cancelled due to human review rejection: {reason or 'No reason provided'}"
                 )
 
-                logger.info(f"✅ [HumanReview] Workflow {workflow_id} cancelled successfully")
+                logger.info(f"✅ [HumanReview] Workflow {workflow_id} cancelled and survey deleted successfully")
             else:
                 logger.warning(f"⚠️ [HumanReview] No survey found for workflow {workflow_id}")
 

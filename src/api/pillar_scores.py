@@ -417,11 +417,17 @@ async def get_pillar_scores(
                         recommendations=stored_scores.get('recommendations', [])
                     )
                 else:
-                    # No cached scores, wait briefly for lock
-                    if evaluation_lock.acquire(blocking=True, timeout=30):
-                        logger.info(f"🔓 [Pillar Scores API] Acquired evaluation lock for survey {survey_id_str}")
-                    else:
-                        raise HTTPException(status_code=503, detail="Evaluation in progress, please try again later")
+                    # No cached scores and evaluation is in progress - return a "pending" response
+                    # instead of waiting or triggering another evaluation
+                    logger.info(f"⏳ [Pillar Scores API] Evaluation in progress for survey {survey_id_str}, returning pending status")
+                    return OverallPillarScoreResponse(
+                        overall_grade="Pending",
+                        weighted_score=0.0,
+                        total_score=0.0,
+                        summary="Evaluation in progress, please check back in a few moments",
+                        pillar_breakdown=[],
+                        recommendations=[]
+                    )
             
             try:
                 # Extract RFQ text for advanced evaluation (fallback if not available)

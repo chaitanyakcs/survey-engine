@@ -266,7 +266,13 @@ start_application() {
         echo -e "${YELLOW}⏳ Waiting for nginx to be ready...${NC}"
         sleep 3
         
-        # Check if nginx is running
+        # Check if nginx process is running
+        if ! kill -0 $NGINX_PID 2>/dev/null; then
+            echo -e "${RED}❌ Nginx failed to start${NC}"
+            exit 1
+        fi
+        
+        # Check if nginx is responding
         if curl -s http://localhost:3000 > /dev/null; then
             echo -e "${GREEN}✅ React app is running on port 3000${NC}"
         else
