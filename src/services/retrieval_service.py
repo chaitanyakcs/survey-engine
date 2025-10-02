@@ -373,11 +373,86 @@ class RetrievalService:
         
         return questions
     
+    def reparse_survey_output(self, raw_output: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Reparse survey LLM output using the latest retrieval service logic
+        This fixes surveys generated with outdated validation rules
+        """
+        logger.info("🔄 [RetrievalService] Starting survey reparse process")
+        
+        try:
+            # Create a copy of the raw output to avoid modifying the original
+            reparsed_survey = raw_output.copy()
+            
+            # Process each section
+            if 'sections' in reparsed_survey and isinstance(reparsed_survey['sections'], list):
+                logger.info(f"📊 [RetrievalService] Processing {len(reparsed_survey['sections'])} sections")
+                
+                for section in reparsed_survey['sections']:
+                    if 'questions' in section and isinstance(section['questions'], list):
+                        logger.info(f"🔍 [RetrievalService] Processing {len(section['questions'])} questions in section {section.get('id', 'unknown')}")
+                        
+                        for question in section['questions']:
+                            # Reclassify question type using latest logic
+                            original_type = question.get('type', '')
+                            new_type = self._classify_question_type(question)
+                            
+                            if original_type != new_type:
+                                logger.info(f"🔄 [RetrievalService] Question {question.get('id', 'unknown')}: {original_type} → {new_type}")
+                                question['type'] = new_type
+                            
+                            # Re-extract options using latest logic
+                            extracted_options = self._extract_question_options(question)
+                            if extracted_options and not question.get('options'):
+                                logger.info(f"➕ [RetrievalService] Question {question.get('id', 'unknown')}: Added {len(extracted_options)} options")
+                                question['options'] = extracted_options
+                            
+                            # Ensure required fields are present
+                            if 'required' not in question:
+                                question['required'] = True
+                            
+                            # Add methodology field if missing
+                            if 'methodology' not in question:
+                                question['methodology'] = self._categorize_question(
+                                    question.get('text', ''), 
+                                    question.get('type', '')
+                                )
+            
+            # Process legacy format (questions at root level)
+            elif 'questions' in reparsed_survey and isinstance(reparsed_survey['questions'], list):
+                logger.info(f"📊 [RetrievalService] Processing {len(reparsed_survey['questions'])} questions in legacy format")
+                
+                for question in reparsed_survey['questions']:
+                    # Reclassify question type using latest logic
+                    original_type = question.get('type', '')
+                    new_type = self._classify_question_type(question)
+                    
+                    if original_type != new_type:
+                        logger.info(f"🔄 [RetrievalService] Question {question.get('id', 'unknown')}: {original_type} → {new_type}")
+                        question['type'] = new_type
+                    
+                    # Re-extract options using latest logic
+                    extracted_options = self._extract_question_options(question)
+                    if extracted_options and not question.get('options'):
+                        logger.info(f"➕ [RetrievalService] Question {question.get('id', 'unknown')}: Added {len(extracted_options)} options")
+                        question['options'] = extracted_options
+                    
+                    # Ensure required fields are present
+                    if 'required' not in question:
+                        question['required'] = True
+            
+            logger.info("✅ [RetrievalService] Survey reparse completed successfully")
+            return reparsed_survey
+            
+        except Exception as e:
+            logger.error(f"❌ [RetrievalService] Failed to reparse survey output: {str(e)}", exc_info=True)
+            return None
+    
     def _classify_question_type(self, question: Dict[str, Any]) -> str:
         """
         Classify the type of question based on its structure
         """
-        # Check explicit type field
+        # Check explicit type field first
         if "type" in question:
             return str(question["type"]).lower()
         
@@ -388,6 +463,8 @@ class RetrievalService:
         if len(options) == 0:
             if any(keyword in question_text for keyword in ["email", "name", "address"]):
                 return "text"
+            elif any(keyword in question_text for keyword in ["price", "amount", "cost", "number", "age", "quantity"]):
+                return "numeric_open"
             else:
                 return "open_text"
         elif len(options) == 2 and any(str(opt).lower() in ["yes", "no", "true", "false"] for opt in options):
@@ -396,8 +473,10 @@ class RetrievalService:
             return "single_choice" 
         elif len(options) <= 15:
             return "multiple_choice"
+        elif "matrix" in question_text or "rate" in question_text:
+            return "matrix_likert"
         else:
-            return "rating_scale"
+            return "multiple_choice"
     
     def _extract_question_options(self, question: Dict[str, Any]) -> List[str]:
         """

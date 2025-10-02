@@ -139,7 +139,7 @@ class RuleValidation(Base):
 class QuestionAnnotation(Base):
     """Model for storing question annotations"""
     __tablename__ = "question_annotations"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     question_id = Column(String(255), nullable=False)
     survey_id = Column(String(255), nullable=False)
@@ -154,6 +154,15 @@ class QuestionAnnotation(Base):
     business_impact = Column(Integer, nullable=False)
     comment = Column(Text)
     annotator_id = Column(String(255))
+
+    # Advanced labeling fields
+    advanced_labels = Column(JSONB)
+    industry_classification = Column(String(100))
+    respondent_type = Column(String(100))
+    methodology_tags = Column(ARRAY(Text))
+    is_mandatory = Column(Boolean, default=False)
+    compliance_status = Column(String(50))
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
@@ -175,7 +184,7 @@ class QuestionAnnotation(Base):
 class SectionAnnotation(Base):
     """Model for storing section annotations"""
     __tablename__ = "section_annotations"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     section_id = Column(Integer, nullable=False)
     survey_id = Column(String(255), nullable=False)
@@ -189,6 +198,12 @@ class SectionAnnotation(Base):
     business_impact = Column(Integer, nullable=False)
     comment = Column(Text)
     annotator_id = Column(String(255))
+
+    # Advanced labeling fields
+    section_classification = Column(String(100))
+    mandatory_elements = Column(JSONB)
+    compliance_score = Column(Integer)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
@@ -210,11 +225,17 @@ class SectionAnnotation(Base):
 class SurveyAnnotation(Base):
     """Model for storing survey-level annotation metadata"""
     __tablename__ = "survey_annotations"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     survey_id = Column(String(255), nullable=False, unique=True)
     overall_comment = Column(Text)
     annotator_id = Column(String(255))
+
+    # Advanced labeling fields
+    detected_labels = Column(JSONB)
+    compliance_report = Column(JSONB)
+    advanced_metadata = Column(JSONB)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     

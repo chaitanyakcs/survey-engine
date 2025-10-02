@@ -111,3 +111,5 @@ const NumericGrid: React.FC<NumericGridProps> = ({ question, isPreview = true })
 };
 
 export default NumericGrid;
+
+

@@ -101,15 +101,7 @@ class ValidationService:
             if not isinstance(survey["sections"], list):
                 errors.append("Sections must be a list")
             else:
-                valid_section_ids = [1, 2, 3, 4, 5]
-                section_titles = [
-                    "Screener & Demographics",
-                    "Consumer Details", 
-                    "Consumer product awareness, usage and preference",
-                    "Product introduction and Concept reaction",
-                    "Methodology"
-                ]
-                
+                # Flexible section validation - allow any number of sections with any IDs
                 found_section_ids = []
                 for i, section in enumerate(survey["sections"]):
                     if not isinstance(section, dict):
@@ -122,10 +114,10 @@ class ValidationService:
                         if field not in section:
                             errors.append(f"Section {i} missing required field: {field}")
                     
-                    # Validate section ID
+                    # Validate section ID (must be positive integer)
                     if "id" in section:
-                        if section["id"] not in valid_section_ids:
-                            errors.append(f"Section {i} has invalid ID {section['id']}. Must be 1-5")
+                        if not isinstance(section["id"], int) or section["id"] <= 0:
+                            errors.append(f"Section {i} has invalid ID {section['id']}. Must be positive integer")
                         else:
                             found_section_ids.append(section["id"])
                     
@@ -136,10 +128,9 @@ class ValidationService:
                         else:
                             self._validate_questions_array(section["questions"], errors, f"Section {i}")
                 
-                # Check if all required sections are present
-                missing_sections = [sid for sid in valid_section_ids if sid not in found_section_ids]
-                if missing_sections:
-                    errors.append(f"Missing required section IDs: {missing_sections}")
+                # Check for duplicate section IDs
+                if len(found_section_ids) != len(set(found_section_ids)):
+                    errors.append("Duplicate section IDs found")
         
         # Validate questions structure (legacy format)
         elif has_questions:
@@ -170,14 +161,27 @@ class ValidationService:
             
             # Validate question type
             if "type" in question:
-                valid_types = ["multiple_choice", "text", "scale", "ranking", "yes_no"]
+                valid_types = [
+                    # Basic question types
+                    "multiple_choice", "single_choice", "multiple_select", "text", "open_text", 
+                    "scale", "ranking", "yes_no",
+                    # Advanced question types
+                    "numeric_open", "matrix_likert", "constant_sum", "numeric_grid",
+                    # Methodology-specific types
+                    "van_westendorp", "gabor_granger", "conjoint", "maxdiff",
+                    # Special types
+                    "instruction", "matrix", "grid"
+                ]
                 if question["type"] not in valid_types:
                     errors.append(f"{context} question {i} has invalid type: {question['type']}")
                 
-                # Validate options for multiple choice
-                if question.get("type") == "multiple_choice":
+                # Validate options for choice-based questions
+                choice_types = ["multiple_choice", "single_choice", "multiple_select"]
+                if question.get("type") in choice_types:
                     if "options" not in question or not isinstance(question["options"], list):
-                        errors.append(f"{context} question {i} multiple_choice must have options list")
+                        errors.append(f"{context} question {i} {question['type']} must have options list")
+                    elif len(question.get("options", [])) == 0:
+                        errors.append(f"{context} question {i} {question['type']} must have at least one option")
     
     def _extract_all_questions(self, survey: Dict[str, Any]) -> List[Dict[str, Any]]:
         """

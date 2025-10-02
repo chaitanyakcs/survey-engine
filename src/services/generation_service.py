@@ -569,44 +569,123 @@ class GenerationService:
 
         return sanitized
 
+    def _gentle_sanitize_json(self, raw_text: str) -> str:
+        """
+        Gentle JSON sanitization that only fixes obvious issues without corrupting valid JSON.
+        """
+        import re
+        
+        logger.info("🧹 [GenerationService] Starting gentle JSON sanitization...")
+        
+        # Only remove markdown code blocks if present
+        sanitized = re.sub(r'^.*?```(?:json)?\s*', '', raw_text, flags=re.DOTALL)
+        sanitized = re.sub(r'```.*$', '', sanitized, flags=re.DOTALL)
+        
+        # Remove any leading text before the first {
+        sanitized = re.sub(r'^[^{]*', '', sanitized)
+        
+        # Find last } and trim properly
+        last_brace_pos = sanitized.rfind('}')
+        if last_brace_pos >= 0:
+            sanitized = sanitized[:last_brace_pos + 1]
+        
+        # Only fix obvious JSON issues:
+        # 1. Remove trailing commas
+        sanitized = re.sub(r',\s*}', '}', sanitized)
+        sanitized = re.sub(r',\s*]', ']', sanitized)
+        
+        # 2. Fix line breaks within string values (but preserve structure)
+        sanitized = re.sub(r'"([^"]*)\n([^"]*)"', r'"\1 \2"', sanitized)
+        
+        logger.info(f"🧹 [GenerationService] Gentle sanitization complete. Length: {len(raw_text)} -> {len(sanitized)}")
+        return sanitized
+
     def _extract_survey_json(self, raw_text: str) -> Dict[str, Any]:
         """
         Extract survey JSON from raw LLM output.
-        This method handles sanitization internally since it's called from multiple places.
+        Try to parse JSON first, only apply fixes if parsing fails.
         """
         logger.info(f"🔍 [GenerationService] Starting JSON extraction from raw text (length: {len(raw_text)})")
 
-        # CRITICAL FIX: Always sanitize input since this method is called with raw LLM output
-        logger.info("🧹 [GenerationService] Auto-sanitizing input text...")
-        sanitized_text = self._sanitize_raw_output(raw_text)
-        logger.info(f"🧹 [GenerationService] Sanitization complete: {len(raw_text)} -> {len(sanitized_text)} chars")
+        # Strategy 1: Try to parse JSON directly without any sanitization
+        logger.info("🔧 [GenerationService] Trying direct JSON parsing (no sanitization)...")
+        try:
+            result = json.loads(raw_text)
+            logger.info(f"✅ [GenerationService] Direct JSON parsing succeeded! Keys: {list(result.keys())}")
+            self._validate_and_fix_survey_structure(result)
+            return result
+        except json.JSONDecodeError as e:
+            logger.info(f"⚠️ [GenerationService] Direct JSON parsing failed: {e}")
+            logger.info(f"🔍 [GenerationService] JSON error at position {e.pos}: {raw_text[max(0, e.pos-50):e.pos+50]}")
 
-        logger.info(f"🔍 [GenerationService] Sanitized text preview: {sanitized_text[:200]}...")
+        # Strategy 2: Try to extract JSON from markdown code blocks
+        logger.info("🔧 [GenerationService] Trying JSON extraction from markdown...")
+        try:
+            import re
+            # Look for JSON in markdown code blocks
+            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', raw_text, re.DOTALL)
+            if json_match:
+                extracted_json = json_match.group(1)
+                logger.info(f"🔧 [GenerationService] Found JSON in markdown code block, length: {len(extracted_json)}")
+                result = json.loads(extracted_json)
+                logger.info(f"✅ [GenerationService] Markdown JSON extraction succeeded!")
+                self._validate_and_fix_survey_structure(result)
+                return result
+        except Exception as e:
+            logger.warning(f"⚠️ [GenerationService] Markdown JSON extraction failed: {e}")
 
-        # Streamlined strategies for sanitized text
-        # Since LLM now returns JSON format, prioritize direct JSON parsing
-        strategies = [
-            ("Direct JSON parsing", self._extract_direct_json),
-            ("Force rebuild from parts (fallback)", self._force_rebuild_survey_json)
-        ]
+        # Strategy 3: Try to find JSON boundaries and extract
+        logger.info("🔧 [GenerationService] Trying JSON boundary extraction...")
+        try:
+            import re
+            start = raw_text.find('{')
+            end = raw_text.rfind('}') + 1
+            if start != -1 and end > start:
+                extracted_json = raw_text[start:end]
+                logger.info(f"🔧 [GenerationService] Extracted JSON substring, length: {len(extracted_json)}")
+                result = json.loads(extracted_json)
+                logger.info(f"✅ [GenerationService] JSON boundary extraction succeeded!")
+                self._validate_and_fix_survey_structure(result)
+                return result
+        except Exception as e:
+            logger.warning(f"⚠️ [GenerationService] JSON boundary extraction failed: {e}")
 
-        for strategy_name, extraction_func in strategies:
-            try:
-                logger.info(f"🔧 [GenerationService] Trying {strategy_name}...")
-                result = extraction_func(sanitized_text)
-                if result:
-                    logger.info(f"✅ [GenerationService] {strategy_name} succeeded!")
-                    self._validate_and_fix_survey_structure(result)
-                    return result
-                else:
-                    logger.warning(f"⚠️ [GenerationService] {strategy_name} returned None")
-            except Exception as e:
-                logger.warning(f"⚠️ [GenerationService] {strategy_name} failed: {str(e)}")
-                continue
+        # Strategy 4: Apply gentle sanitization and try again
+        logger.info("🔧 [GenerationService] Trying gentle sanitization...")
+        try:
+            sanitized_text = self._gentle_sanitize_json(raw_text)
+            result = json.loads(sanitized_text)
+            logger.info(f"✅ [GenerationService] Gentle sanitization + JSON parsing succeeded!")
+            self._validate_and_fix_survey_structure(result)
+            return result
+        except Exception as e:
+            logger.warning(f"⚠️ [GenerationService] Gentle sanitization failed: {e}")
+
+        # Strategy 5: Apply aggressive sanitization as last resort
+        logger.info("🔧 [GenerationService] Trying aggressive sanitization (last resort)...")
+        try:
+            sanitized_text = self._sanitize_raw_output(raw_text)
+            result = json.loads(sanitized_text)
+            logger.info(f"✅ [GenerationService] Aggressive sanitization + JSON parsing succeeded!")
+            self._validate_and_fix_survey_structure(result)
+            return result
+        except Exception as e:
+            logger.warning(f"⚠️ [GenerationService] Aggressive sanitization failed: {e}")
+
+        # Strategy 6: Force rebuild from parts
+        logger.info("🔧 [GenerationService] Trying force rebuild from parts...")
+        try:
+            result = self._force_rebuild_survey_json(raw_text)
+            if result:
+                logger.info(f"✅ [GenerationService] Force rebuild succeeded!")
+                self._validate_and_fix_survey_structure(result)
+                return result
+        except Exception as e:
+            logger.warning(f"⚠️ [GenerationService] Force rebuild failed: {e}")
 
         # If all strategies fail, create a minimal valid survey
         logger.error("❌ [GenerationService] All JSON extraction strategies failed")
-        return self._create_minimal_survey(sanitized_text)
+        return self._create_minimal_survey(raw_text)
 
     def _extract_direct_json(self, sanitized_text: str) -> Optional[Dict[str, Any]]:
         """
@@ -1185,10 +1264,22 @@ class GenerationService:
                                 logger.info(f"🔍 [GenerationService] Extracted {len(options)} options for question '{q_id}': {options}")
                             
                             try:
+                                # Determine question type based on content and options
+                                question_type = "text"
+                                if options:
+                                    if len(options) <= 5:
+                                        question_type = "single_choice"
+                                    else:
+                                        question_type = "multiple_choice"
+                                elif any(keyword in q_text.lower() for keyword in ["price", "amount", "cost", "number", "age", "quantity", "how much", "how many"]):
+                                    question_type = "numeric_open"
+                                elif any(keyword in q_text.lower() for keyword in ["rate", "score", "matrix", "scale"]):
+                                    question_type = "matrix_likert"
+                                
                                 question = {
                                     "id": q_id or f"q{len(questions) + 1}",
                                     "text": q_text,
-                                    "type": "multiple_choice" if options else "text",
+                                    "type": question_type,
                                     "options": options,
                                     "required": True,
                                     "category": "general"

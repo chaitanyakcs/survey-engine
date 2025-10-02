@@ -133,11 +133,16 @@ class ContextBuilderNode:
                 },
                 "golden_examples": state.golden_examples,
                 "methodology_guidance": state.methodology_blocks,
-                "template_fallbacks": state.template_questions
+                "template_fallbacks": state.template_questions,
+                # Enhanced RFQ data for text requirements and enriched context
+                "enhanced_rfq_data": state.enhanced_rfq_data
             }
             
             logger.info(f"🔍 [ContextBuilderNode] Final context audit_survey_id: {context.get('audit_survey_id')}")
             logger.info(f"🔍 [ContextBuilderNode] Context keys: {list(context.keys())}")
+            logger.info(f"🔍 [ContextBuilderNode] Enhanced RFQ data available: {bool(state.enhanced_rfq_data)}")
+            if state.enhanced_rfq_data:
+                logger.info(f"🔍 [ContextBuilderNode] Enhanced RFQ sections: {list(state.enhanced_rfq_data.keys())}")
 
             # Update the state with the context
             state.context = context

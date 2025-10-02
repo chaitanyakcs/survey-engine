@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from io import BytesIO
 from docx import Document
 import replicate
@@ -430,6 +430,12 @@ MEDIUM PRIORITY FIELDS:
 8. deliverables - Expected outputs (reports, presentations, data files)
 9. timeline - Project deadlines or milestones
 
+SURVEY STRUCTURE FIELDS (methodology-driven):
+10. qnr_sections - Required QNR sections based on methodology (7-section standard)
+11. text_requirements - Required text introductions based on methodology
+12. survey_logic - Survey logic requirements (piping, sampling, screener logic)
+13. brand_usage_requirements - Brand tracking and usage requirements
+
 SIMPLIFIED FIELD-SPECIFIC EXTRACTION GUIDANCE:
 
 CRITICAL FIELDS (extract with high confidence):
@@ -483,6 +489,59 @@ SAMPLE_PLAN (Medium):
 - Confidence threshold: 0.75
 - Strategy: Extract sampling specifications
 
+SURVEY STRUCTURE FIELDS (methodology-driven):
+
+QNR_SECTIONS_DETECTED (Medium):
+- Keywords: "questionnaire", "survey sections", "screener", "demographics", "concept"
+- Patterns: Based on detected methodologies (see methodology mapping below)
+- Confidence threshold: 0.75
+- Strategy: Auto-detect required QNR sections based on methodology
+- Default sections: ["sample_plan", "screener", "brand_awareness", "concept_exposure", "methodology_section", "additional_questions", "programmer_instructions"]
+
+TEXT_REQUIREMENTS_DETECTED (Medium):
+- Keywords: "introduction", "instructions", "confidentiality", "study intro", "concept presentation"
+- Patterns: Based on methodology requirements (see text requirements mapping below)
+- Confidence threshold: 0.70
+- Strategy: Auto-detect required text blocks based on methodology
+
+SURVEY_LOGIC_REQUIREMENTS (Medium):
+- requires_piping_logic: Keywords: "pipe", "carry forward", "previous answer", "based on response"
+- requires_sampling_logic: Keywords: "random", "quota", "balance", "representative sample"
+- requires_screener_logic: Keywords: "qualify", "screen out", "terminate", "continue if", "skip if"
+- custom_logic_requirements: Keywords: "logic", "skip pattern", "routing", "conditional"
+- Confidence threshold: 0.65
+- Strategy: Infer logic needs from content complexity and methodology
+
+BRAND_USAGE_REQUIREMENTS (Medium):
+- brand_recall_required: Keywords: "brand awareness", "top of mind", "unaided", "aided recall"
+- brand_awareness_funnel: Keywords: "awareness", "consideration", "trial", "purchase", "loyalty"
+- brand_product_satisfaction: Keywords: "satisfaction", "rating", "experience", "recommend"
+- usage_frequency_tracking: Keywords: "how often", "frequency", "usage", "habits", "occasions"
+- Confidence threshold: 0.70
+- Strategy: Detect brand/product research focus
+
+ENHANCED BUSINESS CONTEXT (Medium):
+- stakeholder_requirements: Keywords: "stakeholders", "requirements", "needs", "expectations"
+- decision_criteria: Keywords: "criteria", "decision", "evaluate", "success metrics"
+- budget_range: Keywords: "budget", "cost", "investment", "under", "over", "$", "k", "million"
+- timeline_constraints: Keywords: "urgent", "deadline", "timeline", "rush", "flexible", "standard"
+
+ENHANCED RESEARCH OBJECTIVES (Medium):
+- success_metrics: Keywords: "success", "metrics", "KPI", "measure", "target", "goal"
+- validation_requirements: Keywords: "validate", "verify", "confirm", "test", "proof"
+- measurement_approach: Keywords: "quantitative", "qualitative", "mixed", "approach", "method"
+
+ENHANCED METHODOLOGY (Medium):
+- complexity_level: Keywords: "simple", "standard", "complex", "advanced", "basic", "sophisticated"
+- required_methodologies: Keywords: Multiple methodology names in array format
+- sample_size_target: Keywords: "sample", "respondents", "participants", "n=", "size"
+
+ENHANCED SURVEY REQUIREMENTS (Medium):
+- completion_time_target: Keywords: "time", "minutes", "duration", "length", "LOI"
+- device_compatibility: Keywords: "mobile", "desktop", "tablet", "device", "responsive"
+- accessibility_requirements: Keywords: "accessibility", "ADA", "508", "WCAG", "accessible"
+- data_quality_requirements: Keywords: "quality", "validation", "attention", "checks"
+
 EXTRACTION STRATEGY:
 1. First scan for CRITICAL FIELDS using field-specific patterns above
 2. Look for explicit section headers that match field types
@@ -490,6 +549,33 @@ EXTRACTION STRATEGY:
 4. Use field-specific language patterns for targeted extraction
 5. For missing CRITICAL FIELDS, be more aggressive - synthesize from available context
 6. For MEDIUM PRIORITY fields, only extract if confidence >0.7 and clear evidence exists
+7. Apply METHODOLOGY-BASED AUTO-DETECTION for survey structure fields using mappings below
+
+METHODOLOGY-TO-QNR-SECTIONS MAPPING:
+- concept_test: ["sample_plan", "screener", "brand_awareness", "concept_exposure", "methodology_section", "additional_questions", "programmer_instructions"]
+- conjoint: ["sample_plan", "screener", "concept_exposure", "methodology_section", "additional_questions", "programmer_instructions"]
+- van_westendorp/gabor_granger: ["sample_plan", "screener", "brand_awareness", "methodology_section", "additional_questions", "programmer_instructions"]
+- brand_tracker: ["sample_plan", "screener", "brand_awareness", "additional_questions", "programmer_instructions"]
+- max_diff: ["sample_plan", "screener", "methodology_section", "additional_questions", "programmer_instructions"]
+
+METHODOLOGY-TO-TEXT-REQUIREMENTS MAPPING:
+- concept_test: ["Study_Intro", "Concept_Intro"]
+- conjoint: ["Study_Intro", "Confidentiality_Agreement"]
+- van_westendorp/gabor_granger: ["Study_Intro", "Product_Usage"]
+- brand_tracker: ["Study_Intro", "Product_Usage"]
+- max_diff: ["Study_Intro"]
+- All methodologies: Always include "Study_Intro" (mandatory)
+
+SURVEY_LOGIC AUTO-DETECTION RULES:
+- Requires Piping Logic: If conjoint, complex branching, or "based on previous response" detected
+- Requires Sampling Logic: If quota requirements, randomization, or balanced design mentioned
+- Requires Screener Logic: If qualification criteria, screening questions, or termination logic present
+
+BRAND_USAGE AUTO-DETECTION RULES:
+- Brand Recall Required: If brand awareness, recall, or brand tracking mentioned
+- Brand Awareness Funnel: If awareness-to-purchase funnel or brand consideration mentioned
+- Brand Product Satisfaction: If satisfaction, ratings, or experience evaluation mentioned
+- Usage Frequency Tracking: If usage patterns, frequency, or habits research mentioned
 
 CONFIDENCE SCORING GUIDELINES:
 - 0.9-1.0: Explicit mention with clear mapping (exact field labels or unambiguous content)
@@ -591,6 +677,46 @@ EXPECTED JSON STRUCTURE:
       "source": "Target participants: small business owners aged 25-50...",
       "reasoning": "Clear demographic and behavioral criteria",
       "priority": "medium"
+    }},
+    {{
+      "field": "qnr_sections_detected",
+      "value": ["sample_plan", "screener", "concept_exposure", "methodology_section", "additional_questions", "programmer_instructions"],
+      "confidence": 0.80,
+      "source": "Conjoint analysis methodology detected",
+      "reasoning": "Based on conjoint methodology, these QNR sections are required",
+      "priority": "medium"
+    }},
+    {{
+      "field": "text_requirements_detected",
+      "value": ["Study_Intro", "Confidentiality_Agreement"],
+      "confidence": 0.75,
+      "source": "Conjoint study with sensitive data collection",
+      "reasoning": "Conjoint studies require study intro and confidentiality agreement",
+      "priority": "medium"
+    }},
+    {{
+      "field": "requires_piping_logic",
+      "value": true,
+      "confidence": 0.70,
+      "source": "Complex conjoint design with feature dependencies",
+      "reasoning": "Conjoint analysis typically requires piping logic for dynamic choice tasks",
+      "priority": "medium"
+    }},
+    {{
+      "field": "requires_sampling_logic",
+      "value": false,
+      "confidence": 0.65,
+      "source": "No specific quota or randomization requirements mentioned",
+      "reasoning": "Standard sampling approach implied",
+      "priority": "medium"
+    }},
+    {{
+      "field": "brand_recall_required",
+      "value": false,
+      "confidence": 0.80,
+      "source": "Focus on product features, not brand awareness",
+      "reasoning": "Feature research doesn't require brand recall questions",
+      "priority": "medium"
     }}
   ]
 }}
@@ -688,31 +814,85 @@ IMPORTANT:
             logger.info(f"✅ [Document Parser] RFQ extraction response received, length: {len(json_content)} chars")
             logger.info(f"🔍 [Document Parser] Raw LLM response: {json_content[:500]}...")
 
-            # Parse and validate JSON
-            try:
-                rfq_data = json.loads(json_content)
-                logger.info(f"✅ [Document Parser] RFQ data parsing successful")
-                logger.info(f"🔍 [Document Parser] Parsed data keys: {list(rfq_data.keys())}")
-                return rfq_data
-            except json.JSONDecodeError as e:
-                logger.warning(f"⚠️ [Document Parser] Invalid JSON in RFQ extraction: {str(e)}")
-                # Try to extract JSON like in the original method
-                import re
-                start = json_content.find('{')
-                end = json_content.rfind('}') + 1
-                if start != -1 and end != 0:
-                    extracted_json = json_content[start:end]
-                    try:
-                        rfq_data = json.loads(extracted_json)
-                        logger.info(f"✅ [Document Parser] RFQ JSON extraction successful")
-                        return rfq_data
-                    except json.JSONDecodeError:
-                        pass
+            # Parse and validate JSON using robust extraction like survey generation
+            rfq_data = self._extract_rfq_json(json_content)
+            logger.info(f"✅ [Document Parser] RFQ data parsing successful")
+            logger.info(f"🔍 [Document Parser] Parsed data keys: {list(rfq_data.keys())}")
+            return rfq_data
 
-                # Return fallback structure
-                logger.warning(f"⚠️ [Document Parser] Returning fallback RFQ structure")
+        except Exception as e:
+            logger.error(f"❌ [Document Parser] Failed to extract RFQ data: {str(e)}", exc_info=True)
+            return self._get_fallback_rfq_structure(str(e))
+
+    def _extract_rfq_json(self, raw_text: str) -> Dict[str, Any]:
+        """
+        Extract RFQ JSON from raw LLM output using multiple strategies.
+        Based on the robust extraction method from survey generation.
+        """
+        logger.info(f"🔍 [Document Parser] Starting JSON extraction from raw text (length: {len(raw_text)})")
+
+        # Strategy 1: Try to parse JSON directly without any sanitization
+        logger.info("🔧 [Document Parser] Trying direct JSON parsing (no sanitization)...")
+        try:
+            result = json.loads(raw_text)
+            logger.info(f"✅ [Document Parser] Direct JSON parsing succeeded! Keys: {list(result.keys())}")
+            self._validate_and_fix_rfq_structure(result)
+            return result
+        except json.JSONDecodeError as e:
+            logger.info(f"⚠️ [Document Parser] Direct JSON parsing failed: {e}")
+            logger.info(f"🔍 [Document Parser] JSON error at position {e.pos}: {raw_text[max(0, e.pos-50):e.pos+50]}")
+
+        # Strategy 2: Try to extract JSON from markdown code blocks
+        logger.info("🔧 [Document Parser] Trying JSON extraction from markdown...")
+        try:
+            import re
+            # Look for JSON in markdown code blocks
+            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', raw_text, re.DOTALL)
+            if json_match:
+                extracted_json = json_match.group(1)
+                logger.info(f"🔧 [Document Parser] Found JSON in markdown code block, length: {len(extracted_json)}")
+                result = json.loads(extracted_json)
+                logger.info(f"✅ [Document Parser] Markdown JSON extraction succeeded!")
+                self._validate_and_fix_rfq_structure(result)
+                return result
+        except (json.JSONDecodeError, AttributeError) as e:
+            logger.info(f"⚠️ [Document Parser] Markdown JSON extraction failed: {e}")
+
+        # Strategy 3: Try to find JSON between first { and last }
+        logger.info("🔧 [Document Parser] Trying JSON extraction between braces...")
+        try:
+            import re
+            start = raw_text.find('{')
+            end = raw_text.rfind('}') + 1
+            if start != -1 and end != 0 and end > start:
+                extracted_json = raw_text[start:end]
+                logger.info(f"🔧 [Document Parser] Found JSON between braces, length: {len(extracted_json)}")
+                result = json.loads(extracted_json)
+                logger.info(f"✅ [Document Parser] Braces JSON extraction succeeded!")
+                self._validate_and_fix_rfq_structure(result)
+                return result
+        except json.JSONDecodeError as e:
+            logger.info(f"⚠️ [Document Parser] Braces JSON extraction failed: {e}")
+
+        # Strategy 4: Try gentle sanitization and parse
+        logger.info("🔧 [Document Parser] Trying gentle sanitization...")
+        try:
+            sanitized = self._gentle_sanitize_json(raw_text)
+            result = json.loads(sanitized)
+            logger.info(f"✅ [Document Parser] Sanitized JSON parsing succeeded!")
+            self._validate_and_fix_rfq_structure(result)
+            return result
+        except json.JSONDecodeError as e:
+            logger.info(f"⚠️ [Document Parser] Sanitized JSON parsing failed: {e}")
+
+        # Strategy 5: Try to extract field mappings array specifically
+        logger.info("🔧 [Document Parser] Trying field mappings extraction...")
+        try:
+            field_mappings = self._extract_field_mappings_from_text(raw_text)
+            if field_mappings:
+                logger.info(f"✅ [Document Parser] Extracted {len(field_mappings)} field mappings from text")
                 return {
-                    "confidence": 0.1,
+                    "confidence": 0.7,
                     "identified_sections": {},
                     "extracted_entities": {
                         "stakeholders": [],
@@ -720,24 +900,139 @@ IMPORTANT:
                         "research_types": [],
                         "methodologies": []
                     },
-                    "field_mappings": [],
-                    "parsing_error": f"JSON parsing failed: {str(e)}"
+                    "field_mappings": field_mappings
                 }
-
         except Exception as e:
-            logger.error(f"❌ [Document Parser] Failed to extract RFQ data: {str(e)}", exc_info=True)
-            return {
-                "confidence": 0.0,
-                "identified_sections": {},
-                "extracted_entities": {
-                    "stakeholders": [],
-                    "industries": [],
-                    "research_types": [],
-                    "methodologies": []
-                },
-                "field_mappings": [],
-                "extraction_error": f"RFQ extraction failed: {str(e)}"
+            logger.info(f"⚠️ [Document Parser] Field mappings extraction failed: {e}")
+
+        # All strategies failed - return fallback
+        logger.error(f"❌ [Document Parser] All JSON extraction strategies failed!")
+        logger.error(f"❌ [Document Parser] Raw response: {raw_text[:1000]}...")
+        return self._get_fallback_rfq_structure("All JSON extraction strategies failed")
+
+    def _gentle_sanitize_json(self, raw_text: str) -> str:
+        """Gentle JSON sanitization to fix common LLM output issues"""
+        import re
+
+        logger.info(f"🧹 [Document Parser] Starting gentle sanitization of text (length: {len(raw_text)})")
+
+        # Remove any text before the first {
+        start_idx = raw_text.find('{')
+        if start_idx > 0:
+            raw_text = raw_text[start_idx:]
+            logger.info(f"🧹 [Document Parser] Removed text before first brace")
+
+        # Remove any text after the last }
+        end_idx = raw_text.rfind('}')
+        if end_idx > 0 and end_idx < len(raw_text) - 1:
+            raw_text = raw_text[:end_idx + 1]
+            logger.info(f"🧹 [Document Parser] Removed text after last brace")
+
+        # Fix common JSON issues
+        sanitized = raw_text
+
+        # Remove trailing commas before closing brackets/braces
+        sanitized = re.sub(r',\s*}', '}', sanitized)
+        sanitized = re.sub(r',\s*]', ']', sanitized)
+
+        # Fix newlines within strings (common LLM issue)
+        sanitized = re.sub(r'"([^"]*)\n([^"]*)"', r'"\1 \2"', sanitized)
+
+        logger.info(f"🧹 [Document Parser] Gentle sanitization complete. Length: {len(raw_text)} -> {len(sanitized)}")
+        return sanitized
+
+    def _extract_field_mappings_from_text(self, raw_text: str) -> List[Dict[str, Any]]:
+        """Extract field mappings from raw text using regex patterns"""
+        import re
+
+        field_mappings = []
+
+        # Look for field mapping patterns in the text
+        # Pattern: "field": "value" with confidence
+        field_patterns = [
+            r'"field":\s*"([^"]+)",\s*"value":\s*"([^"]+)",\s*"confidence":\s*([\d.]+)',
+            r'"field":\s*"([^"]+)",\s*"value":\s*"([^"]+)"',
+            r'Field:\s*([^\n]+)\s*Value:\s*([^\n]+)\s*Confidence:\s*([\d.]+)',
+        ]
+
+        for pattern in field_patterns:
+            matches = re.findall(pattern, raw_text, re.IGNORECASE)
+            for match in matches:
+                if len(match) == 3:
+                    field, value, confidence = match
+                    field_mappings.append({
+                        "field": field.strip(),
+                        "value": value.strip(),
+                        "confidence": float(confidence),
+                        "source": "regex_extraction",
+                        "reasoning": "Extracted via pattern matching",
+                        "priority": "medium"
+                    })
+                elif len(match) == 2:
+                    field, value = match
+                    field_mappings.append({
+                        "field": field.strip(),
+                        "value": value.strip(),
+                        "confidence": 0.6,
+                        "source": "regex_extraction",
+                        "reasoning": "Extracted via pattern matching",
+                        "priority": "medium"
+                    })
+
+        return field_mappings
+
+    def _validate_and_fix_rfq_structure(self, rfq_data: Dict[str, Any]) -> None:
+        """Validate and fix RFQ data structure"""
+        # Ensure required keys exist
+        if "field_mappings" not in rfq_data:
+            rfq_data["field_mappings"] = []
+
+        if "confidence" not in rfq_data:
+            rfq_data["confidence"] = 0.8
+
+        if "identified_sections" not in rfq_data:
+            rfq_data["identified_sections"] = {}
+
+        if "extracted_entities" not in rfq_data:
+            rfq_data["extracted_entities"] = {
+                "stakeholders": [],
+                "industries": [],
+                "research_types": [],
+                "methodologies": []
             }
+
+        # Validate field mappings structure
+        valid_mappings = []
+        for mapping in rfq_data.get("field_mappings", []):
+            if isinstance(mapping, dict) and "field" in mapping and "value" in mapping:
+                # Ensure required fields exist
+                if "confidence" not in mapping:
+                    mapping["confidence"] = 0.6
+                if "source" not in mapping:
+                    mapping["source"] = "llm_extraction"
+                if "reasoning" not in mapping:
+                    mapping["reasoning"] = "Extracted by LLM"
+                if "priority" not in mapping:
+                    mapping["priority"] = "medium"
+                valid_mappings.append(mapping)
+
+        rfq_data["field_mappings"] = valid_mappings
+        logger.info(f"✅ [Document Parser] Validated RFQ structure with {len(valid_mappings)} field mappings")
+
+    def _get_fallback_rfq_structure(self, error_message: str) -> Dict[str, Any]:
+        """Return fallback RFQ structure when parsing fails"""
+        return {
+            "confidence": 0.0,
+            "identified_sections": {},
+            "extracted_entities": {
+                "stakeholders": [],
+                "industries": [],
+                "research_types": [],
+                "methodologies": []
+            },
+            "field_mappings": [],
+            "extraction_error": f"RFQ extraction failed: {error_message}"
+        }
 
     async def parse_document_for_rfq(self, docx_content: bytes, filename: str = None, session_id: str = None) -> Dict[str, Any]:
         """Parse DOCX document specifically for RFQ data extraction."""

@@ -376,6 +376,64 @@ This roadmap outlines planned enhancements and improvements across all aspects o
 
 ---
 
+## 🏷️ Advanced Labeling & Compliance System
+
+*Current State: Comprehensive annotation system with 5-pillar scoring, advanced evaluation framework (58 questions), and CSV labeling taxonomy*
+
+### 1. Enhanced Annotation System with Advanced Labels 🔴
+**Complexity**: Simple ⏱️ (1-2 weeks)
+- **Description**: Extend existing annotation system to support advanced labeling taxonomy from CSV framework
+- **Features**:
+  - Add industry classification, respondent type, and methodology tags to question annotations
+  - Mandatory section flags and compliance status tracking
+  - JSONB storage for flexible advanced label schema evolution
+  - Backward compatibility with existing annotation APIs
+- **Impact**: High - Enables systematic compliance tracking and industry-specific insights
+- **Current Assets**: Robust annotation system with question/section/survey level support, bulk operations
+- **Dependencies**: Database schema extension, existing annotation API enhancement
+- **Status**: 🚨 Critical - Ready for Implementation
+
+### 2. Automated Advanced Label Detection 🔴
+**Complexity**: Moderate ⏱️ (2-3 weeks)
+- **Description**: Intelligent service to automatically apply advanced labels based on RFQ analysis and CSV taxonomy
+- **Features**:
+  - Industry/respondent type detection from RFQ text analysis
+  - Methodology tag assignment (Van Westendorp, Conjoint, NPS, etc.)
+  - Mandatory section identification per CSV compliance rules
+  - Auto-annotation with fallback to human override capability
+- **Impact**: High - Scales labeling across all surveys with minimal manual effort
+- **Current Assets**: Document parsing infrastructure, RFQ analysis capabilities
+- **Dependencies**: Enhanced annotation system, CSV taxonomy integration
+- **Status**: 🚨 Critical - Pending
+
+### 3. Compliance Validation & Monitoring 🔴
+**Complexity**: Moderate ⏱️ (2-3 weeks)
+- **Description**: Real-time compliance checking against industry standards and regulatory requirements
+- **Features**:
+  - Pre-generation compliance validation based on detected labels
+  - Mandatory section enforcement during survey generation
+  - Compliance dashboard with industry-specific metrics
+  - Quality gates with compliance scoring and recommendations
+- **Impact**: High - Ensures regulatory compliance and industry best practices
+- **Current Assets**: Existing validation framework, quality scoring system
+- **Dependencies**: Automated label detection, enhanced annotation system
+- **Status**: 🚨 Critical - Pending
+
+### 4. Label-Aware Generation & Retrieval 🟡
+**Complexity**: Moderate ⏱️ (3-4 weeks)
+- **Description**: Enhance generation pipeline with industry-specific guidance and compliance-aware retrieval
+- **Features**:
+  - Golden example filtering by industry/methodology labels
+  - Industry-specific generation prompts and guidelines
+  - Mandatory section injection based on compliance requirements
+  - Enhanced similarity scoring with label-based relevance boosting
+- **Impact**: Medium-High - Improves generation quality and compliance for specific industries
+- **Current Assets**: Advanced retrieval system, sophisticated prompt generation
+- **Dependencies**: Label-aware retrieval enhancement, compliance validation system
+- **Status**: 📋 Planned
+
+---
+
 ## 🔮 Future Considerations
 
 *Items for future roadmap iterations*
@@ -402,29 +460,33 @@ This roadmap outlines planned enhancements and improvements across all aspects o
 
 ## Implementation Strategy
 
-### Phase 1 (Q1 2025) - Critical Resilience & Evaluation Foundation
-**Focus**: Survey generation resilience, error handling, and evaluation monitoring
+### Phase 1 (Q1 2025) - Critical Resilience & Advanced Labeling Foundation
+**Focus**: Survey generation resilience, error handling, evaluation monitoring, and advanced labeling system
 - 🚨 Graceful Degradation Implementation
 - 🚨 Error Classification & Debug System
 - 🚨 State Management & Navigation Fixes
 - 🚨 Evaluation Error Isolation
+- 🏷️ Enhanced Annotation System with Advanced Labels
+- 🏷️ Automated Advanced Label Detection
 - 🧪 LangSmith Foundation & Monitoring
 
 ### Phase 2 (Q2 2025) - Foundation & Intelligence
-**Focus**: System reliability, advanced autofill, and evaluation analytics
+**Focus**: System reliability, advanced autofill, evaluation analytics, and compliance monitoring
 - Granular Progress & Recovery UI
 - Performance Monitoring Dashboard
 - Comprehensive Test Suite
 - Multi-Document Intelligence
 - Contextual Learning from User Feedback
+- 🏷️ Compliance Validation & Monitoring
 - 🧪 Enhanced Analytics & Benchmarking
 
 ### Phase 3 (Q3 2025) - Optimization & Intelligence
-**Focus**: Advanced features, business intelligence, and AI-powered optimization
+**Focus**: Advanced features, business intelligence, AI-powered optimization, and advanced labeling integration
 - Smart Section Requirement Detection
 - Enhanced Confidence Intelligence
 - ROI Measurement Automation
 - Advanced Quality Analytics
+- 🏷️ Label-Aware Generation & Retrieval
 - 🧪 Production Intelligence & Optimization
 - 🧪 Evaluation System Consolidation
 
@@ -453,9 +515,16 @@ This roadmap outlines planned enhancements and improvements across all aspects o
 - [ ] Quality regression detection: <24 hour alert time
 - [ ] Evaluation processing time: <60 seconds for full 5-pillar analysis
 
+### Advanced Labeling & Compliance Targets
+- [ ] Auto-labeling accuracy: >85% (industry/methodology detection)
+- [ ] Annotation coverage: >90% of surveys with advanced labels
+- [ ] Compliance detection: >80% mandatory section identification
+- [ ] Label-based retrieval improvement: >15% better relevance scores
+- [ ] Industry-specific generation: >20% improvement in domain accuracy
+
 ### Business Targets
 - [ ] Time reduction: >90% (from 3-4 hours to <30 minutes)
-- [ ] Methodology compliance: >80%
+- [ ] Methodology compliance: >80% (enhanced by advanced labeling)
 - [ ] User satisfaction: >4.0/5.0
 - [ ] Error rate: <1%
 - [ ] User adoption: 90% of target users

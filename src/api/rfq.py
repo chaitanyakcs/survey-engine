@@ -1,6 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from src.database import get_db, RFQ, Survey
+from src.models.enhanced_rfq import (
+    EnhancedRFQRequest,
+    EnhancedRFQResponse,
+    validate_enhanced_rfq,
+    extract_legacy_fields,
+    count_populated_fields
+)
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from uuid import uuid4
@@ -294,6 +301,156 @@ async def upload_and_analyze_document(
         )
 
         return error_response
+
+
+@router.post("/enhanced", response_model=EnhancedRFQResponse)
+async def submit_enhanced_rfq(
+    request: EnhancedRFQRequest,
+    db: Session = Depends(get_db)
+) -> EnhancedRFQResponse:
+    """
+    Submit Enhanced RFQ with structured data for survey generation
+    Returns: rfq_id, workflow_id, survey_id, status, enhanced data metrics
+    """
+    logger.info(f"🚀 [Enhanced RFQ API] Received Enhanced RFQ submission: title='{request.title}', description_length={len(request.description)}")
+
+    try:
+        # Validate the enhanced RFQ data
+        validated_rfq = validate_enhanced_rfq(request.model_dump())
+        field_count = count_populated_fields(validated_rfq)
+
+        logger.info(f"✅ [Enhanced RFQ API] Validation successful, populated fields: {field_count}")
+
+        # Extract legacy fields for backward compatibility
+        legacy_fields = extract_legacy_fields(validated_rfq)
+
+        # Generate unique IDs
+        workflow_id = f"enhanced-survey-gen-{str(uuid4())}"
+        survey_id = f"enhanced-survey-{str(uuid4())}"
+
+        logger.info(f"📋 [Enhanced RFQ API] Generated workflow_id={workflow_id}, survey_id={survey_id}")
+
+        # Create RFQ record with enhanced data
+        logger.info("💾 [Enhanced RFQ API] Creating Enhanced RFQ database record")
+
+        rfq = RFQ(
+            title=legacy_fields["title"],
+            description=legacy_fields["description"],
+            product_category=legacy_fields["product_category"],
+            target_segment=legacy_fields["target_segment"],
+            research_goal=legacy_fields["research_goal"],
+            enhanced_rfq_data=validated_rfq.model_dump()  # Store complete enhanced data
+        )
+        db.add(rfq)
+        db.commit()
+        db.refresh(rfq)
+        logger.info(f"✅ [Enhanced RFQ API] Enhanced RFQ record created with ID: {rfq.id}")
+
+        # Create initial survey record
+        logger.info("💾 [Enhanced RFQ API] Creating initial Survey database record")
+        try:
+            from src.services.settings_service import SettingsService
+            settings_service = SettingsService(db)
+            eval_settings = settings_service.get_evaluation_settings()
+            model_version_value = eval_settings.get('generation_model')
+        except Exception:
+            model_version_value = None
+        if not model_version_value:
+            from src.config.settings import settings as app_settings
+            model_version_value = app_settings.generation_model
+
+        survey = Survey(
+            rfq_id=rfq.id,
+            status="started",
+            model_version=model_version_value
+        )
+        db.add(survey)
+        db.commit()
+        db.refresh(survey)
+        logger.info(f"✅ [Enhanced RFQ API] Survey record created with ID: {survey.id}")
+
+        # Process Enhanced RFQ through workflow
+        logger.info(f"🔄 [Enhanced RFQ API] Starting enhanced workflow processing: workflow_id={workflow_id}")
+
+        try:
+            from src.services.workflow_service import WorkflowService
+            from src.main import manager  # Import the connection manager
+
+            # Initialize workflow service with connection manager
+            workflow_service = WorkflowService(db, manager)
+
+            # Start enhanced workflow processing in background
+            asyncio.create_task(process_enhanced_rfq_workflow_async(
+                workflow_service=workflow_service,
+                enhanced_rfq=validated_rfq,
+                workflow_id=workflow_id,
+                survey_id=str(survey.id)
+            ))
+
+            logger.info(f"✅ [Enhanced RFQ API] Enhanced workflow processing started in background: workflow_id={workflow_id}")
+
+        except Exception as e:
+            logger.error(f"❌ [Enhanced RFQ API] Failed to start enhanced workflow processing: {str(e)}")
+            # Mark survey as pending if workflow fails to start
+            survey.status = "pending"
+            db.commit()
+
+        # Return enhanced response
+        response = EnhancedRFQResponse(
+            rfq_id=str(rfq.id),
+            workflow_id=workflow_id,
+            survey_id=str(survey.id),
+            status="started",
+            enhanced_data_processed=True,
+            field_count=field_count
+        )
+
+        logger.info(f"🎉 [Enhanced RFQ API] Returning enhanced response: {response.model_dump()}")
+        return response
+
+    except Exception as e:
+        logger.error(f"❌ [Enhanced RFQ API] Failed to process Enhanced RFQ: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to process Enhanced RFQ: {str(e)}")
+
+
+async def process_enhanced_rfq_workflow_async(
+    workflow_service,
+    enhanced_rfq: EnhancedRFQRequest,
+    workflow_id: str,
+    survey_id: str
+):
+    """
+    Process Enhanced RFQ workflow asynchronously with enhanced data context
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        logger.info(f"🚀 [Enhanced Async Workflow] Starting Enhanced RFQ processing: title='{enhanced_rfq.title}', workflow_id={workflow_id}")
+
+        # Add a small delay to ensure WebSocket connection is established
+        logger.info("⏳ [Enhanced Async Workflow] Waiting 2 seconds for WebSocket connection to establish...")
+        await asyncio.sleep(2)
+
+        # Extract legacy fields for workflow compatibility
+        legacy_fields = extract_legacy_fields(enhanced_rfq)
+
+        # Process through enhanced workflow with enriched context
+        result = await workflow_service.process_enhanced_rfq(
+            enhanced_rfq=enhanced_rfq,
+            legacy_title=legacy_fields["title"],
+            legacy_description=legacy_fields["description"],
+            legacy_product_category=legacy_fields["product_category"],
+            legacy_target_segment=legacy_fields["target_segment"],
+            legacy_research_goal=legacy_fields["research_goal"],
+            workflow_id=workflow_id,
+            survey_id=survey_id
+        )
+
+        logger.info(f"✅ [Enhanced Async Workflow] Enhanced workflow completed successfully: {result.status}")
+
+    except Exception as e:
+        logger.error(f"❌ [Enhanced Async Workflow] Enhanced workflow failed: {str(e)}", exc_info=True)
 
 
 @router.post("/analyze-text", response_model=DocumentAnalysisResponse)

@@ -240,6 +240,66 @@ async def delete_survey(
         raise HTTPException(status_code=500, detail=f"Failed to delete survey: {str(e)}")
 
 
+@router.post("/{survey_id}/reparse")
+async def reparse_survey(
+    survey_id: UUID,
+    db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """
+    Reparse survey LLM output using latest retrieval service
+    This fixes surveys generated with outdated validation rules
+    """
+    logger.info(f"🔄 [Survey API] Starting reparse for survey: {survey_id}")
+    
+    try:
+        # Get the survey
+        survey = db.query(Survey).filter(Survey.id == survey_id).first()
+        if not survey:
+            raise HTTPException(status_code=404, detail="Survey not found")
+        
+        # Get the raw LLM output
+        raw_output = survey.raw_output
+        if not raw_output:
+            raise HTTPException(status_code=400, detail="No raw output found to reparse")
+        
+        logger.info(f"📊 [Survey API] Raw output found, starting reparse process")
+        
+        # Import retrieval service
+        from src.services.retrieval_service import RetrievalService
+        retrieval_service = RetrievalService(db)
+        
+        # Reparse the survey using the latest retrieval service
+        reparsed_survey = retrieval_service.reparse_survey_output(raw_output)
+        
+        if not reparsed_survey:
+            raise HTTPException(status_code=500, detail="Failed to reparse survey output")
+        
+        # Update the survey with reparsed data
+        survey.final_output = reparsed_survey
+        survey.status = "reparsed"
+        db.commit()
+        
+        logger.info(f"✅ [Survey API] Successfully reparsed survey: {survey_id}")
+        
+        # Get question count for response
+        question_count = get_questions_count(reparsed_survey)
+        
+        return {
+            "status": "success",
+            "message": "Survey reparsed successfully",
+            "survey_id": str(survey_id),
+            "question_count": question_count,
+            "sections_count": len(reparsed_survey.get('sections', [])),
+            "reparsed_at": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [Survey API] Failed to reparse survey {survey_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to reparse survey: {str(e)}")
+
+
 @router.post("/workflow/{workflow_id}/cleanup")
 async def cleanup_workflow(
     workflow_id: str,

@@ -15,6 +15,13 @@ import asyncio
 import time
 from contextlib import asynccontextmanager
 
+# Import enhanced RFQ models
+try:
+    from src.models.enhanced_rfq import EnhancedRFQRequest
+except ImportError:
+    # Fallback for testing or if models not available
+    EnhancedRFQRequest = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -212,6 +219,204 @@ class WorkflowService:
                 except Exception:
                     pass
                 raise
+
+    async def process_enhanced_rfq(
+        self,
+        enhanced_rfq: 'EnhancedRFQRequest',
+        legacy_title: Optional[str],
+        legacy_description: str,
+        legacy_product_category: Optional[str],
+        legacy_target_segment: Optional[str],
+        legacy_research_goal: Optional[str],
+        workflow_id: Optional[str] = None,
+        survey_id: Optional[str] = None
+    ) -> WorkflowResult:
+        """
+        Process Enhanced RFQ through the complete LangGraph workflow with enriched context
+        """
+        if not workflow_id:
+            workflow_id = f"enhanced-workflow-{uuid4()}"
+
+        logger.info(f"📝 [WorkflowService] Starting Enhanced RFQ processing: title='{legacy_title}', workflow_id={workflow_id}")
+        logger.info(f"📊 [WorkflowService] Enhanced data available: methodology={enhanced_rfq.methodology is not None}, business_context={enhanced_rfq.business_context is not None}")
+
+        # Use workflow isolation with timeout
+        async with self._workflow_isolation(workflow_id):
+            try:
+                # Set overall timeout for workflow processing
+                return await asyncio.wait_for(
+                    self._execute_enhanced_workflow_with_circuit_breaker(
+                        enhanced_rfq, legacy_title, legacy_description,
+                        legacy_product_category, legacy_target_segment,
+                        legacy_research_goal, workflow_id, survey_id
+                    ),
+                    timeout=600.0  # 10 minute timeout
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"❌ [WorkflowService] Enhanced workflow {workflow_id} timed out after 10 minutes")
+                # Send failure notification
+                try:
+                    await self.ws_client.send_progress_update(workflow_id, {
+                        "type": "error",
+                        "message": "Enhanced workflow timed out after 10 minutes",
+                        "error": "timeout"
+                    })
+                except Exception:
+                    pass
+                raise Exception("Enhanced workflow execution timed out")
+            except Exception as e:
+                logger.error(f"❌ [WorkflowService] Enhanced workflow {workflow_id} failed: {str(e)}")
+                # Send failure notification
+                try:
+                    await self.ws_client.send_progress_update(workflow_id, {
+                        "type": "error",
+                        "message": f"Enhanced workflow failed: {str(e)}",
+                        "error": "execution_failed"
+                    })
+                except Exception:
+                    pass
+                raise
+
+    async def _execute_enhanced_workflow_with_circuit_breaker(
+        self,
+        enhanced_rfq: 'EnhancedRFQRequest',
+        legacy_title: Optional[str],
+        legacy_description: str,
+        legacy_product_category: Optional[str],
+        legacy_target_segment: Optional[str],
+        legacy_research_goal: Optional[str],
+        workflow_id: str,
+        survey_id: Optional[str]
+    ) -> WorkflowResult:
+        """Execute enhanced workflow with circuit breaker protection and enriched context"""
+
+        # Get existing survey record (created by Enhanced RFQ API)
+        if not survey_id:
+            raise Exception("Survey ID is required for enhanced workflow processing")
+
+        logger.info(f"🔍 [WorkflowService] Looking up existing survey for enhanced processing: {survey_id}")
+        try:
+            survey = self.db.query(Survey).filter(Survey.id == survey_id).first()
+            if not survey:
+                raise Exception(f"Survey not found with ID: {survey_id}")
+
+            # Get the associated RFQ
+            rfq = self.db.query(RFQ).filter(RFQ.id == survey.rfq_id).first()
+            if not rfq:
+                raise Exception(f"RFQ not found for survey: {survey_id}")
+
+            logger.info(f"✅ [WorkflowService] Found existing survey: {survey.id} and RFQ: {rfq.id}")
+        except Exception as e:
+            logger.error(f"❌ [WorkflowService] Failed to find existing survey: {str(e)}", exc_info=True)
+            raise Exception(f"Database error while finding survey: {str(e)}")
+
+        # Initialize enhanced workflow state with enriched context
+        logger.info("🔄 [WorkflowService] Initializing enhanced workflow state")
+
+        # Build enriched description from enhanced RFQ data
+        enriched_description = self._build_enriched_description(enhanced_rfq, legacy_description)
+
+        import time
+
+        initial_state = SurveyGenerationState(
+            # Use rfq_text as the primary field, with enriched description
+            rfq_text=enriched_description,
+            rfq_title=legacy_title,
+            # Alias fields for compatibility
+            title=legacy_title,
+            description=enriched_description,
+            # Standard RFQ fields
+            product_category=legacy_product_category,
+            target_segment=legacy_target_segment,
+            research_goal=legacy_research_goal,
+            # Enhanced workflow context
+            enhanced_rfq_data=enhanced_rfq.model_dump() if enhanced_rfq else None,
+            # Standard workflow fields
+            current_step="initialize",
+            workflow_id=workflow_id,
+            survey_id=survey_id,
+            survey_output=None,
+            estimated_completion_time=None,
+            golden_examples_used=0,
+            messages=[],
+            embedding=None,
+            start_time=time.time(),
+            progress_tracking=None
+        )
+
+        logger.info(f"✅ [WorkflowService] Enhanced workflow state initialized")
+        logger.info(f"📊 [WorkflowService] Enriched description length: {len(enriched_description)} chars")
+
+        # Create WebSocket client for progress updates
+        ws_client = WebSocketNotificationService(self.connection_manager)
+
+        try:
+            # Execute the enhanced workflow
+            logger.info(f"🚀 [WorkflowService] Starting enhanced workflow execution: {workflow_id}")
+            result = await self.execute_enhanced_workflow_from_generation(initial_state, workflow_id, survey_id, ws_client)
+            logger.info(f"✅ [WorkflowService] Enhanced workflow execution completed successfully")
+            return result
+
+        except Exception as e:
+            logger.error(f"❌ [WorkflowService] Enhanced workflow execution failed: {str(e)}", exc_info=True)
+
+            # Ensure database session health
+            self._ensure_healthy_db_session()
+
+            # Update survey status to failed
+            try:
+                from src.database.models import Survey
+                survey = self.db.query(Survey).filter(Survey.id == survey_id).first()
+                if survey:
+                    survey.status = "failed"
+                    self.db.commit()
+                    logger.info(f"✅ [WorkflowService] Survey status updated to failed: {survey_id}")
+            except Exception as status_error:
+                logger.error(f"❌ [WorkflowService] Failed to update survey status to failed: {str(status_error)}")
+
+            # Send error notification
+            try:
+                await ws_client.send_progress_update(workflow_id, {
+                    "type": "error",
+                    "message": f"Failed to execute enhanced workflow: {str(e)}"
+                })
+            except Exception as ws_error:
+                logger.warning(f"⚠️ [WorkflowService] Failed to send error notification: {str(ws_error)}")
+            raise Exception(f"Enhanced workflow execution failed: {str(e)}")
+
+    def _build_enriched_description(self, enhanced_rfq: 'EnhancedRFQRequest', base_description: str) -> str:
+        """Build enriched description from enhanced RFQ data for better survey generation"""
+
+        # Import the converter utility
+        try:
+            from src.utils.enhanced_rfq_converter import createEnhancedDescriptionWithTextRequirements
+
+            # Convert the enhanced RFQ to enriched text
+            if enhanced_rfq:
+                enriched_text = createEnhancedDescriptionWithTextRequirements(enhanced_rfq.model_dump())
+                logger.info(f"📝 [WorkflowService] Created enriched description with {len(enriched_text)} characters")
+                return enriched_text
+            else:
+                logger.warning("⚠️ [WorkflowService] No enhanced RFQ data available, using base description")
+                return base_description
+        except Exception as e:
+            logger.warning(f"⚠️ [WorkflowService] Failed to build enriched description: {str(e)}")
+            return base_description
+
+    async def execute_enhanced_workflow_from_generation(
+        self,
+        initial_state: SurveyGenerationState,
+        workflow_id: str,
+        survey_id: str,
+        ws_client: WebSocketNotificationService
+    ) -> WorkflowResult:
+        """Execute enhanced workflow with enriched context and text requirements"""
+
+        logger.info(f"🚀 [WorkflowService] Starting enhanced workflow execution from generation: {workflow_id}")
+
+        # For now, delegate to the standard workflow execution but with enhanced context
+        # The enriched description will contain all the enhanced RFQ information
+        return await self.execute_workflow_from_generation(initial_state, workflow_id, survey_id, ws_client)
 
     async def _execute_workflow_with_circuit_breaker(
         self,

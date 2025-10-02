@@ -36,6 +36,9 @@ class EvaluationSettings(BaseModel):
     # LLM Evaluation Settings
     enable_llm_evaluation: bool = True  # New setting to make LLM evaluation optional
     
+    # Survey Generation Mode Settings
+    quick_mode_enabled: bool = False  # Enable Quick mode toggle in UI
+    
     # Model configuration
     generation_model: str = app_settings.generation_model
     evaluation_model: str = app_settings.generation_model

@@ -4,15 +4,31 @@ from uuid import UUID
 
 
 class SurveyGenerationState(BaseModel):
+    # Basic RFQ fields
     rfq_id: Optional[UUID] = None
     survey_id: Optional[str] = None
     workflow_id: Optional[str] = None
     rfq_text: str
     rfq_title: Optional[str] = None
+    title: Optional[str] = None  # Alias for rfq_title for compatibility
+    description: Optional[str] = None  # Alias for rfq_text for compatibility
     product_category: Optional[str] = None
     target_segment: Optional[str] = None
     research_goal: Optional[str] = None
     rfq_embedding: Optional[List[float]] = None
+
+    # Enhanced RFQ fields
+    enhanced_rfq_data: Optional[Dict[str, Any]] = None
+
+    # Workflow tracking fields
+    current_step: Optional[str] = None
+    survey_output: Optional[Dict[str, Any]] = None
+    estimated_completion_time: Optional[int] = None
+    golden_examples_used: int = 0
+    messages: List[str] = []
+    embedding: Optional[List[float]] = None
+    start_time: Optional[float] = None
+    progress_tracking: Optional[Dict[str, Any]] = None
     
     golden_examples: List[Dict[str, Any]] = []
     methodology_blocks: List[Dict[str, Any]] = []

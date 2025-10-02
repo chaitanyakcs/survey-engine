@@ -5,12 +5,13 @@ API endpoints for survey annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 from datetime import datetime
 
 from src.database.connection import get_db
 from src.database.models import QuestionAnnotation, SectionAnnotation, SurveyAnnotation
+from src.services.advanced_labeling_service import AdvancedLabelingService
 
 router = APIRouter()
 
@@ -29,6 +30,14 @@ class QuestionAnnotationRequest(BaseModel):
     comment: Optional[str] = None
     annotator_id: str = "current-user"
 
+    # Advanced labeling fields
+    advanced_labels: Optional[Dict[str, Any]] = None
+    industry_classification: Optional[str] = None
+    respondent_type: Optional[str] = None
+    methodology_tags: Optional[List[str]] = None
+    is_mandatory: Optional[bool] = None
+    compliance_status: Optional[str] = None
+
 class SectionAnnotationRequest(BaseModel):
     section_id: int
     quality: int = Field(ge=1, le=5)
@@ -41,12 +50,22 @@ class SectionAnnotationRequest(BaseModel):
     comment: Optional[str] = None
     annotator_id: str = "current-user"
 
+    # Advanced labeling fields
+    section_classification: Optional[str] = None
+    mandatory_elements: Optional[Dict[str, Any]] = None
+    compliance_score: Optional[int] = None
+
 class BulkAnnotationRequest(BaseModel):
     survey_id: str
     question_annotations: List[QuestionAnnotationRequest] = []
     section_annotations: List[SectionAnnotationRequest] = []
     overall_comment: Optional[str] = None
     annotator_id: str = "current-user"
+
+    # Advanced labeling fields for survey-level
+    detected_labels: Optional[Dict[str, Any]] = None
+    compliance_report: Optional[Dict[str, Any]] = None
+    advanced_metadata: Optional[Dict[str, Any]] = None
 
 class QuestionAnnotationResponse(BaseModel):
     id: int
@@ -65,6 +84,14 @@ class QuestionAnnotationResponse(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime]
 
+    # Advanced labeling fields
+    advanced_labels: Optional[Dict[str, Any]] = None
+    industry_classification: Optional[str] = None
+    respondent_type: Optional[str] = None
+    methodology_tags: Optional[List[str]] = None
+    is_mandatory: Optional[bool] = None
+    compliance_status: Optional[str] = None
+
 class SectionAnnotationResponse(BaseModel):
     id: int
     section_id: int
@@ -81,6 +108,11 @@ class SectionAnnotationResponse(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime]
 
+    # Advanced labeling fields
+    section_classification: Optional[str] = None
+    mandatory_elements: Optional[Dict[str, Any]] = None
+    compliance_score: Optional[int] = None
+
 class SurveyAnnotationsResponse(BaseModel):
     survey_id: str
     question_annotations: List[QuestionAnnotationResponse]
@@ -89,6 +121,11 @@ class SurveyAnnotationsResponse(BaseModel):
     annotator_id: str
     created_at: datetime
     updated_at: Optional[datetime]
+
+    # Advanced labeling fields
+    detected_labels: Optional[Dict[str, Any]] = None
+    compliance_report: Optional[Dict[str, Any]] = None
+    advanced_metadata: Optional[Dict[str, Any]] = None
 
 # API Endpoints
 
@@ -163,7 +200,14 @@ def get_survey_annotations(
                 comment=qa.comment,
                 annotator_id=qa.annotator_id,
                 created_at=qa.created_at,
-                updated_at=qa.updated_at
+                updated_at=qa.updated_at,
+                # Advanced labeling fields
+                advanced_labels=qa.advanced_labels,
+                industry_classification=qa.industry_classification,
+                respondent_type=qa.respondent_type,
+                methodology_tags=qa.methodology_tags,
+                is_mandatory=qa.is_mandatory,
+                compliance_status=qa.compliance_status
             ) for qa in question_annotations
         ],
         section_annotations=[
@@ -181,13 +225,21 @@ def get_survey_annotations(
                 comment=sa.comment,
                 annotator_id=sa.annotator_id,
                 created_at=sa.created_at,
-                updated_at=sa.updated_at
+                updated_at=sa.updated_at,
+                # Advanced labeling fields
+                section_classification=sa.section_classification,
+                mandatory_elements=sa.mandatory_elements,
+                compliance_score=sa.compliance_score
             ) for sa in section_annotations
         ],
         overall_comment=survey_annotation.overall_comment if survey_annotation else None,
         annotator_id=annotator_id,
         created_at=created_at,
-        updated_at=updated_at
+        updated_at=updated_at,
+        # Advanced labeling fields
+        detected_labels=survey_annotation.detected_labels if survey_annotation else None,
+        compliance_report=survey_annotation.compliance_report if survey_annotation else None,
+        advanced_metadata=survey_annotation.advanced_metadata if survey_annotation else None
     )
 
 @router.post("/annotations/survey/{survey_id}/bulk")
@@ -221,6 +273,13 @@ def save_bulk_annotations(
                 existing_qa.business_impact = qa_req.business_impact
                 existing_qa.comment = qa_req.comment
                 existing_qa.updated_at = datetime.now()
+                # Update advanced labeling fields
+                existing_qa.advanced_labels = qa_req.advanced_labels
+                existing_qa.industry_classification = qa_req.industry_classification
+                existing_qa.respondent_type = qa_req.respondent_type
+                existing_qa.methodology_tags = qa_req.methodology_tags
+                existing_qa.is_mandatory = qa_req.is_mandatory
+                existing_qa.compliance_status = qa_req.compliance_status
             else:
                 # Create new annotation
                 new_qa = QuestionAnnotation(
@@ -235,7 +294,14 @@ def save_bulk_annotations(
                     analytical_value=qa_req.analytical_value,
                     business_impact=qa_req.business_impact,
                     comment=qa_req.comment,
-                    annotator_id=qa_req.annotator_id
+                    annotator_id=qa_req.annotator_id,
+                    # Advanced labeling fields
+                    advanced_labels=qa_req.advanced_labels,
+                    industry_classification=qa_req.industry_classification,
+                    respondent_type=qa_req.respondent_type,
+                    methodology_tags=qa_req.methodology_tags,
+                    is_mandatory=qa_req.is_mandatory,
+                    compliance_status=qa_req.compliance_status
                 )
                 db.add(new_qa)
         
@@ -260,6 +326,10 @@ def save_bulk_annotations(
                 existing_sa.business_impact = sa_req.business_impact
                 existing_sa.comment = sa_req.comment
                 existing_sa.updated_at = datetime.now()
+                # Update advanced labeling fields
+                existing_sa.section_classification = sa_req.section_classification
+                existing_sa.mandatory_elements = sa_req.mandatory_elements
+                existing_sa.compliance_score = sa_req.compliance_score
             else:
                 # Create new annotation
                 new_sa = SectionAnnotation(
@@ -273,27 +343,39 @@ def save_bulk_annotations(
                     analytical_value=sa_req.analytical_value,
                     business_impact=sa_req.business_impact,
                     comment=sa_req.comment,
-                    annotator_id=sa_req.annotator_id
+                    annotator_id=sa_req.annotator_id,
+                    # Advanced labeling fields
+                    section_classification=sa_req.section_classification,
+                    mandatory_elements=sa_req.mandatory_elements,
+                    compliance_score=sa_req.compliance_score
                 )
                 db.add(new_sa)
         
         # Process survey-level annotation
-        if annotations.overall_comment:
+        if annotations.overall_comment or annotations.detected_labels or annotations.compliance_report or annotations.advanced_metadata:
             existing_survey_ann = db.query(SurveyAnnotation).filter(
                 and_(
                     SurveyAnnotation.survey_id == survey_id,
                     SurveyAnnotation.annotator_id == annotations.annotator_id
                 )
             ).first()
-            
+
             if existing_survey_ann:
                 existing_survey_ann.overall_comment = annotations.overall_comment
                 existing_survey_ann.updated_at = datetime.now()
+                # Update advanced labeling fields
+                existing_survey_ann.detected_labels = annotations.detected_labels
+                existing_survey_ann.compliance_report = annotations.compliance_report
+                existing_survey_ann.advanced_metadata = annotations.advanced_metadata
             else:
                 new_survey_ann = SurveyAnnotation(
                     survey_id=survey_id,
                     overall_comment=annotations.overall_comment,
-                    annotator_id=annotations.annotator_id
+                    annotator_id=annotations.annotator_id,
+                    # Advanced labeling fields
+                    detected_labels=annotations.detected_labels,
+                    compliance_report=annotations.compliance_report,
+                    advanced_metadata=annotations.advanced_metadata
                 )
                 db.add(new_survey_ann)
         
@@ -378,3 +460,93 @@ def get_annotation_stats(
         },
         "total_annotations": question_count + section_count
     }
+
+@router.post("/annotations/survey/{survey_id}/advanced-labeling")
+def apply_advanced_labeling(
+    survey_id: str,
+    db: Session = Depends(get_db)
+):
+    """Apply advanced labeling to all annotations for a survey"""
+
+    try:
+        # Initialize advanced labeling service
+        labeling_service = AdvancedLabelingService(db)
+
+        # Apply bulk labeling
+        results = labeling_service.apply_bulk_labeling(survey_id)
+
+        return {
+            "message": "Advanced labeling applied successfully",
+            "results": results
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to apply advanced labeling: {str(e)}"
+        )
+
+@router.get("/annotations/survey/{survey_id}/compliance-report")
+def get_compliance_report(
+    survey_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get compliance report for a survey"""
+
+    try:
+        # Get survey annotation
+        survey_annotation = db.query(SurveyAnnotation).filter(
+            SurveyAnnotation.survey_id == survey_id
+        ).first()
+
+        if not survey_annotation or not survey_annotation.compliance_report:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Compliance report not found. Run advanced labeling first."
+            )
+
+        return {
+            "survey_id": survey_id,
+            "compliance_report": survey_annotation.compliance_report,
+            "advanced_metadata": survey_annotation.advanced_metadata
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get compliance report: {str(e)}"
+        )
+
+@router.get("/annotations/survey/{survey_id}/detected-labels")
+def get_detected_labels(
+    survey_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get detected labels for a survey"""
+
+    try:
+        # Get survey annotation
+        survey_annotation = db.query(SurveyAnnotation).filter(
+            SurveyAnnotation.survey_id == survey_id
+        ).first()
+
+        if not survey_annotation or not survey_annotation.detected_labels:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Detected labels not found. Run advanced labeling first."
+            )
+
+        return {
+            "survey_id": survey_id,
+            "detected_labels": survey_annotation.detected_labels
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get detected labels: {str(e)}"
+        )

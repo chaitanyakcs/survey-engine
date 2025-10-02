@@ -135,22 +135,50 @@ class OutputFormatter:
         """Get the consolidated JSON formatting requirements"""
         content = [
             "## CRITICAL REQUIREMENT - SECTIONS FORMAT:",
-            "🚨 MANDATORY: Generate survey using SECTIONS format with exactly 5 sections",
+            "🚨 MANDATORY: Generate survey using SECTIONS format with exactly 7 sections",
             "🚨 MANDATORY: Return ONLY valid JSON - NO markdown, explanations, or additional text",
             "🚨 MANDATORY: Start response with { and end with } - this is the ONLY format accepted",
             "",
             "## SECTION ORGANIZATION:",
-            "1. **Screener & Demographics** (id: 1): Age, location, income, qualifying criteria",
-            "2. **Consumer Details** (id: 2): Lifestyle, behavior patterns, detailed consumer profile",
-            "3. **Consumer product awareness, usage and preference** (id: 3): Brand awareness, usage, preferences",
-            "4. **Product introduction and Concept reaction** (id: 4): New concepts, reactions, purchase intent",
-            "5. **Methodology** (id: 5): Research-specific questions, validation, survey feedback",
+            "1. **Sample Plan** (id: 1): Participant qualification criteria, recruitment requirements, and quotas",
+            "2. **Screener** (id: 2): Initial qualification questions and basic demographics",
+            "3. **Brand/Product Awareness & Usage** (id: 3): Brand recall, awareness funnel, and usage patterns",
+            "4. **Concept Exposure** (id: 4): Product/concept introduction and reaction assessment",
+            "5. **Methodology** (id: 5): Research-specific questions (Conjoint, Pricing, Feature Importance)",
+            "6. **Additional Questions** (id: 6): Supplementary research questions and follow-ups",
+            "7. **Programmer Instructions** (id: 7): Technical implementation notes and data specifications",
             "",
             "## JSON FORMATTING RULES:",
             "✅ All strings in double quotes, proper syntax, no trailing commas",
-            "✅ Section IDs are numbers (1,2,3,4,5), Question IDs are strings (q1,q2,q3)",
+            "✅ Section IDs are numbers (1,2,3,4,5,6,7), Question IDs are strings (q1,q2,q3)",
             "✅ All question text on single lines - NO newlines within strings",
             "✅ No markdown formatting, bullet points, or special characters in text",
+            "",
+            "## QUESTION TYPE GUIDELINES:",
+            "📊 **matrix_likert**: For rating multiple attributes on a scale",
+            "   - Format: Question text ending with '?' followed by comma-separated attributes",
+            "   - Example: 'How important are the following when choosing a product? Comfort, Price, Quality, Brand reputation.'",
+            "   - Structure: Attributes become table rows, options become columns with radio buttons",
+            "   - Required: 'options' array with scale labels (e.g., ['Not important', 'Somewhat important', 'Very important'])",
+            "",
+            "🎯 **constant_sum**: For allocating points across multiple items",
+            "   - Format: Question text with 'allocate X points across' followed by comma-separated items",
+            "   - Example: 'Please allocate 100 points across the following features: Comfort, Price, Quality, Brand reputation.'",
+            "   - Structure: Items become individual input fields with point allocation",
+            "   - Required: No 'options' array needed - points are extracted from question text",
+            "",
+            "📋 **numeric_grid**: For collecting numeric values in a grid format",
+            "   - Format: Question text with comma-separated items and 'options' for column headers",
+            "   - Example: 'How much would you pay for each? Item1, Item2, Item3.' with options ['$0-10', '$10-20', '$20+']",
+            "   - Structure: Items become rows, options become columns with number inputs",
+            "   - Required: 'options' array for column headers",
+            "",
+            "💰 **numeric_open**: For open-ended numeric input (prices, quantities, etc.)",
+            "   - Format: Question text asking for a specific numeric value",
+            "   - Example: 'At what price per box would you consider this product too expensive? Please enter a price in your local currency.'",
+            "   - Structure: Single numeric input with currency selection",
+            "   - Required: No 'options' array needed - currency is auto-detected from question text",
+            "   - Special: Van Westendorp questions use this type for price sensitivity",
             "",
             "## REQUIRED JSON STRUCTURE:"
         ]
@@ -162,8 +190,15 @@ class OutputFormatter:
             "sections": [
                 {
                     "id": 1,
-                    "title": "Screener & Demographics",
-                    "description": "Initial screening and demographic information",
+                    "title": "Sample Plan",
+                    "description": "Participant qualification criteria, recruitment requirements, and quotas",
+                    "introText": {
+                        "id": "intro_1",
+                        "type": "study_intro",
+                        "content": "Thank you for agreeing to participate in this study...",
+                        "mandatory": True,
+                        "label": "Study_Intro"
+                    },
                     "questions": [
                         {
                             "id": "q1",
@@ -173,15 +208,101 @@ class OutputFormatter:
                             "required": True,
                             "methodology": "screening",
                             "order": 1
+                        },
+                        {
+                            "id": "q2",
+                            "text": "How important are the following when choosing a product? Comfort, Price, Quality, Brand reputation.",
+                            "type": "matrix_likert",
+                            "options": ["Not at all important", "Slightly important", "Moderately important", "Very important", "Extremely important"],
+                            "required": True,
+                            "methodology": "importance_rating",
+                            "order": 2
+                        },
+                        {
+                            "id": "q3",
+                            "text": "Please allocate 100 points across the following features: Comfort, Price, Quality, Brand reputation.",
+                            "type": "constant_sum",
+                            "required": True,
+                            "methodology": "feature_importance",
+                            "order": 3
+                        },
+                        {
+                            "id": "q4",
+                            "text": "How much would you pay for each benefit? HydraGlyde Moisture Matrix, SmartShield Technology, Month-long comfort guarantee.",
+                            "type": "numeric_grid",
+                            "options": ["$0-5", "$5-10", "$10-15", "$15-20", "$20+"],
+                            "required": True,
+                            "methodology": "willingness_to_pay",
+                            "order": 4
+                        },
+                        {
+                            "id": "q5",
+                            "text": "At what price per box of 6 monthly lenses would you consider this product too expensive? Please enter a price in your local currency.",
+                            "type": "numeric_open",
+                            "required": True,
+                            "methodology": "van_westendorp_expensive",
+                            "order": 5
                         }
                     ]
+                },
+                {
+                    "id": 2,
+                    "title": "Screener",
+                    "description": "Initial qualification questions and basic demographics",
+                    "questions": []
+                },
+                {
+                    "id": 3,
+                    "title": "Brand/Product Awareness & Usage",
+                    "description": "Brand recall, awareness funnel, and usage patterns",
+                    "textBlocks": [
+                        {
+                            "id": "text_3",
+                            "type": "product_usage",
+                            "content": "Before we begin, please tell us about your experience...",
+                            "mandatory": True,
+                            "label": "Product_Usage"
+                        }
+                    ],
+                    "questions": []
+                },
+                {
+                    "id": 4,
+                    "title": "Concept Exposure",
+                    "description": "Product/concept introduction and reaction assessment",
+                    "introText": {
+                        "id": "intro_4",
+                        "type": "concept_intro",
+                        "content": "Please review the following concept carefully...",
+                        "mandatory": True,
+                        "label": "Concept_Intro"
+                    },
+                    "questions": []
+                },
+                {
+                    "id": 5,
+                    "title": "Methodology",
+                    "description": "Research-specific questions (Conjoint, Pricing, Feature Importance)",
+                    "questions": []
+                },
+                {
+                    "id": 6,
+                    "title": "Additional Questions",
+                    "description": "Supplementary research questions and follow-ups",
+                    "questions": []
+                },
+                {
+                    "id": 7,
+                    "title": "Programmer Instructions",
+                    "description": "Technical implementation notes and data specifications",
+                    "questions": []
                 }
             ],
             "metadata": {
                 "estimated_time": 10,
                 "methodology_tags": ["methodology"],
                 "target_responses": 100,
-                "sections_count": 5
+                "sections_count": 7
             }
         }
 
@@ -335,6 +456,11 @@ class PromptBuilder:
         self.section_manager.add_section("current_task",
             self.section_manager.build_current_task_section(rfq_details))
 
+        # Add text requirements section if enhanced RFQ data is available
+        text_requirements_section = self._build_text_requirements_section(context)
+        if text_requirements_section:
+            self.section_manager.add_section("text_requirements", text_requirements_section)
+
         self.section_manager.add_section("json_requirements",
             OutputFormatter.get_json_requirements_section())
 
@@ -350,3 +476,55 @@ class PromptBuilder:
         logger.info(f"🤖 [PromptBuilder] Generated prompt: {len(final_prompt)} chars")
 
         return final_prompt
+
+    def _build_text_requirements_section(self, context: Dict[str, Any]) -> Optional[PromptSection]:
+        """Build text requirements section from enhanced RFQ data"""
+        try:
+            # Check if enhanced RFQ data is available in context
+            enhanced_rfq_data = context.get("enhanced_rfq_data")
+            if not enhanced_rfq_data:
+                return None
+
+            # Import the enhanced RFQ converter utility
+            from src.utils.enhanced_rfq_converter import generate_text_requirements
+
+            # Generate text requirements from enhanced RFQ data
+            text_requirements = generate_text_requirements(enhanced_rfq_data)
+
+            if not text_requirements.strip():
+                return None
+
+            # Create the prompt section
+            content = [
+                "# MANDATORY TEXT INTRODUCTION REQUIREMENTS",
+                "",
+                "⚠️ **CRITICAL**: The following text requirements are MANDATORY based on the research methodologies identified:",
+                "",
+                text_requirements,
+                "",
+                "**IMPLEMENTATION REQUIREMENTS:**",
+                "1. Each mandatory text introduction MUST be included in the appropriate QNR section",
+                "2. Use 'introText' for section introductions, 'textBlocks' for mid-section content, 'closingText' for endings",
+                "3. Use the specified labels (e.g., 'Study_Intro', 'Concept_Intro') in the text block 'label' field",
+                "4. Text blocks should have appropriate types: 'study_intro', 'concept_intro', 'product_usage', etc.",
+                "5. Follow the 7-section QNR structure with proper text placement",
+                "",
+                "**QNR SECTION TEXT PLACEMENT:**",
+                "- **Sample Plan (Section 1)**: Study_Intro, Confidentiality_Agreement",
+                "- **Brand/Product Awareness (Section 3)**: Product_Usage introduction",
+                "- **Concept Exposure (Section 4)**: Concept_Intro for concept presentation",
+                "- **Methodology (Section 5)**: Methodology-specific instructions",
+                "",
+                ""
+            ]
+
+            return PromptSection(
+                title="Text Requirements",
+                content=content,
+                order=5,  # Place after current task but before JSON requirements
+                required=True
+            )
+
+        except Exception as e:
+            logger.warning(f"⚠️ [PromptBuilder] Failed to build text requirements section: {str(e)}")
+            return None
