@@ -87,7 +87,8 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
     isDocumentProcessing,
     // State persistence
     restoreEnhancedRfqState,
-    clearEnhancedRfqState
+    clearEnhancedRfqState,
+    resetDocumentProcessingState
   } = useAppStore();
 
   // Helper function to check if a field was actually auto-filled from document
@@ -133,7 +134,6 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
           },
           survey_requirements: {
             sample_plan: '',
-            required_sections: ['Screener', 'Demographics', 'Awareness', 'Usage', 'Concept Testing', 'Pricing', 'Satisfaction'],
             must_have_questions: []
           }
         });
@@ -337,6 +337,9 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                           onClick={() => {
                             // Clear document processing state
                             clearEnhancedRfqState();
+                            resetDocumentProcessingState();
+                            // Reset processing state to show document upload
+                            setCurrentSection('document');
                             addToast({
                               type: 'info',
                               title: 'Processing Cancelled',
@@ -353,6 +356,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                           onClick={() => {
                             // Clear document processing state and navigate to business context
                             clearEnhancedRfqState();
+                            resetDocumentProcessingState();
                             setCurrentSection('business_context');
                             addToast({
                               type: 'info',
@@ -666,7 +670,6 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                         survey_requirements: {
                           ...enhancedRfq.survey_requirements,
                           sample_plan: value,
-                          required_sections: enhancedRfq.survey_requirements?.required_sections || [],
                           must_have_questions: enhancedRfq.survey_requirements?.must_have_questions || []
                         }
                       })}
@@ -676,41 +679,6 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                       isAutoFilled={isFieldAutoFilled('survey_requirements.sample_plan')}
                     />
 
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-800 mb-3">
-                        Required Survey Sections
-                      </label>
-                      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-                        {['Screener', 'Demographics', 'Awareness', 'Usage', 'Concept Testing', 'Pricing', 'Satisfaction'].map((section) => (
-                          <label key={section} className="flex items-center space-x-2 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={(enhancedRfq.survey_requirements?.required_sections || []).includes(section)}
-                              onChange={(e) => {
-                                const sections = [...(enhancedRfq.survey_requirements?.required_sections || [])];
-                                if (e.target.checked) {
-                                  sections.push(section);
-                                } else {
-                                  const index = sections.indexOf(section);
-                                  if (index > -1) sections.splice(index, 1);
-                                }
-                                setEnhancedRfq({
-                                  ...enhancedRfq,
-                                  survey_requirements: {
-                                    ...enhancedRfq.survey_requirements,
-                                    sample_plan: enhancedRfq.survey_requirements?.sample_plan || '',
-                                    required_sections: sections,
-                                    must_have_questions: enhancedRfq.survey_requirements?.must_have_questions || []
-                                  }
-                                });
-                              }}
-                              className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
-                            />
-                            <span className="text-sm">{section}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
 
                     <FormField
                       label="Must-Have Questions"
@@ -720,7 +688,6 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                         survey_requirements: {
                           ...enhancedRfq.survey_requirements,
                           sample_plan: enhancedRfq.survey_requirements?.sample_plan || '',
-                          required_sections: enhancedRfq.survey_requirements?.required_sections || [],
                           must_have_questions: value.split('\n').filter(q => q.trim())
                         }
                       })}
@@ -738,7 +705,6 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                         survey_requirements: {
                           ...enhancedRfq.survey_requirements,
                           sample_plan: enhancedRfq.survey_requirements?.sample_plan || '',
-                          required_sections: enhancedRfq.survey_requirements?.required_sections || [],
                           must_have_questions: enhancedRfq.survey_requirements?.must_have_questions || [],
                           screener_requirements: value
                         }

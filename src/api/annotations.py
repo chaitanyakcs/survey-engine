@@ -28,15 +28,8 @@ class QuestionAnnotationRequest(BaseModel):
     analytical_value: int = Field(ge=1, le=5)
     business_impact: int = Field(ge=1, le=5)
     comment: Optional[str] = None
+    labels: Optional[List[str]] = None
     annotator_id: str = "current-user"
-
-    # Advanced labeling fields
-    advanced_labels: Optional[Dict[str, Any]] = None
-    industry_classification: Optional[str] = None
-    respondent_type: Optional[str] = None
-    methodology_tags: Optional[List[str]] = None
-    is_mandatory: Optional[bool] = None
-    compliance_status: Optional[str] = None
 
 class SectionAnnotationRequest(BaseModel):
     section_id: int
@@ -48,12 +41,40 @@ class SectionAnnotationRequest(BaseModel):
     analytical_value: int = Field(ge=1, le=5)
     business_impact: int = Field(ge=1, le=5)
     comment: Optional[str] = None
+    labels: Optional[List[str]] = None
     annotator_id: str = "current-user"
 
     # Advanced labeling fields
     section_classification: Optional[str] = None
     mandatory_elements: Optional[Dict[str, Any]] = None
     compliance_score: Optional[int] = None
+
+class SurveyLevelAnnotationRequest(BaseModel):
+    survey_id: str
+    overall_comment: Optional[str] = None
+    labels: Optional[List[str]] = None
+    annotator_id: str = "current-user"
+
+    # Advanced labeling fields
+    detected_labels: Optional[Dict[str, Any]] = None
+    compliance_report: Optional[Dict[str, Any]] = None
+    advanced_metadata: Optional[Dict[str, Any]] = None
+
+    # Survey-level quality ratings
+    overall_quality: Optional[int] = Field(ge=1, le=5, default=None)
+    survey_relevance: Optional[int] = Field(ge=1, le=5, default=None)
+    methodology_score: Optional[int] = Field(ge=1, le=5, default=None)
+    respondent_experience_score: Optional[int] = Field(ge=1, le=5, default=None)
+    business_value_score: Optional[int] = Field(ge=1, le=5, default=None)
+
+    # Survey classification
+    survey_type: Optional[str] = None
+    industry_category: Optional[str] = None
+    research_methodology: Optional[List[str]] = None
+    target_audience: Optional[str] = None
+    survey_complexity: Optional[str] = None
+    estimated_duration: Optional[int] = None
+    compliance_status: Optional[str] = None
 
 class BulkAnnotationRequest(BaseModel):
     survey_id: str
@@ -80,17 +101,10 @@ class QuestionAnnotationResponse(BaseModel):
     analytical_value: int
     business_impact: int
     comment: Optional[str]
+    labels: Optional[List[str]]
     annotator_id: str
     created_at: datetime
     updated_at: Optional[datetime]
-
-    # Advanced labeling fields
-    advanced_labels: Optional[Dict[str, Any]] = None
-    industry_classification: Optional[str] = None
-    respondent_type: Optional[str] = None
-    methodology_tags: Optional[List[str]] = None
-    is_mandatory: Optional[bool] = None
-    compliance_status: Optional[str] = None
 
 class SectionAnnotationResponse(BaseModel):
     id: int
@@ -104,6 +118,7 @@ class SectionAnnotationResponse(BaseModel):
     analytical_value: int
     business_impact: int
     comment: Optional[str]
+    labels: Optional[List[str]]
     annotator_id: str
     created_at: datetime
     updated_at: Optional[datetime]
@@ -112,6 +127,39 @@ class SectionAnnotationResponse(BaseModel):
     section_classification: Optional[str] = None
     mandatory_elements: Optional[Dict[str, Any]] = None
     compliance_score: Optional[int] = None
+
+class SurveyLevelAnnotationResponse(BaseModel):
+    id: int
+    survey_id: str
+    overall_comment: Optional[str] = None
+    labels: Optional[List[str]] = None
+    annotator_id: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    # Advanced labeling fields
+    detected_labels: Optional[Dict[str, Any]] = None
+    compliance_report: Optional[Dict[str, Any]] = None
+    advanced_metadata: Optional[Dict[str, Any]] = None
+
+    # Survey-level quality ratings
+    overall_quality: Optional[int] = None
+    survey_relevance: Optional[int] = None
+    methodology_score: Optional[int] = None
+    respondent_experience_score: Optional[int] = None
+    business_value_score: Optional[int] = None
+
+    # Survey classification
+    survey_type: Optional[str] = None
+    industry_category: Optional[str] = None
+    research_methodology: Optional[List[str]] = None
+    target_audience: Optional[str] = None
+    survey_complexity: Optional[str] = None
+    estimated_duration: Optional[int] = None
+    compliance_status: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 class SurveyAnnotationsResponse(BaseModel):
     survey_id: str
@@ -198,16 +246,10 @@ def get_survey_annotations(
                 analytical_value=qa.analytical_value,
                 business_impact=qa.business_impact,
                 comment=qa.comment,
+                labels=qa.labels,
                 annotator_id=qa.annotator_id,
                 created_at=qa.created_at,
-                updated_at=qa.updated_at,
-                # Advanced labeling fields
-                advanced_labels=qa.advanced_labels,
-                industry_classification=qa.industry_classification,
-                respondent_type=qa.respondent_type,
-                methodology_tags=qa.methodology_tags,
-                is_mandatory=qa.is_mandatory,
-                compliance_status=qa.compliance_status
+                updated_at=qa.updated_at
             ) for qa in question_annotations
         ],
         section_annotations=[
@@ -223,6 +265,7 @@ def get_survey_annotations(
                 analytical_value=sa.analytical_value,
                 business_impact=sa.business_impact,
                 comment=sa.comment,
+                labels=sa.labels,
                 annotator_id=sa.annotator_id,
                 created_at=sa.created_at,
                 updated_at=sa.updated_at,
@@ -272,14 +315,8 @@ def save_bulk_annotations(
                 existing_qa.analytical_value = qa_req.analytical_value
                 existing_qa.business_impact = qa_req.business_impact
                 existing_qa.comment = qa_req.comment
+                existing_qa.labels = qa_req.labels
                 existing_qa.updated_at = datetime.now()
-                # Update advanced labeling fields
-                existing_qa.advanced_labels = qa_req.advanced_labels
-                existing_qa.industry_classification = qa_req.industry_classification
-                existing_qa.respondent_type = qa_req.respondent_type
-                existing_qa.methodology_tags = qa_req.methodology_tags
-                existing_qa.is_mandatory = qa_req.is_mandatory
-                existing_qa.compliance_status = qa_req.compliance_status
             else:
                 # Create new annotation
                 new_qa = QuestionAnnotation(
@@ -294,14 +331,8 @@ def save_bulk_annotations(
                     analytical_value=qa_req.analytical_value,
                     business_impact=qa_req.business_impact,
                     comment=qa_req.comment,
-                    annotator_id=qa_req.annotator_id,
-                    # Advanced labeling fields
-                    advanced_labels=qa_req.advanced_labels,
-                    industry_classification=qa_req.industry_classification,
-                    respondent_type=qa_req.respondent_type,
-                    methodology_tags=qa_req.methodology_tags,
-                    is_mandatory=qa_req.is_mandatory,
-                    compliance_status=qa_req.compliance_status
+                    labels=qa_req.labels,
+                    annotator_id=qa_req.annotator_id
                 )
                 db.add(new_qa)
         
@@ -325,6 +356,7 @@ def save_bulk_annotations(
                 existing_sa.analytical_value = sa_req.analytical_value
                 existing_sa.business_impact = sa_req.business_impact
                 existing_sa.comment = sa_req.comment
+                existing_sa.labels = sa_req.labels
                 existing_sa.updated_at = datetime.now()
                 # Update advanced labeling fields
                 existing_sa.section_classification = sa_req.section_classification
@@ -343,6 +375,7 @@ def save_bulk_annotations(
                     analytical_value=sa_req.analytical_value,
                     business_impact=sa_req.business_impact,
                     comment=sa_req.comment,
+                    labels=sa_req.labels,
                     annotator_id=sa_req.annotator_id,
                     # Advanced labeling fields
                     section_classification=sa_req.section_classification,
@@ -549,4 +582,115 @@ def get_detected_labels(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get detected labels: {str(e)}"
+        )
+
+# Survey-Level Annotation Endpoints
+
+@router.post("/surveys/{survey_id}/survey-annotation", response_model=SurveyLevelAnnotationResponse)
+def create_or_update_survey_annotation(
+    survey_id: str,
+    annotation: SurveyLevelAnnotationRequest,
+    db: Session = Depends(get_db)
+):
+    """Create or update survey-level annotation"""
+    
+    try:
+        # Check if survey annotation already exists
+        existing_annotation = db.query(SurveyAnnotation).filter(
+            SurveyAnnotation.survey_id == survey_id
+        ).first()
+        
+        if existing_annotation:
+            # Update existing annotation
+            existing_annotation.overall_comment = annotation.overall_comment
+            existing_annotation.annotator_id = annotation.annotator_id
+            existing_annotation.detected_labels = annotation.detected_labels
+            existing_annotation.compliance_report = annotation.compliance_report
+            existing_annotation.advanced_metadata = annotation.advanced_metadata
+            existing_annotation.updated_at = datetime.utcnow()
+            
+            db.commit()
+            db.refresh(existing_annotation)
+            return existing_annotation
+        else:
+            # Create new annotation
+            new_annotation = SurveyAnnotation(
+                survey_id=survey_id,
+                overall_comment=annotation.overall_comment,
+                annotator_id=annotation.annotator_id,
+                detected_labels=annotation.detected_labels,
+                compliance_report=annotation.compliance_report,
+                advanced_metadata=annotation.advanced_metadata
+            )
+            
+            db.add(new_annotation)
+            db.commit()
+            db.refresh(new_annotation)
+            return new_annotation
+            
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save survey annotation: {str(e)}"
+        )
+
+@router.get("/surveys/{survey_id}/survey-annotation", response_model=SurveyLevelAnnotationResponse)
+def get_survey_annotation(
+    survey_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get survey-level annotation"""
+    
+    try:
+        annotation = db.query(SurveyAnnotation).filter(
+            SurveyAnnotation.survey_id == survey_id
+        ).first()
+        
+        if not annotation:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Survey annotation not found"
+            )
+        
+        return annotation
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get survey annotation: {str(e)}"
+        )
+
+@router.delete("/surveys/{survey_id}/survey-annotation")
+def delete_survey_annotation(
+    survey_id: str,
+    db: Session = Depends(get_db)
+):
+    """Delete survey-level annotation"""
+    
+    try:
+        annotation = db.query(SurveyAnnotation).filter(
+            SurveyAnnotation.survey_id == survey_id
+        ).first()
+        
+        if not annotation:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Survey annotation not found"
+            )
+        
+        db.delete(annotation)
+        db.commit()
+        
+        return {"message": "Survey annotation deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete survey annotation: {str(e)}"
         )

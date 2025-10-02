@@ -4,19 +4,18 @@ import LikertScale from './LikertScale';
 import {
   QuestionAnnotation,
   SectionAnnotation,
-  INDUSTRY_CLASSIFICATIONS,
-  RESPONDENT_TYPES,
-  METHODOLOGY_TAGS,
-  COMPLIANCE_STATUS_OPTIONS,
-  MethodologyTag
+  SurveyLevelAnnotation
 } from '../types';
 import { useAppStore } from '../store/useAppStore';
+import { SurveyLevelAnnotationPanel } from './SurveyLevelAnnotationPanel';
+import LabelsInput from './LabelsInput';
 
 interface AnnotationModeProps {
   survey: any;
   currentAnnotations: any;
   onQuestionAnnotation: (annotation: QuestionAnnotation) => void;
   onSectionAnnotation: (annotation: SectionAnnotation) => void;
+  onSurveyLevelAnnotation?: (annotation: SurveyLevelAnnotation) => void;
   onExitAnnotationMode: () => void;
 }
 
@@ -25,9 +24,11 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
   currentAnnotations,
   onQuestionAnnotation,
   onSectionAnnotation,
+  onSurveyLevelAnnotation,
   onExitAnnotationMode
 }) => {
   const { selectedQuestionId, setSelectedQuestion } = useAppStore();
+  const [showSurveyLevelAnnotation, setShowSurveyLevelAnnotation] = useState(false);
   
   // Debug: Log survey data structure
   console.log('🔍 [AnnotationMode] Survey data:', survey);
@@ -152,12 +153,21 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
               {currentAnnotations?.questionAnnotations?.length || 0} questions • {currentAnnotations?.sectionAnnotations?.length || 0} sections
             </div>
           </div>
-          <button
-            onClick={onExitAnnotationMode}
-            className="px-4 py-2 bg-gray-600 text-white text-sm font-medium rounded-lg hover:bg-gray-700"
-          >
-            Exit Annotation Mode
-          </button>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setShowSurveyLevelAnnotation(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors"
+            >
+              <TagIcon className="w-4 h-4" />
+              Survey Annotation
+            </button>
+            <button
+              onClick={onExitAnnotationMode}
+              className="px-4 py-2 bg-gray-600 text-white text-sm font-medium rounded-lg hover:bg-gray-700"
+            >
+              Exit Annotation Mode
+            </button>
+          </div>
         </div>
       </div>
 
@@ -302,6 +312,25 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Survey Level Annotation Modal */}
+      {showSurveyLevelAnnotation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <SurveyLevelAnnotationPanel
+              surveyId={survey?.survey_id || survey?.id || 'unknown'}
+              annotation={currentAnnotations?.surveyLevelAnnotation}
+              onSave={(annotation) => {
+                if (onSurveyLevelAnnotation) {
+                  onSurveyLevelAnnotation(annotation);
+                }
+                setShowSurveyLevelAnnotation(false);
+              }}
+              onCancel={() => setShowSurveyLevelAnnotation(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -320,7 +349,6 @@ const QuestionAnnotationForm: React.FC<{
     hasAnnotation: !!annotation
   });
 
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [formData, setFormData] = useState({
     required: annotation?.required || false,
     quality: annotation?.quality || 3,
@@ -333,13 +361,7 @@ const QuestionAnnotationForm: React.FC<{
       businessImpact: 3
     },
     comment: annotation?.comment || '',
-    // Advanced labeling fields
-    advanced_labels: annotation?.advanced_labels || {},
-    industry_classification: annotation?.industry_classification || '',
-    respondent_type: annotation?.respondent_type || '',
-    methodology_tags: annotation?.methodology_tags || [],
-    is_mandatory: annotation?.is_mandatory || false,
-    compliance_status: annotation?.compliance_status || 'not_checked'
+    labels: annotation?.labels || []
   });
 
   // Update form data when annotation changes
@@ -357,13 +379,7 @@ const QuestionAnnotationForm: React.FC<{
         businessImpact: 3
       },
       comment: annotation?.comment || '',
-      // Advanced labeling fields
-      advanced_labels: annotation?.advanced_labels || {},
-      industry_classification: annotation?.industry_classification || '',
-      respondent_type: annotation?.respondent_type || '',
-      methodology_tags: annotation?.methodology_tags || [],
-      is_mandatory: annotation?.is_mandatory || false,
-      compliance_status: annotation?.compliance_status || 'not_checked'
+      labels: annotation?.labels || []
     });
   }, [annotation]);
 
@@ -384,31 +400,7 @@ const QuestionAnnotationForm: React.FC<{
     );
   }
 
-  // Helper functions for methodology tags and compliance
-  const handleMethodologyTagChange = (tag: string, checked: boolean) => {
-    const currentTags = formData.methodology_tags || [];
-    const updatedTags = checked
-      ? [...currentTags, tag]
-      : currentTags.filter(t => t !== tag);
 
-    setFormData(prev => ({
-      ...prev,
-      methodology_tags: updatedTags
-    }));
-  };
-
-  const getComplianceStatusColor = (status: string) => {
-    switch (status) {
-      case 'compliant':
-        return 'text-green-700 bg-green-100 border-green-200';
-      case 'non_compliant':
-        return 'text-red-700 bg-red-100 border-red-200';
-      case 'needs_review':
-        return 'text-yellow-700 bg-yellow-100 border-yellow-200';
-      default:
-        return 'text-gray-700 bg-gray-100 border-gray-200';
-    }
-  };
 
   const handleSave = () => {
     const newAnnotation: QuestionAnnotation = {
@@ -546,119 +538,18 @@ const QuestionAnnotationForm: React.FC<{
           />
         </div>
 
-        {/* Advanced Classification */}
-        <div className="border-t border-gray-200 pt-4">
-          <button
-            type="button"
-            onClick={() => setShowAdvanced(!showAdvanced)}
-            className="flex items-center justify-between w-full p-2 text-left text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg"
-          >
-            <span>Advanced Classification</span>
-            <ChevronDownIcon className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
-          </button>
-
-          {showAdvanced && (
-            <div className="mt-4 space-y-4 p-4 bg-gray-50 rounded-lg">
-              {/* Industry Classification */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Industry Classification
-                </label>
-                <select
-                  value={formData.industry_classification}
-                  onChange={(e) => setFormData({...formData, industry_classification: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">Select industry...</option>
-                  {INDUSTRY_CLASSIFICATIONS.map(industry => (
-                    <option key={industry} value={industry}>
-                      {industry.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Respondent Type */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Respondent Type
-                </label>
-                <select
-                  value={formData.respondent_type}
-                  onChange={(e) => setFormData({...formData, respondent_type: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">Select respondent type...</option>
-                  {RESPONDENT_TYPES.map(type => (
-                    <option key={type} value={type}>
-                      {type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Methodology Tags */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Methodology Tags
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {METHODOLOGY_TAGS.map(tag => (
-                    <label key={tag} className="flex items-center space-x-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={formData.methodology_tags.includes(tag)}
-                        onChange={(e) => handleMethodologyTagChange(tag, e.target.checked)}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-gray-700">
-                        {tag.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {/* Mandatory Flag */}
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-gray-700">Mandatory Question</label>
-                <button
-                  type="button"
-                  onClick={() => setFormData({...formData, is_mandatory: !formData.is_mandatory})}
-                  className={`w-12 h-6 rounded-full transition-colors ${
-                    formData.is_mandatory ? 'bg-red-600' : 'bg-gray-300'
-                  }`}
-                >
-                  <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
-                    formData.is_mandatory ? 'translate-x-6' : 'translate-x-0.5'
-                  }`} />
-                </button>
-              </div>
-
-              {/* Compliance Status */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Compliance Status
-                </label>
-                <select
-                  value={formData.compliance_status}
-                  onChange={(e) => setFormData({...formData, compliance_status: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="not_checked">Not Checked</option>
-                  <option value="compliant">Compliant</option>
-                  <option value="non_compliant">Non-Compliant</option>
-                  <option value="needs_review">Needs Review</option>
-                </select>
-                {formData.compliance_status !== 'not_checked' && (
-                  <div className={`mt-2 px-3 py-1 rounded-lg text-xs font-medium inline-flex items-center border ${getComplianceStatusColor(formData.compliance_status)}`}>
-                    {formData.compliance_status.replace('_', ' ').toUpperCase()}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+        {/* Labels */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Labels</label>
+          <LabelsInput
+            labels={formData.labels || []}
+            onLabelsChange={(labels) => setFormData({...formData, labels})}
+            placeholder="Add labels for this question..."
+            maxLabels={8}
+          />
         </div>
+
+        {/* Advanced Classification */}
 
         {/* Actions */}
         <div className="flex justify-end space-x-2 pt-4">
@@ -697,7 +588,8 @@ const SectionAnnotationForm: React.FC<{
       analyticalValue: 3,
       businessImpact: 3
     },
-    comment: annotation?.comment || ''
+    comment: annotation?.comment || '',
+    labels: annotation?.labels || []
   });
 
   const handleSave = () => {
@@ -801,6 +693,17 @@ const SectionAnnotationForm: React.FC<{
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none"
             rows={3}
             placeholder="Add your observations..."
+          />
+        </div>
+
+        {/* Labels */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Labels</label>
+          <LabelsInput
+            labels={formData.labels || []}
+            onLabelsChange={(labels) => setFormData({...formData, labels})}
+            placeholder="Add labels for this section..."
+            maxLabels={10}
           />
         </div>
 

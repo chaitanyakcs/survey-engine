@@ -6,6 +6,7 @@ import {
   SectionClassification
 } from '../types';
 import LikertScale from './LikertScale';
+import LabelsInput from './LabelsInput';
 
 interface SectionAnnotationPanelProps {
   section: SurveySection;
@@ -33,6 +34,7 @@ const SectionAnnotationPanel: React.FC<SectionAnnotationPanelProps> = ({
       businessImpact: annotation?.pillars?.businessImpact ?? 3,
     },
     comment: annotation?.comment ?? '',
+    labels: annotation?.labels ?? [],
     timestamp: new Date().toISOString(),
     // Advanced labeling fields
     section_classification: annotation?.section_classification ?? '',
@@ -54,6 +56,7 @@ const SectionAnnotationPanel: React.FC<SectionAnnotationPanelProps> = ({
         businessImpact: annotation?.pillars?.businessImpact ?? 3,
       },
       comment: annotation?.comment ?? '',
+      labels: annotation?.labels ?? [],
       timestamp: new Date().toISOString(),
       // Advanced labeling fields
       section_classification: annotation?.section_classification ?? '',
@@ -294,6 +297,19 @@ const SectionAnnotationPanel: React.FC<SectionAnnotationPanelProps> = ({
               )}
             </div>
           )}
+        </div>
+
+        {/* Labels Section */}
+        <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
+          <label className="block text-sm font-semibold text-gray-700 mb-3">
+            Labels
+          </label>
+          <LabelsInput
+            labels={formData.labels || []}
+            onLabelsChange={(labels) => setFormData({...formData, labels})}
+            placeholder="Add labels for this section..."
+            maxLabels={10}
+          />
         </div>
 
         {/* Comment Section */}

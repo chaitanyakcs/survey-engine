@@ -34,9 +34,42 @@ class DocumentParser:
                 action_required="Configure AI service provider (Replicate or OpenAI)"
             )
         self.replicate_client = replicate.Client(api_token=settings.replicate_api_token)
-        self.model = settings.generation_model  # Use GPT-5 from settings
+        self.model = self._get_rfq_parsing_model(db_session)  # Get model from RFQ parsing settings
         self.db_session = db_session
         self.rfq_parsing_manager = rfq_parsing_manager
+
+    def _get_rfq_parsing_model(self, db_session: Optional[Any] = None) -> str:
+        """Get RFQ parsing model from database settings or fallback to config"""
+        try:
+            logger.info(f"🔍 [DocumentParser] Starting RFQ parsing model selection...")
+            logger.info(f"🔍 [DocumentParser] Database session available: {bool(db_session)}")
+            logger.info(f"🔍 [DocumentParser] Config default model: {settings.generation_model}")
+            
+            if db_session:
+                from src.services.settings_service import SettingsService
+                settings_service = SettingsService(db_session)
+                rfq_settings = settings_service.get_rfq_parsing_settings()
+                
+                logger.info(f"🔍 [DocumentParser] Database RFQ parsing settings: {rfq_settings}")
+                
+                if rfq_settings and 'parsing_model' in rfq_settings:
+                    model = rfq_settings['parsing_model']
+                    logger.info(f"🔧 [DocumentParser] Using model from RFQ parsing settings: {model}")
+                    logger.info(f"🔧 [DocumentParser] Model source: RFQ_PARSING_DATABASE")
+                    return model
+                else:
+                    logger.info(f"🔧 [DocumentParser] No RFQ parsing settings found, using config default: {settings.generation_model}")
+                    logger.info(f"🔧 [DocumentParser] Model source: CONFIG_FALLBACK")
+                    return settings.generation_model
+            else:
+                logger.info(f"🔧 [DocumentParser] No database session, using config default: {settings.generation_model}")
+                logger.info(f"🔧 [DocumentParser] Model source: CONFIG_NO_DB")
+                return settings.generation_model
+        except Exception as e:
+            logger.warning(f"⚠️ [DocumentParser] Failed to get RFQ parsing model from database: {str(e)}")
+            logger.info(f"🔧 [DocumentParser] Using config default: {settings.generation_model}")
+            logger.info(f"🔧 [DocumentParser] Model source: CONFIG_ERROR_FALLBACK")
+            return settings.generation_model
 
     async def _send_progress(self, session_id: str, stage: str, progress: int, message: str, details: Optional[str] = None):
         """Send progress update via WebSocket if manager is available."""
@@ -443,50 +476,42 @@ CRITICAL FIELDS (extract with high confidence):
 TITLE (Critical):
 - Keywords: "title", "project", "study", "research", headers, bold text
 - Patterns: "Research Study", "Market Research", "RFQ:", document title
-- Confidence threshold: 0.90
 - Strategy: Extract from document headers, subject lines, first prominent text
 
 DESCRIPTION (Critical):
 - Keywords: "overview", "description", "purpose", "objective", "we need"
 - Patterns: Introduction paragraphs, executive summary text
-- Confidence threshold: 0.85
 - Strategy: Extract comprehensive overview paragraphs
 
 COMPANY_PRODUCT_BACKGROUND (Critical):
 - Keywords: "company", "background", "business", "product", "about us"
 - Patterns: "Company background", "Business context", "About [company]"
-- Confidence threshold: 0.85
 - Strategy: Extract company and product context paragraphs
 
 BUSINESS_PROBLEM (High):
 - Keywords: "problem", "challenge", "issue", "need", "goal"
 - Patterns: "Business challenge", "We need to", "The problem is"
-- Confidence threshold: 0.80
 - Strategy: Extract problem statement sentences
 
 BUSINESS_OBJECTIVE (High):
 - Keywords: "objective", "goal", "achieve", "outcome", "want to"
 - Patterns: "Business objective", "We want to achieve", "The goal is"
-- Confidence threshold: 0.80
 - Strategy: Extract objective statements
 
 METHODOLOGY DETECTION (High):
 - Van Westendorp: "van westendorp", "price sensitivity", "too cheap", "too expensive"
 - Gabor Granger: "gabor granger", "price acceptance", "purchase intent"
 - Conjoint: "conjoint", "trade-off", "choice task", "feature importance"
-- Confidence threshold: 0.90
 - Strategy: Keyword-based methodology detection
 
 RESEARCH_AUDIENCE (Medium):
 - Keywords: "audience", "target", "respondents", "participants", "demographics"
 - Patterns: "Target audience", "Respondent profile", demographic descriptions
-- Confidence threshold: 0.75
 - Strategy: Extract audience descriptions
 
 SAMPLE_PLAN (Medium):
 - Keywords: "sample", "LOI", "length of interview", "recruiting", "n="
 - Patterns: "Sample size", "LOI: X minutes", "Recruit X participants"
-- Confidence threshold: 0.75
 - Strategy: Extract sampling specifications
 
 SURVEY STRUCTURE FIELDS (methodology-driven):
@@ -494,14 +519,12 @@ SURVEY STRUCTURE FIELDS (methodology-driven):
 QNR_SECTIONS_DETECTED (Medium):
 - Keywords: "questionnaire", "survey sections", "screener", "demographics", "concept"
 - Patterns: Based on detected methodologies (see methodology mapping below)
-- Confidence threshold: 0.75
 - Strategy: Auto-detect required QNR sections based on methodology
 - Default sections: ["sample_plan", "screener", "brand_awareness", "concept_exposure", "methodology_section", "additional_questions", "programmer_instructions"]
 
 TEXT_REQUIREMENTS_DETECTED (Medium):
 - Keywords: "introduction", "instructions", "confidentiality", "study intro", "concept presentation"
 - Patterns: Based on methodology requirements (see text requirements mapping below)
-- Confidence threshold: 0.70
 - Strategy: Auto-detect required text blocks based on methodology
 
 SURVEY_LOGIC_REQUIREMENTS (Medium):
@@ -509,7 +532,6 @@ SURVEY_LOGIC_REQUIREMENTS (Medium):
 - requires_sampling_logic: Keywords: "random", "quota", "balance", "representative sample"
 - requires_screener_logic: Keywords: "qualify", "screen out", "terminate", "continue if", "skip if"
 - custom_logic_requirements: Keywords: "logic", "skip pattern", "routing", "conditional"
-- Confidence threshold: 0.65
 - Strategy: Infer logic needs from content complexity and methodology
 
 BRAND_USAGE_REQUIREMENTS (Medium):
@@ -517,7 +539,6 @@ BRAND_USAGE_REQUIREMENTS (Medium):
 - brand_awareness_funnel: Keywords: "awareness", "consideration", "trial", "purchase", "loyalty"
 - brand_product_satisfaction: Keywords: "satisfaction", "rating", "experience", "recommend"
 - usage_frequency_tracking: Keywords: "how often", "frequency", "usage", "habits", "occasions"
-- Confidence threshold: 0.70
 - Strategy: Detect brand/product research focus
 
 ENHANCED BUSINESS CONTEXT (Medium):
@@ -548,7 +569,7 @@ EXTRACTION STRATEGY:
 3. Identify numbered/bulleted lists that may contain objectives or constraints
 4. Use field-specific language patterns for targeted extraction
 5. For missing CRITICAL FIELDS, be more aggressive - synthesize from available context
-6. For MEDIUM PRIORITY fields, only extract if confidence >0.7 and clear evidence exists
+6. For MEDIUM PRIORITY fields, extract if clear evidence exists
 7. Apply METHODOLOGY-BASED AUTO-DETECTION for survey structure fields using mappings below
 
 METHODOLOGY-TO-QNR-SECTIONS MAPPING:
@@ -673,7 +694,7 @@ EXPECTED JSON STRUCTURE:
     {{
       "field": "research_audience",
       "value": "Small business owners, 25-50 years old, currently using productivity software",
-      "confidence": 0.75,
+      "confidence": 0.9,
       "source": "Target participants: small business owners aged 25-50...",
       "reasoning": "Clear demographic and behavioral criteria",
       "priority": "medium"
@@ -689,7 +710,7 @@ EXPECTED JSON STRUCTURE:
     {{
       "field": "text_requirements_detected",
       "value": ["Study_Intro", "Confidentiality_Agreement"],
-      "confidence": 0.75,
+      "confidence": 0.9,
       "source": "Conjoint study with sensitive data collection",
       "reasoning": "Conjoint studies require study intro and confidentiality agreement",
       "priority": "medium"
@@ -697,7 +718,7 @@ EXPECTED JSON STRUCTURE:
     {{
       "field": "requires_piping_logic",
       "value": true,
-      "confidence": 0.70,
+      "confidence": 0.9,
       "source": "Complex conjoint design with feature dependencies",
       "reasoning": "Conjoint analysis typically requires piping logic for dynamic choice tasks",
       "priority": "medium"
@@ -892,7 +913,7 @@ IMPORTANT:
             if field_mappings:
                 logger.info(f"✅ [Document Parser] Extracted {len(field_mappings)} field mappings from text")
                 return {
-                    "confidence": 0.7,
+                    "confidence": 0.9,
                     "identified_sections": {},
                     "extracted_entities": {
                         "stakeholders": [],

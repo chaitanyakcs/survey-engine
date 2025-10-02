@@ -25,17 +25,7 @@ export const DocumentAnalysisPreview: React.FC<DocumentAnalysisPreviewProps> = (
   const { document_content, rfq_analysis } = analysisResult;
   const { field_mappings = [], confidence = 0 } = rfq_analysis;
 
-  const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 0.8) return 'text-green-600 bg-green-50 border-green-200';
-    if (confidence >= 0.6) return 'text-yellow-600 bg-yellow-50 border-yellow-200';
-    return 'text-red-600 bg-red-50 border-red-200';
-  };
-
-  const getConfidenceLabel = (confidence: number) => {
-    if (confidence >= 0.8) return 'High';
-    if (confidence >= 0.6) return 'Medium';
-    return 'Low';
-  };
+  // Confidence display removed - all fields are accepted regardless of confidence
 
   const handleEditStart = (mapping: RFQFieldMapping) => {
     setEditingField(mapping.field);
@@ -103,8 +93,8 @@ export const DocumentAnalysisPreview: React.FC<DocumentAnalysisPreviewProps> = (
           </div>
 
           <div className="flex items-center space-x-4">
-            <div className={`px-3 py-1 rounded-full text-sm font-medium border ${getConfidenceColor(confidence)}`}>
-              {getConfidenceLabel(confidence)} Confidence ({Math.round(confidence * 100)}%)
+            <div className="px-3 py-1 rounded-full text-sm font-medium border text-green-600 bg-green-50 border-green-200">
+              Document Analysis Complete
             </div>
 
             {pendingMappings.length > 0 && (
@@ -171,8 +161,8 @@ export const DocumentAnalysisPreview: React.FC<DocumentAnalysisPreviewProps> = (
                         <h5 className="font-medium text-gray-900">
                           {formatFieldName(mapping.field)}
                         </h5>
-                        <div className={`px-2 py-1 rounded text-xs font-medium ${getConfidenceColor(mapping.confidence)}`}>
-                          {Math.round(mapping.confidence * 100)}%
+                        <div className="px-2 py-1 rounded text-xs font-medium text-green-600 bg-green-50">
+                          Extracted
                         </div>
                         {mapping.needs_review && (
                           <div className="px-2 py-1 rounded text-xs font-medium bg-orange-50 text-orange-600 border border-orange-200">

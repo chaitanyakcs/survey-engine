@@ -188,7 +188,7 @@ export interface EnhancedRFQRequest {
   // ========== SURVEY REQUIREMENTS ==========
   survey_requirements: {
     sample_plan: string;                  // Sample structure, LOI, recruiting criteria
-    required_sections: string[];          // QNR structure sections
+    required_sections?: string[];         // QNR structure sections (moved to survey_structure)
     must_have_questions: string[];        // Must-have Qs per respondent type
     screener_requirements?: string;       // Screener & respondent tagging rules
     // Enhanced fields
@@ -706,16 +706,9 @@ export interface QuestionAnnotation {
     businessImpact: LikertScale;
   };
   comment?: string;
+  labels?: string[];
   annotatorId?: string;
   timestamp?: string;
-
-  // Advanced labeling fields
-  advanced_labels?: Record<string, any>;
-  industry_classification?: string;
-  respondent_type?: string;
-  methodology_tags?: string[];
-  is_mandatory?: boolean;
-  compliance_status?: string;
 }
 
 export interface SectionAnnotation {
@@ -730,6 +723,7 @@ export interface SectionAnnotation {
     businessImpact: LikertScale;
   };
   comment?: string;
+  labels?: string[];
   annotatorId?: string;
   timestamp?: string;
 
@@ -739,8 +733,38 @@ export interface SectionAnnotation {
   compliance_score?: number;
 }
 
+export interface SurveyLevelAnnotation {
+  surveyId: string;
+  overallComment?: string;
+  labels?: string[];
+  annotatorId?: string;
+  timestamp?: string;
+
+  // Advanced labeling fields
+  detectedLabels?: Record<string, any>;
+  complianceReport?: Record<string, any>;
+  advancedMetadata?: Record<string, any>;
+
+  // Survey-level quality ratings
+  overallQuality?: LikertScale;
+  surveyRelevance?: LikertScale;
+  methodologyScore?: LikertScale;
+  respondentExperienceScore?: LikertScale;
+  businessValueScore?: LikertScale;
+
+  // Survey classification
+  surveyType?: string;
+  industryCategory?: string;
+  researchMethodology?: string[];
+  targetAudience?: string;
+  surveyComplexity?: 'simple' | 'moderate' | 'complex';
+  estimatedDuration?: number; // in minutes
+  complianceStatus?: 'compliant' | 'non-compliant' | 'needs-review';
+}
+
 export interface SurveyAnnotations {
   surveyId: string;
+  surveyLevelAnnotation?: SurveyLevelAnnotation;
   questionAnnotations: QuestionAnnotation[];
   sectionAnnotations: SectionAnnotation[];
   overallComment?: string;
@@ -1032,6 +1056,7 @@ export interface AppStore {
   persistEnhancedRfqState: (enhancedRfq: EnhancedRFQRequest) => void;
   restoreEnhancedRfqState: (showToast?: boolean) => boolean;
   clearEnhancedRfqState: () => void;
+  resetDocumentProcessingState: () => void;
 
   // Document Processing State Persistence
   persistDocumentProcessingState: (isProcessing: boolean) => void;
