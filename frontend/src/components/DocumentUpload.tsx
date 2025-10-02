@@ -345,22 +345,23 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         className={`
-          relative border-2 border-dashed rounded-2xl p-8 text-center transition-all duration-200
+          relative border-2 border-dashed rounded-2xl text-center transition-all duration-200
           ${isDragOver
             ? 'border-yellow-400 bg-yellow-50'
             : 'border-gray-300 bg-gray-50 hover:border-yellow-300 hover:bg-yellow-50'
           }
           ${(isUploading || isDocumentProcessing) ? 'pointer-events-none opacity-75' : 'cursor-pointer'}
+          ${(isUploading || isDocumentProcessing) ? 'p-4' : 'p-8'}
         `}
         onClick={!(isUploading || isDocumentProcessing) ? handleBrowseClick : undefined}
       >
-        <div className="flex flex-col items-center space-y-4">
-          <div className="text-6xl">
-            {isUploading ? '⏳' : isDragOver ? '📁' : '📄'}
+        <div className={`flex flex-col items-center space-y-4 ${(isUploading || isDocumentProcessing) ? 'space-y-2' : ''}`}>
+          <div className={`${(isUploading || isDocumentProcessing) ? 'text-3xl' : 'text-6xl'}`}>
+            {isDragOver ? '📁' : '📄'}
           </div>
 
-          <div>
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">
+          <div className={`${(isUploading || isDocumentProcessing) ? 'text-center' : ''}`}>
+            <h3 className={`font-semibold text-gray-700 mb-2 ${(isUploading || isDocumentProcessing) ? 'text-sm' : 'text-xl'}`}>
               {isUploading
                 ? 'Processing Document...'
                 : isDragOver
@@ -369,7 +370,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
               }
             </h3>
 
-            {!isUploading && (
+            {!isUploading && !isDocumentProcessing && (
               <p className="text-gray-500 text-sm">
                 Drag and drop your DOCX file here, or{' '}
                 <span className="text-yellow-600 font-medium">click to browse</span>

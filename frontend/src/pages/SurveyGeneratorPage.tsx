@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { RFQEditor } from '../components/RFQEditor';
 import { EnhancedRFQApp } from '../components/EnhancedRFQApp';
@@ -10,11 +10,42 @@ import { ErrorBanner } from '../components/ErrorBanner';
 import { useSidebarLayout } from '../hooks/useSidebarLayout';
 import { RecoveryAction } from '../types';
 
+interface EvaluationSettings {
+  quick_mode_enabled: boolean;
+}
+
 export const SurveyGeneratorPage: React.FC = () => {
   const { workflow, currentSurvey, toasts, removeToast, addToast, resetWorkflow, clearEnhancedRfqState, loadPillarScoresAsync } = useAppStore();
   const [currentView, setCurrentView] = useState<'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings'>('survey');
   const [useEnhancedRFQ, setUseEnhancedRFQ] = useState<boolean>(false);
+  const [settings, setSettings] = useState<EvaluationSettings>({ quick_mode_enabled: false });
+  const [settingsLoaded, setSettingsLoaded] = useState<boolean>(false);
   const { mainContentClasses } = useSidebarLayout();
+
+  // Fetch settings on component mount
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const response = await fetch('/api/v1/settings/evaluation');
+        if (response.ok) {
+          const data = await response.json();
+          setSettings(data);
+          // Set default mode based on settings
+          // If quick_mode_enabled is false, default to Enhanced mode (true)
+          // If quick_mode_enabled is true, default to Quick mode (false)
+          setUseEnhancedRFQ(!data.quick_mode_enabled);
+        }
+      } catch (error) {
+        console.error('Failed to fetch settings:', error);
+        // Default to Enhanced mode if settings fetch fails
+        setUseEnhancedRFQ(true);
+      } finally {
+        setSettingsLoaded(true);
+      }
+    };
+
+    fetchSettings();
+  }, []);
 
   // Debug logging
   React.useEffect(() => {
@@ -23,9 +54,12 @@ export const SurveyGeneratorPage: React.FC = () => {
       hasSurvey: !!currentSurvey,
       surveyId: currentSurvey?.survey_id,
       workflowSurveyId: workflow.survey_id,
-      currentView
+      currentView,
+      settingsLoaded,
+      quickModeEnabled: settings.quick_mode_enabled,
+      useEnhancedRFQ
     });
-  }, [workflow.status, currentSurvey, currentView, workflow.survey_id]);
+  }, [workflow.status, currentSurvey, currentView, workflow.survey_id, settingsLoaded, settings.quick_mode_enabled, useEnhancedRFQ]);
 
 
   // Fallback: Fetch survey if workflow is completed but survey is not loaded
@@ -153,8 +187,8 @@ export const SurveyGeneratorPage: React.FC = () => {
               
               {/* Mode Selection and Progress Controls */}
               <div className="flex items-center space-x-4">
-                {/* Mode Selection - Only show when idle */}
-                {workflow.status === 'idle' && (
+                {/* Mode Selection - Only show when idle and quick mode is enabled */}
+                {workflow.status === 'idle' && settingsLoaded && settings.quick_mode_enabled && (
                   <div className="flex items-center space-x-3">
                     <button
                       onClick={() => setUseEnhancedRFQ(false)}

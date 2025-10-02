@@ -1,5 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { QuestionAnnotation, LikertScale as LikertScaleType, Question } from '../types';
+import {
+  QuestionAnnotation,
+  LikertScale as LikertScaleType,
+  Question,
+  INDUSTRY_CLASSIFICATIONS,
+  RESPONDENT_TYPES,
+  METHODOLOGY_TAGS,
+  COMPLIANCE_STATUS_OPTIONS,
+  IndustryClassification,
+  RespondentType,
+  MethodologyTag,
+  ComplianceStatus
+} from '../types';
 import LikertScale from './LikertScale';
 import { useAppStore } from '../store/useAppStore';
 
@@ -23,6 +35,7 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
     hasAnnotation: !!annotation
   });
 
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [formData, setFormData] = useState<QuestionAnnotation>({
     questionId: question.id,
     required: annotation?.required ?? true,
@@ -36,7 +49,14 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
       businessImpact: annotation?.pillars?.businessImpact ?? 3,
     },
     comment: annotation?.comment ?? '',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    // Advanced labeling fields
+    advanced_labels: annotation?.advanced_labels ?? {},
+    industry_classification: annotation?.industry_classification ?? '',
+    respondent_type: annotation?.respondent_type ?? '',
+    methodology_tags: annotation?.methodology_tags ?? [],
+    is_mandatory: annotation?.is_mandatory ?? false,
+    compliance_status: annotation?.compliance_status ?? 'not_checked'
   });
 
   // Update form data when question or annotation changes
@@ -61,7 +81,14 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
         businessImpact: annotation?.pillars?.businessImpact ?? 3,
       },
       comment: annotation?.comment ?? '',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      // Advanced labeling fields
+      advanced_labels: annotation?.advanced_labels ?? {},
+      industry_classification: annotation?.industry_classification ?? '',
+      respondent_type: annotation?.respondent_type ?? '',
+      methodology_tags: annotation?.methodology_tags ?? [],
+      is_mandatory: annotation?.is_mandatory ?? false,
+      compliance_status: annotation?.compliance_status ?? 'not_checked'
     });
   }, [question.id, annotation]);
 
@@ -72,6 +99,41 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
 
   const updateField = (field: keyof QuestionAnnotation, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleMethodologyTagChange = (tag: MethodologyTag, checked: boolean) => {
+    const currentTags = formData.methodology_tags || [];
+    if (checked) {
+      updateField('methodology_tags', [...currentTags, tag]);
+    } else {
+      updateField('methodology_tags', currentTags.filter(t => t !== tag));
+    }
+  };
+
+  const getComplianceStatusColor = (status: string) => {
+    switch (status) {
+      case 'compliant':
+        return 'bg-green-100 text-green-800 border-green-200';
+      case 'needs_review':
+        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'non_compliant':
+        return 'bg-red-100 text-red-800 border-red-200';
+      default:
+        return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
+  const getComplianceStatusLabel = (status: string) => {
+    switch (status) {
+      case 'compliant':
+        return 'Compliant';
+      case 'needs_review':
+        return 'Needs Review';
+      case 'non_compliant':
+        return 'Non-Compliant';
+      default:
+        return 'Not Checked';
+    }
   };
 
   return (
@@ -190,6 +252,134 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
               highLabel="High"
             />
           </div>
+        </div>
+
+        {/* Advanced Labeling Section */}
+        <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200">
+          <div className="flex justify-between items-center mb-4">
+            <h5 className="text-lg font-semibold text-gray-800 flex items-center">
+              <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
+              Advanced Classification
+            </h5>
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="text-sm text-purple-600 hover:text-purple-700 font-medium"
+            >
+              {showAdvanced ? 'Hide Advanced' : 'Show Advanced'}
+            </button>
+          </div>
+
+          {showAdvanced && (
+            <div className="space-y-6">
+              {/* Industry Classification */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Industry Classification
+                </label>
+                <select
+                  value={formData.industry_classification || ''}
+                  onChange={(e) => updateField('industry_classification', e.target.value || undefined)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                >
+                  <option value="">Select industry...</option>
+                  {INDUSTRY_CLASSIFICATIONS.map(industry => (
+                    <option key={industry} value={industry}>
+                      {industry.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Respondent Type */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Respondent Type
+                </label>
+                <select
+                  value={formData.respondent_type || ''}
+                  onChange={(e) => updateField('respondent_type', e.target.value || undefined)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                >
+                  <option value="">Select respondent type...</option>
+                  {RESPONDENT_TYPES.map(type => (
+                    <option key={type} value={type}>
+                      {type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Methodology Tags */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  Methodology Tags
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  {METHODOLOGY_TAGS.map(tag => (
+                    <label key={tag} className="flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.methodology_tags?.includes(tag) || false}
+                        onChange={(e) => handleMethodologyTagChange(tag, e.target.checked)}
+                        className="w-4 h-4 text-purple-600 bg-gray-100 border-gray-300 rounded focus:ring-purple-500 focus:ring-2"
+                      />
+                      <span className="ml-2 text-sm text-gray-700">
+                        {tag.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Mandatory Question Toggle */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700">
+                    Mandatory Question
+                  </label>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Mark if this question is essential for survey validity
+                  </p>
+                </div>
+                <label className="flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.is_mandatory || false}
+                    onChange={(e) => updateField('is_mandatory', e.target.checked)}
+                    className="w-5 h-5 text-purple-600 bg-gray-100 border-gray-300 rounded focus:ring-purple-500 focus:ring-2"
+                  />
+                  <span className="ml-3 text-sm font-medium text-gray-700">
+                    {formData.is_mandatory ? 'Yes, this is mandatory' : 'No, this is optional'}
+                  </span>
+                </label>
+              </div>
+
+              {/* Compliance Status */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Compliance Status
+                </label>
+                <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${getComplianceStatusColor(formData.compliance_status || 'not_checked')}`}>
+                  {getComplianceStatusLabel(formData.compliance_status || 'not_checked')}
+                </div>
+              </div>
+
+              {/* Advanced Labels Display */}
+              {formData.advanced_labels && Object.keys(formData.advanced_labels).length > 0 && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Auto-Generated Insights
+                  </label>
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <pre className="text-xs text-gray-600 whitespace-pre-wrap">
+                      {JSON.stringify(formData.advanced_labels, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Comment Section */}

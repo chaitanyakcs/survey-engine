@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { SectionAnnotation, SurveySection } from '../types';
+import {
+  SectionAnnotation,
+  SurveySection,
+  SECTION_CLASSIFICATIONS,
+  SectionClassification
+} from '../types';
 import LikertScale from './LikertScale';
 
 interface SectionAnnotationPanelProps {
@@ -15,6 +20,7 @@ const SectionAnnotationPanel: React.FC<SectionAnnotationPanelProps> = ({
   onSave,
   onCancel
 }) => {
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [formData, setFormData] = useState<SectionAnnotation>({
     sectionId: String(section.id),
     quality: annotation?.quality ?? 3,
@@ -27,7 +33,11 @@ const SectionAnnotationPanel: React.FC<SectionAnnotationPanelProps> = ({
       businessImpact: annotation?.pillars?.businessImpact ?? 3,
     },
     comment: annotation?.comment ?? '',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    // Advanced labeling fields
+    section_classification: annotation?.section_classification ?? '',
+    mandatory_elements: annotation?.mandatory_elements ?? {},
+    compliance_score: annotation?.compliance_score ?? 0
   });
 
   // Update form data when section or annotation changes
@@ -44,7 +54,11 @@ const SectionAnnotationPanel: React.FC<SectionAnnotationPanelProps> = ({
         businessImpact: annotation?.pillars?.businessImpact ?? 3,
       },
       comment: annotation?.comment ?? '',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      // Advanced labeling fields
+      section_classification: annotation?.section_classification ?? '',
+      mandatory_elements: annotation?.mandatory_elements ?? {},
+      compliance_score: annotation?.compliance_score ?? 0
     });
   }, [section.id, annotation]);
 
@@ -55,6 +69,24 @@ const SectionAnnotationPanel: React.FC<SectionAnnotationPanelProps> = ({
   const updateField = (field: keyof SectionAnnotation, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
+
+  const getComplianceScoreColor = (score: number) => {
+    if (score >= 80) return 'bg-green-500';
+    if (score >= 60) return 'bg-yellow-500';
+    if (score >= 40) return 'bg-orange-500';
+    return 'bg-red-500';
+  };
+
+  const getComplianceScoreLabel = (score: number) => {
+    if (score >= 80) return 'High Compliance';
+    if (score >= 60) return 'Medium Compliance';
+    if (score >= 40) return 'Low Compliance';
+    return 'Poor Compliance';
+  };
+
+  const mandatoryElements = formData.mandatory_elements || {};
+  const foundElements = mandatoryElements.found || [];
+  const missingElements = mandatoryElements.missing || [];
 
   return (
     <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-4 mb-6 shadow-lg">
@@ -152,6 +184,116 @@ const SectionAnnotationPanel: React.FC<SectionAnnotationPanelProps> = ({
               highLabel="High"
             />
           </div>
+        </div>
+
+        {/* Advanced Classification Section */}
+        <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
+          <div className="flex justify-between items-center mb-4">
+            <h5 className="text-lg font-semibold text-gray-800 flex items-center">
+              <span className="w-2 h-2 bg-indigo-500 rounded-full mr-2"></span>
+              Section Analysis
+            </h5>
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+            >
+              {showAdvanced ? 'Hide Analysis' : 'Show Analysis'}
+            </button>
+          </div>
+
+          {showAdvanced && (
+            <div className="space-y-6">
+              {/* Section Classification */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Section Classification
+                </label>
+                <select
+                  value={formData.section_classification || ''}
+                  onChange={(e) => updateField('section_classification', e.target.value || undefined)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                >
+                  <option value="">Select section type...</option>
+                  {SECTION_CLASSIFICATIONS.map(type => (
+                    <option key={type} value={type}>
+                      {type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Compliance Score */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  Compliance Score: {formData.compliance_score || 0}%
+                </label>
+                <div className="w-full bg-gray-200 rounded-full h-4 mb-2">
+                  <div
+                    className={`h-4 rounded-full transition-all duration-300 ${getComplianceScoreColor(formData.compliance_score || 0)}`}
+                    style={{ width: `${formData.compliance_score || 0}%` }}
+                  ></div>
+                </div>
+                <div className="flex justify-between text-xs text-gray-600">
+                  <span>0%</span>
+                  <span className={`font-medium ${
+                    (formData.compliance_score || 0) >= 80 ? 'text-green-600' :
+                    (formData.compliance_score || 0) >= 60 ? 'text-yellow-600' :
+                    (formData.compliance_score || 0) >= 40 ? 'text-orange-600' : 'text-red-600'
+                  }`}>
+                    {getComplianceScoreLabel(formData.compliance_score || 0)}
+                  </span>
+                  <span>100%</span>
+                </div>
+              </div>
+
+              {/* Mandatory Elements */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  Mandatory Elements Analysis
+                </label>
+
+                {foundElements.length > 0 && (
+                  <div className="mb-4">
+                    <div className="text-sm font-medium text-green-700 mb-2">✓ Found Elements:</div>
+                    <div className="flex flex-wrap gap-2">
+                      {foundElements.map((element: string, index: number) => (
+                        <span key={index} className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
+                          {element.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {missingElements.length > 0 && (
+                  <div className="mb-4">
+                    <div className="text-sm font-medium text-red-700 mb-2">✗ Missing Elements:</div>
+                    <div className="flex flex-wrap gap-2">
+                      {missingElements.map((element: string, index: number) => (
+                        <span key={index} className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 border border-red-200">
+                          {element.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {foundElements.length === 0 && missingElements.length === 0 && (
+                  <div className="text-sm text-gray-500 italic">
+                    No mandatory elements analysis available. Run advanced labeling to generate insights.
+                  </div>
+                )}
+              </div>
+
+              {/* Analysis Timestamp */}
+              {mandatoryElements.analysis_timestamp && (
+                <div className="text-xs text-gray-500">
+                  Last analyzed: {new Date(mandatoryElements.analysis_timestamp).toLocaleString()}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Comment Section */}

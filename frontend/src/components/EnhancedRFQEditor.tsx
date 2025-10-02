@@ -17,11 +17,12 @@ const FormField: React.FC<{
   label: string;
   value: string;
   onChange: (value: string) => void;
-  placeholder: string;
-  type?: 'text' | 'textarea';
+  placeholder?: string;
+  type?: 'text' | 'textarea' | 'select';
   rows?: number;
   isAutoFilled?: boolean;
-}> = ({ label, value, onChange, placeholder, type = 'text', rows = 4, isAutoFilled = false }) => {
+  options?: { value: string; label: string; }[];
+}> = ({ label, value, onChange, placeholder = '', type = 'text', rows = 4, isAutoFilled = false, options = [] }) => {
   const inputClasses = `w-full px-4 py-4 bg-white border border-gray-200 rounded-2xl focus:ring-4 focus:ring-yellow-500/20 focus:border-yellow-500 transition-all duration-300 ${
     isAutoFilled ? 'bg-yellow-50 border-yellow-200' : ''
   } ${type === 'textarea' ? 'resize-none' : ''}`;
@@ -41,6 +42,18 @@ const FormField: React.FC<{
             rows={rows}
             className={inputClasses}
           />
+        ) : type === 'select' ? (
+          <select
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            className={inputClasses}
+          >
+            {options.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         ) : (
           <input
             type="text"
@@ -71,6 +84,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
     // Document upload state and actions
     fieldMappings,
     addToast,
+    isDocumentProcessing,
     // State persistence
     restoreEnhancedRfqState,
     clearEnhancedRfqState
@@ -93,8 +107,11 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
     if (!hasInitialized.current) {
       hasInitialized.current = true;
       
-      // Try to restore state from localStorage first
-      const wasRestored = restoreEnhancedRfqState();
+      // Check if this is a page refresh vs navigation
+      const isPageRefresh = performance.navigation?.type === 1; // 1 = reload
+      
+      // Try to restore state from localStorage first, but don't show toast on page refresh
+      const wasRestored = restoreEnhancedRfqState(!isPageRefresh);
       
       // If no state was restored, initialize with defaults
       if (!wasRestored && !enhancedRfq.title && !enhancedRfq.description) {
@@ -129,7 +146,9 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
     { id: 'business_context', title: 'Business Context', icon: '🏢', description: 'Company background, business problem & objective' },
     { id: 'research_objectives', title: 'Research Objectives', icon: '🎯', description: 'Research audience, success criteria & key questions' },
     { id: 'methodology', title: 'Methodology', icon: '🔬', description: 'Van Westendorp, Conjoint, Gabor Granger or other approach' },
-    { id: 'survey_requirements', title: 'Survey Requirements', icon: '📋', description: 'Sample plan, sections, must-have questions' }
+    { id: 'survey_requirements', title: 'Survey Requirements', icon: '📋', description: 'Sample plan, sections, must-have questions' },
+    { id: 'survey_structure', title: 'Survey Structure', icon: '🏗️', description: 'QNR section preferences and text introduction requirements' },
+    { id: 'advanced_classification', title: 'Advanced Classification', icon: '🏷️', description: 'Industry, respondent classification & compliance requirements' }
   ];
 
   const isLoading = workflow.status === 'started' || workflow.status === 'in_progress';
@@ -219,7 +238,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
             <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-8">
 
                 {/* Document Upload Section */}
-                {currentSection === 'document' && (
+                {currentSection === 'document' && !isDocumentProcessing && (
                   <div className="space-y-6">
                     <h2 className="text-2xl font-bold text-gray-900 flex items-center">
                       <span className="text-3xl mr-3">📄</span>
@@ -254,7 +273,100 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                         }, 1000); // Small delay to let user see the success message
                       }}
                     />
+                  </div>
+                )}
 
+                {/* Document Processing State */}
+                {isDocumentProcessing && (
+                  <div className="space-y-6">
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-8">
+                      <div className="flex items-center space-x-3 mb-6">
+                        <div className="flex-shrink-0">
+                          <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent"></div>
+                          </div>
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="text-xl font-medium text-blue-900">Analyzing Your Document</h3>
+                          <p className="text-blue-700 mt-1">
+                            Our AI is extracting key information from your RFQ document...
+                          </p>
+                        </div>
+                      </div>
+                      
+                      {/* Progress Steps */}
+                      <div className="space-y-4 mb-6">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          </div>
+                          <span className="text-blue-800 font-medium">Document uploaded successfully</span>
+                        </div>
+                        
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                          </div>
+                          <span className="text-blue-800 font-medium">Extracting text and structure</span>
+                        </div>
+                        
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
+                            <div className="w-3 h-3 bg-gray-500 rounded-full"></div>
+                          </div>
+                          <span className="text-gray-600">Analyzing content with AI</span>
+                        </div>
+                        
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
+                            <div className="w-3 h-3 bg-gray-500 rounded-full"></div>
+                          </div>
+                          <span className="text-gray-600">Mapping fields to survey requirements</span>
+                        </div>
+                      </div>
+                      
+                      <div className="text-sm text-blue-600 mb-6">
+                        This usually takes 5-10 minutes depending on document complexity.
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex justify-center space-x-4">
+                        <button
+                          onClick={() => {
+                            // Clear document processing state
+                            clearEnhancedRfqState();
+                            addToast({
+                              type: 'info',
+                              title: 'Processing Cancelled',
+                              message: 'Document processing has been cancelled and form reset.',
+                              duration: 3000
+                            });
+                          }}
+                          className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+                        >
+                          Cancel Processing
+                        </button>
+                        
+                        <button
+                          onClick={() => {
+                            // Clear document processing state and navigate to business context
+                            clearEnhancedRfqState();
+                            setCurrentSection('business_context');
+                            addToast({
+                              type: 'info',
+                              title: 'Manual Entry Mode',
+                              message: 'Switched to manual entry. You can now fill out the form manually.',
+                              duration: 3000
+                            });
+                          }}
+                          className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                        >
+                          Enter Manually
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -266,7 +378,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                         <span className="text-3xl mr-3">🏢</span>
                         Business Context
                       </h2>
-                      {enhancedRfq.document_source && (
+                      {enhancedRfq.document_source && !isDocumentProcessing && (
                         <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-2 flex items-center space-x-2">
                           <AnimatedSprinkle className="text-lg" />
                           <span className="text-sm text-yellow-800 font-medium">Auto-filled from document</span>
@@ -274,7 +386,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                       )}
                     </div>
 
-                    {enhancedRfq.document_source && (
+                    {enhancedRfq.document_source && !isDocumentProcessing && (
                       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
                         <div className="flex items-start space-x-3">
                           <div className="text-blue-600 text-xl">💡</div>
@@ -649,6 +761,468 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                       rows={3}
                       isAutoFilled={isFieldAutoFilled('rules_and_definitions')}
                     />
+                  </div>
+                )}
+
+                {/* Survey Structure Section */}
+                {currentSection === 'survey_structure' && (
+                  <div className="space-y-6">
+                    <h2 className="text-2xl font-bold text-gray-900 flex items-center">
+                      <span className="text-3xl mr-3">🏗️</span>
+                      Survey Structure Preferences
+                    </h2>
+
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
+                      <div className="flex items-start space-x-3">
+                        <div className="text-blue-600 text-2xl">ℹ️</div>
+                        <div>
+                          <h3 className="font-semibold text-blue-900 mb-2">QNR Section Structure</h3>
+                          <p className="text-blue-800 text-sm">
+                            Configure how your survey should be structured using the standardized 7-section QNR format.
+                            This ensures compliance with industry best practices and optimal respondent experience.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-800 mb-3">
+                        QNR Section Organization Preferences
+                      </label>
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 gap-3">
+                          {[
+                            { id: 'sample_plan', name: 'Sample Plan', description: 'Participant qualification criteria, recruitment requirements, and quotas' },
+                            { id: 'screener', name: 'Screener', description: 'Initial qualification questions and basic demographics' },
+                            { id: 'brand_awareness', name: 'Brand/Product Awareness & Usage', description: 'Brand recall, awareness funnel, and usage patterns' },
+                            { id: 'concept_exposure', name: 'Concept Exposure', description: 'Product/concept introduction and reaction assessment' },
+                            { id: 'methodology_section', name: 'Methodology', description: 'Research-specific questions (Conjoint, Pricing, Feature Importance)' },
+                            { id: 'additional_questions', name: 'Additional Questions', description: 'Supplementary research questions and follow-ups' },
+                            { id: 'programmer_instructions', name: 'Programmer Instructions', description: 'Technical implementation notes and data specifications' }
+                          ].map((section) => (
+                            <div key={section.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg bg-gray-50">
+                              <div className="flex items-center space-x-3">
+                                <input
+                                  type="checkbox"
+                                  checked={(enhancedRfq.survey_structure?.qnr_sections || []).includes(section.id)}
+                                  onChange={(e) => {
+                                    const sections = [...(enhancedRfq.survey_structure?.qnr_sections || [])];
+                                    if (e.target.checked) {
+                                      sections.push(section.id);
+                                    } else {
+                                      const index = sections.indexOf(section.id);
+                                      if (index > -1) sections.splice(index, 1);
+                                    }
+                                    setEnhancedRfq({
+                                      ...enhancedRfq,
+                                      survey_structure: {
+                                        ...enhancedRfq.survey_structure,
+                                        qnr_sections: sections
+                                      }
+                                    });
+                                  }}
+                                  className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+                                />
+                                <div>
+                                  <div className="font-medium text-gray-900">{section.name}</div>
+                                  <div className="text-sm text-gray-600">{section.description}</div>
+                                </div>
+                              </div>
+                              <div className="text-xs text-gray-500 font-mono">
+                                Section {['sample_plan', 'screener', 'brand_awareness', 'concept_exposure', 'methodology_section', 'additional_questions', 'programmer_instructions'].indexOf(section.id) + 1}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-800 mb-3">
+                        Text Introduction Requirements
+                      </label>
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-4">
+                        <div className="flex items-start space-x-3">
+                          <div className="text-yellow-600 text-xl">⚠️</div>
+                          <div>
+                            <h4 className="font-semibold text-yellow-900 mb-1">Mandatory Text Blocks</h4>
+                            <p className="text-yellow-800 text-sm">
+                              Based on your selected methodologies, certain text introductions are required for compliance and best practices.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {[
+                          { id: 'study_intro', name: 'Study Introduction', description: 'Required at the beginning - participant welcome and study overview', mandatory: true },
+                          { id: 'concept_intro', name: 'Concept Introduction', description: 'Required before concept evaluation sections', mandatory: false },
+                          { id: 'product_usage', name: 'Product Usage Introduction', description: 'Required before brand/usage awareness questions', mandatory: false },
+                          { id: 'confidentiality_agreement', name: 'Confidentiality Agreement', description: 'Required for sensitive research topics', mandatory: false },
+                          { id: 'methodology_instructions', name: 'Methodology Instructions', description: 'Method-specific instructions (conjoint, pricing, etc.)', mandatory: false },
+                          { id: 'closing_thank_you', name: 'Closing Thank You', description: 'Final section thank you and next steps', mandatory: false }
+                        ].map((textBlock) => (
+                          <label key={textBlock.id} className={`flex items-start space-x-3 p-4 border rounded-lg cursor-pointer transition-colors ${
+                            textBlock.mandatory
+                              ? 'border-green-200 bg-green-50 cursor-not-allowed'
+                              : 'border-gray-200 hover:bg-gray-50'
+                          }`}>
+                            <input
+                              type="checkbox"
+                              checked={textBlock.mandatory || (enhancedRfq.survey_structure?.text_requirements || []).includes(textBlock.id)}
+                              disabled={textBlock.mandatory}
+                              onChange={(e) => {
+                                if (!textBlock.mandatory) {
+                                  const requirements = [...(enhancedRfq.survey_structure?.text_requirements || [])];
+                                  if (e.target.checked) {
+                                    requirements.push(textBlock.id);
+                                  } else {
+                                    const index = requirements.indexOf(textBlock.id);
+                                    if (index > -1) requirements.splice(index, 1);
+                                  }
+                                  setEnhancedRfq({
+                                    ...enhancedRfq,
+                                    survey_structure: {
+                                      ...enhancedRfq.survey_structure,
+                                      text_requirements: requirements
+                                    }
+                                  });
+                                }
+                              }}
+                              className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500 mt-1"
+                            />
+                            <div className="flex-1">
+                              <div className="flex items-center space-x-2">
+                                <span className="font-medium text-gray-900">{textBlock.name}</span>
+                                {textBlock.mandatory && (
+                                  <span className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full font-medium">
+                                    Required
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-sm text-gray-600 mt-1">{textBlock.description}</div>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-800 mb-3">
+                        Survey Logic Requirements
+                      </label>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <label className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={enhancedRfq.survey_logic?.requires_piping_logic || false}
+                            onChange={(e) => setEnhancedRfq({
+                              ...enhancedRfq,
+                              survey_logic: {
+                                ...enhancedRfq.survey_logic,
+                                requires_piping_logic: e.target.checked
+                              }
+                            })}
+                            className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+                          />
+                          <div>
+                            <div className="font-medium text-gray-900">Piping Logic</div>
+                            <div className="text-sm text-gray-600">Carry forward responses between questions</div>
+                          </div>
+                        </label>
+
+                        <label className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={enhancedRfq.survey_logic?.requires_sampling_logic || false}
+                            onChange={(e) => setEnhancedRfq({
+                              ...enhancedRfq,
+                              survey_logic: {
+                                ...enhancedRfq.survey_logic,
+                                requires_sampling_logic: e.target.checked
+                              }
+                            })}
+                            className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+                          />
+                          <div>
+                            <div className="font-medium text-gray-900">Sampling Logic</div>
+                            <div className="text-sm text-gray-600">Randomization and quota controls</div>
+                          </div>
+                        </label>
+
+                        <label className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={enhancedRfq.survey_logic?.requires_screener_logic || false}
+                            onChange={(e) => setEnhancedRfq({
+                              ...enhancedRfq,
+                              survey_logic: {
+                                ...enhancedRfq.survey_logic,
+                                requires_screener_logic: e.target.checked
+                              }
+                            })}
+                            className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+                          />
+                          <div>
+                            <div className="font-medium text-gray-900">Screener Logic</div>
+                            <div className="text-sm text-gray-600">Advanced qualification routing</div>
+                          </div>
+                        </label>
+
+                        <div className="lg:col-span-2">
+                          <FormField
+                            label="Custom Logic Requirements"
+                            value={enhancedRfq.survey_logic?.custom_logic_requirements || ''}
+                            onChange={(value) => setEnhancedRfq({
+                              ...enhancedRfq,
+                              survey_logic: {
+                                ...enhancedRfq.survey_logic,
+                                custom_logic_requirements: value
+                              }
+                            })}
+                            placeholder="Describe any custom logic, skip patterns, or complex routing requirements..."
+                            type="textarea"
+                            rows={3}
+                            isAutoFilled={isFieldAutoFilled('survey_logic.custom_logic_requirements')}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-800 mb-3">
+                        Brand & Usage Requirements
+                      </label>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <label className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={enhancedRfq.brand_usage_requirements?.brand_recall_required || false}
+                            onChange={(e) => setEnhancedRfq({
+                              ...enhancedRfq,
+                              brand_usage_requirements: {
+                                ...enhancedRfq.brand_usage_requirements,
+                                brand_recall_required: e.target.checked
+                              }
+                            })}
+                            className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+                          />
+                          <div>
+                            <div className="font-medium text-gray-900">Brand Recall Questions</div>
+                            <div className="text-sm text-gray-600">Unaided and aided brand awareness</div>
+                          </div>
+                        </label>
+
+                        <label className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={enhancedRfq.brand_usage_requirements?.brand_awareness_funnel || false}
+                            onChange={(e) => setEnhancedRfq({
+                              ...enhancedRfq,
+                              brand_usage_requirements: {
+                                ...enhancedRfq.brand_usage_requirements,
+                                brand_awareness_funnel: e.target.checked
+                              }
+                            })}
+                            className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+                          />
+                          <div>
+                            <div className="font-medium text-gray-900">Brand Awareness Funnel</div>
+                            <div className="text-sm text-gray-600">Awareness → Consideration → Trial → Purchase</div>
+                          </div>
+                        </label>
+
+                        <label className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={enhancedRfq.brand_usage_requirements?.brand_product_satisfaction || false}
+                            onChange={(e) => setEnhancedRfq({
+                              ...enhancedRfq,
+                              brand_usage_requirements: {
+                                ...enhancedRfq.brand_usage_requirements,
+                                brand_product_satisfaction: e.target.checked
+                              }
+                            })}
+                            className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+                          />
+                          <div>
+                            <div className="font-medium text-gray-900">Brand/Product Satisfaction</div>
+                            <div className="text-sm text-gray-600">Satisfaction and loyalty metrics</div>
+                          </div>
+                        </label>
+
+                        <label className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={enhancedRfq.brand_usage_requirements?.usage_frequency_tracking || false}
+                            onChange={(e) => setEnhancedRfq({
+                              ...enhancedRfq,
+                              brand_usage_requirements: {
+                                ...enhancedRfq.brand_usage_requirements,
+                                usage_frequency_tracking: e.target.checked
+                              }
+                            })}
+                            className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+                          />
+                          <div>
+                            <div className="font-medium text-gray-900">Usage Frequency Tracking</div>
+                            <div className="text-sm text-gray-600">Frequency, occasion, and context tracking</div>
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Advanced Classification Section */}
+                {currentSection === 'advanced_classification' && (
+                  <div className="space-y-6">
+                    <h2 className="text-2xl font-bold text-gray-900 flex items-center">
+                      <span className="text-3xl mr-3">🏷️</span>
+                      Advanced Classification
+                    </h2>
+
+                    <div className="bg-purple-50 border border-purple-200 rounded-xl p-6">
+                      <div className="flex items-start space-x-3">
+                        <div className="text-purple-600 text-2xl">🎯</div>
+                        <div>
+                          <h3 className="font-semibold text-purple-900 mb-2">Research Classification</h3>
+                          <p className="text-purple-800 text-sm">
+                            Classify your research project to ensure proper methodology selection, compliance requirements,
+                            and quality standards are applied.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <FormField
+                        label="Industry Classification"
+                        value={enhancedRfq.advanced_classification?.industry_classification || ''}
+                        onChange={(value) => setEnhancedRfq({
+                          ...enhancedRfq,
+                          advanced_classification: {
+                            ...enhancedRfq.advanced_classification,
+                            industry_classification: value
+                          }
+                        })}
+                        type="select"
+                        options={[
+                          { value: '', label: 'Select Industry' },
+                          { value: 'technology', label: 'Technology' },
+                          { value: 'healthcare', label: 'Healthcare' },
+                          { value: 'financial', label: 'Financial Services' },
+                          { value: 'retail', label: 'Retail & E-commerce' },
+                          { value: 'automotive', label: 'Automotive' },
+                          { value: 'food_beverage', label: 'Food & Beverage' },
+                          { value: 'entertainment', label: 'Entertainment & Media' },
+                          { value: 'education', label: 'Education' },
+                          { value: 'real_estate', label: 'Real Estate' },
+                          { value: 'travel', label: 'Travel & Hospitality' }
+                        ]}
+                        isAutoFilled={isFieldAutoFilled('advanced_classification.industry_classification')}
+                      />
+
+                      <FormField
+                        label="Respondent Classification"
+                        value={enhancedRfq.advanced_classification?.respondent_classification || ''}
+                        onChange={(value) => setEnhancedRfq({
+                          ...enhancedRfq,
+                          advanced_classification: {
+                            ...enhancedRfq.advanced_classification,
+                            respondent_classification: value
+                          }
+                        })}
+                        type="select"
+                        options={[
+                          { value: '', label: 'Select Respondent Type' },
+                          { value: 'B2C', label: 'B2C (Business to Consumer)' },
+                          { value: 'B2B', label: 'B2B (Business to Business)' },
+                          { value: 'healthcare_professional', label: 'Healthcare Professional' },
+                          { value: 'expert', label: 'Subject Matter Expert' },
+                          { value: 'student', label: 'Student/Academic' },
+                          { value: 'employee', label: 'Employee/Internal' }
+                        ]}
+                        isAutoFilled={isFieldAutoFilled('advanced_classification.respondent_classification')}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-800 mb-3">
+                        Methodology Tags
+                      </label>
+                      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                        {[
+                          'quantitative', 'qualitative', 'mixed_methods', 'attitudinal', 'behavioral',
+                          'concept_testing', 'brand_tracking', 'pricing_research', 'segmentation',
+                          'customer_satisfaction', 'market_sizing', 'competitive_analysis'
+                        ].map((tag) => (
+                          <label key={tag} className="flex items-center space-x-2 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={(enhancedRfq.advanced_classification?.methodology_tags || []).includes(tag)}
+                              onChange={(e) => {
+                                const tags = [...(enhancedRfq.advanced_classification?.methodology_tags || [])];
+                                if (e.target.checked) {
+                                  tags.push(tag);
+                                } else {
+                                  const index = tags.indexOf(tag);
+                                  if (index > -1) tags.splice(index, 1);
+                                }
+                                setEnhancedRfq({
+                                  ...enhancedRfq,
+                                  advanced_classification: {
+                                    ...enhancedRfq.advanced_classification,
+                                    methodology_tags: tags
+                                  }
+                                });
+                              }}
+                              className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                            />
+                            <span className="text-sm font-medium text-gray-700 capitalize">
+                              {tag.replace('_', ' ')}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-800 mb-3">
+                        Compliance Requirements
+                      </label>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        {[
+                          'Standard Data Protection', 'GDPR Compliance', 'HIPAA Compliance',
+                          'SOC 2 Compliance', 'ISO 27001', 'Custom Compliance'
+                        ].map((requirement) => (
+                          <label key={requirement} className="flex items-center space-x-2 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={(enhancedRfq.advanced_classification?.compliance_requirements || []).includes(requirement)}
+                              onChange={(e) => {
+                                const requirements = [...(enhancedRfq.advanced_classification?.compliance_requirements || [])];
+                                if (e.target.checked) {
+                                  requirements.push(requirement);
+                                } else {
+                                  const index = requirements.indexOf(requirement);
+                                  if (index > -1) requirements.splice(index, 1);
+                                }
+                                setEnhancedRfq({
+                                  ...enhancedRfq,
+                                  advanced_classification: {
+                                    ...enhancedRfq.advanced_classification,
+                                    compliance_requirements: requirements
+                                  }
+                                });
+                              }}
+                              className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                            />
+                            <span className="text-sm font-medium text-gray-700">{requirement}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 )}
 

@@ -156,6 +156,11 @@ export interface EnhancedRFQRequest {
     company_product_background: string;    // Background on company, product & research
     business_problem: string;              // What business wants to achieve
     business_objective: string;            // Business objective from research
+    // Enhanced fields
+    stakeholder_requirements?: string;     // Key stakeholder needs and requirements
+    decision_criteria?: string;            // What defines success for this research
+    budget_range?: 'under_10k' | '10k_50k' | '50k_100k' | '100k_plus';
+    timeline_constraints?: 'rush' | 'standard' | 'flexible';
   };
 
   // ========== RESEARCH OBJECTIVES ==========
@@ -163,6 +168,10 @@ export interface EnhancedRFQRequest {
     research_audience: string;             // Respondent type, demographics, segments
     success_criteria: string;              // Desired outcome / success criteria
     key_research_questions: string[];     // Key research questions & considerations
+    // Enhanced fields
+    success_metrics?: string;              // How research success will be measured
+    validation_requirements?: string;      // What validation is needed
+    measurement_approach?: 'quantitative' | 'qualitative' | 'mixed_methods';
   };
 
   // ========== METHODOLOGY ==========
@@ -170,6 +179,10 @@ export interface EnhancedRFQRequest {
     primary_method: 'van_westendorp' | 'gabor_granger' | 'conjoint' | 'basic_survey';
     stimuli_details?: string;             // Concept details, price ranges
     methodology_requirements?: string;     // Additional methodology notes
+    // Enhanced fields
+    complexity_level?: 'simple' | 'standard' | 'advanced';
+    required_methodologies?: string[];     // Specific methodologies required
+    sample_size_target?: string;          // Target number of respondents
   };
 
   // ========== SURVEY REQUIREMENTS ==========
@@ -178,6 +191,65 @@ export interface EnhancedRFQRequest {
     required_sections: string[];          // QNR structure sections
     must_have_questions: string[];        // Must-have Qs per respondent type
     screener_requirements?: string;       // Screener & respondent tagging rules
+    // Enhanced fields
+    completion_time_target?: '5_10_min' | '10_15_min' | '15_25_min' | '25_plus_min';
+    device_compatibility?: 'mobile_first' | 'desktop_first' | 'both';
+    accessibility_requirements?: 'standard' | 'enhanced' | 'full_compliance';
+    data_quality_requirements?: 'basic' | 'standard' | 'premium';
+  };
+
+  // ========== ADVANCED CLASSIFICATION ==========
+  advanced_classification?: {
+    industry_classification?: string;      // From INDUSTRY_CLASSIFICATIONS
+    respondent_classification?: string;    // From RESPONDENT_TYPES
+    methodology_tags?: string[];          // From METHODOLOGY_TAGS
+    compliance_requirements?: string[];   // GDPR, CCPA, Healthcare, Financial, etc.
+    target_countries?: string[];          // Geographic targeting (QNR_Country)
+    healthcare_specifics?: {              // Medical/Healthcare requirements
+      medical_conditions_general?: boolean;
+      medical_conditions_study?: boolean;
+      patient_requirements?: string;
+    };
+  };
+
+  // ========== SURVEY STRUCTURE PREFERENCES ==========
+  survey_structure?: {
+    qnr_sections?: string[];              // Selected QNR sections
+    text_requirements?: string[];         // Required text introduction types
+  };
+
+  // ========== SURVEY LOGIC REQUIREMENTS ==========
+  survey_logic?: {
+    requires_piping_logic?: boolean;      // Piping requirements
+    requires_sampling_logic?: boolean;    // Sampling logic rules
+    requires_screener_logic?: boolean;    // Screener termination rules
+    custom_logic_requirements?: string;   // Custom logic descriptions
+    piping_logic?: string;                // Legacy field for backward compatibility
+    sampling_logic?: string;             // Legacy field for backward compatibility
+    screener_logic?: string;             // Legacy field for backward compatibility
+    user_categorization?: string;        // User/Non-User categorization
+  };
+
+  // ========== BRAND & USAGE REQUIREMENTS ==========
+  brand_usage_requirements?: {
+    brand_recall_required?: boolean;      // Top of mind brand questions
+    brand_awareness_funnel?: boolean;     // Awareness → Consideration → Purchase funnel
+    brand_product_satisfaction?: boolean; // Current brand satisfaction
+    usage_frequency_tracking?: boolean;   // Usage frequency questions
+    brand_recall_needed?: boolean;        // Legacy field for backward compatibility
+    brand_satisfaction?: boolean;         // Legacy field for backward compatibility
+    purchase_decision_factors?: boolean;  // Purchase influence factors
+    category_usage_frequency?: boolean;   // Legacy field for backward compatibility
+    category_usage_financial?: boolean;   // Spend and financial patterns
+    future_consideration?: boolean;       // Future purchase consideration
+  };
+
+  // ========== ADDITIONAL REQUIREMENTS ==========
+  additional_requirements?: {
+    detailed_demographics?: string[];    // Education, Employment, Salary, Ethnicity
+    adoption_behavior?: boolean;         // Innovation adoption patterns
+    media_consumption?: boolean;         // Media platform usage
+    feature_awareness?: boolean;         // Technology and feature awareness
   };
 
   // ========== SIMPLE META ==========
@@ -202,11 +274,28 @@ export interface RFQSubmissionResponse {
   status: string;
 }
 
+export interface SurveyTextContent {
+  id: string;
+  type: 'introduction' | 'transition' | 'instruction' | 'concept_intro' | 'study_intro' | 'confidentiality' | 'product_usage';
+  content: string;
+  mandatory: boolean;
+  label?: string; // Maps to AiRA labeling (e.g., "Concept_Intro", "Study_Intro")
+  section_id?: number; // Links to parent section
+  order?: number; // Position within section content
+}
+
 export interface SurveySection {
   id: number;
   title: string;
   description: string;
   questions: Question[];
+
+  // NEW: Optional text content before and after questions
+  introText?: SurveyTextContent;
+  closingText?: SurveyTextContent;
+
+  // NEW: Additional text blocks for complex sections
+  textBlocks?: SurveyTextContent[];
 }
 
 export interface Survey {
@@ -265,13 +354,14 @@ export interface SurveyListItem {
 export interface Question {
   id: string;
   text: string;
-  type: 'multiple_choice' | 'scale' | 'text' | 'ranking';
+  type: 'multiple_choice' | 'scale' | 'text' | 'ranking' | 'instruction' | 'single_choice' | 'matrix' | 'numeric' | 'date' | 'boolean' | 'open_text' | 'multiple_select' | 'matrix_likert' | 'constant_sum' | 'numeric_grid' | 'numeric_open';
   options?: string[];
   scale_labels?: Record<string, string>;
   required: boolean;
   category: string;
   methodology?: string;
   ai_rationale?: string;
+  description?: string; // For additional context, especially useful for instructions
 }
 
 // Removed duplicate interface - using the full definition below
@@ -385,6 +475,224 @@ export interface GoldenExamplesResponse {
 // Annotation Types
 export type LikertScale = 1 | 2 | 3 | 4 | 5;
 
+// Advanced Labeling Constants
+export const INDUSTRY_CLASSIFICATIONS = [
+  'technology',
+  'healthcare',
+  'financial',
+  'retail',
+  'education',
+  'automotive',
+  'real_estate',
+  'food_beverage',
+  'travel',
+  'entertainment'
+] as const;
+
+export const RESPONDENT_TYPES = [
+  'B2C',
+  'B2B',
+  'healthcare_professional',
+  'student',
+  'expert',
+  'employee'
+] as const;
+
+export const METHODOLOGY_TAGS = [
+  'quantitative',
+  'qualitative',
+  'demographic',
+  'behavioral',
+  'attitudinal',
+  'screening',
+  'net_promoter',
+  'van_westendorp'
+] as const;
+
+export const SECTION_CLASSIFICATIONS = [
+  'introduction',
+  'demographics',
+  'screening',
+  'content',
+  'closing'
+] as const;
+
+export const COMPLIANCE_STATUS_OPTIONS = [
+  'compliant',
+  'needs_review',
+  'non_compliant',
+  'not_checked'
+] as const;
+
+// Enhanced RFQ Constants
+export const BUDGET_RANGES = [
+  'under_10k',
+  '10k_50k',
+  '50k_100k',
+  '100k_plus'
+] as const;
+
+export const TIMELINE_CONSTRAINTS = [
+  'rush',
+  'standard',
+  'flexible'
+] as const;
+
+export const MEASUREMENT_APPROACHES = [
+  'quantitative',
+  'qualitative',
+  'mixed_methods'
+] as const;
+
+export const COMPLEXITY_LEVELS = [
+  'simple',
+  'standard',
+  'advanced'
+] as const;
+
+export const COMPLETION_TIME_TARGETS = [
+  '5_10_min',
+  '10_15_min',
+  '15_25_min',
+  '25_plus_min'
+] as const;
+
+export const DEVICE_COMPATIBILITY_OPTIONS = [
+  'mobile_first',
+  'desktop_first',
+  'both'
+] as const;
+
+export const ACCESSIBILITY_REQUIREMENTS = [
+  'standard',
+  'enhanced',
+  'full_compliance'
+] as const;
+
+export const DATA_QUALITY_REQUIREMENTS = [
+  'basic',
+  'standard',
+  'premium'
+] as const;
+
+export const COMPLIANCE_REQUIREMENTS = [
+  'GDPR',
+  'CCPA',
+  'Healthcare',
+  'Financial',
+  'Standard Data Protection'
+] as const;
+
+export const REQUIRED_METHODOLOGIES = [
+  'van_westendorp',
+  'gabor_granger',
+  'conjoint',
+  'maxdiff',
+  'monadic_testing',
+  'concept_testing',
+  'brand_tracking',
+  'usage_attitudes'
+] as const;
+
+// AiRA Mandatory Text Requirements
+export const AIRA_TEXT_LABELS = [
+  'Study_Intro',
+  'Concept_Intro',
+  'Confidentiality_Agreement',
+  'Product_Usage'
+] as const;
+
+export const TEXT_CONTENT_TYPES = [
+  'introduction',
+  'transition',
+  'instruction',
+  'concept_intro',
+  'study_intro',
+  'confidentiality',
+  'product_usage'
+] as const;
+
+// Mapping of AiRA labels to content types
+export const AIRA_LABEL_TO_TYPE_MAP: Record<string, string> = {
+  'Study_Intro': 'study_intro',
+  'Concept_Intro': 'concept_intro',
+  'Confidentiality_Agreement': 'confidentiality',
+  'Product_Usage': 'product_usage'
+};
+
+// Text requirements by methodology
+export const METHODOLOGY_TEXT_REQUIREMENTS: Record<string, string[]> = {
+  'van_westendorp': ['Study_Intro', 'Concept_Intro'],
+  'gabor_granger': ['Study_Intro', 'Concept_Intro'],
+  'conjoint': ['Study_Intro', 'Product_Usage'],
+  'basic_survey': ['Study_Intro']
+};
+
+// QNR Country/Geographic Options (from QNR Tags)
+export const QNR_COUNTRIES = [
+  'Canada',
+  'EU',
+  'France',
+  'India',
+  'Japan',
+  'UK',
+  'US'
+] as const;
+
+// Additional Demographics Options
+export const ADDITIONAL_DEMOGRAPHICS = [
+  'Education',
+  'Employment',
+  'Salary',
+  'Ethnicity',
+  'Household_Income',
+  'Marital_Status',
+  'Children'
+] as const;
+
+// Survey Logic Types
+export const SURVEY_LOGIC_TYPES = [
+  'piping_logic',
+  'sampling_logic',
+  'screener_logic',
+  'user_categorization'
+] as const;
+
+// Mandatory QNR Sections (from QNR labeling)
+export const MANDATORY_QNR_SECTIONS = [
+  'Additional Questions',
+  'Brand/Product Awareness & Usage',
+  'Concept exposure',
+  'Methodology',
+  'Programmer Instructions',
+  'Sample Plan',
+  'Screener'
+] as const;
+
+export type IndustryClassification = typeof INDUSTRY_CLASSIFICATIONS[number];
+export type RespondentType = typeof RESPONDENT_TYPES[number];
+export type MethodologyTag = typeof METHODOLOGY_TAGS[number];
+export type SectionClassification = typeof SECTION_CLASSIFICATIONS[number];
+export type ComplianceStatus = typeof COMPLIANCE_STATUS_OPTIONS[number];
+
+// Enhanced RFQ Types
+export type BudgetRange = typeof BUDGET_RANGES[number];
+export type TimelineConstraint = typeof TIMELINE_CONSTRAINTS[number];
+export type MeasurementApproach = typeof MEASUREMENT_APPROACHES[number];
+export type ComplexityLevel = typeof COMPLEXITY_LEVELS[number];
+export type CompletionTimeTarget = typeof COMPLETION_TIME_TARGETS[number];
+export type DeviceCompatibility = typeof DEVICE_COMPATIBILITY_OPTIONS[number];
+export type AccessibilityRequirement = typeof ACCESSIBILITY_REQUIREMENTS[number];
+export type DataQualityRequirement = typeof DATA_QUALITY_REQUIREMENTS[number];
+export type ComplianceRequirement = typeof COMPLIANCE_REQUIREMENTS[number];
+export type RequiredMethodology = typeof REQUIRED_METHODOLOGIES[number];
+export type AiRATextLabel = typeof AIRA_TEXT_LABELS[number];
+export type TextContentType = typeof TEXT_CONTENT_TYPES[number];
+export type QNRCountry = typeof QNR_COUNTRIES[number];
+export type AdditionalDemographic = typeof ADDITIONAL_DEMOGRAPHICS[number];
+export type SurveyLogicType = typeof SURVEY_LOGIC_TYPES[number];
+export type MandatoryQNRSection = typeof MANDATORY_QNR_SECTIONS[number];
+
 export interface QuestionAnnotation {
   questionId: string;
   required: boolean;
@@ -400,6 +708,14 @@ export interface QuestionAnnotation {
   comment?: string;
   annotatorId?: string;
   timestamp?: string;
+
+  // Advanced labeling fields
+  advanced_labels?: Record<string, any>;
+  industry_classification?: string;
+  respondent_type?: string;
+  methodology_tags?: string[];
+  is_mandatory?: boolean;
+  compliance_status?: string;
 }
 
 export interface SectionAnnotation {
@@ -416,6 +732,11 @@ export interface SectionAnnotation {
   comment?: string;
   annotatorId?: string;
   timestamp?: string;
+
+  // Advanced labeling fields
+  section_classification?: string;
+  mandatory_elements?: Record<string, any>;
+  compliance_score?: number;
 }
 
 export interface SurveyAnnotations {
@@ -426,6 +747,11 @@ export interface SurveyAnnotations {
   annotatorId?: string;
   createdAt?: string;
   updatedAt?: string;
+
+  // Advanced labeling fields
+  detected_labels?: Record<string, any>;
+  compliance_report?: Record<string, any>;
+  advanced_metadata?: Record<string, any>;
 }
 
 // Toast Types
@@ -562,6 +888,34 @@ export * from './errors';
 export { ErrorClassifier } from './errors';
 
 // Store Types
+// Text Content Compliance Validation
+export interface TextComplianceCheck {
+  label: AiRATextLabel;
+  type: TextContentType;
+  required: boolean;
+  found: boolean;
+  content?: SurveyTextContent;
+  section?: string;
+}
+
+export interface TextComplianceReport {
+  survey_id: string;
+  methodology: string[];
+  required_text_elements: TextComplianceCheck[];
+  missing_elements: AiRATextLabel[];
+  compliance_score: number;
+  compliance_level: 'full' | 'partial' | 'poor';
+  recommendations: string[];
+  analysis_timestamp: string;
+}
+
+// Helper functions for text validation
+export interface TextValidationUtils {
+  getRequiredTextForMethodology: (methodology: string[]) => AiRATextLabel[];
+  validateSurveyTextCompliance: (survey: Survey) => TextComplianceReport;
+  generateMissingTextContent: (missing: AiRATextLabel[], rfq: EnhancedRFQRequest) => SurveyTextContent[];
+}
+
 export interface AppStore {
   // RFQ Input
   rfqInput: RFQRequest;
@@ -636,6 +990,11 @@ export interface AppStore {
   // Annotation Actions
   saveAnnotations: (annotations: SurveyAnnotations) => Promise<void>;
   loadAnnotations: (surveyId: string) => Promise<void>;
+
+  // Advanced Labeling Actions
+  applyAdvancedLabeling: (surveyId: string) => Promise<any>;
+  fetchComplianceReport: (surveyId: string) => Promise<any>;
+  fetchDetectedLabels: (surveyId: string) => Promise<any>;
   
   // Human Review State
   pendingReviews: PendingReview[];
@@ -671,6 +1030,21 @@ export interface AppStore {
 
   // Enhanced RFQ State Persistence
   persistEnhancedRfqState: (enhancedRfq: EnhancedRFQRequest) => void;
-  restoreEnhancedRfqState: () => boolean;
+  restoreEnhancedRfqState: (showToast?: boolean) => boolean;
   clearEnhancedRfqState: () => void;
+
+  // Document Processing State Persistence
+  persistDocumentProcessingState: (isProcessing: boolean) => void;
+  restoreDocumentProcessingState: () => boolean;
+
+  // Enhanced RFQ Conversion
+  createEnhancedRfqFromBasic: (basicRfq: RFQRequest) => EnhancedRFQRequest;
+
+  // Methodology-based intelligence
+  applyMethodologyIntelligence: (rfqUpdates: Partial<EnhancedRFQRequest>) => Partial<EnhancedRFQRequest>;
+
+  // Text Content Validation Actions
+  validateSurveyTextCompliance: (survey: Survey) => TextComplianceReport;
+  generateMissingTextContent: (missing: AiRATextLabel[], methodology: string[], rfq?: EnhancedRFQRequest) => SurveyTextContent[];
+  getRequiredTextForMethodology: (methodology: string[]) => AiRATextLabel[];
 }

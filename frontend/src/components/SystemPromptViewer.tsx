@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { XMarkIcon, DocumentTextIcon, ClockIcon, CpuChipIcon, CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, DocumentTextIcon, ClockIcon, CpuChipIcon, CheckCircleIcon, ExclamationCircleIcon, ClipboardDocumentIcon, CheckIcon } from '@heroicons/react/24/outline';
 
 interface SystemPromptAudit {
   id: string;
@@ -69,6 +69,7 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
   const [selectedItem, setSelectedItem] = useState<AuditItem | null>(null);
   const [filter, setFilter] = useState<'all' | 'prompts' | 'llm'>('all');
   const [activeTab, setActiveTab] = useState<'prompt' | 'output' | 'metadata'>('prompt');
+  const [copiedTab, setCopiedTab] = useState<string | null>(null);
 
   const fetchSystemPrompts = useCallback(async () => {
     try {
@@ -121,11 +122,14 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
     return new Date(dateString).toLocaleString();
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text).then(() => {
-      // You could add a toast notification here
-      console.log('Content copied to clipboard');
-    });
+  const copyToClipboard = async (text: string, tabType: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedTab(tabType);
+      setTimeout(() => setCopiedTab(null), 2000);
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+    }
   };
 
   const formatDuration = (ms: number) => {
@@ -416,7 +420,7 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
                       </div>
                     </div>
                     <button
-                      onClick={() => copyToClipboard(getItemContent(selectedItem))}
+                      onClick={() => copyToClipboard(getItemContent(selectedItem), 'prompt')}
                       className="px-3 py-1 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
                     >
                       Copy
@@ -524,9 +528,27 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
                   <div className="min-h-[400px]">
                     {activeTab === 'prompt' && (
                       <div>
-                        <h4 className="text-sm font-medium text-gray-900 mb-2">
-                          {isSystemPromptAudit(selectedItem) ? 'System Prompt' : 'Input Prompt'}
-                        </h4>
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="text-sm font-medium text-gray-900">
+                            {isSystemPromptAudit(selectedItem) ? 'System Prompt' : 'Input Prompt'}
+                          </h4>
+                          <button
+                            onClick={() => copyToClipboard(getItemContent(selectedItem), 'prompt')}
+                            className="flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+                          >
+                            {copiedTab === 'prompt' ? (
+                              <>
+                                <CheckIcon className="h-4 w-4 mr-1 text-green-600" />
+                                Copied!
+                              </>
+                            ) : (
+                              <>
+                                <ClipboardDocumentIcon className="h-4 w-4 mr-1" />
+                                Copy
+                              </>
+                            )}
+                          </button>
+                        </div>
                         <div className="overflow-x-auto">
                           <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono bg-gray-50 p-4 rounded-lg border border-gray-200 min-w-0 max-h-[400px] overflow-y-auto">
                             {getItemContent(selectedItem)}
@@ -537,7 +559,25 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
 
                     {activeTab === 'output' && isLLMInteraction(selectedItem) && selectedItem.output_content && (
                       <div>
-                        <h4 className="text-sm font-medium text-gray-900 mb-2">Output Content</h4>
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="text-sm font-medium text-gray-900">Output Content</h4>
+                          <button
+                            onClick={() => copyToClipboard(selectedItem.output_content || '', 'output')}
+                            className="flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+                          >
+                            {copiedTab === 'output' ? (
+                              <>
+                                <CheckIcon className="h-4 w-4 mr-1 text-green-600" />
+                                Copied!
+                              </>
+                            ) : (
+                              <>
+                                <ClipboardDocumentIcon className="h-4 w-4 mr-1" />
+                                Copy
+                              </>
+                            )}
+                          </button>
+                        </div>
                         <div className="overflow-x-auto">
                           <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono bg-gray-50 p-4 rounded-lg border border-gray-200 min-w-0 max-h-[400px] overflow-y-auto">
                             {selectedItem.output_content}
@@ -548,7 +588,25 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
 
                     {activeTab === 'metadata' && isLLMInteraction(selectedItem) && selectedItem.interaction_metadata && Object.keys(selectedItem.interaction_metadata).length > 0 && (
                       <div>
-                        <h4 className="text-sm font-medium text-gray-900 mb-2">Metadata</h4>
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="text-sm font-medium text-gray-900">Metadata</h4>
+                          <button
+                            onClick={() => copyToClipboard(JSON.stringify(selectedItem.interaction_metadata, null, 2), 'metadata')}
+                            className="flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+                          >
+                            {copiedTab === 'metadata' ? (
+                              <>
+                                <CheckIcon className="h-4 w-4 mr-1 text-green-600" />
+                                Copied!
+                              </>
+                            ) : (
+                              <>
+                                <ClipboardDocumentIcon className="h-4 w-4 mr-1" />
+                                Copy
+                              </>
+                            )}
+                          </button>
+                        </div>
                         <div className="overflow-x-auto">
                           <pre className="text-sm text-gray-700 bg-gray-50 p-4 rounded-lg border border-gray-200 min-w-0 max-h-[400px] overflow-y-auto">
                             {JSON.stringify(selectedItem.interaction_metadata, null, 2)}

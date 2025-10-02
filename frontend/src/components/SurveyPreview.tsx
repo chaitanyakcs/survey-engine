@@ -6,6 +6,10 @@ import QuestionAnnotationPanel from './QuestionAnnotationPanel';
 import SectionAnnotationPanel from './SectionAnnotationPanel';
 import AnnotationMode from './AnnotationMode';
 import { SystemPromptViewer } from './SystemPromptViewer';
+import MatrixLikert from './MatrixLikert';
+import ConstantSum from './ConstantSum';
+import NumericGrid from './NumericGrid';
+import NumericOpen from './NumericOpen';
 import { PencilIcon, BookmarkIcon, ArrowDownTrayIcon, ChevronDownIcon, ChevronRightIcon, TagIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 // Helper function to extract all questions from survey (supports both formats)
@@ -150,21 +154,25 @@ const QuestionCard: React.FC<{
         </div>
       </div>
 
-      {/* Question Text */}
-      {isEditing ? (
-        <div className="mb-3">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Question Text</label>
-          <textarea
-            value={editedQuestion.text}
-            onChange={(e) => updateQuestionField('text', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-            rows={2}
-          />
-        </div>
-      ) : (
-        <h3 className="font-medium text-gray-900 mb-3">
-          {question.text || 'Question text not available'}
-        </h3>
+      {/* Question Text - only show for non-instruction types */}
+      {question.type !== 'instruction' && (
+        <>
+          {isEditing ? (
+            <div className="mb-3">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Question Text</label>
+              <textarea
+                value={editedQuestion.text}
+                onChange={(e) => updateQuestionField('text', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                rows={2}
+              />
+            </div>
+          ) : (
+            <h3 className="font-medium text-gray-900 mb-3">
+              {question.text || 'Question text not available'}
+            </h3>
+          )}
+        </>
       )}
 
       {/* Question Options/Input */}
@@ -294,6 +302,187 @@ const QuestionCard: React.FC<{
             className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
           />
         )}
+
+        {question.type === 'instruction' && (
+          <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-lg">
+            <div className="flex items-start space-x-3">
+              <div className="flex-shrink-0">
+                <svg className="w-5 h-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="flex-grow">
+                <h4 className="text-sm font-medium text-blue-800 mb-1">Instructions</h4>
+                <div className="text-sm text-blue-700 leading-relaxed whitespace-pre-wrap">
+                  {question.text}
+                </div>
+                {question.description && (
+                  <div className="mt-2 text-xs text-blue-600 italic">
+                    {question.description}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="mt-3 flex items-center justify-between">
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                Instruction Block
+              </span>
+              <span className="text-xs text-blue-600">
+                No response required
+              </span>
+            </div>
+          </div>
+        )}
+
+        {question.type === 'single_choice' && (
+          <div className="space-y-2">
+            {question.options?.map((option, idx) => (
+              <div key={idx} className="flex items-center">
+                <input
+                  type="radio"
+                  disabled
+                  className="h-4 w-4 text-amber-600 border-gray-300"
+                />
+                <label className="ml-2 text-sm text-gray-700">
+                  {typeof option === 'string' ? option : ((option as any)?.text || (option as any)?.label || 'Option')}
+                </label>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {question.type === 'matrix' && (
+          <div className="overflow-x-auto">
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <div className="text-sm font-medium text-gray-800 mb-3">Matrix Question</div>
+              <div className="text-sm text-gray-600 mb-4">
+                Please rate each item using the scale provided:
+              </div>
+              {question.options && question.options.length > 0 && (
+                <div className="space-y-3">
+                  {question.options.slice(0, 3).map((option, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-2 bg-white rounded border">
+                      <span className="text-sm text-gray-700">
+                        {typeof option === 'string' ? option : ((option as any)?.text || (option as any)?.label || 'Item')}
+                      </span>
+                      <div className="flex space-x-2">
+                        {[1,2,3,4,5].map(num => (
+                          <label key={num} className="flex items-center">
+                            <input type="radio" disabled className="h-3 w-3 text-amber-600" />
+                            <span className="ml-1 text-xs text-gray-500">{num}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {question.options.length > 3 && (
+                    <div className="text-xs text-gray-500 italic">
+                      ... and {question.options.length - 3} more items
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {question.type === 'numeric' && (
+          <input
+            type="number"
+            disabled
+            placeholder="Enter a number..."
+            className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
+          />
+        )}
+
+        {question.type === 'date' && (
+          <input
+            type="date"
+            disabled
+            className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
+          />
+        )}
+
+        {question.type === 'boolean' && (
+          <div className="space-y-2">
+            <div className="flex items-center">
+              <input
+                type="radio"
+                disabled
+                className="h-4 w-4 text-amber-600 border-gray-300"
+              />
+              <label className="ml-2 text-sm text-gray-700">Yes</label>
+            </div>
+            <div className="flex items-center">
+              <input
+                type="radio"
+                disabled
+                className="h-4 w-4 text-amber-600 border-gray-300"
+              />
+              <label className="ml-2 text-sm text-gray-700">No</label>
+            </div>
+          </div>
+        )}
+
+        {question.type === 'open_text' && (
+          <textarea
+            disabled
+            placeholder="Respondent will enter their response here..."
+            className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 resize-vertical"
+            rows={4}
+          />
+        )}
+
+        {question.type === 'multiple_select' && (
+          <div className="space-y-2">
+            {question.options?.map((option, idx) => (
+              <div key={idx} className="flex items-center">
+                <input
+                  type="checkbox"
+                  disabled
+                  className="h-4 w-4 text-amber-600 border-gray-300 rounded"
+                />
+                <label className="ml-2 text-sm text-gray-700">
+                  {typeof option === 'string' ? option : ((option as any)?.text || (option as any)?.label || 'Option')}
+                </label>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {question.type === 'matrix_likert' && (
+          <MatrixLikert question={question} isPreview={true} />
+        )}
+
+        {question.type === 'constant_sum' && (
+          <ConstantSum question={question} isPreview={true} />
+        )}
+
+        {question.type === 'numeric_grid' && (
+          <NumericGrid question={question} isPreview={true} />
+        )}
+
+        {question.type === 'numeric_open' && (
+          <NumericOpen question={question} isPreview={true} />
+        )}
+
+        {/* Default fallback for unknown question types */}
+        {!['multiple_choice', 'scale', 'ranking', 'text', 'instruction', 'single_choice', 'matrix', 'numeric', 'date', 'boolean', 'open_text', 'multiple_select', 'matrix_likert', 'constant_sum', 'numeric_grid', 'numeric_open'].includes(question.type) && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <div className="flex items-center space-x-2">
+              <svg className="w-5 h-5 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              <span className="text-sm font-medium text-yellow-800">Unknown Question Type</span>
+            </div>
+            <div className="mt-2 text-sm text-yellow-700">
+              Question type "{question.type}" is not yet supported in the preview.
+            </div>
+            <div className="mt-2 text-xs text-yellow-600">
+              This question will still be included in the generated survey.
+            </div>
+          </div>
+        )}
       </div>
 
       
@@ -394,6 +583,7 @@ const SectionCard: React.FC<{
     // Close the annotation panel when canceling
     setIsExpanded(false);
   };
+
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
@@ -499,6 +689,45 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
     methodology_tags: [] as string[],
     quality_score: 0.9
   });
+  const [isReparsing, setIsReparsing] = useState(false);
+
+  const handleReparseSurvey = async () => {
+    if (!survey?.survey_id) {
+      console.error('No survey ID available for reparse');
+      return;
+    }
+
+    setIsReparsing(true);
+    try {
+      const response = await fetch(`/api/v1/survey/${survey.survey_id}/reparse`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to reparse survey: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ Survey reparsed successfully:', result);
+
+      // Refresh the survey data
+      if (onSurveyChange) {
+        // Trigger a refresh of the survey data
+        window.location.reload();
+      }
+
+      // Show success message
+      alert(`Survey reparsed successfully! ${result.question_count} questions processed across ${result.sections_count} sections.`);
+    } catch (error) {
+      console.error('❌ Failed to reparse survey:', error);
+      alert(`Failed to reparse survey: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsReparsing(false);
+    }
+  };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -873,8 +1102,8 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
   const isValidSurvey = survey && 
                        typeof survey === 'object' && 
                        survey.title && 
-                       survey.questions && 
-                       Array.isArray(survey.questions);
+                       (survey.questions || survey.sections) && 
+                       (Array.isArray(survey.questions) || Array.isArray(survey.sections));
 
   if (!survey) {
     console.log('❌ [SurveyPreview] No survey available');
@@ -891,8 +1120,11 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
     console.log('❌ [SurveyPreview] Survey structure:', {
       hasTitle: !!survey.title,
       hasQuestions: !!survey.questions,
+      hasSections: !!survey.sections,
       questionsIsArray: Array.isArray(survey.questions),
+      sectionsIsArray: Array.isArray(survey.sections),
       questionsLength: survey.questions?.length,
+      sectionsLength: survey.sections?.length,
       surveyKeys: Object.keys(survey || {})
     });
     
@@ -904,176 +1136,30 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
       survey.final_output?.title === "Document Parse Error"
     );
     
-    return (
-      <div className="w-full p-6">
-        {isErrorResponse ? (
-          <div className="bg-white rounded-lg shadow-lg border border-red-200">
-            {/* Header */}
-            <div className="bg-red-50 px-6 py-4 border-b border-red-200 rounded-t-lg">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <svg className="h-8 w-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <h3 className="text-lg font-medium text-red-800">Document Parsing Failed</h3>
-                  <p className="text-sm text-red-600 mt-1">Unable to process the uploaded document</p>
-                </div>
-              </div>
-            </div>
-            
-            {/* Content */}
-            <div className="px-6 py-4">
-              <div className="mb-4">
-                <h3 className="text-lg font-semibold text-gray-800 mb-3">AI Service Configuration Required</h3>
-                <p className="text-gray-700 mb-4">
-                  This application uses AI to automatically generate surveys from your documents. 
-                  To enable this feature, an AI service needs to be configured.
-                </p>
-                
-                <div className="space-y-4">
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                    <h4 className="text-sm font-medium text-amber-800 mb-2">What's happening?</h4>
-                    <p className="text-sm text-amber-700">
-                      The AI service that converts documents to surveys isn't set up yet. 
-                      This is a one-time configuration that your administrator needs to complete.
-                    </p>
-                  </div>
-                  
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <h4 className="text-sm font-medium text-blue-800 mb-3">How to get this working:</h4>
-                    <div className="space-y-3">
-                      <div>
-                        <h5 className="text-sm font-medium text-blue-700 mb-1">Option 1: Replicate (Recommended)</h5>
-                        <ul className="text-xs text-blue-600 space-y-1 ml-4">
-                          <li>• Visit <a href="https://replicate.com" target="_blank" rel="noopener noreferrer" className="underline">replicate.com</a> and create a free account</li>
-                          <li>• Generate an API token from your account settings</li>
-                          <li>• Share the token with your administrator</li>
-                        </ul>
-                      </div>
-                      <div>
-                        <h5 className="text-sm font-medium text-blue-700 mb-1">Option 2: OpenAI (Alternative)</h5>
-                        <ul className="text-xs text-blue-600 space-y-1 ml-4">
-                          <li>• Visit <a href="https://platform.openai.com" target="_blank" rel="noopener noreferrer" className="underline">platform.openai.com</a></li>
-                          <li>• Create an account and generate an API key</li>
-                          <li>• Share the key with your administrator</li>
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">In the meantime, you can:</h4>
-                    <ul className="text-sm text-gray-600 space-y-1">
-                      <li>• Use the manual survey builder to create surveys</li>
-                      <li>• Copy and paste text from your document into the RFQ editor</li>
-                      <li>• Contact your administrator about setting up AI services</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="flex space-x-3">
-                <label className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 cursor-pointer transition-all duration-200 ${
-                  isUploading 
-                    ? 'text-blue-700 bg-blue-100 cursor-not-allowed' 
-                    : 'text-white bg-blue-600 hover:bg-blue-700'
-                }`}>
-                  {isUploading ? (
-                    <div className="animate-spin rounded-full h-4 w-4 mr-2 border-2 border-amber-600 border-t-transparent"></div>
-                  ) : (
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                    </svg>
-                  )}
-                  {isUploading ? 'Parsing with AI...' : 'Upload & Parse with AI'}
-                  <input
-                    type="file"
-                    accept=".docx"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                    id="retry-document-upload"
-                    disabled={isUploading}
-                  />
-                </label>
-                <button 
-                  onClick={() => window.history.back()} 
-                  className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                  </svg>
-                  Go Back
-                </button>
-              </div>
-
-              {/* Status Notification */}
-              {uploadStatus !== 'idle' && (
-                <div className="mt-4">
-                  {uploadStatus === 'success' && (
-                    <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start space-x-3">
-                      <div className="flex-shrink-0">
-                        <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="text-sm font-medium text-green-800">Document Parsed Successfully!</h3>
-                        <p className="text-sm text-green-700 mt-1">{uploadMessage}</p>
-                        <p className="text-xs text-green-600 mt-2">The survey preview above has been updated with the new content.</p>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {uploadStatus === 'error' && (
-                    <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start space-x-3">
-                      <div className="flex-shrink-0">
-                        <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="text-sm font-medium text-red-800">Upload Failed</h3>
-                        <p className="text-sm text-red-700 mt-1">{uploadMessage}</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-            
-            {/* Technical Details (Collapsible) */}
-            <details className="border-t border-gray-200">
-              <summary className="px-6 py-3 text-sm text-gray-500 hover:text-gray-700 cursor-pointer bg-gray-50">
-                Show Technical Details
-              </summary>
-              <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
-                <pre className="text-xs text-gray-600 overflow-auto max-h-64 bg-white p-3 rounded border">
-                  {JSON.stringify(survey, null, 2)}
-                </pre>
-              </div>
-            </details>
-          </div>
-        ) : (
-          <div className="text-center py-12">
-            <div className="mx-auto h-12 w-12 text-gray-400">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+    // Don't show error if we're still loading or if it's just a different format
+    if (isErrorResponse) {
+      return (
+        <div className="w-full p-6 text-center">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+            <div className="flex items-center justify-center mb-4">
+              <svg className="h-8 w-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
               </svg>
             </div>
-            <h3 className="mt-2 text-sm font-medium text-gray-900">Invalid Survey Data</h3>
-            <p className="mt-1 text-sm text-gray-500">The survey data appears to be malformed or incomplete.</p>
-            <div className="mt-6">
-              <button 
-                onClick={() => window.location.reload()} 
-                className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-              >
-                Refresh Page
-              </button>
-            </div>
+            <h3 className="text-lg font-medium text-red-800 mb-2">Document Parsing Failed</h3>
+            <p className="text-red-600">Unable to process the uploaded document. Please try again.</p>
           </div>
-        )}
+        </div>
+      );
+    }
+    
+    // If it's not an error but still invalid, show a loading state instead of error
+    return (
+      <div className="w-full p-6 text-center">
+        <div className="flex items-center justify-center space-x-2">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+          <p className="text-gray-500">Loading survey preview...</p>
+        </div>
       </div>
     );
   }
@@ -1251,6 +1337,27 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
                                 <div className="text-left">
                                   <div className="font-medium">Export for Qualtrics</div>
                                   <div className="text-xs text-gray-500">Survey platform integration</div>
+                                </div>
+                              </button>
+                              <div className="border-t border-gray-100"></div>
+                              <button
+                                onClick={() => {
+                                  handleReparseSurvey();
+                                  setShowExportDropdown(false);
+                                }}
+                                disabled={isReparsing}
+                                className="flex items-center gap-3 w-full px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                                  <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                  </svg>
+                                </div>
+                                <div className="text-left">
+                                  <div className="font-medium">
+                                    {isReparsing ? 'Reparsing...' : 'Reparse Survey'}
+                                  </div>
+                                  <div className="text-xs text-gray-500">Fix with latest validation rules</div>
                                 </div>
                               </button>
                             </div>

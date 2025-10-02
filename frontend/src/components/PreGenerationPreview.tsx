@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { EnhancedRFQRequest, RFQQualityAssessment } from '../types';
+import { EnhancedRFQRequest } from '../types';
 
 interface PreGenerationPreviewProps {
   rfq: EnhancedRFQRequest;
@@ -8,14 +8,6 @@ interface PreGenerationPreviewProps {
   onEdit?: () => void;
 }
 
-interface ConfidenceIndicator {
-  id: string;
-  label: string;
-  score: number;
-  description: string;
-  icon: string;
-  recommendations?: string[];
-}
 
 interface EstimatedMetrics {
   estimated_duration: string;
@@ -31,15 +23,12 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
   onGenerate,
   onEdit
 }) => {
-  const { rfqAssessment, assessRfqQuality, submitEnhancedRFQ, workflow } = useAppStore();
+  const { submitEnhancedRFQ, workflow } = useAppStore();
   const [estimatedMetrics, setEstimatedMetrics] = useState<EstimatedMetrics | null>(null);
-  const [confidenceIndicators, setConfidenceIndicators] = useState<ConfidenceIndicator[]>([]);
-  const [showDetailedPreview, setShowDetailedPreview] = useState(false);
 
   useEffect(() => {
     calculateEstimates();
-    generateConfidenceIndicators();
-  }, [rfq, rfqAssessment]);
+  }, [rfq]); // calculateEstimates doesn't need to be in deps as it only uses rfq
 
   const calculateEstimates = () => {
     // Simulate AI-powered estimation logic
@@ -73,80 +62,10 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
       sample_size_recommendation: typeof sampleSize === 'string' ? sampleSize : `${sampleSize}`,
       question_count_estimate: `${questionEstimate - 5}-${questionEstimate + 5}`,
       methodology_complexity: complexity,
-      quality_score: rfqAssessment?.overall_score || 0.7
+      quality_score: 0.8 // Static reasonable default
     });
   };
 
-  const generateConfidenceIndicators = () => {
-    const indicators: ConfidenceIndicator[] = [
-      {
-        id: 'objectives_clarity',
-        label: 'Objectives Clarity',
-        score: rfqAssessment?.confidence_indicators.objectives_clear ? 0.9 : 0.4,
-        description: 'How well-defined and measurable your research objectives are',
-        icon: '🎯',
-        recommendations: !rfqAssessment?.confidence_indicators.objectives_clear ?
-          ['Define specific, measurable objectives', 'Include success criteria for each objective'] : undefined
-      },
-      {
-        id: 'target_definition',
-        label: 'Target Audience',
-        score: rfqAssessment?.confidence_indicators.target_defined ? 0.95 : 0.3,
-        description: 'Specificity and reachability of your target audience',
-        icon: '👥',
-        recommendations: !rfqAssessment?.confidence_indicators.target_defined ?
-          ['Specify demographic criteria', 'Define audience size and accessibility'] : undefined
-      },
-      {
-        id: 'methodology_alignment',
-        label: 'Methodology Fit',
-        score: rfqAssessment?.confidence_indicators.methodology_appropriate ? 0.85 : 0.5,
-        description: 'Alignment between chosen methodologies and research objectives',
-        icon: '🔬',
-        recommendations: !rfqAssessment?.confidence_indicators.methodology_appropriate ?
-          ['Select methodologies that match your objectives', 'Consider proven approaches for your research goals'] : undefined
-      },
-      {
-        id: 'project_feasibility',
-        label: 'Project Feasibility',
-        score: rfqAssessment?.confidence_indicators.constraints_realistic ? 0.8 : 0.6,
-        description: 'Realistic timeline, budget, and resource constraints',
-        icon: '⚖️',
-        recommendations: !rfqAssessment?.confidence_indicators.constraints_realistic ?
-          ['Set realistic timeline constraints', 'Define clear budget parameters'] : undefined
-      },
-      {
-        id: 'content_completeness',
-        label: 'Content Completeness',
-        score: (rfqAssessment?.completeness_score || 0.5) * 1.0,
-        description: 'Completeness of research requirements and context',
-        icon: '📋',
-        recommendations: (rfqAssessment?.completeness_score || 0) < 0.8 ?
-          ['Provide more business context', 'Complete all required sections'] : undefined
-      }
-    ];
-
-    setConfidenceIndicators(indicators);
-  };
-
-  const getOverallConfidence = () => {
-    const avgScore = confidenceIndicators.reduce((sum, indicator) => sum + indicator.score, 0) / confidenceIndicators.length;
-    return avgScore;
-  };
-
-  const getConfidenceColor = (score: number) => {
-    if (score >= 0.8) return 'green';
-    if (score >= 0.6) return 'yellow';
-    if (score >= 0.4) return 'orange';
-    return 'red';
-  };
-
-  const getConfidenceLabel = (score: number) => {
-    if (score >= 0.8) return 'High Confidence';
-    if (score >= 0.6) return 'Good Confidence';
-    if (score >= 0.4) return 'Fair Confidence';
-    return 'Low Confidence';
-  };
 
   const handleGenerate = async () => {
     if (onGenerate) {
@@ -157,7 +76,6 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
   };
 
   const isLoading = workflow.status === 'started' || workflow.status === 'in_progress';
-  const overallConfidence = getOverallConfidence();
 
   return (
     <div className="min-h-screen bg-white">
@@ -168,25 +86,15 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Pre-Generation Preview</h1>
-              <p className="text-gray-600">Review your research requirements and generation confidence</p>
-            </div>
-            <div className="flex items-center space-x-4">
-              <div className="text-right">
-                <p className="text-sm text-gray-500">Overall Confidence</p>
-                <div className="flex items-center space-x-2">
-                  <div className={`w-4 h-4 rounded-full bg-${getConfidenceColor(overallConfidence)}-400`}></div>
-                  <span className="font-semibold">{Math.round(overallConfidence * 100)}%</span>
-                  <span className="text-sm text-gray-500">{getConfidenceLabel(overallConfidence)}</span>
-                </div>
-              </div>
+              <p className="text-gray-600">Review your research requirements before generation</p>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div className="max-w-4xl mx-auto">
 
           {/* Main Preview Panel */}
-          <div className="xl:col-span-2 space-y-6">
+          <div className="space-y-6">
 
             {/* RFQ Summary */}
             <div className="bg-white/70 backdrop-blur-lg rounded-3xl shadow-2xl border border-white/20 p-8">
@@ -319,9 +227,9 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
 
                   <button
                     onClick={handleGenerate}
-                    disabled={isLoading || overallConfidence < 0.3}
+                    disabled={isLoading}
                     className={`px-8 py-3 rounded-xl font-semibold transition-all duration-300 ${
-                      isLoading || overallConfidence < 0.3
+                      isLoading
                         ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                         : 'bg-gradient-to-r from-yellow-600 to-amber-600 text-white hover:shadow-lg transform hover:scale-105'
                     }`}
@@ -331,94 +239,9 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                 </div>
               </div>
 
-              {overallConfidence < 0.3 && (
-                <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl">
-                  <p className="text-sm text-red-700">
-                    ⚠️ Confidence is too low for reliable survey generation. Please address the recommendations in the confidence panel.
-                  </p>
-                </div>
-              )}
             </div>
           </div>
 
-          {/* Confidence Indicators Panel */}
-          <div className="xl:col-span-1">
-            <div className="bg-white/60 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/30 p-6 sticky top-6">
-              <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center">
-                <div className="w-8 h-8 bg-gradient-to-r from-yellow-500 to-amber-500 rounded-2xl mr-3 flex items-center justify-center">
-                  <span className="text-white">📈</span>
-                </div>
-                Confidence Indicators
-              </h3>
-
-              <div className="space-y-4">
-                {confidenceIndicators.map((indicator) => (
-                  <div key={indicator.id} className="p-4 bg-gradient-to-r from-yellow-50 to-amber-50 rounded-2xl border border-yellow-100">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center space-x-2">
-                        <span className="text-lg">{indicator.icon}</span>
-                        <span className="font-semibold text-gray-800">{indicator.label}</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <div className={`w-3 h-3 rounded-full bg-${getConfidenceColor(indicator.score)}-400`}></div>
-                        <span className="text-sm font-medium">{Math.round(indicator.score * 100)}%</span>
-                      </div>
-                    </div>
-
-                    <p className="text-xs text-gray-600 mb-3">{indicator.description}</p>
-
-                    {/* Progress bar */}
-                    <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
-                      <div
-                        className={`h-2 rounded-full bg-${getConfidenceColor(indicator.score)}-400`}
-                        style={{ width: `${indicator.score * 100}%` }}
-                      ></div>
-                    </div>
-
-                    {indicator.recommendations && indicator.recommendations.length > 0 && (
-                      <div className="space-y-1">
-                        {indicator.recommendations.map((rec, index) => (
-                          <p key={index} className="text-xs text-orange-600 flex items-start">
-                            <span className="mr-2">•</span>
-                            <span>{rec}</span>
-                          </p>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Overall Score */}
-              <div className="mt-6 p-4 bg-gradient-to-r from-yellow-50 to-amber-50 rounded-2xl border border-yellow-100">
-                <div className="text-center">
-                  <p className="text-sm font-medium text-yellow-700 mb-2">Overall Confidence</p>
-                  <div className="flex items-center justify-center space-x-3">
-                    <div className={`w-6 h-6 rounded-full bg-${getConfidenceColor(overallConfidence)}-400`}></div>
-                    <span className="text-3xl font-bold text-yellow-900">{Math.round(overallConfidence * 100)}%</span>
-                  </div>
-                  <p className="text-sm text-yellow-600 mt-2">{getConfidenceLabel(overallConfidence)}</p>
-                </div>
-              </div>
-
-              {/* AI Recommendations */}
-              {rfqAssessment?.recommendations && rfqAssessment.recommendations.length > 0 && (
-                <div className="mt-6">
-                  <h4 className="font-semibold text-gray-800 mb-3">AI Recommendations</h4>
-                  <div className="space-y-2">
-                    {rfqAssessment.recommendations.map((rec, index) => (
-                      <div key={index} className="p-3 bg-yellow-50 rounded-xl border border-yellow-100">
-                        <p className="text-sm text-yellow-800 flex items-start">
-                          <span className="mr-2">💡</span>
-                          <span>{rec}</span>
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
         </div>
       </div>
     </div>

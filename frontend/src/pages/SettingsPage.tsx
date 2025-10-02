@@ -32,6 +32,9 @@ interface EvaluationSettings {
   // LLM Evaluation Settings
   enable_llm_evaluation: boolean;
   
+  // Survey Generation Mode Settings
+  quick_mode_enabled: boolean;
+  
   // Model configuration
   generation_model: string;
   evaluation_model: string;
@@ -66,6 +69,9 @@ export const SettingsPage: React.FC = () => {
     
     // LLM Evaluation Settings
     enable_llm_evaluation: true,
+    
+    // Survey Generation Mode Settings
+    quick_mode_enabled: false, // Default to Enhanced mode
     
     generation_model: 'openai/gpt-5',
     evaluation_model: 'openai/gpt-5',
@@ -112,28 +118,60 @@ export const SettingsPage: React.FC = () => {
   const saveSettings = async () => {
     setSaving(true);
     try {
-      const response = await fetch('/api/v1/settings/evaluation', {
+      // Save evaluation settings
+      const settingsResponse = await fetch('/api/v1/settings/evaluation', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings)
       });
 
-      if (response.ok) {
+      // Save RFQ parsing settings
+      const rfqResponse = await fetch('/api/v1/settings/rfq-parsing', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(rfqParsing)
+      });
+
+      if (settingsResponse.ok && rfqResponse.ok) {
         addToast({
           type: 'success',
           title: 'Settings Saved',
-          message: 'Evaluation settings have been updated successfully',
+          message: 'All settings have been updated successfully',
           duration: 3000
         });
       } else {
-        throw new Error('Failed to save settings');
+        const settingsError = settingsResponse.ok ? null : await settingsResponse.json();
+        const rfqError = rfqResponse.ok ? null : await rfqResponse.json();
+        
+        if (settingsError && rfqError) {
+          addToast({
+            type: 'error',
+            title: 'Save Failed',
+            message: `Failed to save settings: ${settingsError.detail} and ${rfqError.detail}`,
+            duration: 5000
+          });
+        } else if (settingsError) {
+          addToast({
+            type: 'error',
+            title: 'Save Failed',
+            message: `Failed to save evaluation settings: ${settingsError.detail}`,
+            duration: 5000
+          });
+        } else if (rfqError) {
+          addToast({
+            type: 'error',
+            title: 'Save Failed',
+            message: `Failed to save RFQ parsing settings: ${rfqError.detail}`,
+            duration: 5000
+          });
+        }
       }
     } catch (error) {
       console.error('Failed to save settings:', error);
       addToast({
         type: 'error',
         title: 'Save Failed',
-        message: 'Failed to save evaluation settings',
+        message: 'Failed to save settings. Please try again.',
         duration: 5000
       });
     } finally {
@@ -249,6 +287,9 @@ export const SettingsPage: React.FC = () => {
       // LLM Evaluation Settings
       enable_llm_evaluation: true,
       
+      // Survey Generation Mode Settings
+      quick_mode_enabled: false, // Default to Enhanced mode
+      
       // Model configuration
       generation_model: 'openai/gpt-4o-mini',
       evaluation_model: 'openai/gpt-4o-mini',
@@ -314,166 +355,214 @@ export const SettingsPage: React.FC = () => {
           </header>
 
           <div className="p-6 space-y-8">
-            {/* Model Configuration */}
+            {/* Survey Generation Settings */}
             <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6">
               <div className="flex items-center space-x-3 mb-6">
-                <CogIcon className="w-6 h-6 text-yellow-600" />
-                <h2 className="text-xl font-semibold text-gray-900">Model Configuration</h2>
+                <CogIcon className="w-6 h-6 text-blue-600" />
+                <h2 className="text-xl font-semibold text-gray-900">Survey Generation</h2>
+              </div>
+              
+              <div className="space-y-6">
+                {/* Quick Mode Toggle */}
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                  <div>
+                    <h3 className="text-lg font-medium text-gray-900">Enable Quick Mode</h3>
+                    <p className="text-gray-600">
+                      When enabled, users can choose between Quick Mode and Enhanced Mode. 
+                      When disabled, only Enhanced Mode is available.
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.quick_mode_enabled}
+                      onChange={(e) => setSettings({ ...settings, quick_mode_enabled: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-blue-500 peer-checked:to-indigo-500"></div>
+                  </label>
+                </div>
+
+                {/* Mode Status */}
+                <div className={`p-4 rounded-xl border-2 ${
+                  settings.quick_mode_enabled 
+                    ? 'border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50' 
+                    : 'border-gray-200 bg-gray-50'
+                }`}>
+                  <div className="flex items-center space-x-3">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                      settings.quick_mode_enabled ? 'bg-blue-100' : 'bg-gray-100'
+                    }`}>
+                      <span className="text-lg">
+                        {settings.quick_mode_enabled ? '🚀' : '✨'}
+                      </span>
+                    </div>
+                    <div>
+                      <h4 className={`text-lg font-medium ${
+                        settings.quick_mode_enabled ? 'text-blue-900' : 'text-gray-700'
+                      }`}>
+                        {settings.quick_mode_enabled ? 'Quick Mode Available' : 'Enhanced Mode Only'}
+                      </h4>
+                      <p className={`text-sm ${
+                        settings.quick_mode_enabled ? 'text-blue-700' : 'text-gray-600'
+                      }`}>
+                        {settings.quick_mode_enabled 
+                          ? 'Users can choose between Quick Mode (simple form) and Enhanced Mode (detailed form).'
+                          : 'Only Enhanced Mode is available, providing comprehensive survey creation options.'
+                        }
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* AI Models Configuration */}
+            <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6">
+              <div className="flex items-center space-x-3 mb-6">
+                <CogIcon className="w-6 h-6 text-purple-600" />
+                <h2 className="text-xl font-semibold text-gray-900">AI Models</h2>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {/* Generation Model */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Survey Generation Model</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Survey Generation</label>
                   <select
                     value={settings.generation_model}
                     onChange={(e) => setSettings({ ...settings, generation_model: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                   >
                     {generationModels.map((m) => (
                       <option key={m} value={m}>{m}</option>
                     ))}
                   </select>
-                  <p className="text-xs text-gray-500 mt-1">Used for generating surveys in workflows.</p>
+                  <p className="text-xs text-gray-500 mt-1">Generates surveys</p>
                 </div>
 
                 {/* Evaluation Model */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Evaluation Model</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Evaluation</label>
                   <select
                     value={settings.evaluation_model}
                     onChange={(e) => setSettings({ ...settings, evaluation_model: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                   >
                     {evaluationModels.map((m) => (
                       <option key={m} value={m}>{m}</option>
                     ))}
                   </select>
-                  <p className="text-xs text-gray-500 mt-1">Used by pillar evaluators.</p>
+                  <p className="text-xs text-gray-500 mt-1">Evaluates quality</p>
                 </div>
 
                 {/* Embedding Model */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Embedding Model</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Embeddings</label>
                   <select
                     value={settings.embedding_model}
                     onChange={(e) => setSettings({ ...settings, embedding_model: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                   >
                     {embeddingModels.map((m) => (
                       <option key={m} value={m}>{m}</option>
                     ))}
                   </select>
-                  <p className="text-xs text-gray-500 mt-1">Used for semantic retrieval and similarity.</p>
+                  <p className="text-xs text-gray-500 mt-1">Semantic search</p>
                 </div>
-              </div>
 
-              <div className="mt-6 flex justify-end">
-                <button
-                  onClick={saveSettings}
-                  disabled={saving}
-                  className="px-6 py-2 bg-gradient-to-r from-yellow-500 to-amber-500 text-white rounded-lg hover:from-yellow-600 hover:to-amber-600 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
-                >
-                  {saving ? 'Saving...' : 'Save Model Settings'}
-                </button>
-              </div>
-            </div>
-            {/* RFQ Parsing Settings */}
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6">
-              <div className="flex items-center space-x-3 mb-6">
-                <CogIcon className="w-6 h-6 text-yellow-600" />
-                <h2 className="text-xl font-semibold text-gray-900">RFQ Parsing Settings</h2>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Parsing Model */}
+                {/* RFQ Parsing Model */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">LLM Model for Parsing</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">RFQ Parsing</label>
                   <select
                     value={rfqParsing.parsing_model}
                     onChange={(e) => setRfqParsing({ ...rfqParsing, parsing_model: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                   >
                     {rfqModels.map((m) => (
                       <option key={m} value={m}>{m}</option>
                     ))}
                   </select>
-                  <p className="text-xs text-gray-500 mt-1">Top models fetched from Replicate.</p>
+                  <p className="text-xs text-gray-500 mt-1">Parses documents</p>
                 </div>
-              </div>
-
-              <div className="mt-6 flex justify-end">
-                <button
-                  onClick={saveRfqParsingSettings}
-                  className="px-6 py-2 bg-gradient-to-r from-yellow-500 to-amber-500 text-white rounded-lg hover:from-yellow-600 hover:to-amber-600 shadow-lg"
-                >
-                  Save RFQ Parsing Settings
-                </button>
               </div>
             </div>
-            {/* Human Prompt Review Settings */}
+            {/* Quality Control & Review */}
             <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6">
               <div className="flex items-center space-x-3 mb-6">
-                <UserIcon className="w-6 h-6 text-amber-600" />
-                <h2 className="text-xl font-semibold text-gray-900">Human Prompt Review</h2>
+                <ChartBarIcon className="w-6 h-6 text-green-600" />
+                <h2 className="text-xl font-semibold text-gray-900">Quality Control & Review</h2>
               </div>
               
-              {/* Enable Prompt Review */}
-              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl mb-6">
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900">Enable Prompt Review</h3>
-                  <p className="text-gray-600">Allow human review and approval of AI-generated system prompts</p>
+              <div className="space-y-6">
+                {/* Enable LLM Evaluation */}
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                  <div>
+                    <h3 className="text-lg font-medium text-gray-900">Enable AI Quality Evaluation</h3>
+                    <p className="text-gray-600">Run AI-powered quality evaluation on generated surveys using pillar-based scoring</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.enable_llm_evaluation}
+                      onChange={(e) => setSettings({ ...settings, enable_llm_evaluation: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-green-500 peer-checked:to-emerald-500"></div>
+                  </label>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={settings.enable_prompt_review}
-                    onChange={(e) => setSettings({ 
-                      ...settings, 
-                      enable_prompt_review: e.target.checked,
-                      // Reset dependent settings if disabling
-                      prompt_review_mode: e.target.checked ? settings.prompt_review_mode : 'disabled',
-                      require_approval_for_generation: e.target.checked ? settings.require_approval_for_generation : false
-                    })}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-yellow-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-yellow-500 peer-checked:to-amber-500"></div>
-                </label>
-              </div>
 
-              {/* Review Mode Selection */}
-              {settings.enable_prompt_review && (
-                <div className="space-y-4 mb-6">
-                  <h3 className="text-lg font-medium text-gray-900">Review Mode</h3>
-                  {[
-                    {
-                      value: 'parallel',
-                      title: 'Parallel Review (Recommended)',
-                      description: 'Survey generation continues while prompts are reviewed in parallel. No blocking delays.',
-                      icon: '🔄',
-                      pros: ['No generation delays', 'Continuous improvement', 'Better user experience'],
-                      cons: ['Review happens after generation']
-                    },
-                    {
-                      value: 'blocking',
-                      title: 'Blocking Review',
-                      description: 'Survey generation waits for prompt approval before proceeding. Ensures all prompts are reviewed.',
-                      icon: '🛑',
-                      pros: ['Complete control', 'All prompts reviewed', 'Quality assurance'],
-                      cons: ['Significant delays', 'Blocks workflow']
-                    }
-                  ].map((mode) => (
-                    <div
-                      key={mode.value}
-                      className={`border-2 rounded-xl p-4 cursor-pointer transition-all duration-200 ${
-                        settings.prompt_review_mode === mode.value
-                          ? 'border-yellow-500 bg-gradient-to-br from-yellow-50 to-amber-50'
-                          : 'border-gray-200 hover:border-yellow-300 hover:bg-yellow-50'
-                      }`}
-                      onClick={() => setSettings({ ...settings, prompt_review_mode: mode.value as any })}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
+                {/* Enable Human Review */}
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                  <div>
+                    <h3 className="text-lg font-medium text-gray-900">Enable Human Prompt Review</h3>
+                    <p className="text-gray-600">Allow human review and approval of AI-generated system prompts</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.enable_prompt_review}
+                      onChange={(e) => setSettings({ 
+                        ...settings, 
+                        enable_prompt_review: e.target.checked,
+                        prompt_review_mode: e.target.checked ? settings.prompt_review_mode : 'disabled',
+                        require_approval_for_generation: e.target.checked ? settings.require_approval_for_generation : false
+                      })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-green-500 peer-checked:to-emerald-500"></div>
+                  </label>
+                </div>
+
+                {/* Review Mode Selection */}
+                {settings.enable_prompt_review && (
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-medium text-gray-900">Review Mode</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {[
+                        {
+                          value: 'parallel',
+                          title: 'Parallel Review',
+                          description: 'Survey generation continues while prompts are reviewed in parallel',
+                          icon: '🔄',
+                          recommended: true
+                        },
+                        {
+                          value: 'blocking',
+                          title: 'Blocking Review',
+                          description: 'Survey generation waits for prompt approval before proceeding',
+                          icon: '🛑',
+                          recommended: false
+                        }
+                      ].map((mode) => (
+                        <div
+                          key={mode.value}
+                          className={`border-2 rounded-xl p-4 cursor-pointer transition-all duration-200 ${
+                            settings.prompt_review_mode === mode.value
+                              ? 'border-green-500 bg-gradient-to-br from-green-50 to-emerald-50'
+                              : 'border-gray-200 hover:border-green-300 hover:bg-green-50'
+                          }`}
+                          onClick={() => setSettings({ ...settings, prompt_review_mode: mode.value as any })}
+                        >
                           <div className="flex items-center space-x-3 mb-2">
                             <input
                               type="radio"
@@ -481,248 +570,90 @@ export const SettingsPage: React.FC = () => {
                               value={mode.value}
                               checked={settings.prompt_review_mode === mode.value}
                               onChange={() => setSettings({ ...settings, prompt_review_mode: mode.value as any })}
-                              className="w-4 h-4 text-yellow-600"
+                              className="w-4 h-4 text-green-600"
                             />
                             <span className="text-2xl">{mode.icon}</span>
                             <h4 className="text-lg font-medium text-gray-900">{mode.title}</h4>
+                            {mode.recommended && (
+                              <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Recommended</span>
+                            )}
                           </div>
-                          <p className="text-gray-600 mb-3 ml-7">{mode.description}</p>
-                          <div className="ml-7 grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                            <div>
-                              <p className="font-medium text-green-700 mb-1">Pros:</p>
-                              <ul className="text-green-600 space-y-1">
-                                {mode.pros.map((pro, idx) => (
-                                  <li key={idx}>• {pro}</li>
-                                ))}
-                              </ul>
-                            </div>
-                            <div>
-                              <p className="font-medium text-red-700 mb-1">Cons:</p>
-                              <ul className="text-red-600 space-y-1">
-                                {mode.cons.map((con, idx) => (
-                                  <li key={idx}>• {con}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          </div>
+                          <p className="text-gray-600 text-sm ml-7">{mode.description}</p>
                         </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Additional Review Options */}
-              {settings.enable_prompt_review && (
-                <div className="space-y-4">
-                  {/* Require Approval for Generation */}
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-                    <div>
-                      <h3 className="text-lg font-medium text-gray-900">Require Approval for Generation</h3>
-                      <p className="text-gray-600">Block survey generation until prompt is approved (only applies to blocking mode)</p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={settings.require_approval_for_generation}
-                        disabled={settings.prompt_review_mode !== 'blocking'}
-                        onChange={(e) => setSettings({ ...settings, require_approval_for_generation: e.target.checked })}
-                        className="sr-only peer"
-                      />
-                      <div className={`w-11 h-6 rounded-full peer ${
-                        settings.prompt_review_mode !== 'blocking' 
-                          ? 'bg-gray-200 cursor-not-allowed' 
-                          : 'bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-yellow-300 peer-checked:bg-gradient-to-r peer-checked:from-yellow-500 peer-checked:to-amber-500'
-                      } peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all`}></div>
-                    </label>
-                  </div>
-
-                  {/* Auto-approve Trusted Prompts */}
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-                    <div>
-                      <h3 className="text-lg font-medium text-gray-900">Auto-approve Trusted Prompts</h3>
-                      <p className="text-gray-600">Automatically approve prompts similar to previously approved ones</p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={settings.auto_approve_trusted_prompts}
-                        onChange={(e) => setSettings({ ...settings, auto_approve_trusted_prompts: e.target.checked })}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-yellow-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-yellow-500 peer-checked:to-amber-500"></div>
-                    </label>
-                  </div>
-
-                  {/* Review Timeout */}
-                  <div className="p-4 bg-gray-50 rounded-xl">
-                    <label className="block text-lg font-medium text-gray-900 mb-2">
-                      Review Timeout (Hours)
-                    </label>
-                    <div className="flex items-center space-x-3">
-                      <ClockIcon className="w-5 h-5 text-gray-500" />
-                      <input
-                        type="number"
-                        value={settings.prompt_review_timeout_hours}
-                        onChange={(e) => setSettings({ ...settings, prompt_review_timeout_hours: Number(e.target.value) })}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
-                        min="1"
-                        max="168"
-                        step="1"
-                      />
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">How long to wait for review before auto-approval (1-168 hours)</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* LLM Evaluation Settings */}
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6">
-              <div className="flex items-center space-x-3 mb-6">
-                <ChartBarIcon className="w-6 h-6 text-blue-600" />
-                <h2 className="text-xl font-semibold text-gray-900">LLM Evaluation Settings</h2>
-              </div>
-              
-              {/* Enable LLM Evaluation */}
-              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl mb-6">
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900">Enable LLM Evaluation</h3>
-                  <p className="text-gray-600">Run AI-powered quality evaluation on generated surveys using pillar-based scoring</p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={settings.enable_llm_evaluation}
-                    onChange={(e) => setSettings({ ...settings, enable_llm_evaluation: e.target.checked })}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-blue-500 peer-checked:to-indigo-500"></div>
-                </label>
-              </div>
-
-              {!settings.enable_llm_evaluation && (
-                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
-                  <div className="flex items-start space-x-3">
-                    <InformationCircleIcon className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <h4 className="text-sm font-medium text-yellow-800">LLM Evaluation Disabled</h4>
-                      <p className="text-sm text-yellow-700 mt-1">
-                        When disabled, surveys will be generated without AI quality evaluation. 
-                        This will speed up generation but skip pillar-based quality scoring.
-                      </p>
+                      ))}
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
 
-            {/* Survey Evaluation Mode */}
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-semibold text-gray-900">Survey Evaluation</h2>
-                <div className="flex items-center space-x-2">
-                  <span className="text-sm text-gray-500">Current Mode:</span>
-                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                    settings.evaluation_mode === 'single_call' 
-                      ? 'bg-green-100 text-green-800'
-                      : settings.evaluation_mode === 'aira_v1'
-                      ? 'bg-purple-100 text-purple-800'
-                      : settings.evaluation_mode === 'multiple_calls'
-                      ? 'bg-blue-100 text-blue-800'
-                      : 'bg-gray-100 text-gray-800'
-                  }`}>
-                    {settings.evaluation_mode === 'single_call' ? 'Single Call' :
-                     settings.evaluation_mode === 'aira_v1' ? 'AiRA v1 Framework' :
-                     settings.evaluation_mode === 'multiple_calls' ? 'Parallel Evaluation' :
-                     settings.evaluation_mode}
-                  </span>
-                </div>
-              </div>
-              
-              <div className="space-y-4">
-                {[
-                  {
-                    value: 'single_call',
-                    title: 'Single Call (Recommended)',
-                    description: 'One comprehensive AI evaluation for all quality pillars. Fast and cost-effective.',
-                    color: 'green',
-                    icon: <CheckCircleIcon className="w-6 h-6 text-green-600" />,
-                    pros: ['Fastest evaluation', 'Lower API costs', 'Consistent scoring'],
-                    cons: ['Less granular feedback']
-                  }
-                ].map((mode) => (
-                  <div
-                    key={mode.value}
-                    className={`border-2 rounded-xl p-4 cursor-pointer transition-all duration-200 ${
-                      settings.evaluation_mode === mode.value
-                        ? mode.color === 'green' 
-                          ? 'border-green-500 bg-gradient-to-br from-green-50 to-emerald-50'
-                          : mode.color === 'purple'
-                          ? 'border-purple-500 bg-gradient-to-br from-purple-50 to-violet-50'
-                          : mode.color === 'blue'
-                          ? 'border-blue-500 bg-gradient-to-br from-blue-50 to-cyan-50'
-                          : 'border-amber-500 bg-gradient-to-br from-amber-50 to-orange-50'
-                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                    }`}
-                    onClick={() => setSettings({ ...settings, evaluation_mode: mode.value as any })}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-3 mb-2">
+                {/* Additional Review Options */}
+                {settings.enable_prompt_review && (
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-medium text-gray-900">Review Options</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Require Approval for Generation */}
+                      <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                        <div>
+                          <h4 className="font-medium text-gray-900">Require Approval</h4>
+                          <p className="text-sm text-gray-600">Block generation until approved</p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
                           <input
-                            type="radio"
-                            name="evaluation_mode"
-                            value={mode.value}
-                            checked={settings.evaluation_mode === mode.value}
-                            onChange={() => setSettings({ ...settings, evaluation_mode: mode.value as any })}
-                            className="w-4 h-4 text-yellow-600"
+                            type="checkbox"
+                            checked={settings.require_approval_for_generation}
+                            disabled={settings.prompt_review_mode !== 'blocking'}
+                            onChange={(e) => setSettings({ ...settings, require_approval_for_generation: e.target.checked })}
+                            className="sr-only peer"
                           />
-                          {mode.icon}
-                          <h3 className="text-lg font-medium text-gray-900">{mode.title}</h3>
+                          <div className={`w-11 h-6 rounded-full peer ${
+                            settings.prompt_review_mode !== 'blocking' 
+                              ? 'bg-gray-200 cursor-not-allowed' 
+                              : 'bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 peer-checked:bg-gradient-to-r peer-checked:from-green-500 peer-checked:to-emerald-500'
+                          } peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all`}></div>
+                        </label>
+                      </div>
+
+                      {/* Auto-approve Trusted Prompts */}
+                      <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                        <div>
+                          <h4 className="font-medium text-gray-900">Auto-approve Similar</h4>
+                          <p className="text-sm text-gray-600">Auto-approve similar prompts</p>
                         </div>
-                        <p className="text-gray-600 mb-3 ml-7">{mode.description}</p>
-                        <div className="ml-7 grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                          <div>
-                            <p className="font-medium text-green-700 mb-1">Pros:</p>
-                            <ul className="text-green-600 space-y-1">
-                              {mode.pros.map((pro, idx) => (
-                                <li key={idx}>• {pro}</li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div>
-                            <p className="font-medium text-red-700 mb-1">Cons:</p>
-                            <ul className="text-red-600 space-y-1">
-                              {mode.cons.map((con, idx) => (
-                                <li key={idx}>• {con}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={settings.auto_approve_trusted_prompts}
+                            onChange={(e) => setSettings({ ...settings, auto_approve_trusted_prompts: e.target.checked })}
+                            className="sr-only peer"
+                          />
+                          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-green-500 peer-checked:to-emerald-500"></div>
+                        </label>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
 
-              {/* Multiple calls and AiRA v1 UI removed */}
+                    {/* Review Timeout */}
+                    <div className="p-4 bg-gray-50 rounded-xl">
+                      <label className="block font-medium text-gray-900 mb-2">
+                        Review Timeout (Hours)
+                      </label>
+                      <div className="flex items-center space-x-3">
+                        <ClockIcon className="w-5 h-5 text-gray-500" />
+                        <input
+                          type="number"
+                          value={settings.prompt_review_timeout_hours}
+                          onChange={(e) => setSettings({ ...settings, prompt_review_timeout_hours: Number(e.target.value) })}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                          min="1"
+                          max="168"
+                          step="1"
+                        />
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">Auto-approval timeout (1-168 hours)</p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Information Panel */}
-            <div className="bg-gradient-to-br from-yellow-50 to-amber-50 border border-yellow-200 rounded-xl p-6">
-              <div className="flex items-start space-x-3">
-                <InformationCircleIcon className="w-6 h-6 text-amber-600 mt-0.5" />
-                <div>
-                  <h3 className="text-lg font-medium text-amber-900 mb-2">About Human Review</h3>
-                  <div className="text-amber-800 space-y-2">
-                    <p><strong>Parallel Review:</strong> Allows continuous survey generation while building a prompt approval dataset for future improvements. Recommended for most workflows.</p>
-                    <p><strong>Blocking Review:</strong> Ensures complete human oversight but introduces delays in the generation pipeline. Use when quality control is critical.</p>
-                    <p><strong>Auto-approval:</strong> Uses machine learning to automatically approve prompts similar to previously approved ones, reducing manual review workload.</p>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
