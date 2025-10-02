@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronDownIcon, ChevronRightIcon, TagIcon, CheckIcon } from '@heroicons/react/24/outline';
+import { ChevronDownIcon, ChevronRightIcon, TagIcon } from '@heroicons/react/24/outline';
 import LikertScale from './LikertScale';
 import {
   QuestionAnnotation,
@@ -106,32 +106,6 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
     return currentAnnotations?.sectionAnnotations?.find((sa: SectionAnnotation) => sa.sectionId === sectionId);
   };
 
-  const handleQuestionAnnotation = (questionId: string, field: string, value: any) => {
-    const existing = getQuestionAnnotation(questionId);
-    const annotation: QuestionAnnotation = {
-      questionId,
-      required: field === 'required' ? value : existing?.required || false,
-      quality: field === 'quality' ? value : existing?.quality || 3,
-      relevant: field === 'relevant' ? value : existing?.relevant || 3,
-      pillars: field === 'pillars' ? value : existing?.pillars || {},
-      comment: field === 'comment' ? value : existing?.comment || '',
-      annotatorId: 'current-user'
-    };
-    onQuestionAnnotation(annotation);
-  };
-
-  const handleSectionAnnotation = (sectionId: string, field: string, value: any) => {
-    const existing = getSectionAnnotation(sectionId);
-    const annotation: SectionAnnotation = {
-      sectionId,
-      quality: field === 'quality' ? value : existing?.quality || 3,
-      relevant: field === 'relevant' ? value : existing?.relevant || 3,
-      pillars: field === 'pillars' ? value : existing?.pillars || {},
-      comment: field === 'comment' ? value : existing?.comment || '',
-      annotatorId: 'current-user'
-    };
-    onSectionAnnotation(annotation);
-  };
 
   const isAnnotated = (type: 'question' | 'section', id: string) => {
     if (type === 'question') {

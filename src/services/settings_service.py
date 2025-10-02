@@ -6,11 +6,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from src.database.models import Settings
 from src.config.settings import settings as app_settings
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 import logging
-import json
 
 logger = logging.getLogger(__name__)
+
 
 class SettingsService:
     def __init__(self, db: Session):
@@ -21,9 +21,9 @@ class SettingsService:
         try:
             setting = self.db.query(Settings).filter(
                 Settings.setting_key == key,
-                Settings.is_active == True
+                Settings.is_active.is_(True)
             ).first()
-            
+
             if setting and setting.setting_value:
                 return setting.setting_value
             return default
@@ -38,7 +38,7 @@ class SettingsService:
             existing_setting = self.db.query(Settings).filter(
                 Settings.setting_key == key
             ).first()
-            
+
             if existing_setting:
                 # Update existing setting
                 existing_setting.setting_value = value
@@ -54,11 +54,11 @@ class SettingsService:
                     is_active=True
                 )
                 self.db.add(new_setting)
-            
+
             self.db.commit()
             logger.info(f"✅ [SettingsService] Setting {key} updated successfully")
             return True
-            
+
         except SQLAlchemyError as e:
             logger.error(f"❌ [SettingsService] Failed to set setting {key}: {e}")
             self.db.rollback()
@@ -190,16 +190,25 @@ class SettingsService:
     def get_rfq_parsing_settings(self) -> Dict[str, Any]:
         """Get RFQ parsing settings (threshold and model)."""
         default_settings = {
-            "parsing_model": "openai/gpt-4o-mini"
+            "parsing_model": "openai/gpt-5"
         }
         try:
+            logger.info(f"🔍 [SettingsService] Getting RFQ parsing settings from database...")
             settings = self.get_setting("rfq_parsing_settings", default_settings)
+            logger.info(f"🔍 [SettingsService] Raw settings from database: {settings}")
+            
             for key, default_value in default_settings.items():
                 if key not in settings:
+                    logger.info(f"🔧 [SettingsService] Adding missing key '{key}' with default value: {default_value}")
                     settings[key] = default_value
+                else:
+                    logger.info(f"🔧 [SettingsService] Found key '{key}' with value: {settings[key]}")
+            
+            logger.info(f"✅ [SettingsService] Final RFQ parsing settings: {settings}")
             return settings
         except Exception as e:
             logger.error(f"❌ [SettingsService] Failed to get RFQ parsing settings: {e}")
+            logger.info(f"🔧 [SettingsService] Returning default settings: {default_settings}")
             return default_settings
 
     def update_rfq_parsing_settings(self, settings: Dict[str, Any]) -> bool:

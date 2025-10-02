@@ -253,7 +253,7 @@ def create_enhanced_description(rfq: Dict[str, Any]) -> str:
     Combine enhanced text with original description
     """
     enhanced_text = build_enhanced_rfq_text(rfq)
-    original_description = rfq.get('description', '')
+    original_description = str(rfq.get('description', ''))
 
     if not enhanced_text.strip():
         return original_description

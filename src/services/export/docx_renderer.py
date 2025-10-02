@@ -401,6 +401,145 @@ class DocxSurveyRenderer(SurveyExportRenderer):
 
         self.document.add_paragraph("")
 
+    def _render_likert(self, question: Dict[str, Any]) -> None:
+        """Render Likert scale question."""
+        self._add_question_header(question)
+        self._add_required_indicator(question)
+
+        # Add scale labels
+        scale_paragraph = self.document.add_paragraph()
+        scale_paragraph.add_run("Scale: ")
+        
+        scale_labels = ["Very Unlikely", "Unlikely", "Neutral", "Likely", "Very Likely"]
+        for i, label in enumerate(scale_labels):
+            if i > 0:
+                scale_paragraph.add_run(" | ")
+            scale_paragraph.add_run(f"{i+1}. {label}")
+
+        # Add radio button options
+        for i in range(1, 6):
+            option_paragraph = self.document.add_paragraph()
+            option_paragraph.style = 'List Bullet'
+            option_paragraph.add_run(f"○ {i}")
+
+        self.document.add_paragraph("")
+
+    def _render_open_end(self, question: Dict[str, Any]) -> None:
+        """Render open-ended text question."""
+        self._add_question_header(question)
+        self._add_required_indicator(question)
+
+        # Add text input area
+        input_paragraph = self.document.add_paragraph()
+        input_paragraph.add_run("Response: ")
+        
+        # Add a line for writing
+        response_paragraph = self.document.add_paragraph()
+        response_paragraph.add_run("_" * 50)
+
+        self.document.add_paragraph("")
+
+    def _render_display_only(self, question: Dict[str, Any]) -> None:
+        """Render display-only instruction block."""
+        # Add instruction header
+        paragraph = self.document.add_paragraph()
+        run = paragraph.add_run("📋 Programmer Instructions")
+        run.bold = True
+        run.font.size = Pt(12)
+
+        # Add instruction content in a bordered paragraph
+        instruction_paragraph = self.document.add_paragraph()
+        instruction_paragraph.style = 'Quote'
+        instruction_paragraph.add_run(question.get("text", ""))
+
+        # Add description if present
+        if question.get("description"):
+            desc_paragraph = self.document.add_paragraph()
+            desc_paragraph.add_run(f"Note: {question['description']}")
+            desc_paragraph.style = 'Intense Quote'
+
+        # Add metadata
+        meta_paragraph = self.document.add_paragraph()
+        meta_paragraph.add_run("Type: Display Only | No response required")
+        meta_paragraph.style = 'Caption'
+
+        self.document.add_paragraph("")
+
+    def _render_single_open(self, question: Dict[str, Any]) -> None:
+        """Render single-line open-ended question."""
+        self._add_question_header(question)
+        self._add_required_indicator(question)
+
+        # Add single line input
+        input_paragraph = self.document.add_paragraph()
+        input_paragraph.add_run("Response: ")
+        
+        # Add a line for writing
+        response_paragraph = self.document.add_paragraph()
+        response_paragraph.add_run("_" * 50)
+
+        self.document.add_paragraph("")
+
+    def _render_multiple_open(self, question: Dict[str, Any]) -> None:
+        """Render multi-line open-ended question."""
+        self._add_question_header(question)
+        self._add_required_indicator(question)
+
+        # Add multi-line input area
+        input_paragraph = self.document.add_paragraph()
+        input_paragraph.add_run("Response: ")
+        
+        # Add multiple lines for writing
+        for i in range(4):
+            response_paragraph = self.document.add_paragraph()
+            response_paragraph.add_run("_" * 50)
+
+        self.document.add_paragraph("")
+
+    def _render_open_ended(self, question: Dict[str, Any]) -> None:
+        """Render open-ended question with larger text area."""
+        self._add_question_header(question)
+        self._add_required_indicator(question)
+
+        # Add open-ended input area
+        input_paragraph = self.document.add_paragraph()
+        input_paragraph.add_run("Detailed Response: ")
+        
+        # Add multiple lines for detailed writing
+        for i in range(5):
+            response_paragraph = self.document.add_paragraph()
+            response_paragraph.add_run("_" * 50)
+
+        self.document.add_paragraph("")
+
+    def _render_unsupported_question_type(self, question: Dict[str, Any]) -> None:
+        """
+        Render unsupported question types with a generic text area.
+        This ensures DOCX generation doesn't fail for unknown question types.
+        
+        Args:
+            question: Question data dictionary
+        """
+        self._add_question_header(question)
+        self._add_required_indicator(question)
+
+        # Add warning note
+        warning_paragraph = self.document.add_paragraph()
+        warning_run = warning_paragraph.add_run(f"⚠️ Unsupported question type: {question.get('type', 'unknown')}")
+        warning_run.font.size = Pt(9)
+        warning_run.font.color.rgb = None  # Use default color
+
+        # Add generic text input area
+        input_paragraph = self.document.add_paragraph()
+        input_paragraph.add_run("Response: ")
+        
+        # Add lines for writing
+        for i in range(3):
+            response_paragraph = self.document.add_paragraph()
+            response_paragraph.add_run("_" * 50)
+
+        self.document.add_paragraph("")
+
 
 # Register the DOCX renderer
 export_registry.register_renderer("docx", DocxSurveyRenderer)

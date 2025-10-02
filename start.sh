@@ -103,6 +103,14 @@ run_migrations() {
     log_info "Current working directory: $(pwd)"
     log_info "Alembic files: $(ls -la alembic/)"
     
+    # Check current migration status first
+    log_info "Checking current migration status..."
+    if $UV_CMD run alembic current 2>&1; then
+        log_success "Current migration status retrieved"
+    else
+        log_warning "Could not get current migration status, continuing..."
+    fi
+    
     # Try to run migrations with detailed error output
     log_info "Executing migration command..."
     if $UV_CMD run alembic upgrade head 2>&1; then
@@ -110,7 +118,16 @@ run_migrations() {
     else
         local exit_code=$?
         log_error "Database migrations failed with exit code $exit_code"
-        log_info "Continuing anyway..."
+        
+        # Check if it's a "no changes" scenario (which is actually OK)
+        if [ $exit_code -eq 0 ]; then
+            log_info "Migration completed with no changes needed"
+            return 0
+        fi
+        
+        # For Railway, we should be more lenient but still log the issue
+        log_warning "Migration failed, but continuing for Railway deployment..."
+        log_warning "This may cause database schema issues. Check Railway logs for details."
         return 0
     fi
 }

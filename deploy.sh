@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Survey Engine Railway Deployment Script
-# This script runs build checks, builds and pushes the Docker image to Railway
+# Survey Engine Railway Deployment Script (Streamlined)
+# This script runs essential build checks, builds and pushes the Docker image to Railway
 # Usage: ./deploy.sh [--strict-types] [--strict-lint] [--strict] [--clean]
 
 set -e  # Exit on any error
@@ -36,6 +36,9 @@ for arg in "$@"; do
             echo "  --strict          Enable both strict type checking and linting"
             echo "  --clean           Perform a clean build (remove build artifacts and Docker cache)"
             echo "  --help, -h        Show this help message"
+            echo ""
+            echo "Note: Development checks (formatting, imports, logger) are now in start-local.sh"
+            echo "      Run './start-local.sh dev-checks' for development-specific checks"
             exit 0
             ;;
         *)
@@ -48,7 +51,7 @@ done
 
 echo "🚀 Starting Survey Engine deployment to Railway..."
 
-# Run comprehensive build checks first
+# Run essential build checks first
 echo "🔍 Running pre-deployment build checks..."
 echo "================================================"
 
@@ -102,44 +105,7 @@ else
     fi
 fi
 
-# Run logger usage check
-echo "🔍 Running logger usage check..."
-if ! uv run python scripts/check_logger_usage.py; then
-    echo "❌ Logger usage check failed! Fix logger issues before deploying."
-    exit 1
-fi
-
-# Run formatting check
-echo "🔍 Checking code formatting..."
-if [ "$STRICT_LINT" = true ]; then
-    echo "   (Strict mode: formatting errors will block deployment)"
-    if ! uv run black --check src/ > /dev/null 2>&1; then
-        echo "❌ Code formatting check failed! Run 'uv run black src/' to fix formatting."
-        exit 1
-    fi
-    if ! uv run isort --check-only src/ > /dev/null 2>&1; then
-        echo "❌ Import sorting check failed! Run 'uv run isort src/' to fix imports."
-        exit 1
-    fi
-    echo "✅ Formatting check passed!"
-else
-    echo "   (Lenient mode: formatting errors will show as warnings)"
-    if ! uv run black --check src/ > /dev/null 2>&1; then
-        echo "⚠️  Code formatting issues found, but continuing with deployment..."
-        echo "   (Run 'uv run black src/' to fix formatting, or use --strict-lint to enforce)"
-    else
-        echo "✅ Code formatting is correct!"
-    fi
-    
-    if ! uv run isort --check-only src/ > /dev/null 2>&1; then
-        echo "⚠️  Import sorting issues found, but continuing with deployment..."
-        echo "   (Run 'uv run isort src/' to fix imports, or use --strict-lint to enforce)"
-    else
-        echo "✅ Import sorting is correct!"
-    fi
-fi
-
-echo "✅ All build checks passed!"
+echo "✅ Essential build checks passed!"
 echo "================================================"
 
 # Clean build if requested

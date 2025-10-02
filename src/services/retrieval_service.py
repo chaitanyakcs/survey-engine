@@ -677,11 +677,11 @@ class RetrievalService:
             "nps": ["customer satisfaction", "loyalty measurement", "brand health"],
             "csat": ["customer satisfaction", "service quality", "experience measurement"]
         }
-        
+
         # Find matching methodology
         for key, goals in methodology_goals.items():
             if key in method_lower:
                 return goals
-        
+
         # Default goals for unknown methodologies
         return ["general research", "data collection", "market insights"]

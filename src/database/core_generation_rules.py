@@ -3,6 +3,7 @@ Core Generation Rules Dataset
 Converted from AiRA v1 evaluation criteria to proactive generation guidelines
 Organized by the 5 quality pillars for seamless integration
 """
+from typing import Dict
 
 # Core Generation Rules Dataset (58 rules total, converted from AiRA v1 evaluation criteria)
 CORE_GENERATION_RULES = [
@@ -1092,21 +1093,21 @@ CORE_GENERATION_RULES = [
     }
 ]
 
-def validate_rules_structure():
+def validate_rules_structure() -> None:
     """Validate that the rules structure is correct"""
     total_rules = len(CORE_GENERATION_RULES)
 
     # Count by pillar
-    pillar_counts = {}
-    pillar_weights = {}
+    pillar_counts: Dict[str, int] = {}
+    pillar_weights: Dict[str, float] = {}
 
     for rule in CORE_GENERATION_RULES:
-        pillar = rule['category']
+        pillar = str(rule['category'])
         if pillar not in pillar_counts:
             pillar_counts[pillar] = 0
-            pillar_weights[pillar] = 0
+            pillar_weights[pillar] = 0.0
         pillar_counts[pillar] += 1
-        pillar_weights[pillar] += rule['weight']
+        pillar_weights[pillar] += float(rule['weight'])
 
     # Expected counts
     expected_counts = {
@@ -1131,8 +1132,8 @@ def validate_rules_structure():
 
     for pillar, count in pillar_counts.items():
         expected = expected_counts.get(pillar, 0)
-        weight = pillar_weights.get(pillar, 0)
-        expected_weight = expected_weights.get(pillar, 0)
+        weight = pillar_weights.get(pillar, 0.0)
+        expected_weight = expected_weights.get(pillar, 0.0)
         status = "✅" if count == expected else "❌"
         weight_status = "✅" if abs(weight - expected_weight) < 0.01 else "❌"
         print(f"  {status} {pillar}: {count} rules (expected: {expected})")

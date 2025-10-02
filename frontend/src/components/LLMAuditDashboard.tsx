@@ -1,11 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  ChartBarIcon, 
-  ClockIcon, 
   CheckCircleIcon, 
   XCircleIcon,
   EyeIcon,
-  CogIcon,
   ClipboardDocumentIcon,
   CheckIcon
 } from '@heroicons/react/24/outline';
@@ -37,22 +34,6 @@ interface LLMAuditRecord {
   created_at: string;
 }
 
-interface CostSummary {
-  total_cost_usd: number;
-  total_interactions: number;
-  successful_interactions: number;
-  success_rate: number;
-  cost_by_purpose: Array<{
-    purpose: string;
-    total_cost_usd: number;
-    interaction_count: number;
-  }>;
-  cost_by_model: Array<{
-    model_name: string;
-    total_cost_usd: number;
-    interaction_count: number;
-  }>;
-}
 
 interface LLMAuditDashboardProps {
   onClose: () => void;

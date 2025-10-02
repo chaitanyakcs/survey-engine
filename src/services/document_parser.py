@@ -35,15 +35,19 @@ class DocumentParser:
             )
         self.replicate_client = replicate.Client(api_token=settings.replicate_api_token)
         self.model = self._get_rfq_parsing_model(db_session)  # Get model from RFQ parsing settings
+        logger.info(f"🚀 [DocumentParser] Initialized with model: {self.model}")
+        logger.info(f"🚀 [DocumentParser] Model source: DocumentParser.__init__")
         self.db_session = db_session
         self.rfq_parsing_manager = rfq_parsing_manager
 
     def _get_rfq_parsing_model(self, db_session: Optional[Any] = None) -> str:
-        """Get RFQ parsing model from database settings or fallback to config"""
+        """Get RFQ parsing model from database settings with valid fallback"""
+        # Valid Replicate model for RFQ parsing (never use settings.py)
+        VALID_DEFAULT_MODEL = "openai/gpt-5"
+        
         try:
             logger.info(f"🔍 [DocumentParser] Starting RFQ parsing model selection...")
             logger.info(f"🔍 [DocumentParser] Database session available: {bool(db_session)}")
-            logger.info(f"🔍 [DocumentParser] Config default model: {settings.generation_model}")
             
             if db_session:
                 from src.services.settings_service import SettingsService
@@ -58,18 +62,20 @@ class DocumentParser:
                     logger.info(f"🔧 [DocumentParser] Model source: RFQ_PARSING_DATABASE")
                     return model
                 else:
-                    logger.info(f"🔧 [DocumentParser] No RFQ parsing settings found, using config default: {settings.generation_model}")
-                    logger.info(f"🔧 [DocumentParser] Model source: CONFIG_FALLBACK")
-                    return settings.generation_model
+                    logger.warning(f"⚠️ [DocumentParser] No RFQ parsing settings found in database")
+                    logger.info(f"🔧 [DocumentParser] Using valid default model: {VALID_DEFAULT_MODEL}")
+                    logger.info(f"🔧 [DocumentParser] Model source: VALID_DEFAULT")
+                    return VALID_DEFAULT_MODEL
             else:
-                logger.info(f"🔧 [DocumentParser] No database session, using config default: {settings.generation_model}")
-                logger.info(f"🔧 [DocumentParser] Model source: CONFIG_NO_DB")
-                return settings.generation_model
+                logger.warning(f"⚠️ [DocumentParser] No database session available")
+                logger.info(f"🔧 [DocumentParser] Using valid default model: {VALID_DEFAULT_MODEL}")
+                logger.info(f"🔧 [DocumentParser] Model source: VALID_DEFAULT_NO_DB")
+                return VALID_DEFAULT_MODEL
         except Exception as e:
-            logger.warning(f"⚠️ [DocumentParser] Failed to get RFQ parsing model from database: {str(e)}")
-            logger.info(f"🔧 [DocumentParser] Using config default: {settings.generation_model}")
-            logger.info(f"🔧 [DocumentParser] Model source: CONFIG_ERROR_FALLBACK")
-            return settings.generation_model
+            logger.error(f"❌ [DocumentParser] Failed to get RFQ parsing model from database: {str(e)}")
+            logger.info(f"🔧 [DocumentParser] Using valid default model: {VALID_DEFAULT_MODEL}")
+            logger.info(f"🔧 [DocumentParser] Model source: VALID_DEFAULT_ERROR")
+            return VALID_DEFAULT_MODEL
 
     async def _send_progress(self, session_id: str, stage: str, progress: int, message: str, details: Optional[str] = None):
         """Send progress update via WebSocket if manager is available."""
@@ -213,6 +219,8 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                         tags=["document_parsing", "survey_conversion"]
                     ) as audit_context:
                         logger.info(f"🚀 [Document Parser] Calling Replicate API with auditing")
+                        logger.info(f"🎯 [Document Parser] Using model: {self.model}")
+                        logger.info(f"🎯 [Document Parser] Model source: DocumentParser._parse_document_with_llm (audited)")
                         start_time = time.time()
                         output = await self.replicate_client.async_run(
                             self.model,
@@ -232,6 +240,8 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                 else:
                     # Fallback without auditing
                     logger.info(f"🚀 [Document Parser] Calling Replicate API without auditing")
+                    logger.info(f"🎯 [Document Parser] Using model: {self.model}")
+                    logger.info(f"🎯 [Document Parser] Model source: DocumentParser._parse_document_with_llm (non-audited)")
                     output = await self.replicate_client.async_run(
                         self.model,
                         input={
@@ -784,6 +794,8 @@ IMPORTANT:
                         tags=["document_parsing", "rfq_extraction"]
                     ) as audit_context:
                         logger.info(f"🚀 [Document Parser] Calling Replicate API for RFQ extraction with auditing")
+                        logger.info(f"🎯 [Document Parser] Using model: {self.model}")
+                        logger.info(f"🎯 [Document Parser] Model source: DocumentParser.extract_rfq_data (audited)")
                         start_time = time.time()
                         output = await self.replicate_client.async_run(
                             self.model,
@@ -803,6 +815,8 @@ IMPORTANT:
                 else:
                     # Fallback without auditing
                     logger.info(f"🚀 [Document Parser] Calling Replicate API for RFQ extraction without auditing")
+                    logger.info(f"🎯 [Document Parser] Using model: {self.model}")
+                    logger.info(f"🎯 [Document Parser] Model source: DocumentParser.extract_rfq_data (non-audited)")
                     output = await self.replicate_client.async_run(
                         self.model,
                         input={

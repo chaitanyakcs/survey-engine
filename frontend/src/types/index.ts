@@ -354,7 +354,7 @@ export interface SurveyListItem {
 export interface Question {
   id: string;
   text: string;
-  type: 'multiple_choice' | 'scale' | 'text' | 'ranking' | 'instruction' | 'single_choice' | 'matrix' | 'numeric' | 'date' | 'boolean' | 'open_text' | 'multiple_select' | 'matrix_likert' | 'constant_sum' | 'numeric_grid' | 'numeric_open';
+  type: 'multiple_choice' | 'scale' | 'text' | 'ranking' | 'instruction' | 'single_choice' | 'matrix' | 'numeric' | 'date' | 'boolean' | 'open_text' | 'multiple_select' | 'matrix_likert' | 'constant_sum' | 'numeric_grid' | 'numeric_open' | 'likert' | 'open_end' | 'display_only' | 'single_open' | 'multiple_open' | 'open_ended';
   options?: string[];
   scale_labels?: Record<string, string>;
   required: boolean;

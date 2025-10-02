@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PlusIcon, TrashIcon, PencilIcon, XMarkIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, TrashIcon, PencilIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { useAppStore } from '../store/useAppStore';
 
 interface MethodologyRule {
@@ -173,16 +173,6 @@ export const MethodologyRules: React.FC<MethodologyRulesProps> = ({
     }
   };
 
-  const startAddMethodology = () => {
-    setAddingMethodology(true);
-    setNewMethodologyData({
-      description: '',
-      required_questions: 0,
-      validation_rules: [],
-      question_flow: [],
-      best_practices: []
-    });
-  };
 
   const cancelAddMethodology = () => {
     setAddingMethodology(false);

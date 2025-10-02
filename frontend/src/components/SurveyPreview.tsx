@@ -11,7 +11,7 @@ import MatrixLikert from './MatrixLikert';
 import ConstantSum from './ConstantSum';
 import NumericGrid from './NumericGrid';
 import NumericOpen from './NumericOpen';
-import { PencilIcon, BookmarkIcon, ArrowDownTrayIcon, ChevronDownIcon, ChevronRightIcon, TagIcon, CheckIcon, XMarkIcon, StarIcon } from '@heroicons/react/24/outline';
+import { PencilIcon, ChevronDownIcon, ChevronRightIcon, TagIcon, CheckIcon, XMarkIcon, StarIcon, TrashIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
 
 // Helper function to extract all questions from survey (supports both formats)
 const extractAllQuestions = (survey: Survey): Question[] => {
@@ -467,8 +467,91 @@ const QuestionCard: React.FC<{
           <NumericOpen question={question} isPreview={true} />
         )}
 
+        {question.type === 'likert' && (
+          <div className="space-y-3">
+            <div className="flex justify-between text-sm text-gray-600">
+              <span>Very Unlikely</span>
+              <span>Unlikely</span>
+              <span>Neutral</span>
+              <span>Likely</span>
+              <span>Very Likely</span>
+            </div>
+            <div className="flex justify-between">
+              {[1, 2, 3, 4, 5].map((value) => (
+                <label key={value} className="flex flex-col items-center space-y-1">
+                  <input
+                    type="radio"
+                    name={`${question.id}_likert`}
+                    value={value}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                    disabled={true}
+                  />
+                  <span className="text-xs text-gray-500">{value}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {question.type === 'open_end' && (
+          <textarea
+            placeholder="Please enter your response..."
+            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none bg-gray-50"
+            rows={3}
+            disabled={true}
+          />
+        )}
+
+        {question.type === 'display_only' && (
+          <div className="bg-gray-50 border-l-4 border-gray-400 p-4 rounded-r-lg">
+            <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+              {question.text}
+            </div>
+            {question.description && (
+              <div className="mt-2 text-xs text-gray-600 italic">
+                {question.description}
+              </div>
+            )}
+            <div className="mt-3 flex items-center justify-between">
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                Display Only
+              </span>
+              <span className="text-xs text-gray-600">
+                No response required
+              </span>
+            </div>
+          </div>
+        )}
+
+        {question.type === 'single_open' && (
+          <input
+            type="text"
+            placeholder="Please enter your response..."
+            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
+            disabled={true}
+          />
+        )}
+
+        {question.type === 'multiple_open' && (
+          <textarea
+            placeholder="Please enter your response..."
+            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none bg-gray-50"
+            rows={4}
+            disabled={true}
+          />
+        )}
+
+        {question.type === 'open_ended' && (
+          <textarea
+            placeholder="Please provide your detailed response..."
+            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none bg-gray-50"
+            rows={5}
+            disabled={true}
+          />
+        )}
+
         {/* Default fallback for unknown question types */}
-        {!['multiple_choice', 'scale', 'ranking', 'text', 'instruction', 'single_choice', 'matrix', 'numeric', 'date', 'boolean', 'open_text', 'multiple_select', 'matrix_likert', 'constant_sum', 'numeric_grid', 'numeric_open'].includes(question.type) && (
+        {!['multiple_choice', 'scale', 'ranking', 'text', 'instruction', 'single_choice', 'matrix', 'numeric', 'date', 'boolean', 'open_text', 'multiple_select', 'matrix_likert', 'constant_sum', 'numeric_grid', 'numeric_open', 'likert', 'open_end', 'display_only', 'single_open', 'multiple_open', 'open_ended'].includes(question.type) && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
             <div className="flex items-center space-x-2">
               <svg className="w-5 h-5 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
@@ -516,22 +599,25 @@ const QuestionCard: React.FC<{
               <button 
                 onClick={() => onMove(question.id, 'up')}
                 disabled={!canMoveUp}
-                className="px-3 py-1 text-sm bg-gray-600 text-white rounded hover:bg-gray-700 disabled:opacity-50"
+                className="p-2 bg-gray-600 text-white rounded hover:bg-gray-700 disabled:opacity-50 transition-colors"
+                title="Move up"
               >
-                Move Up
+                <ChevronUpIcon className="w-4 h-4" />
               </button>
               <button 
                 onClick={() => onMove(question.id, 'down')}
                 disabled={!canMoveDown}
-                className="px-3 py-1 text-sm bg-gray-600 text-white rounded hover:bg-gray-700 disabled:opacity-50"
+                className="p-2 bg-gray-600 text-white rounded hover:bg-gray-700 disabled:opacity-50 transition-colors"
+                title="Move down"
               >
-                Move Down
+                <ChevronDownIcon className="w-4 h-4" />
               </button>
               <button 
                 onClick={onDelete}
-                className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700"
+                className="p-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+                title="Delete question"
               >
-                Delete
+                <TrashIcon className="w-4 h-4" />
               </button>
             </>
           )}
@@ -680,9 +766,6 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
   const [showGoldenModal, setShowGoldenModal] = useState(false);
   const [showExportDropdown, setShowExportDropdown] = useState(false);
   const [showSystemPromptModal, setShowSystemPromptModal] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState<'idle' | 'success' | 'error'>('idle');
-  const [uploadMessage, setUploadMessage] = useState('');
   const [goldenFormData, setGoldenFormData] = useState({
     title: '',
     industry_category: '',
@@ -690,7 +773,6 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
     methodology_tags: [] as string[],
     quality_score: 0.9
   });
-  const [isReparsing, setIsReparsing] = useState(false);
   const [showSurveyLevelAnnotation, setShowSurveyLevelAnnotation] = useState(false);
 
   const handleSurveyLevelAnnotation = async (annotation: SurveyLevelAnnotation) => {
@@ -724,106 +806,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
     }
   };
 
-  const handleReparseSurvey = async () => {
-    if (!survey?.survey_id) {
-      console.error('No survey ID available for reparse');
-      return;
-    }
 
-    setIsReparsing(true);
-    try {
-      const response = await fetch(`/api/v1/survey/${survey.survey_id}/reparse`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to reparse survey: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      console.log('✅ Survey reparsed successfully:', result);
-
-      // Refresh the survey data
-      if (onSurveyChange) {
-        // Trigger a refresh of the survey data
-        window.location.reload();
-      }
-
-      // Show success message
-      alert(`Survey reparsed successfully! ${result.question_count} questions processed across ${result.sections_count} sections.`);
-    } catch (error) {
-      console.error('❌ Failed to reparse survey:', error);
-      alert(`Failed to reparse survey: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setIsReparsing(false);
-    }
-  };
-
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (!file.name.toLowerCase().endsWith('.docx')) {
-      setUploadStatus('error');
-      setUploadMessage('Please select a DOCX file');
-      setTimeout(() => setUploadStatus('idle'), 3000);
-      return;
-    }
-
-    setIsUploading(true);
-    setUploadStatus('idle');
-    setUploadMessage('');
-
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const response = await fetch('/api/v1/golden-pairs/parse-document', {
-        method: 'POST',
-        body: formData
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to parse document');
-      }
-
-      const result = await response.json();
-      
-      // Update the survey with the LLM-parsed data (same as golden example creation)
-      if (result.survey_json) {
-        setSurvey(result.survey_json);
-        
-        // Call the parent's onSurveyChange if provided (for golden example editing)
-        if (onSurveyChange) {
-          onSurveyChange(result.survey_json);
-        }
-        
-        // Reset the file input
-        event.target.value = '';
-        
-        // Show success message
-        setUploadStatus('success');
-        setUploadMessage('Document successfully parsed and converted to survey!');
-        
-        // Clear success message after 5 seconds
-        setTimeout(() => setUploadStatus('idle'), 5000);
-      }
-
-    } catch (error) {
-      console.error('Document upload failed:', error);
-      setUploadStatus('error');
-      setUploadMessage(`Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      
-      // Clear error message after 5 seconds
-      setTimeout(() => setUploadStatus('idle'), 5000);
-    } finally {
-      setIsUploading(false);
-    }
-  };
 
   // Close export dropdown when clicking outside
   React.useEffect(() => {
@@ -1620,6 +1603,23 @@ startxref
                     <XMarkIcon className="w-5 h-5" />
                     <span className="text-sm font-semibold">Cancel</span>
                   </button>
+                  
+                  <button 
+                    onClick={() => {
+                      // Pre-populate form with survey methodologies
+                      setGoldenFormData(prev => ({
+                        ...prev,
+                        methodology_tags: surveyToDisplay?.methodologies || [],
+                        industry_category: rfqInput.product_category || '',
+                        research_goal: rfqInput.research_goal || ''
+                      }));
+                      setShowGoldenModal(true);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 bg-amber-600 text-white rounded-lg font-medium hover:bg-amber-700 transition-colors shadow-lg"
+                  >
+                    <StarIcon className="w-5 h-5" />
+                    <span className="text-sm font-semibold">Save as Reference Example</span>
+                  </button>
                 </>
               ) : (
                 <>
@@ -1682,6 +1682,15 @@ startxref
                       <span className="text-red-600 font-bold text-xs">PDF</span>
                     </div>
                     <span>Download PDF</span>
+                  </button>
+                  <button
+                    onClick={() => handleExportSurvey('docx')}
+                    className="w-full flex items-center gap-3 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                  >
+                    <div className="w-6 h-6 bg-green-100 rounded flex items-center justify-center">
+                      <span className="text-green-600 font-bold text-xs">DOCX</span>
+                    </div>
+                    <span>Download DOCX</span>
                   </button>
                 </div>
               </div>

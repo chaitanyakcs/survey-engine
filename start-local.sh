@@ -321,6 +321,53 @@ start_application() {
     fi
 }
 
+# Function to run development checks
+run_dev_checks() {
+    echo -e "${YELLOW}🔍 Running development checks...${NC}"
+    
+    # Check if we're in the right directory
+    if [ ! -f "pyproject.toml" ]; then
+        echo -e "${RED}❌ Error: pyproject.toml not found. Please run from project root.${NC}"
+        exit 1
+    fi
+    
+    # Install development dependencies if not already installed
+    echo -e "${BLUE}📦 Installing development dependencies...${NC}"
+    uv sync --dev > /dev/null 2>&1
+    
+    # Run logger usage check
+    echo -e "${BLUE}🔍 Running logger usage check...${NC}"
+    if ! uv run python scripts/check_logger_usage.py; then
+        echo -e "${YELLOW}⚠️  Logger usage check found issues, but continuing...${NC}"
+        echo -e "${BLUE}💡 Fix logger issues for better debugging:${NC}"
+        echo -e "${CYAN}   uv run python scripts/check_logger_usage.py${NC}"
+    else
+        echo -e "${GREEN}✅ Logger usage check passed${NC}"
+    fi
+    
+    # Run formatting check
+    echo -e "${BLUE}🔍 Checking code formatting...${NC}"
+    if ! uv run black --check src/ > /dev/null 2>&1; then
+        echo -e "${YELLOW}⚠️  Code formatting issues found${NC}"
+        echo -e "${BLUE}💡 Fix formatting with:${NC}"
+        echo -e "${CYAN}   uv run black src/${NC}"
+    else
+        echo -e "${GREEN}✅ Code formatting is correct${NC}"
+    fi
+    
+    # Run import sorting check
+    echo -e "${BLUE}🔍 Checking import sorting...${NC}"
+    if ! uv run isort --check-only src/ > /dev/null 2>&1; then
+        echo -e "${YELLOW}⚠️  Import sorting issues found${NC}"
+        echo -e "${BLUE}💡 Fix import sorting with:${NC}"
+        echo -e "${CYAN}   uv run isort src/${NC}"
+    else
+        echo -e "${GREEN}✅ Import sorting is correct${NC}"
+    fi
+    
+    echo -e "${GREEN}✅ Development checks completed${NC}"
+}
+
 # Function to preload models
 preload_models() {
     echo -e "${YELLOW}🧠 Preloading ML models...${NC}"
@@ -378,10 +425,15 @@ main() {
     # Step 7: Seed database
     seed_database
     
-    # Step 8: Preload models (in background)
+    # Step 8: Run development checks (only in local development)
+    if [ -z "$RAILWAY_ENVIRONMENT" ] && [ -z "$PORT" ]; then
+        run_dev_checks
+    fi
+    
+    # Step 9: Preload models (in background)
     preload_models &
     
-    # Step 9: Start application
+    # Step 10: Start application
     start_application
 }
 
@@ -400,6 +452,9 @@ case "${1:-startup}" in
         ;;
     "preload")
         preload_models
+        ;;
+    "dev-checks")
+        run_dev_checks
         ;;
     "kill")
         kill_existing_processes
@@ -423,13 +478,14 @@ case "${1:-startup}" in
         echo "Usage: $0 [command]"
         echo ""
         echo "Commands:"
-        echo "  startup    - Full startup sequence (default)"
-        echo "  migrate    - Run database migrations only"
-        echo "  seed       - Seed database only"
-        echo "  preload    - Preload ML models only"
-        echo "  kill       - Kill existing processes on ports 3000, 4321, and 8000"
-        echo "  setup-env  - Create .env file from .env.example template"
-        echo "  help       - Show this help message"
+        echo "  startup     - Full startup sequence (default)"
+        echo "  migrate     - Run database migrations only"
+        echo "  seed        - Seed database only"
+        echo "  preload     - Preload ML models only"
+        echo "  dev-checks  - Run development checks (formatting, imports, logger)"
+        echo "  kill        - Kill existing processes on ports 3000, 4321, and 8000"
+        echo "  setup-env   - Create .env file from .env.example template"
+        echo "  help        - Show this help message"
         ;;
     *)
         echo -e "${RED}❌ Unknown command: $1${NC}"

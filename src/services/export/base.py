@@ -26,6 +26,12 @@ class QuestionType(Enum):
     CONSTANT_SUM = "constant_sum"
     NUMERIC_GRID = "numeric_grid"
     NUMERIC_OPEN = "numeric_open"
+    LIKERT = "likert"
+    OPEN_END = "open_end"
+    DISPLAY_ONLY = "display_only"
+    SINGLE_OPEN = "single_open"
+    MULTIPLE_OPEN = "multiple_open"
+    OPEN_ENDED = "open_ended"
 
 
 class SurveyExportRenderer(ABC):
@@ -34,7 +40,7 @@ class SurveyExportRenderer(ABC):
     Enforces implementation of all question types to ensure complete coverage.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._registered_types: Set[QuestionType] = set()
         self._register_question_types()
         self._validate_complete_implementation()
@@ -109,16 +115,31 @@ class SurveyExportRenderer(ABC):
         try:
             q_type = QuestionType(question_type)
         except ValueError:
-            raise ValueError(f"Unknown question type: {question_type}")
+            # Handle unknown question types gracefully
+            self._render_unsupported_question_type(question)
+            return
 
         # Route to specific renderer
         method_name = f"_render_{question_type}"
         renderer_method = getattr(self, method_name, None)
 
         if not renderer_method:
-            raise NotImplementedError(f"Renderer method {method_name} not implemented")
+            # Handle missing renderer methods gracefully
+            self._render_unsupported_question_type(question)
+            return
 
         renderer_method(question)
+
+    def _render_unsupported_question_type(self, question: Dict[str, Any]) -> None:
+        """
+        Render unsupported question types with a generic text area.
+        This ensures DOCX generation doesn't fail for unknown question types.
+        Must be implemented by subclasses.
+        
+        Args:
+            question: Question data dictionary
+        """
+        raise NotImplementedError("Subclasses must implement _render_unsupported_question_type")
 
     @abstractmethod
     def _finalize_document(self) -> bytes:
@@ -190,11 +211,35 @@ class SurveyExportRenderer(ABC):
     def _render_numeric_open(self, question: Dict[str, Any]) -> None:
         pass
 
+    @abstractmethod
+    def _render_likert(self, question: Dict[str, Any]) -> None:
+        pass
+
+    @abstractmethod
+    def _render_open_end(self, question: Dict[str, Any]) -> None:
+        pass
+
+    @abstractmethod
+    def _render_display_only(self, question: Dict[str, Any]) -> None:
+        pass
+
+    @abstractmethod
+    def _render_single_open(self, question: Dict[str, Any]) -> None:
+        pass
+
+    @abstractmethod
+    def _render_multiple_open(self, question: Dict[str, Any]) -> None:
+        pass
+
+    @abstractmethod
+    def _render_open_ended(self, question: Dict[str, Any]) -> None:
+        pass
+
 
 class ExportRegistry:
     """Registry for managing available export formats."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._renderers: Dict[str, type] = {}
 
     def register_renderer(self, format_name: str, renderer_class: type) -> None:
@@ -209,7 +254,8 @@ class ExportRegistry:
         if format_name not in self._renderers:
             raise ValueError(f"No renderer registered for format: {format_name}")
 
-        return self._renderers[format_name]()
+        renderer_class = self._renderers[format_name]
+        return renderer_class()
 
     def get_available_formats(self) -> List[str]:
         """Get list of available export formats."""

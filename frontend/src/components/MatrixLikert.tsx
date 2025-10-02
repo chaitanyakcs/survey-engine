@@ -11,18 +11,30 @@ interface MatrixLikertProps {
 }
 
 const MatrixLikert: React.FC<MatrixLikertProps> = ({ question, isPreview = true }) => {
-  // Parse the question text to extract attributes (comma-separated after question mark)
+  // Parse the question text to extract attributes (comma-separated after question mark or colon)
   const extractAttributes = (text: string): string[] => {
-    // Look for comma-separated attributes after the question mark
-    // Pattern: "...? Attribute1, Attribute2, Attribute3."
+    // Look for comma-separated attributes after the question mark or colon
+    // Pattern: "...? Attribute1, Attribute2, Attribute3." or "...: Attribute1, Attribute2, Attribute3."
     const questionMarkIndex = text.indexOf('?');
-    if (questionMarkIndex === -1) return [];
+    const colonIndex = text.indexOf(':');
     
-    // Get everything after the question mark
-    const afterQuestionMark = text.substring(questionMarkIndex + 1).trim();
+    // Use whichever delimiter comes first (question mark or colon)
+    let delimiterIndex = -1;
+    if (questionMarkIndex !== -1 && colonIndex !== -1) {
+      delimiterIndex = Math.min(questionMarkIndex, colonIndex);
+    } else if (questionMarkIndex !== -1) {
+      delimiterIndex = questionMarkIndex;
+    } else if (colonIndex !== -1) {
+      delimiterIndex = colonIndex;
+    }
+    
+    if (delimiterIndex === -1) return [];
+    
+    // Get everything after the delimiter
+    const afterDelimiter = text.substring(delimiterIndex + 1).trim();
     
     // Remove trailing period if present
-    const cleanText = afterQuestionMark.replace(/\.$/, '');
+    const cleanText = afterDelimiter.replace(/\.$/, '');
     
     // Split by comma and clean up
     return cleanText

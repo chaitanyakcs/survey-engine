@@ -96,6 +96,89 @@ const QuestionRenderer: React.FC<QuestionRendererProps> = ({ question, onRespons
         </div>
       )}
 
+      {question.type === 'likert' && (
+        <div className="space-y-3">
+          <div className="flex justify-between text-sm text-gray-600">
+            <span>Very Unlikely</span>
+            <span>Unlikely</span>
+            <span>Neutral</span>
+            <span>Likely</span>
+            <span>Very Likely</span>
+          </div>
+          <div className="flex justify-between">
+            {[1, 2, 3, 4, 5].map((value) => (
+              <label key={value} className="flex flex-col items-center space-y-1">
+                <input
+                  type="radio"
+                  name={question.id}
+                  value={value}
+                  onChange={(e) => handleResponse(e.target.value)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                />
+                <span className="text-xs text-gray-500">{value}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {question.type === 'open_end' && (
+        <textarea
+          placeholder="Please enter your response..."
+          onChange={(e) => handleResponse(e.target.value)}
+          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+          rows={3}
+        />
+      )}
+
+      {question.type === 'display_only' && (
+        <div className="bg-gray-50 border-l-4 border-gray-400 p-4 rounded-r-lg">
+          <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+            {question.text}
+          </div>
+          {question.description && (
+            <div className="mt-2 text-xs text-gray-600 italic">
+              {question.description}
+            </div>
+          )}
+          <div className="mt-3 flex items-center justify-between">
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+              Display Only
+            </span>
+            <span className="text-xs text-gray-600">
+              No response required
+            </span>
+          </div>
+        </div>
+      )}
+
+      {question.type === 'single_open' && (
+        <input
+          type="text"
+          placeholder="Please enter your response..."
+          onChange={(e) => handleResponse(e.target.value)}
+          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        />
+      )}
+
+      {question.type === 'multiple_open' && (
+        <textarea
+          placeholder="Please enter your response..."
+          onChange={(e) => handleResponse(e.target.value)}
+          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+          rows={4}
+        />
+      )}
+
+      {question.type === 'open_ended' && (
+        <textarea
+          placeholder="Please provide your detailed response..."
+          onChange={(e) => handleResponse(e.target.value)}
+          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+          rows={5}
+        />
+      )}
+
       {/* Question category and metadata */}
       {process.env.NODE_ENV === 'development' && (
         <div className="mt-4 pt-4 border-t border-gray-200">
