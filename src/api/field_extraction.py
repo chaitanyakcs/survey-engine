@@ -75,6 +75,12 @@ class RFQParsingConnectionManager:
                 except Exception as e:
                     logger.warning(f"⚠️ [RFQ Parsing WebSocket] Failed to send message to session_id={session_id}: {str(e)}")
 
+    def disconnect_all(self, session_id: str):
+        """Disconnect all WebSocket connections for a session"""
+        if session_id in self.active_connections:
+            del self.active_connections[session_id]
+            logger.info(f"🔌 [RFQ Parsing WebSocket] Disconnected all connections for session_id={session_id}")
+
 rfq_parsing_manager = RFQParsingConnectionManager()
 
 router = APIRouter(prefix="/field-extraction", tags=["Field Extraction"])

@@ -2370,6 +2370,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
           rfqUpdates.brand_usage_requirements.usage_frequency_tracking = Boolean(value);
           break;
 
+        // Advanced Classification fields
+        case 'industry_classification':
+          if (!rfqUpdates.advanced_classification) rfqUpdates.advanced_classification = { industry_classification: '', respondent_classification: '', methodology_tags: [], compliance_requirements: [] };
+          rfqUpdates.advanced_classification.industry_classification = value;
+          break;
+        case 'respondent_classification':
+          if (!rfqUpdates.advanced_classification) rfqUpdates.advanced_classification = { industry_classification: '', respondent_classification: '', methodology_tags: [], compliance_requirements: [] };
+          rfqUpdates.advanced_classification.respondent_classification = value;
+          break;
 
         // Legacy field mapping for backward compatibility
         default:

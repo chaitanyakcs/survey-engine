@@ -62,6 +62,42 @@ class DocxSurveyRenderer(SurveyExportRenderer):
         # Add some space
         doc.add_paragraph("")
 
+    def render_survey(self, survey_data: Dict[str, Any]) -> bytes:
+        """
+        Main entry point for rendering a complete survey with sections support.
+
+        Args:
+            survey_data: Dictionary containing survey metadata and sections/questions
+
+        Returns:
+            Rendered survey as bytes
+        """
+        self._initialize_document(survey_data)
+
+        # Render survey header/metadata
+        if "title" in survey_data:
+            self._render_survey_header(survey_data["title"], survey_data.get("description", ""))
+
+        # Check if survey uses sections format
+        if "sections" in survey_data:
+            # Render sections with text blocks and questions
+            sections = survey_data.get("sections", [])
+            global_question_number = 1
+            for section in sections:
+                self._render_section(section, global_question_number)
+                # Update global question number after processing section
+                questions = section.get("questions", [])
+                for question in questions:
+                    if question.get("type") != "instruction":
+                        global_question_number += 1
+        else:
+            # Legacy format: render questions directly
+            questions = survey_data.get("questions", [])
+            for question in questions:
+                self._render_question(question)
+
+        return self._finalize_document()
+
     def _finalize_document(self) -> bytes:
         """Finalize and return the document as bytes."""
         buffer = BytesIO()
@@ -93,24 +129,135 @@ class DocxSurveyRenderer(SurveyExportRenderer):
             run.italic = True
             run.font.size = Pt(9)
 
+    def _render_section(self, section: Dict[str, Any], start_question_number: int = 1) -> None:
+        """Render a survey section with text blocks and questions."""
+        doc = self._get_document()
+
+        # Add section header
+        section_title = section.get("title", f"Section {section.get('id', 'Unknown')}")
+        section_heading = doc.add_heading(section_title, level=2)
+        section_heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        
+        # Add section description if available
+        if section.get("description"):
+            desc_paragraph = doc.add_paragraph(section["description"])
+            desc_paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        
+        # Render intro text if available
+        if section.get("introText"):
+            self._render_text_block(section["introText"], "Introduction")
+        
+        # Render text blocks if available
+        text_blocks = section.get("textBlocks", [])
+        for text_block in text_blocks:
+            self._render_text_block(text_block, "Information")
+        
+        # Render questions if available
+        questions = section.get("questions", [])
+        question_number = start_question_number
+        for question in questions:
+            if question.get("type") == "instruction":
+                # Instruction questions don't get numbered
+                self._render_instruction(question)
+            else:
+                # Regular questions get numbered
+                self._render_question_with_number(question, question_number)
+                question_number += 1
+        
+        # Render closing text if available
+        if section.get("closingText"):
+            self._render_text_block(section["closingText"], "Closing")
+        
+        # Add space between sections
+        doc.add_paragraph("")
+
+    def _render_text_block(self, text_block: Dict[str, Any], block_type: str = "Information") -> None:
+        """Render a text block (introText, textBlocks, closingText)."""
+        doc = self._get_document()
+        
+        # Get text block properties
+        content = text_block.get("content", "")
+        text_type = text_block.get("type", "information")
+        label = text_block.get("label", "")
+        mandatory = text_block.get("mandatory", False)
+        
+        # Create a bordered paragraph for the text block
+        paragraph = doc.add_paragraph()
+        
+        # Use label as main heading if available, otherwise use block_type
+        main_heading = label if label else block_type
+        if mandatory:
+            main_heading += " [REQUIRED]"
+        
+        # Main heading (prominent)
+        header_run = paragraph.add_run(main_heading)
+        header_run.bold = True
+        header_run.font.size = Pt(12)
+        
+        # Add subscript type label if different from main heading
+        if label and block_type != "Information":
+            subscript_paragraph = doc.add_paragraph()
+            subscript_run = subscript_paragraph.add_run(block_type)
+            subscript_run.italic = True
+            subscript_run.font.size = Pt(8)
+        
+        # Add content
+        content_paragraph = doc.add_paragraph()
+        content_run = content_paragraph.add_run(content)
+        content_run.font.size = Pt(9)
+        
+        # Add some space after text block
+        doc.add_paragraph("")
+
     # Question type implementations
 
     def _render_instruction(self, question: Dict[str, Any]) -> None:
-        """Render instruction question as an information box."""
+        """Render instruction question with first words before colon as heading."""
         doc = self._get_document()
-        # Add instruction header
+        
+        # Extract first words before colon as heading
+        text = question.get("text", "")
+        colon_index = text.find(':')
+        
+        if colon_index > 0:
+            heading = text[:colon_index].strip()
+            content = text[colon_index + 1:].strip()
+        else:
+            heading = "Instructions"
+            content = text
+        
+        # Add heading (first words before colon)
         paragraph = doc.add_paragraph()
-        run = paragraph.add_run("📋 Instructions")
+        run = paragraph.add_run(heading)
         run.bold = True
         run.font.size = Pt(12)
 
-        # Add instruction content in a bordered paragraph
-        instruction_paragraph = doc.add_paragraph()
-        instruction_paragraph.style = 'Quote'
-        instruction_run = instruction_paragraph.add_run(question.get("text", ""))
-        instruction_run.font.size = Pt(10)
+        # Add content
+        content_paragraph = doc.add_paragraph()
+        content_run = content_paragraph.add_run(content)
+        content_run.font.size = Pt(10)
+
 
         doc.add_paragraph("")
+
+    def _render_question_with_number(self, question: Dict[str, Any], question_number: int) -> None:
+        """Render a question with a specific question number."""
+        # Store the question number temporarily
+        original_method = self._add_question_header
+        
+        def _add_question_header_with_number(question: Dict[str, Any], question_number_param: int | None = None) -> None:
+            # Use the provided question number
+            original_method(question, question_number)
+        
+        # Temporarily replace the method
+        self._add_question_header = _add_question_header_with_number
+        
+        try:
+            # Render the question
+            self._render_question(question)
+        finally:
+            # Restore the original method
+            self._add_question_header = original_method
 
     def _render_multiple_choice(self, question: Dict[str, Any]) -> None:
         """Render multiple choice question with checkboxes."""
@@ -267,22 +414,95 @@ class DocxSurveyRenderer(SurveyExportRenderer):
 
     def _extract_attributes_from_text(self, text: str) -> List[str]:
         """Extract attributes from question text (used by specialized components)."""
-        # Look for comma-separated attributes after question mark or colon
+        # Look for comma-separated attributes after question mark, colon, or period
         search_text = text
 
+        # Check for question mark first
         question_mark_index = text.find('?')
         if question_mark_index != -1:
             search_text = text[question_mark_index + 1:].strip()
         else:
+            # Check for colon
             colon_index = text.find(':')
             if colon_index != -1:
                 search_text = text[colon_index + 1:].strip()
+            else:
+                # Check for period (for statements like "Rate the following items. Item1, Item2, Item3")
+                period_index = text.find('.')
+                if period_index != -1:
+                    search_text = text[period_index + 1:].strip()
+                else:
+                    # Fallback: if no punctuation found, try to find patterns like "at the following" or "priced at"
+                    # This handles cases like "priced at the following per box of 6 monthly lenses. $30, $35, $40"
+                    following_patterns = [
+                        "at the following",
+                        "priced at",
+                        "the following",
+                        "as follows"
+                    ]
+                    for pattern in following_patterns:
+                        pattern_index = text.lower().find(pattern)
+                        if pattern_index != -1:
+                            # Look for the next period or end of string
+                            next_period = text.find('.', pattern_index)
+                            if next_period != -1:
+                                search_text = text[next_period + 1:].strip()
+                                break
+                            else:
+                                # If no period after pattern, take everything after the pattern
+                                search_text = text[pattern_index + len(pattern):].strip()
+                                break
 
         # Remove trailing period if present
         clean_text = search_text.rstrip('.')
 
         # Split by comma and clean up
         attributes = [attr.strip() for attr in clean_text.split(',') if attr.strip()]
+        
+        # Additional validation: if we found attributes, make sure they look reasonable
+        if attributes and len(attributes) > 1:
+            # Check if attributes look like they could be valid (not just single words)
+            # This helps filter out cases where we might have parsed incorrectly
+            return attributes
+        
+        # If no attributes found with the above methods, try a more aggressive approach
+        # Look for any comma-separated list in the text
+        if not attributes:
+            import re
+            # Look for patterns like "$30, $35, $40" or "Item1, Item2, Item3"
+            comma_patterns = [
+                r'\$\d+(?:\.\d{2})?(?:\s*,\s*\$?\d+(?:\.\d{2})?)+',  # Price patterns like $30, $35, $40
+                r'[A-Za-z][A-Za-z0-9\s]*(?:\s*,\s*[A-Za-z][A-Za-z0-9\s]*)+',  # Word patterns
+                r'[\w\s]+(?:\s*,\s*[\w\s]+)+'  # General word patterns
+            ]
+            
+            for pattern in comma_patterns:
+                matches = re.findall(pattern, text)
+                if matches:
+                    # Take the longest match (most likely to be the attribute list)
+                    longest_match = max(matches, key=len)
+                    attributes = [attr.strip() for attr in longest_match.split(',') if attr.strip()]
+                    if len(attributes) > 1:
+                        break
+            
+            # If still no attributes, try the simple approach: find the last comma-separated list
+            if not attributes:
+                last_comma = text.rfind(',')
+                if last_comma != -1:
+                    # Look backwards to find the start of the list
+                    start = text.rfind('.', 0, last_comma)
+                    if start == -1:
+                        start = text.rfind(':', 0, last_comma)
+                    if start == -1:
+                        start = text.rfind('?', 0, last_comma)
+                    
+                    if start != -1:
+                        list_text = text[start+1:].strip()
+                        attributes = [attr.strip() for attr in list_text.split(',') if attr.strip()]
+                        # Clean up any trailing periods
+                        if attributes and attributes[-1].endswith('.'):
+                            attributes[-1] = attributes[-1].rstrip('.')
+        
         return attributes
 
     def _render_matrix_likert(self, question: Dict[str, Any]) -> None:

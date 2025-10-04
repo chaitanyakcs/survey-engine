@@ -9,7 +9,7 @@ from src.models.enhanced_rfq import (
     count_populated_fields
 )
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from uuid import uuid4
 import logging
 import asyncio
@@ -44,6 +44,27 @@ class DocumentAnalysisResponse(BaseModel):
     rfq_analysis: Dict[str, Any]
     processing_status: str
     errors: list
+
+
+class PromptPreviewRequest(BaseModel):
+    rfq_id: Optional[str] = None  # RFQ identifier for tracking and caching
+    title: Optional[str] = None
+    description: str
+    product_category: Optional[str] = None
+    target_segment: Optional[str] = None
+    research_goal: Optional[str] = None
+    enhanced_rfq_data: Optional[dict] = None  # Optional structured Enhanced RFQ data
+
+
+class PromptPreviewResponse(BaseModel):
+    rfq_id: Optional[str] = None
+    prompt: str
+    prompt_length: int
+    context_info: Dict[str, Any]
+    methodology_tags: List[str]
+    golden_examples_count: int
+    methodology_blocks_count: int
+    enhanced_rfq_used: bool
 
 
 @router.post("/", response_model=RFQSubmissionResponse)
@@ -388,6 +409,15 @@ async def get_document_processing_status(
                     "timestamp": document_upload.updated_at.isoformat() if document_upload.updated_at else None,
                     "message": "Document processing completed successfully"
                 }
+            elif document_upload.processing_status == 'cancelled':
+                return {
+                    "status": "cancelled",
+                    "session_id": session_id,
+                    "processing_status": document_upload.processing_status,
+                    "error_message": document_upload.error_message,
+                    "timestamp": document_upload.updated_at.isoformat() if document_upload.updated_at else None,
+                    "message": "Document processing cancelled by user"
+                }
             elif document_upload.processing_status == 'failed':
                 return {
                     "status": "failed",
@@ -433,6 +463,61 @@ async def get_document_processing_status(
             "session_id": session_id,
             "error": str(e),
             "message": "Error checking processing status"
+        }
+
+
+@router.post("/cancel/{session_id}")
+async def cancel_document_processing(
+    session_id: str,
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Cancel document processing for a given session.
+    This will stop any ongoing processing and clean up resources.
+    """
+    logger.info(f"🛑 [RFQ API] Cancelling document processing for session_id={session_id}")
+    
+    try:
+        # Update database record to cancelled status
+        from src.database.models import DocumentUpload
+        
+        document_upload = db.query(DocumentUpload).filter(
+            DocumentUpload.session_id == session_id
+        ).order_by(DocumentUpload.created_at.desc()).first()
+        
+        if document_upload:
+            document_upload.processing_status = 'cancelled'
+            document_upload.error_message = 'Processing cancelled by user'
+            db.commit()
+            logger.info(f"✅ [RFQ API] Marked document upload as cancelled for session_id={session_id}")
+        
+        # Disconnect any active WebSocket connections
+        from src.api.field_extraction import rfq_parsing_manager
+        
+        if session_id in rfq_parsing_manager.active_connections:
+            logger.info(f"🔌 [RFQ API] Disconnecting WebSocket for cancelled session_id={session_id}")
+            # Close all WebSocket connections for this session
+            connections = rfq_parsing_manager.active_connections[session_id].copy()
+            for websocket in connections:
+                try:
+                    await websocket.close()
+                except Exception as e:
+                    logger.warning(f"⚠️ [RFQ API] Error closing WebSocket: {e}")
+            rfq_parsing_manager.disconnect_all(session_id)
+        
+        return {
+            "status": "cancelled",
+            "session_id": session_id,
+            "message": "Document processing cancelled successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ [RFQ API] Error cancelling processing for session_id={session_id}: {str(e)}", exc_info=True)
+        return {
+            "status": "error",
+            "session_id": session_id,
+            "error": str(e),
+            "message": "Failed to cancel document processing"
         }
 
 
@@ -747,3 +832,139 @@ async def analyze_text_for_rfq(
         )
 
         return error_response
+
+
+@router.post("/preview-prompt", response_model=PromptPreviewResponse)
+async def preview_survey_generation_prompt(
+    request: PromptPreviewRequest,
+    db: Session = Depends(get_db)
+) -> PromptPreviewResponse:
+    """
+    Preview the survey generation prompt that would be used for the given RFQ data.
+    This uses the same prompt generation logic as the actual survey generation workflow.
+    """
+    logger.info(f"🔍 [RFQ API] Received prompt preview request: rfq_id='{request.rfq_id}', title='{request.title}', description_length={len(request.description)}")
+    
+    try:
+        # Import required services
+        from src.services.prompt_service import PromptService
+        from src.services.retrieval_service import RetrievalService
+        from src.services.embedding_service import EmbeddingService
+        from src.models.enhanced_rfq import validate_enhanced_rfq, extract_legacy_fields
+        from uuid import uuid4
+        
+        # Generate RFQ ID if not provided
+        rfq_id = request.rfq_id or f"preview-{str(uuid4())}"
+        logger.info(f"📋 [RFQ API] Using RFQ ID: {rfq_id}")
+        
+        # Build context similar to what the workflow would create
+        context = {
+            "rfq_id": rfq_id,
+            "rfq_details": {
+                "text": request.description,
+                "title": request.title,
+                "category": request.product_category,
+                "segment": request.target_segment,
+                "goal": request.research_goal
+            },
+            "enhanced_rfq_data": request.enhanced_rfq_data
+        }
+        
+        # If enhanced RFQ data is provided, validate and extract methodology tags
+        methodology_tags = []
+        enhanced_rfq_used = False
+        
+        if request.enhanced_rfq_data:
+            try:
+                # Validate enhanced RFQ data
+                validated_rfq = validate_enhanced_rfq(request.enhanced_rfq_data)
+                enhanced_rfq_used = True
+                
+                # Extract methodology tags from enhanced RFQ
+                if validated_rfq.get('methodology') and validated_rfq['methodology'].get('methodology_tags'):
+                    methodology_tags = validated_rfq['methodology']['methodology_tags']
+                    logger.info(f"📊 [RFQ API] Extracted methodology tags from enhanced RFQ: {methodology_tags}")
+            except Exception as e:
+                logger.warning(f"⚠️ [RFQ API] Failed to validate enhanced RFQ data: {str(e)}")
+                enhanced_rfq_used = False
+        
+        # Generate embedding for retrieval (similar to RFQNode)
+        logger.info("🔄 [RFQ API] Generating embedding for retrieval...")
+        embedding_service = EmbeddingService()
+        embedding = await embedding_service.get_embedding(request.description)
+        
+        # Retrieve golden examples and methodology blocks (similar to GoldenRetrieverNode)
+        logger.info("🔍 [RFQ API] Retrieving golden examples and methodology blocks...")
+        retrieval_service = RetrievalService(db)
+        
+        golden_examples = []
+        methodology_blocks = []
+        
+        try:
+            # Retrieve golden examples
+            golden_examples = await retrieval_service.retrieve_golden_pairs(
+                embedding=embedding,
+                methodology_tags=methodology_tags if methodology_tags else None,
+                limit=3
+            )
+            logger.info(f"📊 [RFQ API] Retrieved {len(golden_examples)} golden examples")
+            
+            # Retrieve methodology blocks
+            methodology_blocks = await retrieval_service.retrieve_methodology_blocks(
+                research_goal=request.research_goal or "General market research",
+                limit=5
+            )
+            logger.info(f"📊 [RFQ API] Retrieved {len(methodology_blocks)} methodology blocks")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ [RFQ API] Failed to retrieve examples/blocks: {str(e)}")
+            # Continue without retrieval data
+        
+        # Add retrieved data to context
+        context.update({
+            "golden_examples": golden_examples,
+            "methodology_guidance": methodology_blocks
+        })
+        
+        # Generate the prompt using the same logic as the workflow
+        logger.info("🔨 [RFQ API] Generating survey generation prompt...")
+        prompt_service = PromptService(db_session=db)
+        
+        # Use the same method that the workflow uses
+        prompt = prompt_service.create_survey_generation_prompt(
+            rfq_text=request.description,
+            context=context,
+            golden_examples=golden_examples,
+            methodology_blocks=methodology_blocks
+        )
+        
+        logger.info(f"✅ [RFQ API] Generated prompt preview: {len(prompt)} characters")
+        
+        # Prepare response
+        response = PromptPreviewResponse(
+            rfq_id=rfq_id,
+            prompt=prompt,
+            prompt_length=len(prompt),
+            context_info={
+                "rfq_title": request.title,
+                "rfq_description_length": len(request.description),
+                "product_category": request.product_category,
+                "target_segment": request.target_segment,
+                "research_goal": request.research_goal,
+                "enhanced_rfq_fields": len(request.enhanced_rfq_data) if request.enhanced_rfq_data else 0
+            },
+            methodology_tags=methodology_tags,
+            golden_examples_count=len(golden_examples),
+            methodology_blocks_count=len(methodology_blocks),
+            enhanced_rfq_used=enhanced_rfq_used
+        )
+        
+        logger.info(f"🎉 [RFQ API] Prompt preview completed successfully")
+        return response
+        
+    except Exception as e:
+        logger.error(f"❌ [RFQ API] Failed to generate prompt preview: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to generate prompt preview: {str(e)}"
+        )

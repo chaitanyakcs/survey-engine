@@ -96,20 +96,21 @@ EXTRACT THE FOLLOWING FIELDS:
    - Feature prioritization studies
    - Product testing studies
 
-2. **Industry Category**: Determine the industry from RFQ and survey content. Choose from:
-   - electronics
-   - appliances
-   - healthcare_technology
-   - enterprise_software
-   - automotive
-   - financial_services
-   - hospitality
-   - retail
-   - education
-   - manufacturing
-   - other
+2. **Industry Classification**: Extract the industry type as free text from RFQ content. Look for:
+   - Company background and product context
+   - Industry mentions and sector descriptions
+   - Business vertical and market context
+   - Examples: "Technology", "Healthcare", "Financial Services", "Retail", "Automotive", "Education"
 
-3. **Research Goal**: Identify the primary research objective. Choose from:
+3. **Respondent Classification**: Extract the target respondent type as free text from RFQ content. Look for:
+   - Research audience descriptions
+   - Demographics and target market
+   - Participant type mentions
+   - Examples: "B2C Consumers", "B2B Professionals", "Healthcare Workers", "Students", "General Public"
+
+5. **Industry Category**: Determine the industry from RFQ and survey content. Choose from:
+
+6. **Research Goal**: Identify the primary research objective. Choose from:
    - pricing_research
    - feature_research
    - satisfaction_research
@@ -120,19 +121,21 @@ EXTRACT THE FOLLOWING FIELDS:
    - customer_segmentation
    - other
 
-4. **Quality Score**: Assess the overall quality of the survey (0.0-1.0) based on:
+7. **Quality Score**: Assess the overall quality of the survey (0.0-1.0) based on:
    - Question clarity and structure
    - Methodology appropriateness
    - Survey completeness
    - Professional presentation
 
-5. **Suggested Title**: Create a concise, descriptive title for this golden example
+8. **Suggested Title**: Create a concise, descriptive title for this golden example
 
-6. **Confidence Level**: Rate your confidence in the extracted values (0.0-1.0)
+9. **Confidence Level**: Rate your confidence in the extracted values (0.0-1.0)
 
 Return ONLY a JSON object with this exact structure:
 {{
   "methodology_tags": ["tag1", "tag2", "tag3"],
+  "industry_classification": "Technology",
+  "respondent_classification": "B2C Consumers",
   "industry_category": "electronics",
   "research_goal": "pricing_research", 
   "quality_score": 0.85,
@@ -140,7 +143,9 @@ Return ONLY a JSON object with this exact structure:
   "confidence_level": 0.9,
   "reasoning": {{
     "methodology_tags": "Explanation for methodology tag choices",
-    "industry_category": "Explanation for industry classification",
+    "industry_classification": "Explanation for industry classification extraction",
+    "respondent_classification": "Explanation for respondent type extraction",
+    "industry_category": "Explanation for industry category classification",
     "research_goal": "Explanation for research goal identification",
     "quality_score": "Explanation for quality assessment"
   }}
@@ -237,8 +242,20 @@ Return ONLY a JSON object with this exact structure:
                     
                     # Process the output and set audit context
                     response_time_ms = int((time.time() - start_time) * 1000)
+                    
+                    # Capture raw response immediately (unprocessed)
+                    if hasattr(output, '__iter__') and not isinstance(output, str):
+                        raw_response = "".join(str(chunk) for chunk in output)
+                    else:
+                        raw_response = str(output)
+                    
+                    # Process the output for further use
+                    processed_output = raw_response.strip()
+                    
+                    # Set raw response (unprocessed) and processed output
+                    audit_context.set_raw_response(raw_response)
                     audit_context.set_output(
-                        output_content=str(output),
+                        output_content=processed_output,
                         response_time_ms=response_time_ms
                     )
             else:
@@ -307,6 +324,14 @@ Return ONLY a JSON object with this exact structure:
             cleaned['methodology_tags'] = [tag.strip().lower() for tag in methodology_tags if tag.strip()]
         else:
             cleaned['methodology_tags'] = []
+        
+        # Industry classification (free text)
+        industry_classification = fields.get('industry_classification', '').strip()
+        cleaned['industry_classification'] = industry_classification if industry_classification else ''
+        
+        # Respondent classification (free text)
+        respondent_classification = fields.get('respondent_classification', '').strip()
+        cleaned['respondent_classification'] = respondent_classification if respondent_classification else ''
         
         # Industry category
         industry_category = fields.get('industry_category', '').strip().lower()

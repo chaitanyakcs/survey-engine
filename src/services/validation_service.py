@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from typing import Dict, List, Any
 from src.config import settings
 from src.services.embedding_service import EmbeddingService
+from src.services.text_requirements_validator import TextRequirementsValidator
 from src.utils.survey_utils import extract_all_questions
 import json
 import numpy as np
@@ -11,6 +12,7 @@ class ValidationService:
     def __init__(self, db: Session):
         self.db = db
         self.embedding_service = EmbeddingService()
+        self.text_requirements_validator = TextRequirementsValidator()
     
     async def validate_survey(
         self,
@@ -24,8 +26,10 @@ class ValidationService:
         results = {
             "schema_valid": False,
             "methodology_compliant": False,
+            "text_requirements_valid": False,
             "validation_errors": [],
-            "methodology_errors": []
+            "methodology_errors": [],
+            "text_requirements_errors": []
         }
         
         try:
@@ -36,6 +40,13 @@ class ValidationService:
             # Methodology validation
             methodology_validation = await self._validate_methodology(survey)
             results.update(methodology_validation)
+            
+            # Text requirements validation
+            methodology_tags = survey.get("metadata", {}).get("methodology_tags", [])
+            text_validation = self.text_requirements_validator.validate_text_requirements(
+                survey, methodology_tags
+            )
+            results.update(text_validation)
             
             return results
             

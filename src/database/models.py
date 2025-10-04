@@ -329,7 +329,7 @@ class DocumentUpload(Base):
     upload_timestamp = Column(DateTime(timezone=True), default=func.now())
     processing_status = Column(
         String(50),
-        CheckConstraint("processing_status IN ('pending', 'processing', 'completed', 'failed')"),
+        CheckConstraint("processing_status IN ('pending', 'processing', 'completed', 'failed', 'cancelled')"),
         default='pending',
         nullable=False
     )

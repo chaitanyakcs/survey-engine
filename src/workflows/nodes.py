@@ -21,14 +21,33 @@ class RFQNode:
     async def __call__(self, state: SurveyGenerationState) -> Dict[str, Any]:
         """
         Parse RFQ, extract research goals and methodologies, generate embedding
+        Load enhanced RFQ data from database if available
         """
         try:
-            # Generate embedding for the RFQ text
             import logging
             logger = logging.getLogger(__name__)
+            
+            # Generate embedding for the RFQ text
             logger.info("🔄 [RFQNode] Starting embedding generation...")
             embedding = await self.embedding_service.get_embedding(state.rfq_text)
             logger.info("✅ [RFQNode] Embedding generation completed")
+            
+            # Load enhanced RFQ data from database if RFQ ID is available
+            enhanced_rfq_data = None
+            if state.rfq_id:
+                try:
+                    from src.database.models import RFQ
+                    rfq = self.db.query(RFQ).filter(RFQ.id == state.rfq_id).first()
+                    if rfq and rfq.enhanced_rfq_data:
+                        enhanced_rfq_data = rfq.enhanced_rfq_data
+                        logger.info(f"✅ [RFQNode] Loaded enhanced RFQ data with {len(enhanced_rfq_data)} keys")
+                        if 'survey_structure' in enhanced_rfq_data:
+                            text_requirements = enhanced_rfq_data['survey_structure'].get('text_requirements', [])
+                            logger.info(f"📋 [RFQNode] Text requirements found: {text_requirements}")
+                    else:
+                        logger.info("ℹ️ [RFQNode] No enhanced RFQ data found in database")
+                except Exception as e:
+                    logger.warning(f"⚠️ [RFQNode] Failed to load enhanced RFQ data: {str(e)}")
             
             # TODO: Extract research goals and methodologies using NLP
             # Placeholder implementation
@@ -37,6 +56,7 @@ class RFQNode:
             return {
                 "rfq_embedding": embedding,
                 "research_goal": extracted_goal,
+                "enhanced_rfq_data": enhanced_rfq_data,
                 "error_message": None
             }
             
@@ -693,6 +713,11 @@ class ValidatorAgent:
                             self.logger.info(f"📋 [ValidatorAgent] Methodology validation: PASSED")
                         else:
                             self.logger.info(f"⚠️ [ValidatorAgent] Methodology validation: FAILED (non-blocking - survey will proceed)")
+
+                        if validation_results.get('text_requirements_valid'):
+                            self.logger.info(f"📋 [ValidatorAgent] Text requirements validation: PASSED")
+                        else:
+                            self.logger.info(f"⚠️ [ValidatorAgent] Text requirements validation: FAILED (non-blocking - survey will proceed)")
 
                     except Exception as validation_error:
                         self.logger.warning(f"⚠️ [ValidatorAgent] Basic validation failed (non-blocking): {validation_error}")

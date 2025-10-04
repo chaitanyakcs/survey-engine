@@ -11,36 +11,116 @@ interface MatrixLikertProps {
 }
 
 const MatrixLikert: React.FC<MatrixLikertProps> = ({ question, isPreview = true }) => {
-  // Parse the question text to extract attributes (comma-separated after question mark or colon)
+  // Parse the question text to extract attributes (comma-separated after question mark, colon, or period)
   const extractAttributes = (text: string): string[] => {
-    // Look for comma-separated attributes after the question mark or colon
-    // Pattern: "...? Attribute1, Attribute2, Attribute3." or "...: Attribute1, Attribute2, Attribute3."
+    // Look for comma-separated attributes after question mark, colon, or period
+    let searchText = text;
+
+    // Check for question mark first
     const questionMarkIndex = text.indexOf('?');
-    const colonIndex = text.indexOf(':');
-    
-    // Use whichever delimiter comes first (question mark or colon)
-    let delimiterIndex = -1;
-    if (questionMarkIndex !== -1 && colonIndex !== -1) {
-      delimiterIndex = Math.min(questionMarkIndex, colonIndex);
-    } else if (questionMarkIndex !== -1) {
-      delimiterIndex = questionMarkIndex;
-    } else if (colonIndex !== -1) {
-      delimiterIndex = colonIndex;
+    if (questionMarkIndex !== -1) {
+      searchText = text.substring(questionMarkIndex + 1).trim();
+    } else {
+      // Check for colon
+      const colonIndex = text.indexOf(':');
+      if (colonIndex !== -1) {
+        searchText = text.substring(colonIndex + 1).trim();
+      } else {
+        // Check for period (for statements like "Rate the following items. Item1, Item2, Item3")
+        const periodIndex = text.indexOf('.');
+        if (periodIndex !== -1) {
+          searchText = text.substring(periodIndex + 1).trim();
+        } else {
+          // Fallback: if no punctuation found, try to find patterns like "at the following" or "priced at"
+          // This handles cases like "priced at the following per box of 6 monthly lenses. $30, $35, $40"
+          const followingPatterns = [
+            "at the following",
+            "priced at",
+            "the following",
+            "as follows"
+          ];
+          for (const pattern of followingPatterns) {
+            const patternIndex = text.toLowerCase().indexOf(pattern);
+            if (patternIndex !== -1) {
+              // Look for the next period or end of string
+              const nextPeriod = text.indexOf('.', patternIndex);
+              if (nextPeriod !== -1) {
+                searchText = text.substring(nextPeriod + 1).trim();
+                break;
+              } else {
+                // If no period after pattern, take everything after the pattern
+                searchText = text.substring(patternIndex + pattern.length).trim();
+                break;
+              }
+            }
+          }
+        }
+      }
     }
-    
-    if (delimiterIndex === -1) return [];
-    
-    // Get everything after the delimiter
-    const afterDelimiter = text.substring(delimiterIndex + 1).trim();
-    
+
     // Remove trailing period if present
-    const cleanText = afterDelimiter.replace(/\.$/, '');
+    const cleanText = searchText.replace(/\.$/, '');
     
     // Split by comma and clean up
-    return cleanText
+    let attributes = cleanText
       .split(',')
       .map(attr => attr.trim())
       .filter(attr => attr.length > 0);
+
+    // If no attributes found with the above methods, try a more aggressive approach
+    // Look for any comma-separated list in the text
+    if (attributes.length === 0) {
+      // Look for patterns like "$30, $35, $40" or "Item1, Item2, Item3"
+      const pricePattern = /\$[\d,]+(?:\.\d{2})?(?:\s*,\s*\$?\d+(?:\.\d{2})?)+/g;
+      const wordPattern = /[A-Za-z][A-Za-z0-9\s]*(?:\s*,\s*[A-Za-z][A-Za-z0-9\s]*)+/g;
+      const generalPattern = /[\w\s]+(?:\s*,\s*[\w\s]+)+/g;
+      
+      const patterns = [pricePattern, wordPattern, generalPattern];
+      
+      for (const pattern of patterns) {
+        const matches = text.match(pattern);
+        if (matches && matches.length > 0) {
+          // Take the longest match (most likely to be the attribute list)
+          const longestMatch = matches.reduce((a, b) => a.length > b.length ? a : b);
+          attributes = longestMatch
+            .split(',')
+            .map(attr => attr.trim())
+            .filter(attr => attr.length > 0);
+          if (attributes.length > 1) {
+            break;
+          }
+        }
+      }
+      
+      // If still no attributes, try the simple approach: find the last comma-separated list
+      if (attributes.length === 0) {
+        const lastComma = text.lastIndexOf(',');
+        if (lastComma !== -1) {
+          // Look backwards to find the start of the list
+          let start = text.lastIndexOf('.', lastComma);
+          if (start === -1) {
+            start = text.lastIndexOf(':', lastComma);
+          }
+          if (start === -1) {
+            start = text.lastIndexOf('?', lastComma);
+          }
+          
+          if (start !== -1) {
+            const listText = text.substring(start + 1).trim();
+            attributes = listText
+              .split(',')
+              .map(attr => attr.trim())
+              .filter(attr => attr.length > 0);
+            // Clean up any trailing periods
+            if (attributes.length > 0 && attributes[attributes.length - 1].endsWith('.')) {
+              attributes[attributes.length - 1] = attributes[attributes.length - 1].replace(/\.$/, '');
+            }
+          }
+        }
+      }
+    }
+
+    return attributes;
   };
 
   const attributes = extractAttributes(question.text);

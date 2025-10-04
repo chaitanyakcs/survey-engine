@@ -72,25 +72,53 @@ async def export_survey(request: SurveyExportRequest):
         if not request.survey_data:
             raise HTTPException(status_code=400, detail="Survey data is required")
 
-        questions = request.survey_data.get("questions", [])
-        if not questions:
-            raise HTTPException(status_code=400, detail="Survey must contain at least one question")
+        # Check if survey uses sections format or legacy questions format
+        if "sections" in request.survey_data:
+            # Sections format - validate sections
+            sections = request.survey_data.get("sections", [])
+            logger.info(f"Export validation: Found {len(sections)} sections")
+            
+            if not sections:
+                raise HTTPException(status_code=400, detail="Survey must contain at least one section")
+            
+            # Validate sections have questions
+            total_questions = 0
+            for i, section in enumerate(sections):
+                questions = section.get("questions", [])
+                total_questions += len(questions)
+                logger.info(f"Export validation: Section {i+1} has {len(questions)} questions")
+            
+            logger.info(f"Export validation: Total questions: {total_questions}")
+            
+            if total_questions == 0:
+                raise HTTPException(status_code=400, detail="Survey must contain at least one question across all sections")
+                
+        else:
+            # Legacy format - validate questions directly
+            questions = request.survey_data.get("questions", [])
+            if not questions:
+                raise HTTPException(status_code=400, detail="Survey must contain at least one question")
 
-        # Validate question types
-        for i, question in enumerate(questions):
-            if "type" not in question:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Question {i + 1} is missing 'type' field"
-                )
-            if "text" not in question:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Question {i + 1} is missing 'text' field"
-                )
+            # Validate question types
+            for i, question in enumerate(questions):
+                if "type" not in question:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Question {i + 1} is missing 'type' field"
+                    )
+                if "text" not in question:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Question {i + 1} is missing 'text' field"
+                    )
 
         # Generate export
-        logger.info(f"Exporting survey with {len(questions)} questions to {request.format} format")
+        if "sections" in request.survey_data:
+            total_questions = sum(len(section.get("questions", [])) for section in request.survey_data.get("sections", []))
+            logger.info(f"Exporting survey with {len(request.survey_data.get('sections', []))} sections and {total_questions} questions to {request.format} format")
+        else:
+            questions = request.survey_data.get("questions", [])
+            logger.info(f"Exporting survey with {len(questions)} questions to {request.format} format")
 
         exported_data = renderer.render_survey(request.survey_data)
 

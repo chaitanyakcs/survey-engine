@@ -388,7 +388,23 @@ const QuestionAnnotationForm: React.FC<{
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4">
       <div className="mb-4">
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">Question Annotation</h3>
+        <div className="flex justify-between items-center mb-2">
+          <h3 className="text-lg font-semibold text-gray-900">Question Annotation</h3>
+          <div className="flex space-x-2">
+            <button
+              onClick={onCancel}
+              className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Save
+            </button>
+          </div>
+        </div>
         <p className="text-sm text-gray-600 mb-4">{question.question_text || question.text || 'No question text available'}</p>
         
         {/* Question Options */}
@@ -578,7 +594,23 @@ const SectionAnnotationForm: React.FC<{
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4">
       <div className="mb-4">
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">Section Annotation</h3>
+        <div className="flex justify-between items-center mb-2">
+          <h3 className="text-lg font-semibold text-gray-900">Section Annotation</h3>
+          <div className="flex space-x-2">
+            <button
+              onClick={onCancel}
+              className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Save
+            </button>
+          </div>
+        </div>
         <p className="text-sm text-gray-600 mb-4">{section.title || section.section_title || 'No section title available'}</p>
       </div>
 
@@ -679,22 +711,6 @@ const SectionAnnotationForm: React.FC<{
             placeholder="Add labels for this section..."
             maxLabels={10}
           />
-        </div>
-
-        {/* Actions */}
-        <div className="flex justify-end space-x-2 pt-4">
-          <button
-            onClick={onCancel}
-            className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            Save
-          </button>
         </div>
       </div>
     </div>

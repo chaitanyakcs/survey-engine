@@ -319,6 +319,12 @@ export interface Survey {
   // For golden examples that have nested structure
   final_output?: Survey;
   settings?: any;
+  // Comment metadata from DOCX extraction
+  comment_metadata?: {
+    total_comments: number;
+    comment_categories: string[];
+    extraction_timestamp: string;
+  };
   pillar_scores?: {
     overall_grade: string;
     weighted_score: number;
@@ -362,6 +368,7 @@ export interface Question {
   methodology?: string;
   ai_rationale?: string;
   description?: string; // For additional context, especially useful for instructions
+  label?: string; // For programming notes and other labels
 }
 
 // Removed duplicate interface - using the full definition below

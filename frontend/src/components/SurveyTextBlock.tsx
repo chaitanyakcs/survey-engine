@@ -66,29 +66,32 @@ const SurveyTextBlock: React.FC<SurveyTextBlockProps> = ({
     }
   };
 
-  const typeStyles = getTextTypeStyles(textContent.type);
   const icon = getTextTypeIcon(textContent.type);
   const typeLabel = getTextTypeLabel(textContent.type);
+  const typeStyles = getTextTypeStyles(textContent.type);
 
   return (
     <div className={`${typeStyles} border rounded-lg p-6 mb-6 ${className}`}>
-      {/* Header with icon and type label */}
-      <div className="flex items-center mb-4">
-        <div className="flex items-center space-x-2">
-          {icon}
-          <span className="font-medium text-sm">{typeLabel}</span>
+      {/* Header with prominent Instructions and small purple tag */}
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex flex-col">
+          {/* Prominent Instructions heading */}
+          <div className="flex items-center space-x-2 mb-1">
+            {icon}
+            <span className="font-bold text-lg">{typeLabel}</span>
+          </div>
+          
+          {/* Small purple tag (label) */}
+          {textContent.label && (
+            <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded ml-6 w-fit">
+              {textContent.label}
+            </span>
+          )}
         </div>
-
-        {/* Show AiRA label for debugging/development */}
-        {showLabel && textContent.label && (
-          <span className="ml-auto text-xs bg-white bg-opacity-50 px-2 py-1 rounded">
-            AiRA: {textContent.label}
-          </span>
-        )}
 
         {/* Show mandatory indicator */}
         {textContent.mandatory && (
-          <span className="ml-auto text-xs bg-red-100 text-red-800 px-2 py-1 rounded">
+          <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">
             Required
           </span>
         )}

@@ -111,8 +111,10 @@ const QuestionCard: React.FC<{
       {/* Question Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center space-x-2">
-          <span className="text-sm font-medium text-gray-500">Q{index + 1}</span>
-          {question.methodology && (
+          {question.type !== 'instruction' && (
+            <span className="text-sm font-medium text-gray-500">Q{index + 1}</span>
+          )}
+          {question.methodology && question.type !== 'instruction' && (
             <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
               {question.methodology}
             </span>
@@ -305,24 +307,31 @@ const QuestionCard: React.FC<{
 
         {question.type === 'instruction' && (
           <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-lg">
-            <div className="flex items-start space-x-3">
-              <div className="flex-shrink-0">
-                <svg className="w-5 h-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="flex-grow">
-                <h4 className="text-sm font-medium text-blue-800 mb-1">Instructions</h4>
-                <div className="text-sm text-blue-700 leading-relaxed whitespace-pre-wrap">
-                  {question.text}
+            <div className="mb-2">
+              {/* Extract first words before colon as heading */}
+              {(() => {
+                const text = question.text || '';
+                const colonIndex = text.indexOf(':');
+                const heading = colonIndex > 0 ? text.substring(0, colonIndex).trim() : 'Instructions';
+                const content = colonIndex > 0 ? text.substring(colonIndex + 1).trim() : text;
+                
+                return (
+                  <>
+                    <h4 className="text-lg font-bold text-blue-900 mb-2">{heading}</h4>
+                    <div className="text-sm text-blue-800 leading-relaxed whitespace-pre-wrap">
+                      {content}
+                    </div>
+                  </>
+                );
+              })()}
+              
+              {question.description && (
+                <div className="mt-2 text-xs text-blue-600 italic">
+                  {question.description}
                 </div>
-                {question.description && (
-                  <div className="mt-2 text-xs text-blue-600 italic">
-                    {question.description}
-                  </div>
-                )}
-              </div>
+              )}
             </div>
+            
             <div className="mt-3 flex items-center justify-between">
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                 Instruction Block

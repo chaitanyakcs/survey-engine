@@ -179,6 +179,38 @@ const QuestionRenderer: React.FC<QuestionRendererProps> = ({ question, onRespons
         />
       )}
 
+      {question.type === 'instruction' && (
+        <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-lg">
+          <div className="mb-2">
+            {/* Extract first words before colon as heading */}
+            {(() => {
+              const text = question.text || '';
+              const colonIndex = text.indexOf(':');
+              const heading = colonIndex > 0 ? text.substring(0, colonIndex).trim() : 'Instructions';
+              const content = colonIndex > 0 ? text.substring(colonIndex + 1).trim() : text;
+              
+              return (
+                <>
+                  <h4 className="text-lg font-bold text-blue-900 mb-2">{heading}</h4>
+                  <div className="text-sm text-blue-800 leading-relaxed whitespace-pre-wrap">
+                    {content}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+          
+          <div className="mt-3 flex items-center justify-between">
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+              Instruction Block
+            </span>
+            <span className="text-xs text-blue-600">
+              No response required
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Question category and metadata */}
       {process.env.NODE_ENV === 'development' && (
         <div className="mt-4 pt-4 border-t border-gray-200">

@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { EnhancedRFQRequest } from '../types';
+import { PromptPreview } from './PromptPreview';
 
 interface PreGenerationPreviewProps {
   rfq: EnhancedRFQRequest;
@@ -25,12 +26,9 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
 }) => {
   const { submitEnhancedRFQ, workflow } = useAppStore();
   const [estimatedMetrics, setEstimatedMetrics] = useState<EstimatedMetrics | null>(null);
+  const [activeTab, setActiveTab] = useState<'overview' | 'prompt'>('overview');
 
-  useEffect(() => {
-    calculateEstimates();
-  }, [rfq]); // calculateEstimates doesn't need to be in deps as it only uses rfq
-
-  const calculateEstimates = () => {
+  const calculateEstimates = useCallback(() => {
     // Simulate AI-powered estimation logic
     const objectiveCount = rfq.research_objectives?.key_research_questions?.length || 0;
     const hasComplexMethodologies = rfq.methodology?.primary_method && 
@@ -64,8 +62,11 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
       methodology_complexity: complexity,
       quality_score: 0.8 // Static reasonable default
     });
-  };
+  }, [rfq]);
 
+  useEffect(() => {
+    calculateEstimates();
+  }, [calculateEstimates]);
 
   const handleGenerate = async () => {
     if (onGenerate) {
@@ -89,12 +90,63 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
               <p className="text-gray-600">Review your research requirements before generation</p>
             </div>
           </div>
+
+          {/* Tab Navigation with Action Buttons */}
+          <div className="border-b border-gray-200">
+            <div className="flex items-center justify-between">
+              <nav className="-mb-px flex space-x-8">
+                <button
+                  onClick={() => setActiveTab('overview')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ${
+                    activeTab === 'overview'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <span className="text-xl mr-2">📋</span>
+                  Overview
+                </button>
+                <button
+                  onClick={() => setActiveTab('prompt')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ${
+                    activeTab === 'prompt'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <span className="text-xl mr-2">🤖</span>
+                  AI Prompt Preview
+                </button>
+              </nav>
+              
+              {/* Action Buttons */}
+              <div className="flex space-x-3">
+                <button
+                  onClick={onEdit}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={handleGenerate}
+                  disabled={isLoading}
+                  className={`px-6 py-2 rounded-lg font-semibold transition-all duration-300 text-sm ${
+                    isLoading
+                      ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-yellow-600 to-amber-600 text-white hover:shadow-lg transform hover:scale-105'
+                  }`}
+                >
+                  {isLoading ? 'Generating...' : 'Generate'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="max-w-6xl mx-auto">
-
-          {/* Main Preview Panel */}
-          <div className="space-y-6">
+          {/* Tab Content */}
+          {activeTab === 'overview' && (
+            <div className="space-y-6">
 
             {/* Project Overview */}
             <div className="bg-white/70 backdrop-blur-lg rounded-3xl shadow-2xl border border-white/20 p-8">
@@ -677,38 +729,14 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
               </div>
             )}
 
-            {/* Generation Actions */}
-            <div className="bg-white/70 backdrop-blur-lg rounded-3xl shadow-2xl border border-white/20 p-8">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900 mb-2">Ready to Generate?</h2>
-                  <p className="text-gray-600">Your research requirements are ready for AI survey generation</p>
-                </div>
-
-                <div className="flex space-x-4">
-                  <button
-                    onClick={onEdit}
-                    className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors"
-                  >
-                    Edit Requirements
-                  </button>
-
-                  <button
-                    onClick={handleGenerate}
-                    disabled={isLoading}
-                    className={`px-8 py-3 rounded-xl font-semibold transition-all duration-300 ${
-                      isLoading
-                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                        : 'bg-gradient-to-r from-yellow-600 to-amber-600 text-white hover:shadow-lg transform hover:scale-105'
-                    }`}
-                  >
-                    {isLoading ? 'Generating...' : 'Generate Survey'}
-                  </button>
-                </div>
-              </div>
-
             </div>
-          </div>
+          )}
+
+          {activeTab === 'prompt' && (
+            <div className="space-y-6">
+              <PromptPreview rfq={rfq} />
+            </div>
+          )}
 
         </div>
       </div>

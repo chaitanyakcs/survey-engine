@@ -92,19 +92,6 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
     resetDocumentProcessingState
   } = useAppStore();
 
-  // Helper functions for document processing
-  const setDocumentContent = (content: any) => {
-    useAppStore.setState({ documentContent: content });
-  };
-
-  const setRfqAnalysis = (analysis: any) => {
-    useAppStore.setState({ documentAnalysis: analysis });
-  };
-
-  const setFieldMappings = (mappings: any[]) => {
-    useAppStore.setState({ fieldMappings: mappings });
-  };
-
   // Helper function to check if a field was actually auto-filled from document
   const isFieldAutoFilled = (fieldPath: string): boolean => {
     return fieldMappings.some(mapping => 
@@ -300,60 +287,6 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
               clearInterval(pollingIntervalRef.current);
               pollingIntervalRef.current = null;
             }
-            
-            // Fetch the completed document analysis and apply to form
-            if (status.has_results) {
-              console.log('📥 [EnhancedRFQEditor] Fetching completed analysis results');
-              try {
-                // Fetch the analysis results from the backend
-                const resultsResponse = await fetch(`/api/v1/rfq/status/${sessionId}/results`);
-                if (resultsResponse.ok) {
-                  const results = await resultsResponse.json();
-                  console.log('📊 [EnhancedRFQEditor] Retrieved analysis results:', results);
-
-                  // Apply the results to the form
-                  if (results.document_content) {
-                    setDocumentContent(results.document_content);
-                  }
-                  
-                  if (results.rfq_analysis) {
-                    setRfqAnalysis(results.rfq_analysis);
-                  }
-                  
-                  if (results.field_mappings && results.field_mappings.length > 0) {
-                    setFieldMappings(results.field_mappings);
-                    console.log('🎯 [EnhancedRFQEditor] Applied field mappings:', results.field_mappings);
-                  }
-
-                  // Mark as completed and navigate to business context
-                  resetDocumentProcessingState();
-                  setCurrentSectionWithPersistence('business_context');
-                  
-                  addToast({
-                    type: 'success',
-                    title: 'Document Analysis Complete',
-                    message: 'Document has been analyzed and form populated with extracted information.',
-                    duration: 5000
-                  });
-                } else {
-                  console.error('❌ [EnhancedRFQEditor] Failed to fetch analysis results');
-                  addToast({
-                    type: 'error',
-                    title: 'Analysis Results Error',
-                    message: 'Failed to fetch completed analysis results.',
-                    duration: 5000
-                  });
-                }
-              } catch (error) {
-                console.error('❌ [EnhancedRFQEditor] Error fetching analysis results:', error);
-                addToast({
-                  type: 'error',
-                  title: 'Analysis Results Error',
-                  message: 'Error fetching completed analysis results.',
-                  duration: 5000
-                });
-              }
-            }
           } else if (status.status === 'cancelled') {
             console.log('🛑 [EnhancedRFQEditor] Processing was cancelled, stopping polling');
             // Stop polling
@@ -372,6 +305,96 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
               duration: 3000
             });
             return; // Exit polling function
+          }
+          
+          // Fetch the completed document analysis and apply to form
+          if (status.status === 'completed' && status.has_results) {
+            console.log('📥 [EnhancedRFQEditor] Fetching completed analysis results');
+            try {
+                // Fetch the analysis results from the backend
+                const resultsResponse = await fetch(`/api/v1/rfq/status/${sessionId}/results`);
+                if (resultsResponse.ok) {
+                  const results = await resultsResponse.json();
+                  console.log('📊 [EnhancedRFQEditor] Retrieved analysis results:', results);
+                  
+                  // Apply the analysis results directly to the store
+                  const { addToast } = useAppStore.getState();
+                  
+                  // Accept all field mappings regardless of confidence
+                  const incomingMappings = results.rfq_analysis?.field_mappings || [];
+                  const autoAccepted = incomingMappings.map((m: any) => ({
+                    ...m,
+                    user_action: 'accepted' as const
+                  }));
+
+                  // Update store with analysis results and auto-accepted mappings
+                  useAppStore.setState({
+                    documentContent: results.document_content,
+                    documentAnalysis: results.rfq_analysis,
+                    fieldMappings: autoAccepted,
+                    isDocumentProcessing: false
+                  });
+
+                  // Auto-apply accepted mappings immediately
+                  const acceptedCount = autoAccepted.filter((m: any) => m.user_action === 'accepted').length;
+                  if (acceptedCount > 0) {
+                    // Apply mappings immediately using the accepted mappings
+                    let rfqUpdates = useAppStore.getState().buildRFQUpdatesFromMappings(autoAccepted.filter((m: any) => m.user_action === 'accepted'));
+
+                    // Apply methodology-based intelligence
+                    rfqUpdates = useAppStore.getState().applyMethodologyIntelligence(rfqUpdates);
+
+                    useAppStore.getState().setEnhancedRfq(rfqUpdates);
+
+                    addToast({
+                      type: 'success',
+                      title: 'Auto-filled from Document',
+                      message: `Applied ${acceptedCount} extracted fields. Review in the sections below. Click "Reset Form" to start fresh with a new RFQ.`,
+                      duration: 8000
+                    });
+                    
+                    // Automatically advance to Business Context section to show auto-filled content
+                    setTimeout(() => {
+                      setCurrentSectionWithPersistence('business_context');
+                    }, 1000); // Small delay to let user see the success message
+                  } else {
+                    addToast({
+                      type: 'info',
+                      title: 'Document Processing Complete',
+                      message: 'Document analysis completed, but no fields were extracted for auto-fill.',
+                      duration: 5000
+                    });
+                  }
+                } else {
+                  console.warn('⚠️ [EnhancedRFQEditor] Failed to fetch analysis results');
+                  useAppStore.setState({ isDocumentProcessing: false });
+                  addToast({
+                    type: 'warning',
+                    title: 'Document Processing Complete',
+                    message: 'Document analysis completed, but results could not be retrieved. Please refresh the page.',
+                    duration: 5000
+                  });
+                }
+              } catch (error) {
+                console.error('❌ [EnhancedRFQEditor] Error fetching analysis results:', error);
+                useAppStore.setState({ isDocumentProcessing: false });
+                addToast({
+                  type: 'error',
+                  title: 'Error Retrieving Results',
+                  message: 'Document analysis completed, but there was an error retrieving the results. Please refresh the page.',
+                  duration: 5000
+                });
+              }
+            } else {
+              console.log('⚠️ [EnhancedRFQEditor] Processing completed but no results available');
+              useAppStore.setState({ isDocumentProcessing: false });
+              addToast({
+                type: 'info',
+                title: 'Document Processing Complete',
+                message: 'Document analysis completed, but no results are available.',
+                duration: 5000
+              });
+            }
           } else if (status.status === 'failed') {
             console.log('❌ [EnhancedRFQEditor] Processing failed');
             // Stop polling
@@ -847,9 +870,8 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                         <button
                           onClick={async () => {
                             try {
-                              // Get current session ID from localStorage
-                              const persistedState = localStorage.getItem('document_processing_state');
-                              const currentSessionId = persistedState ? JSON.parse(persistedState).sessionId : null;
+                              // Get current session ID from the processing state
+                              const currentSessionId = documentProcessingState?.sessionId;
                               
                               if (currentSessionId) {
                                 // Call backend cancellation API

@@ -36,7 +36,6 @@ export const GoldenExampleCreatePage: React.FC = () => {
   
   // Intelligent field extraction states
   const [showFieldExtractor, setShowFieldExtractor] = useState(false);
-  const [extractionProgress, setExtractionProgress] = useState<any>(null);
 
   // Handle field extraction results
   const handleFieldsExtracted = (fields: any) => {
@@ -64,7 +63,6 @@ export const GoldenExampleCreatePage: React.FC = () => {
   // Handle extraction progress updates
   const handleProgressUpdate = (progress: any) => {
     console.log('📊 [Golden Create] Progress update:', progress);
-    setExtractionProgress(progress);
   };
 
   // Show field extractor when Survey is available and either RFQ is provided or auto-generate is enabled
@@ -608,19 +606,43 @@ export const GoldenExampleCreatePage: React.FC = () => {
                       )}
 
                       {showJsonPreview && extractedText && (
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <label className="text-sm font-medium text-gray-700">Extracted Text Preview</label>
-                            <button
-                              onClick={() => setShowJsonPreview(false)}
-                              className="text-sm text-gray-500 hover:text-gray-700"
-                            >
-                              Hide
-                            </button>
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <label className="text-sm font-medium text-gray-700">Extracted Text Preview</label>
+                              <button
+                                onClick={() => setShowJsonPreview(false)}
+                                className="text-sm text-gray-500 hover:text-gray-700"
+                              >
+                                Hide
+                              </button>
+                            </div>
+                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 max-h-40 overflow-y-auto">
+                              <pre className="text-xs text-gray-600 whitespace-pre-wrap">{extractedText}</pre>
+                            </div>
                           </div>
-                          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 max-h-40 overflow-y-auto">
-                            <pre className="text-xs text-gray-600 whitespace-pre-wrap">{extractedText}</pre>
-                          </div>
+
+                          {/* Comment Metadata Display */}
+                          {formData.survey_json?.comment_metadata && (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <label className="text-sm font-medium text-gray-700">Comment Metadata</label>
+                                <span className="text-xs text-gray-500">
+                                  {formData.survey_json.comment_metadata.total_comments} comments found
+                                </span>
+                              </div>
+                              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                <div className="space-y-2">
+                                  <div className="text-xs text-blue-800">
+                                    <strong>Categories:</strong> {formData.survey_json.comment_metadata.comment_categories?.join(', ')}
+                                  </div>
+                                  <div className="text-xs text-blue-800">
+                                    <strong>Extracted:</strong> {new Date(formData.survey_json.comment_metadata.extraction_timestamp).toLocaleString()}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

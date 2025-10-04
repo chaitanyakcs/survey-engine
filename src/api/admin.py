@@ -347,3 +347,152 @@ async def fix_llm_audit_schema(db: Session = Depends(get_db)):
             status_code=500,
             detail=f"Error fixing llm_audit schema: {str(e)}"
         )
+
+@router.post("/fix-processing-status-constraint")
+async def fix_processing_status_constraint(db: Session = Depends(get_db)):
+    """
+    Fix the processing_status constraint to include 'cancelled' status
+    """
+    try:
+        logger.info("🔧 Fixing processing_status constraint to include 'cancelled'...")
+        
+        # Check current constraint
+        result = db.execute(text("""
+            SELECT constraint_name, check_clause
+            FROM information_schema.check_constraints
+            WHERE constraint_name = 'check_processing_status'
+            AND constraint_schema = 'public'
+        """))
+        
+        current_constraint = result.fetchone()
+        
+        if current_constraint:
+            constraint_clause = current_constraint[1]
+            logger.info(f"📋 Current constraint: {constraint_clause}")
+            
+            if "'cancelled'" in constraint_clause:
+                logger.info("✅ Constraint already includes 'cancelled' status")
+                return {
+                    "status": "success",
+                    "message": "Constraint already includes 'cancelled' status",
+                    "current_constraint": constraint_clause,
+                    "changes": []
+                }
+        
+        # Drop existing constraint
+        logger.info("🗑️ Dropping existing check_processing_status constraint...")
+        try:
+            db.execute(text("ALTER TABLE document_uploads DROP CONSTRAINT check_processing_status"))
+            logger.info("✅ Dropped existing constraint")
+        except Exception as e:
+            if "does not exist" in str(e):
+                logger.info("ℹ️ Constraint doesn't exist, continuing...")
+            else:
+                raise e
+        
+        # Add new constraint with 'cancelled' status
+        logger.info("📝 Adding new constraint with 'cancelled' status...")
+        db.execute(text("""
+            ALTER TABLE document_uploads 
+            ADD CONSTRAINT check_processing_status 
+            CHECK (processing_status IN ('pending', 'processing', 'completed', 'failed', 'cancelled'))
+        """))
+        
+        db.commit()
+        
+        logger.info("✅ Successfully updated processing_status constraint")
+        
+        # Test the constraint by trying to insert a cancelled record
+        logger.info("🧪 Testing constraint with 'cancelled' status...")
+        try:
+            db.execute(text("""
+                INSERT INTO document_uploads (session_id, filename, file_size, processing_status, created_at)
+                VALUES ('test-constraint-verification', 'test.docx', 1024, 'cancelled', NOW())
+                ON CONFLICT (session_id) DO UPDATE SET processing_status = 'cancelled'
+            """))
+            db.commit()
+            logger.info("✅ Successfully tested 'cancelled' status insertion")
+            
+            # Clean up test record
+            db.execute(text("DELETE FROM document_uploads WHERE session_id = 'test-constraint-verification'"))
+            db.commit()
+            logger.info("🧹 Cleaned up test record")
+            
+        except Exception as e:
+            logger.error(f"❌ Constraint test failed: {str(e)}")
+            raise e
+        
+        return {
+            "status": "success",
+            "message": "Successfully updated processing_status constraint to include 'cancelled'",
+            "changes": [
+                "Dropped old check_processing_status constraint",
+                "Added new constraint with 'cancelled' status",
+                "Tested constraint with 'cancelled' status insertion"
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error fixing processing_status constraint: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fixing processing_status constraint: {str(e)}"
+        )
+
+@router.get("/verify-processing-status-constraint")
+async def verify_processing_status_constraint(db: Session = Depends(get_db)):
+    """
+    Verify that the processing_status constraint includes 'cancelled' status
+    """
+    try:
+        logger.info("🔍 Verifying processing_status constraint...")
+        
+        # Check current constraint
+        result = db.execute(text("""
+            SELECT constraint_name, check_clause
+            FROM information_schema.check_constraints
+            WHERE constraint_name = 'check_processing_status'
+            AND constraint_schema = 'public'
+        """))
+        
+        current_constraint = result.fetchone()
+        
+        if not current_constraint:
+            logger.warning("⚠️ check_processing_status constraint not found")
+            return {
+                "status": "error",
+                "message": "check_processing_status constraint not found",
+                "constraint_exists": False
+            }
+        
+        constraint_clause = current_constraint[1]
+        logger.info(f"📋 Current constraint: {constraint_clause}")
+        
+        has_cancelled = "'cancelled'" in constraint_clause
+        
+        if has_cancelled:
+            logger.info("✅ Constraint includes 'cancelled' status")
+            return {
+                "status": "success",
+                "message": "Constraint includes 'cancelled' status",
+                "constraint_exists": True,
+                "has_cancelled": True,
+                "constraint_clause": constraint_clause
+            }
+        else:
+            logger.warning("⚠️ Constraint does not include 'cancelled' status")
+            return {
+                "status": "warning",
+                "message": "Constraint does not include 'cancelled' status",
+                "constraint_exists": True,
+                "has_cancelled": False,
+                "constraint_clause": constraint_clause
+            }
+        
+    except Exception as e:
+        logger.error(f"❌ Error verifying processing_status constraint: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error verifying processing_status constraint: {str(e)}"
+        )

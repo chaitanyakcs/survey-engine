@@ -235,8 +235,20 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                         
                         # Process the output and set audit context
                         response_time_ms = int((time.time() - start_time) * 1000)
+                        
+                        # Capture raw response immediately (unprocessed)
+                        if hasattr(output, '__iter__') and not isinstance(output, str):
+                            raw_response = "".join(str(chunk) for chunk in output)
+                        else:
+                            raw_response = str(output)
+                        
+                        # Process the output for further use
+                        processed_output = raw_response.strip()
+                        
+                        # Set raw response (unprocessed) and processed output
+                        audit_context.set_raw_response(raw_response)
                         audit_context.set_output(
-                            output_content=str(output)
+                            output_content=processed_output
                         )
                 else:
                     # Fallback without auditing
@@ -484,37 +496,41 @@ RESEARCH OBJECTIVES FIELDS (High Priority):
 14. validation_requirements - What validation is needed
 15. measurement_approach - Research approach (quantitative, qualitative, mixed_methods)
 
+ADVANCED CLASSIFICATION FIELDS (High Priority):
+16. industry_classification - Industry type (free text - extract from company background, product context)
+17. respondent_classification - Target respondent type (free text - extract from research audience, demographics)
+
 METHODOLOGY FIELDS (High Priority):
-16. primary_method - Research methodology (van_westendorp, gabor_granger, conjoint, basic_survey)
-17. stimuli_details - Concept details, price ranges, stimuli information
-18. methodology_requirements - Additional methodology notes and requirements
-19. complexity_level - Research complexity (simple, standard, advanced)
-20. required_methodologies - Specific methodologies required (as array)
-21. sample_size_target - Target number of respondents
+18. primary_method - Research methodology (van_westendorp, gabor_granger, conjoint, basic_survey)
+19. stimuli_details - Concept details, price ranges, stimuli information
+20. methodology_requirements - Additional methodology notes and requirements
+21. complexity_level - Research complexity (simple, standard, advanced)
+22. required_methodologies - Specific methodologies required (as array)
+23. sample_size_target - Target number of respondents
 
 SURVEY REQUIREMENTS FIELDS (Medium Priority):
-22. sample_plan - Sample structure, LOI, recruiting criteria
-23. must_have_questions - Must-have questions per respondent type (as array)
-24. completion_time_target - Target completion time (5_10_min, 10_15_min, 15_25_min, 25_plus_min)
-25. device_compatibility - Device requirements (mobile_first, desktop_first, both)
-26. accessibility_requirements - Accessibility needs (standard, enhanced, full_compliance)
-27. data_quality_requirements - Data quality standards (basic, standard, premium)
+24. sample_plan - Sample structure, LOI, recruiting criteria
+25. must_have_questions - Must-have questions per respondent type (as array)
+26. completion_time_target - Target completion time (5_10_min, 10_15_min, 15_25_min, 25_plus_min)
+27. device_compatibility - Device requirements (mobile_first, desktop_first, both)
+28. accessibility_requirements - Accessibility needs (standard, enhanced, full_compliance)
+29. data_quality_requirements - Data quality standards (basic, standard, premium)
 
 SURVEY STRUCTURE FIELDS (Medium Priority):
-28. qnr_sections_detected - Required QNR sections (as array)
-29. text_requirements_detected - Required text introductions (as array)
+30. qnr_sections_detected - Required QNR sections (as array)
+31. text_requirements_detected - Required text introductions (as array)
 
 SURVEY LOGIC FIELDS (Medium Priority):
-30. requires_piping_logic - Whether piping/carry-forward logic is needed (boolean)
-31. requires_sampling_logic - Whether sampling/randomization logic is needed (boolean)
-32. requires_screener_logic - Whether screener/qualification logic is needed (boolean)
-33. custom_logic_requirements - Custom logic requirements and specifications
+32. requires_piping_logic - Whether piping/carry-forward logic is needed (boolean)
+33. requires_sampling_logic - Whether sampling/randomization logic is needed (boolean)
+34. requires_screener_logic - Whether screener/qualification logic is needed (boolean)
+35. custom_logic_requirements - Custom logic requirements and specifications
 
 BRAND USAGE FIELDS (Medium Priority):
-34. brand_recall_required - Whether brand recall questions are needed (boolean)
-35. brand_awareness_funnel - Whether brand awareness funnel is needed (boolean)
-36. brand_product_satisfaction - Whether brand/product satisfaction is needed (boolean)
-37. usage_frequency_tracking - Whether usage frequency tracking is needed (boolean)
+36. brand_recall_required - Whether brand recall questions are needed (boolean)
+37. brand_awareness_funnel - Whether brand awareness funnel is needed (boolean)
+38. brand_product_satisfaction - Whether brand/product satisfaction is needed (boolean)
+39. usage_frequency_tracking - Whether usage frequency tracking is needed (boolean)
 
 SIMPLIFIED FIELD-SPECIFIC EXTRACTION GUIDANCE:
 
@@ -594,6 +610,18 @@ MEASUREMENT_APPROACH (High Priority):
 - Keywords: "quantitative", "qualitative", "mixed", "survey", "interview"
 - Patterns: "Quantitative research", "Qualitative approach", "Mixed methods"
 - Strategy: Extract research approach and map to options
+
+INDUSTRY_CLASSIFICATION (High Priority):
+- Keywords: "industry", "sector", "market", "business", "company type", "vertical"
+- Patterns: "Technology company", "Healthcare industry", "Financial services", "Retail sector"
+- Strategy: Extract industry context from company background, product descriptions, business context
+- Examples: "Technology", "Healthcare", "Financial Services", "Retail", "Automotive", "Education"
+
+RESPONDENT_CLASSIFICATION (High Priority):
+- Keywords: "respondents", "participants", "audience", "customers", "users", "consumers", "professionals"
+- Patterns: "Target consumers", "B2B decision makers", "Healthcare professionals", "Students", "General public"
+- Strategy: Extract respondent type from research audience, demographics, target market descriptions
+- Examples: "B2C Consumers", "B2B Professionals", "Healthcare Workers", "Students", "General Public"
 
 PRIMARY_METHOD (High Priority):
 - Keywords: "van westendorp", "gabor granger", "conjoint", "survey", "interview"
@@ -839,7 +867,9 @@ EXPECTED JSON STRUCTURE:
     "stakeholders": ["decision maker", "end user"],
     "industries": ["technology", "healthcare"],
     "research_types": ["market research", "pricing study"],
-    "methodologies": ["van westendorp", "conjoint analysis"]
+    "methodologies": ["van westendorp", "conjoint analysis"],
+    "industry_classification": "Technology",
+    "respondent_classification": "B2C Consumers"
   }},
   "field_mappings": [
     {{
@@ -1249,8 +1279,20 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
                         
                         # Process the output and set audit context
                         response_time_ms = int((time.time() - start_time) * 1000)
+                        
+                        # Capture raw response immediately (unprocessed)
+                        if hasattr(output, '__iter__') and not isinstance(output, str):
+                            raw_response = "".join(str(chunk) for chunk in output)
+                        else:
+                            raw_response = str(output)
+                        
+                        # Process the output for further use
+                        processed_output = raw_response.strip()
+                        
+                        # Set raw response (unprocessed) and processed output
+                        audit_context.set_raw_response(raw_response)
                         audit_context.set_output(
-                            output_content=str(output)
+                            output_content=processed_output
                         )
                 else:
                     # Fallback without auditing
@@ -1279,11 +1321,17 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
                     }
                 )
 
-            # Process the response
+            # Process the response - use raw response if available from audit context
             if hasattr(output, '__iter__') and not isinstance(output, str):
                 json_content = "".join(str(chunk) for chunk in output).strip()
             else:
                 json_content = str(output).strip()
+            
+            # If we have a raw response from audit context, use that for JSON extraction
+            # This ensures we're extracting from the unprocessed LLM output
+            if 'audit_context' in locals() and hasattr(audit_context, 'raw_response') and audit_context.raw_response:
+                logger.info(f"🔍 [Document Parser] Using raw response from audit context for JSON extraction")
+                json_content = audit_context.raw_response
             
             # CRITICAL FIX: Handle character array output from LLM
             # Sometimes the LLM returns a character array instead of a JSON string
@@ -1381,6 +1429,16 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
         try:
             result = json.loads(raw_text)
             logger.info(f"✅ [Document Parser] Direct JSON parsing succeeded! Keys: {list(result.keys())}")
+            
+            # Check if this is a nested structure with json_output field
+            if isinstance(result, dict) and 'json_output' in result:
+                logger.info("🔧 [Document Parser] Found nested json_output structure, extracting inner data...")
+                inner_data = result['json_output']
+                if isinstance(inner_data, dict):
+                    logger.info(f"✅ [Document Parser] Successfully extracted nested RFQ data! Keys: {list(inner_data.keys())}")
+                    self._validate_and_fix_rfq_structure(inner_data)
+                    return inner_data
+            
             self._validate_and_fix_rfq_structure(result)
             return result
         except json.JSONDecodeError as e:
@@ -1391,7 +1449,7 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
         logger.info("🔧 [Document Parser] Trying JSON extraction from markdown...")
         try:
             import re
-            # Look for JSON in markdown code blocks
+            # Look for JSON in markdown code blocks (more flexible pattern)
             json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', raw_text, re.DOTALL)
             if json_match:
                 extracted_json = json_match.group(1)
@@ -1402,6 +1460,22 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
                 return result
         except (json.JSONDecodeError, AttributeError) as e:
             logger.info(f"⚠️ [Document Parser] Markdown JSON extraction failed: {e}")
+
+        # Strategy 2.5: Try to extract JSON from any code block (not just markdown)
+        logger.info("🔧 [Document Parser] Trying JSON extraction from any code block...")
+        try:
+            import re
+            # Look for JSON in any code block format
+            json_match = re.search(r'```\s*(\{.*?\})\s*```', raw_text, re.DOTALL)
+            if json_match:
+                extracted_json = json_match.group(1)
+                logger.info(f"🔧 [Document Parser] Found JSON in code block, length: {len(extracted_json)}")
+                result = json.loads(extracted_json)
+                logger.info(f"✅ [Document Parser] Code block JSON extraction succeeded!")
+                self._validate_and_fix_rfq_structure(result)
+                return result
+        except (json.JSONDecodeError, AttributeError) as e:
+            logger.info(f"⚠️ [Document Parser] Code block JSON extraction failed: {e}")
 
         # Strategy 3: Try to find JSON between first { and last }
         logger.info("🔧 [Document Parser] Trying JSON extraction between braces...")
@@ -1418,6 +1492,25 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
                 return result
         except json.JSONDecodeError as e:
             logger.info(f"⚠️ [Document Parser] Braces JSON extraction failed: {e}")
+
+        # Strategy 3.5: Try to find JSON with more flexible pattern (handles nested braces better)
+        logger.info("🔧 [Document Parser] Trying flexible JSON extraction...")
+        try:
+            import re
+            # Look for JSON object pattern with better handling of nested braces
+            json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+            json_matches = re.findall(json_pattern, raw_text, re.DOTALL)
+            for match in json_matches:
+                if len(match) > 50:  # Reasonable minimum length
+                    try:
+                        result = json.loads(match)
+                        logger.info(f"✅ [Document Parser] Flexible JSON extraction succeeded!")
+                        self._validate_and_fix_rfq_structure(result)
+                        return result
+                    except json.JSONDecodeError:
+                        continue
+        except Exception as e:
+            logger.info(f"⚠️ [Document Parser] Flexible JSON extraction failed: {e}")
 
         # Strategy 4: Try gentle sanitization and parse
         logger.info("🔧 [Document Parser] Trying gentle sanitization...")
@@ -1664,6 +1757,11 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
 
             logger.info(f"✅ [Document Parser] Text extraction successful, length: {len(document_text)} chars")
 
+            # NEW: Extract comments from DOCX
+            logger.info(f"💬 [Document Parser] Extracting comments from DOCX")
+            comments = self.extract_comments_from_docx(docx_content)
+            logger.info(f"✅ [Document Parser] Found {len(comments)} comments")
+
             # Convert to JSON using LLM
             logger.info(f"🤖 [Document Parser] Converting text to JSON using LLM")
             survey_json = await self.convert_to_json(document_text)
@@ -1673,6 +1771,29 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
             logger.info(f"🔍 [Document Parser] Validating survey JSON structure")
             validated_survey = self.validate_survey_json(survey_json)
             logger.info(f"✅ [Document Parser] JSON validation successful")
+
+            # NEW: Create question annotations from comments
+            if comments and "questions" in validated_survey and validated_survey["questions"]:
+                survey_id = validated_survey.get("survey_id", str(uuid.uuid4()))
+                logger.info(f"💬 [Document Parser] Creating question annotations from comments")
+                self.create_question_annotations_from_comments(
+                    survey_id, 
+                    validated_survey["questions"], 
+                    comments
+                )
+                logger.info(f"✅ [Document Parser] Question annotations created successfully")
+
+            # NEW: Add comment metadata to survey JSON
+            if comments:
+                # Extract unique comment categories
+                comment_categories = list(set(comment["text"] for comment in comments))
+                
+                validated_survey["comment_metadata"] = {
+                    "total_comments": len(comments),
+                    "comment_categories": comment_categories,
+                    "extraction_timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                }
+                logger.info(f"📊 [Document Parser] Added comment metadata: {len(comments)} comments, {len(comment_categories)} unique categories")
 
             # Log final survey structure
             logger.info(f"📊 [Document Parser] Final survey structure: {list(validated_survey.keys()) if isinstance(validated_survey, dict) else 'Not a dict'}")
@@ -1689,6 +1810,136 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
         except Exception as e:
             logger.error(f"❌ [Document Parser] Unexpected error during document parsing: {str(e)}", exc_info=True)
             raise DocumentParsingError(f"Unexpected error: {str(e)}")
+
+    def extract_comments_from_docx(self, docx_content: bytes) -> List[Dict[str, Any]]:
+        """
+        Extract comments from a DOCX file using direct ZIP file access.
+        Returns a list of comment dictionaries with author, date, and text.
+        """
+        import zipfile
+        import xml.etree.ElementTree as ET
+        
+        try:
+            comments = []
+            
+            with zipfile.ZipFile(BytesIO(docx_content), 'r') as docx_zip:
+                # Check if comments.xml exists
+                if 'word/comments.xml' not in docx_zip.namelist():
+                    logger.info(f"📄 [Comment Extraction] No comments.xml found in DOCX")
+                    return comments
+                
+                # Read comments.xml
+                comments_xml = docx_zip.read('word/comments.xml')
+                root = ET.fromstring(comments_xml)
+                
+                # Find all comment elements
+                for comment_elem in root.findall('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}comment'):
+                    comment_id = comment_elem.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id')
+                    author = comment_elem.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}author')
+                    date = comment_elem.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}date')
+                    
+                    # Extract comment text
+                    comment_text = ""
+                    for p in comment_elem.findall('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p'):
+                        for t in p.findall('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t'):
+                            if t.text:
+                                comment_text += t.text
+                        comment_text += "\n"
+                    
+                    comments.append({
+                        'id': comment_id,
+                        'author': author,
+                        'date': date,
+                        'text': comment_text.strip()
+                    })
+            
+            logger.info(f"✅ [Comment Extraction] Found {len(comments)} comments")
+            return comments
+            
+        except Exception as e:
+            logger.error(f"❌ [Comment Extraction] Error extracting comments: {str(e)}")
+            return []
+
+    def find_best_comment_match(self, question: Dict[str, Any], comments: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """
+        Find the best matching comment for a question using simple text similarity.
+        For now, we'll use a simple approach - match comments to questions by order.
+        """
+        if not comments:
+            return None
+        
+        # Simple approach: match by question order
+        # This could be enhanced with more sophisticated matching later
+        question_text = question.get('text', '').lower()
+        
+        # Look for comments that might match question content
+        for comment in comments:
+            comment_text = comment.get('text', '').lower()
+            
+            # Simple keyword matching
+            if any(keyword in question_text for keyword in ['study', 'intro', 'demographic', 'usage', 'product', 'concept']):
+                if any(keyword in comment_text for keyword in ['study', 'intro', 'demographic', 'usage', 'product', 'concept']):
+                    return comment
+        
+        # Fallback: return first comment if no specific match
+        return comments[0] if comments else None
+
+    def create_question_annotations_from_comments(
+        self, 
+        survey_id: str, 
+        questions: List[Dict], 
+        comments: List[Dict]
+    ) -> None:
+        """Create question annotations with comment content as labels."""
+        
+        if not self.db_session:
+            logger.warning(f"⚠️ [Comment Annotation] No database session available, skipping annotation creation")
+            return
+        
+        try:
+            from ..database.models import QuestionAnnotation
+            
+            logger.info(f"💬 [Comment Annotation] Creating annotations for {len(questions)} questions with {len(comments)} comments")
+            
+            for i, question in enumerate(questions):
+                # Find best matching comment for this question
+                best_comment = self.find_best_comment_match(question, comments)
+                
+                if best_comment:
+                    comment_text = best_comment["text"]
+                    
+                    # Create annotation with comment as label
+                    annotation = QuestionAnnotation(
+                        question_id=question.get("id", f"q_{i+1}"),
+                        survey_id=survey_id,
+                        
+                        # Map comment text to labels field
+                        labels=[comment_text],
+                        
+                        # Use comment author as annotator_id
+                        annotator_id=best_comment["author"] or "docx_parser",
+                        
+                        # Default values for required fields
+                        required=True,
+                        quality=3,
+                        relevant=3,
+                        methodological_rigor=3,
+                        content_validity=3,
+                        respondent_experience=3,
+                        analytical_value=3,
+                        business_impact=3
+                    )
+                    
+                    self.db_session.add(annotation)
+                    logger.info(f"✅ [Comment Annotation] Created annotation for question {i+1}: {comment_text}")
+            
+            self.db_session.commit()
+            logger.info(f"🎉 [Comment Annotation] Successfully created {len(questions)} question annotations")
+            
+        except Exception as e:
+            logger.error(f"❌ [Comment Annotation] Error creating annotations: {str(e)}")
+            if self.db_session:
+                self.db_session.rollback()
 
 # Global instance
 document_parser = DocumentParser()

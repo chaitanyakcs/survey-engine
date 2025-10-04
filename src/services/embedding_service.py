@@ -207,8 +207,20 @@ class EmbeddingService:
                     
                     # Process the output and set audit context
                     response_time_ms = int((time.time() - start_time) * 1000)
+                    
+                    # Capture raw response immediately (unprocessed)
+                    if hasattr(output, '__iter__') and not isinstance(output, str):
+                        raw_response = "".join(str(chunk) for chunk in output)
+                    else:
+                        raw_response = str(output)
+                    
+                    # Process the output for further use
+                    processed_output = raw_response.strip()
+                    
+                    # Set raw response (unprocessed) and processed output
+                    audit_context.set_raw_response(raw_response)
                     audit_context.set_output(
-                        output_content=str(output),
+                        output_content=processed_output,
                         response_time_ms=response_time_ms
                     )
             else:

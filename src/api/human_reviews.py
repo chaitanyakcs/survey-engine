@@ -77,10 +77,12 @@ def get_pending_reviews(
         
         # Count expired reviews (past deadline)
         now = datetime.now(timezone.utc)  # Use timezone-aware datetime
+        # Convert timezone-naive datetime to timezone-aware for comparison
+        now_naive = now.replace(tzinfo=None)  # Convert to naive for database comparison
         expired_count = db.query(HumanReview).filter(
             and_(
                 HumanReview.review_status.in_(["pending", "in_progress"]),
-                HumanReview.review_deadline < now
+                HumanReview.review_deadline < now_naive
             )
         ).count()
         
@@ -652,9 +654,16 @@ def convert_to_response(review: HumanReview) -> HumanReviewResponse:
     
     if review.review_deadline:
         now = datetime.now(timezone.utc)  # Use timezone-aware datetime
-        is_expired = now > review.review_deadline
+        
+        # Handle both timezone-aware and timezone-naive datetime objects
+        deadline = review.review_deadline
+        if deadline.tzinfo is None:
+            # If deadline is timezone-naive, assume it's UTC
+            deadline = deadline.replace(tzinfo=timezone.utc)
+        
+        is_expired = now > deadline
         if not is_expired:
-            time_diff = review.review_deadline - now
+            time_diff = deadline - now
             time_remaining_hours = time_diff.total_seconds() / 3600
         else:
             time_remaining_hours = 0
