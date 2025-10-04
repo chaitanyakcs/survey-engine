@@ -57,9 +57,6 @@ class PillarScoringService:
         Returns:
             OverallPillarScore with detailed breakdown
         """
-        logger.info("🏛️ [PillarScoring] Starting pillar evaluation for survey")
-        logger.info(f"🏛️ [PillarScoring] Survey data keys: {list(survey_data.keys()) if survey_data else 'None'}")
-        logger.info(f"🏛️ [PillarScoring] Survey questions count: {get_questions_count(survey_data) if survey_data else 0}")
         
         # Handle None survey data
         if survey_data is None:
@@ -77,11 +74,9 @@ class PillarScoringService:
         
         # Evaluate each pillar
         for pillar_name, weight in self.pillar_weights.items():
-            logger.info(f"🏛️ [PillarScoring] Evaluating pillar: {pillar_name} (weight: {weight:.1%})")
             pillar_score = self._evaluate_pillar(survey_data, pillar_name, weight)
             pillar_scores.append(pillar_score)
             total_weighted_score += pillar_score.weighted_score
-            logger.info(f"🏛️ [PillarScoring] {pillar_name} score: {pillar_score.score:.1%} (grade: {pillar_score.criteria_met}/{pillar_score.total_criteria})")
         
         # Calculate overall metrics
         total_score = sum(score.score for score in pillar_scores) / len(pillar_scores)
@@ -103,11 +98,8 @@ class PillarScoringService:
     
     def _evaluate_pillar(self, survey_data: Dict[str, Any], pillar_name: str, weight: float) -> PillarScore:
         """Evaluate a specific pillar"""
-        logger.info(f"🏛️ [PillarScoring] Evaluating pillar: {pillar_name}")
-        
         # Get pillar rules from database
         pillar_rules = self._get_pillar_rules(pillar_name)
-        logger.info(f"🏛️ [PillarScoring] Found {len(pillar_rules)} rules for {pillar_name}")
         
         if not pillar_rules:
             logger.warning(f"⚠️ [PillarScoring] No rules found for pillar: {pillar_name}")
@@ -129,25 +121,19 @@ class PillarScoringService:
         details = []
         recommendations = []
         
-        logger.info(f"🏛️ [PillarScoring] Evaluating {total_criteria} rules for {pillar_name}")
-        
         for i, rule in enumerate(pillar_rules):
-            logger.info(f"🏛️ [PillarScoring] Rule {i+1}/{total_criteria}: {rule['description'][:50]}...")
             rule_evaluation = self._evaluate_rule(survey_data, rule, pillar_name)
             if rule_evaluation['met']:
                 criteria_met += 1
                 details.append(f"✅ {rule['description']}")
-                logger.info(f"🏛️ [PillarScoring] Rule {i+1} PASSED")
             else:
                 details.append(f"❌ {rule['description']}")
                 recommendations.extend(rule_evaluation.get('recommendations', []))
-                logger.info(f"🏛️ [PillarScoring] Rule {i+1} FAILED: {rule_evaluation.get('reason', 'No reason provided')}")
         
         # Calculate scores
         score = criteria_met / total_criteria if total_criteria > 0 else 0.0
         weighted_score = score * weight
         
-        logger.info(f"🏛️ [PillarScoring] {pillar_name} evaluation complete: {criteria_met}/{total_criteria} criteria met ({score:.1%})")
         
         return PillarScore(
             pillar_name=pillar_name,
