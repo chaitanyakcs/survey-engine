@@ -405,6 +405,7 @@ class LLMAudit(Base):
     input_tokens = Column(Integer)  # Number of input tokens
     output_content = Column(Text)  # The response content from LLM
     output_tokens = Column(Integer)  # Number of output tokens
+    raw_response = Column(Text)  # Raw response from LLM before any processing
     
     # Hyperparameters (configurable)
     temperature = Column(DECIMAL(3, 2))  # 0.0 to 2.0

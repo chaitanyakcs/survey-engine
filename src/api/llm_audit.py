@@ -40,6 +40,7 @@ class LLMAuditResponse(BaseModel):
     input_tokens: Optional[int]
     output_content: Optional[str]
     output_tokens: Optional[int]
+    raw_response: Optional[str] = None
     temperature: Optional[float]
     top_p: Optional[float]
     max_tokens: Optional[int]
@@ -106,6 +107,18 @@ class CostSummaryResponse(BaseModel):
     success_rate: float
     cost_by_purpose: List[Dict[str, Any]]
     cost_by_model: List[Dict[str, Any]]
+
+
+class LLMAuditSummaryResponse(BaseModel):
+    total_interactions: int
+    successful_interactions: int
+    failed_interactions: int
+    success_rate: float
+    interactions_by_purpose: List[Dict[str, Any]]
+    interactions_by_model: List[Dict[str, Any]]
+    average_response_time_ms: Optional[float]
+    total_tokens_input: Optional[int]
+    total_tokens_output: Optional[int]
 
 
 class CreateHyperparameterConfigRequest(BaseModel):
@@ -190,6 +203,7 @@ async def get_llm_interactions(
                 input_tokens=record.input_tokens,
                 output_content=record.output_content,
                 output_tokens=record.output_tokens,
+                raw_response=record.raw_response,
                 temperature=float(record.temperature) if record.temperature else None,
                 top_p=float(record.top_p) if record.top_p else None,
                 max_tokens=record.max_tokens,
@@ -246,6 +260,7 @@ async def get_llm_interaction(
             input_tokens=record.input_tokens,
             output_content=record.output_content,
             output_tokens=record.output_tokens,
+            raw_response=record.raw_response,
             temperature=float(record.temperature) if record.temperature else None,
             top_p=float(record.top_p) if record.top_p else None,
             max_tokens=record.max_tokens,
@@ -292,6 +307,105 @@ async def get_cost_summary(
     except Exception as e:
         logger.error(f"❌ [LLM Audit API] Error getting cost summary: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get cost summary: {str(e)}")
+
+
+@router.get("/summary", response_model=LLMAuditSummaryResponse)
+async def get_llm_audit_summary(
+    purpose: Optional[str] = Query(None, description="Filter by purpose"),
+    sub_purpose: Optional[str] = Query(None, description="Filter by sub-purpose"),
+    model_name: Optional[str] = Query(None, description="Filter by model name"),
+    success: Optional[bool] = Query(None, description="Filter by success status"),
+    parent_workflow_id: Optional[str] = Query(None, description="Filter by parent workflow ID"),
+    parent_survey_id: Optional[str] = Query(None, description="Filter by parent survey ID"),
+    parent_rfq_id: Optional[str] = Query(None, description="Filter by parent RFQ ID"),
+    start_date: Optional[datetime] = Query(None, description="Filter by start date"),
+    end_date: Optional[datetime] = Query(None, description="Filter by end date"),
+    db: Session = Depends(get_db)
+):
+    """Get summary statistics for LLM interactions"""
+    try:
+        from sqlalchemy import func, case
+        
+        # Build base query
+        query = db.query(LLMAudit)
+        
+        # Apply filters
+        if purpose:
+            query = query.filter(LLMAudit.purpose == purpose)
+        if sub_purpose:
+            query = query.filter(LLMAudit.sub_purpose == sub_purpose)
+        if model_name:
+            query = query.filter(LLMAudit.model_name == model_name)
+        if success is not None:
+            query = query.filter(LLMAudit.success == success)
+        if parent_workflow_id:
+            query = query.filter(LLMAudit.parent_workflow_id == parent_workflow_id)
+        if parent_survey_id:
+            query = query.filter(LLMAudit.parent_survey_id == parent_survey_id)
+        if parent_rfq_id:
+            query = query.filter(LLMAudit.parent_rfq_id == parent_rfq_id)
+        if start_date:
+            query = query.filter(LLMAudit.created_at >= start_date)
+        if end_date:
+            query = query.filter(LLMAudit.created_at <= end_date)
+        
+        # Get basic counts
+        total_interactions = query.count()
+        successful_interactions = query.filter(LLMAudit.success == True).count()
+        failed_interactions = total_interactions - successful_interactions
+        success_rate = (successful_interactions / total_interactions * 100) if total_interactions > 0 else 0.0
+        
+        # Get interactions by purpose
+        purpose_stats = query.with_entities(
+            LLMAudit.purpose,
+            func.count(LLMAudit.id).label('count')
+        ).group_by(LLMAudit.purpose).all()
+        
+        interactions_by_purpose = [
+            {"purpose": purpose, "count": count} 
+            for purpose, count in purpose_stats
+        ]
+        
+        # Get interactions by model
+        model_stats = query.with_entities(
+            LLMAudit.model_name,
+            func.count(LLMAudit.id).label('count')
+        ).group_by(LLMAudit.model_name).all()
+        
+        interactions_by_model = [
+            {"model_name": model_name, "count": count} 
+            for model_name, count in model_stats
+        ]
+        
+        # Get average response time
+        avg_response_time = query.with_entities(
+            func.avg(LLMAudit.response_time_ms)
+        ).scalar()
+        
+        # Get token totals
+        token_stats = query.with_entities(
+            func.sum(LLMAudit.input_tokens).label('total_input_tokens'),
+            func.sum(LLMAudit.output_tokens).label('total_output_tokens')
+        ).first()
+        
+        total_tokens_input = token_stats.total_input_tokens if token_stats.total_input_tokens else 0
+        total_tokens_output = token_stats.total_output_tokens if token_stats.total_output_tokens else 0
+        
+        return LLMAuditSummaryResponse(
+            total_interactions=total_interactions,
+            successful_interactions=successful_interactions,
+            failed_interactions=failed_interactions,
+            success_rate=round(success_rate, 2),
+            interactions_by_purpose=interactions_by_purpose,
+            interactions_by_model=interactions_by_model,
+            average_response_time_ms=round(avg_response_time, 2) if avg_response_time else None,
+            total_tokens_input=total_tokens_input,
+            total_tokens_output=total_tokens_output
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ [LLM Audit API] Error getting audit summary: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get audit summary: {str(e)}")
 
 
 # Hyperparameter Configuration Endpoints

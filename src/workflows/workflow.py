@@ -282,11 +282,9 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
         
         # Send evaluating pillars progress
         try:
-            logger.info(f"📡 [Workflow] Sending progress update: evaluating_pillars for workflow_id={state.workflow_id}")
             progress_data = progress_tracker.get_progress_data("evaluating_pillars")
             progress_data["message"] = "Analyzing quality across all pillars..."
             await ws_client.send_progress_update(state.workflow_id, progress_data)
-            logger.info(f"✅ [Workflow] Progress update sent successfully: evaluating_pillars")
         except Exception as e:
             logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
         

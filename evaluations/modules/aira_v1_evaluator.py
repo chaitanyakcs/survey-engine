@@ -8,6 +8,10 @@ import logging
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from datetime import datetime
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+from src.utils.json_generation_utils import parse_llm_json_response, get_json_optimized_hyperparameters, create_json_system_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -88,17 +92,15 @@ class AiRAV1Evaluator:
             if self.llm_client:
                 response = await self.llm_client.analyze(prompt, max_tokens=6000, parent_survey_id=survey_id, parent_rfq_id=rfq_id)  # Increased for detailed response
                 if response.success:
-                    try:
-                        result = json.loads(response.content)
+                    # Use centralized JSON parsing utility
+                    result = parse_llm_json_response(response.content, service_name="AiRAV1Evaluator")
+                    
+                    if result is not None:
+                        logger.info(f"✅ Successfully parsed JSON from response")
                         return self._parse_aira_v1_result(result, survey_id, rfq_id)
-                    except json.JSONDecodeError as e:
-                        logger.error(f"❌ JSON parsing failed: {e}")
-                        # Try to extract JSON from response
-                        result = self._extract_json_from_response(response.content)
-                        if result:
-                            return self._parse_aira_v1_result(result, survey_id, rfq_id)
-                        else:
-                            return await self._aira_fallback_evaluation(survey, rfq_text, survey_id, rfq_id)
+                    else:
+                        logger.warning("⚠️ Failed to extract valid JSON, using fallback")
+                        return await self._aira_fallback_evaluation(survey, rfq_text, survey_id, rfq_id)
                 else:
                     logger.warning(f"⚠️ LLM call failed: {response.error}")
                     return await self._aira_fallback_evaluation(survey, rfq_text, survey_id, rfq_id)

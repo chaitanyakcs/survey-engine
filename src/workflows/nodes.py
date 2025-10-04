@@ -658,7 +658,6 @@ class ValidatorAgent:
                 pillar_scores = evaluation_result
 
                 self.logger.info(f"✅ [ValidatorAgent] Evaluation completed")
-                self.logger.info(f"🏛️ [ValidatorAgent] Pillar scores: {pillar_scores.get('overall_grade', 'N/A')} ({pillar_scores.get('weighted_score', 0):.1%})")
 
                 # Determine if quality gate passed based on weighted score
                 weighted_score = pillar_scores.get('weighted_score', 0)

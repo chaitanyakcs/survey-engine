@@ -35,6 +35,7 @@ class LLMAuditService:
         purpose: str,
         input_prompt: str,
         output_content: str = None,
+        raw_response: str = None,
         sub_purpose: str = None,
         context_type: str = None,
         parent_workflow_id: str = None,
@@ -56,7 +57,8 @@ class LLMAuditService:
             model_provider: Provider of the model (openai, replicate, anthropic, etc.)
             purpose: Primary purpose (survey_generation, evaluation, field_extraction, etc.)
             input_prompt: The prompt sent to the LLM
-            output_content: The response from the LLM
+            output_content: The processed response from the LLM
+            raw_response: The raw response from the LLM before any processing
             sub_purpose: Specific sub-purpose (content_validity, methodological_rigor, etc.)
             context_type: Type of context (generation, evaluation, validation, analysis)
             parent_workflow_id: Optional parent workflow ID
@@ -122,6 +124,7 @@ class LLMAuditService:
                 input_tokens=input_tokens,
                 output_content=output_content,
                 output_tokens=output_tokens,
+                raw_response=raw_response,
                 temperature=temperature,
                 top_p=top_p,
                 max_tokens=max_tokens,
@@ -506,6 +509,7 @@ class LLMAuditContext:
         
         self.start_time = None
         self.output_content = None
+        self.raw_response = None
         self.success = True
         self.error_message = None
     
@@ -541,6 +545,7 @@ class LLMAuditContext:
                 purpose=self.purpose,
                 input_prompt=self.input_prompt,
                 output_content=self.output_content,
+                raw_response=self.raw_response,
                 sub_purpose=self.sub_purpose,
                 context_type=self.context_type,
                 parent_workflow_id=self.parent_workflow_id,
@@ -557,7 +562,7 @@ class LLMAuditContext:
             logger.error(f"❌ [LLMAuditContext] Failed to log interaction: {str(e)}")
     
     def set_output(self, output_content: str, input_tokens: int = None, output_tokens: int = None, cost_usd: float = None):
-        """Set the output content and additional metrics"""
+        """Set the processed output content and additional metrics"""
         self.output_content = output_content
         if input_tokens is not None:
             self.metadata['input_tokens'] = input_tokens
@@ -565,3 +570,7 @@ class LLMAuditContext:
             self.metadata['output_tokens'] = output_tokens
         if cost_usd is not None:
             self.metadata['cost_usd'] = cost_usd
+    
+    def set_raw_response(self, raw_response: str):
+        """Set the raw response from the LLM before any processing"""
+        self.raw_response = raw_response

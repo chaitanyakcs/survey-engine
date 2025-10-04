@@ -112,6 +112,7 @@ async def list_rfq_models():
         # Comprehensive list of all available models
         models = [
             "openai/gpt-5",
+            "openai/gpt-5-structured",
             "openai/gpt-4o-mini",
             "openai/gpt-4o",
             "meta/meta-llama-3.1-405b-instruct",
@@ -131,6 +132,7 @@ async def list_generation_models():
     try:
         models = [
             "openai/gpt-5",
+            "openai/gpt-5-structured",
             "openai/gpt-4o-mini",
             "openai/gpt-4o",
             "meta/meta-llama-3.1-405b-instruct",

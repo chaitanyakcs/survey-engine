@@ -15,6 +15,7 @@ from ..config.settings import settings
 from ..utils.error_messages import UserFriendlyError, get_api_configuration_error
 from ..utils.llm_audit_decorator import LLMAuditContext
 from ..services.llm_audit_service import LLMAuditService
+from ..utils.json_generation_utils import parse_llm_json_response, get_json_optimized_hyperparameters, create_json_system_prompt, get_rfq_parsing_schema
 
 logger = logging.getLogger(__name__)
 
@@ -246,8 +247,7 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                         self.model,
                         input={
                         "prompt": prompt,
-                        "temperature": 0.1,
-                        "max_tokens": 4000,
+                        **get_json_optimized_hyperparameters("rfq_parsing"),
                         "system_prompt": "You are a document parser. Parse the provided document into the exact JSON structure below. Be literal and strict: your output MUST be valid JSON, no prose, no backticks, no explanations, nothing else.\n\nCRITICAL: Your response must be valid JSON that can be parsed by json.loads().\n\nTop-level JSON shape required:\n{\n  \"raw_output\": { ...full extracted content and minimal normalization... },\n  \"final_output\": { ...cleaned, normalized, validated survey schema... }\n}\n\nMANDATORY STRUCTURE:\n1. \"raw_output\" must contain:\n   - \"document_text\": the full original text (unchanged)\n   - \"extraction_timestamp\": ISO 8601 timestamp\n   - \"source_file\": filename if provided, null otherwise\n   - \"error\": null (unless there was a blocking issue)\n\n2. \"final_output\" must contain:\n   - \"title\": string (required, cannot be null)\n   - \"description\": string or null\n   - \"metadata\": object with quality_score, estimated_time, methodology_tags, target_responses, source_file\n   - \"questions\": array (required, cannot be null, can be empty)\n   - \"parsing_issues\": array of strings\n\n3. Each question in \"questions\" must have:\n   - \"id\": string (q1, q2, q3...)\n   - \"text\": string (required)\n   - \"type\": string (one of: multiple_choice, scale, text, ranking, matrix, date, numeric, file_upload, boolean, unknown)\n   - \"options\": array of strings (empty for free text)\n   - \"required\": boolean\n   - \"validation\": string or null\n   - \"methodology\": string or null\n   - \"routing\": object or null\n\nRULES:\n1. ALWAYS return valid JSON - if you cannot parse something, include it as \"unknown\" type question\n2. Assign sequential IDs: q1, q2, q3...\n3. For multiple choice: put options in \"options\" array\n4. For scales: use \"type\":\"scale\" and put scale labels in \"options\"\n5. For matrices: use \"type\":\"matrix\" with validation \"matrix_per_brand:BrandA|BrandB\"\n6. For Van Westendorp: use \"methodology\":\"van_westendorp\"\n7. For MaxDiff: use \"type\":\"ranking\" with \"methodology\":\"maxdiff\"\n8. For Conjoint: use \"methodology\":\"conjoint\"\n9. Set \"required\": true for most questions, false for optional\n10. Use validation tokens: single_select, multi_select_min_1_max_3, currency_usd_min_1_max_1000, etc.\n\nEXAMPLE OUTPUT:\n{\n  \"raw_output\": {\n    \"document_text\": \"[full document text here]\",\n    \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n    \"source_file\": null,\n    \"error\": null\n  },\n  \"final_output\": {\n    \"title\": \"Customer Satisfaction Survey\",\n    \"description\": \"Survey to measure customer satisfaction\",\n    \"metadata\": {\n      \"quality_score\": 0.9,\n      \"estimated_time\": 10,\n      \"methodology_tags\": [\"satisfaction\", \"nps\"],\n      \"target_responses\": 100,\n      \"source_file\": null\n    },\n    \"questions\": [\n      {\n        \"id\": \"q1\",\n        \"text\": \"How satisfied are you with our service?\",\n        \"type\": \"scale\",\n        \"options\": [\"Very Dissatisfied\", \"Dissatisfied\", \"Neutral\", \"Satisfied\", \"Very Satisfied\"],\n        \"required\": true,\n        \"validation\": \"single_select\",\n        \"methodology\": \"satisfaction\",\n        \"routing\": null\n      }\n    ],\n    \"parsing_issues\": []\n  }\n}\n\nNow parse the document and return ONLY the JSON structure above."
                     }
                 )
@@ -259,8 +259,7 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                     self.model,
                     input={
                         "prompt": prompt,
-                        "temperature": 0.1,
-                        "max_tokens": 4000,
+                        **get_json_optimized_hyperparameters("rfq_parsing"),
                         "system_prompt": "You are a document parser. Parse the provided document into the exact JSON structure below. Be literal and strict: your output MUST be valid JSON, no prose, no backticks, no explanations, nothing else.\n\nCRITICAL: Your response must be valid JSON that can be parsed by json.loads().\n\nTop-level JSON shape required:\n{\n  \"raw_output\": { ...full extracted content and minimal normalization... },\n  \"final_output\": { ...cleaned, normalized, validated survey schema... }\n}\n\nMANDATORY STRUCTURE:\n1. \"raw_output\" must contain:\n   - \"document_text\": the full original text (unchanged)\n   - \"extraction_timestamp\": ISO 8601 timestamp\n   - \"source_file\": filename if provided, null otherwise\n   - \"error\": null (unless there was a blocking issue)\n\n2. \"final_output\" must contain:\n   - \"title\": string (required, cannot be null)\n   - \"description\": string or null\n   - \"metadata\": object with quality_score, estimated_time, methodology_tags, target_responses, source_file\n   - \"questions\": array (required, cannot be null, can be empty)\n   - \"parsing_issues\": array of strings\n\n3. Each question in \"questions\" must have:\n   - \"id\": string (q1, q2, q3...)\n   - \"text\": string (required)\n   - \"type\": string (one of: multiple_choice, scale, text, ranking, matrix, date, numeric, file_upload, boolean, unknown)\n   - \"options\": array of strings (empty for free text)\n   - \"required\": boolean\n   - \"validation\": string or null\n   - \"methodology\": string or null\n   - \"routing\": object or null\n\nRULES:\n1. ALWAYS return valid JSON - if you cannot parse something, include it as \"unknown\" type question\n2. Assign sequential IDs: q1, q2, q3...\n3. For multiple choice: put options in \"options\" array\n4. For scales: use \"type\":\"scale\" and put scale labels in \"options\"\n5. For matrices: use \"type\":\"matrix\" with validation \"matrix_per_brand:BrandA|BrandB\"\n6. For Van Westendorp: use \"methodology\":\"van_westendorp\"\n7. For MaxDiff: use \"type\":\"ranking\" with \"methodology\":\"maxdiff\"\n8. For Conjoint: use \"methodology\":\"conjoint\"\n9. Set \"required\": true for most questions, false for optional\n10. Use validation tokens: single_select, multi_select_min_1_max_3, currency_usd_min_1_max_1000, etc.\n\nEXAMPLE OUTPUT:\n{\n  \"raw_output\": {\n    \"document_text\": \"[full document text here]\",\n    \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n    \"source_file\": null,\n    \"error\": null\n  },\n  \"final_output\": {\n    \"title\": \"Customer Satisfaction Survey\",\n    \"description\": \"Survey to measure customer satisfaction\",\n    \"metadata\": {\n      \"quality_score\": 0.9,\n      \"estimated_time\": 10,\n      \"methodology_tags\": [\"satisfaction\", \"nps\"],\n      \"target_responses\": 100,\n      \"source_file\": null\n    },\n    \"questions\": [\n      {\n        \"id\": \"q1\",\n        \"text\": \"How satisfied are you with our service?\",\n        \"type\": \"scale\",\n        \"options\": [\"Very Dissatisfied\", \"Dissatisfied\", \"Neutral\", \"Satisfied\", \"Very Satisfied\"],\n        \"required\": true,\n        \"validation\": \"single_select\",\n        \"methodology\": \"satisfaction\",\n        \"routing\": null\n      }\n    ],\n    \"parsing_issues\": []\n  }\n}\n\nNow parse the document and return ONLY the JSON structure above."
                     }
                 )
@@ -326,76 +325,35 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
             logger.info(f"🔍 [Document Parser] JSON content starts with: {json_content[:50]}")
             logger.info(f"🔍 [Document Parser] JSON content ends with: {json_content[-50:]}")
             
-            try:
-                survey_data = json.loads(json_content)
-                logger.info(f"✅ [Document Parser] JSON parsing successful")
-                logger.info(f"📊 [Document Parser] Parsed data keys: {list(survey_data.keys()) if isinstance(survey_data, dict) else 'Not a dict'}")
-                logger.info(f"📊 [Document Parser] Full parsed data: {survey_data}")
-                
-                # Validate the expected structure
-                if not isinstance(survey_data, dict):
-                    raise ValueError("Response is not a JSON object")
-                
-                if "raw_output" not in survey_data or "final_output" not in survey_data:
-                    logger.warning(f"⚠️ [Document Parser] Missing expected structure (raw_output/final_output)")
-                    # Try to use the response as-is if it has the old structure
-                    if "title" in survey_data and "questions" in survey_data:
-                        logger.info(f"🔧 [Document Parser] Using legacy structure")
-                        survey_data = {
-                            "raw_output": {"document_text": document_text, "extraction_timestamp": "2024-01-01T00:00:00Z"},
-                            "final_output": survey_data
-                        }
-                    else:
-                        raise ValueError("Response missing required raw_output and final_output structure")
-                
-                logger.info(f"✅ [Document Parser] JSON structure validation successful")
-            except json.JSONDecodeError as e:
-                logger.warning(f"⚠️ [Document Parser] LLM returned invalid JSON: {str(e)}")
-                logger.warning(f"⚠️ [Document Parser] JSON error at position {e.pos}: {json_content[max(0, e.pos-50):e.pos+50]}")
-                logger.info(f"🔧 [Document Parser] Attempting to extract JSON from response")
-                logger.debug(f"🔧 [Document Parser] Full LLM response: {json_content}")
-                
-                # Try multiple extraction methods
-                import re
-                
-                # Method 1: Look for JSON between { and }
-                start = json_content.find('{')
-                end = json_content.rfind('}') + 1
-                if start != -1 and end != 0:
-                    extracted_json = json_content[start:end]
-                    logger.info(f"🔧 [Document Parser] Extracted JSON substring, length: {len(extracted_json)} chars")
-                    try:
-                        survey_data = json.loads(extracted_json)
-                        logger.info(f"✅ [Document Parser] JSON extraction and parsing successful")
-                        return survey_data
-                    except json.JSONDecodeError as e2:
-                        logger.warning(f"⚠️ [Document Parser] Method 1 failed: {str(e2)}")
-                
-                # Method 2: Look for JSON in markdown code blocks
-                json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', json_content, re.DOTALL)
-                if json_match:
-                    logger.info(f"🔧 [Document Parser] Found JSON in markdown code block")
-                    try:
-                        survey_data = json.loads(json_match.group(1))
-                        logger.info(f"✅ [Document Parser] Markdown JSON extraction successful")
-                        return survey_data
-                    except json.JSONDecodeError as e3:
-                        logger.warning(f"⚠️ [Document Parser] Method 2 failed: {str(e3)}")
-                
-                # Method 3: Look for any JSON object pattern
-                json_match = re.search(r'(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})', json_content, re.DOTALL)
-                if json_match:
-                    logger.info(f"🔧 [Document Parser] Found JSON object pattern")
-                    try:
-                        survey_data = json.loads(json_match.group(1))
-                        logger.info(f"✅ [Document Parser] JSON object pattern extraction successful")
-                        return survey_data
-                    except json.JSONDecodeError as e4:
-                        logger.warning(f"⚠️ [Document Parser] Method 3 failed: {str(e4)}")
-                
+            # Use centralized JSON parsing utility
+            survey_data = parse_llm_json_response(json_content, service_name="DocumentParser")
+            
+            if survey_data is None:
                 logger.error(f"❌ [Document Parser] All JSON extraction methods failed")
                 logger.error(f"❌ [Document Parser] Raw response (first 1000 chars): {json_content[:1000]}")
                 raise DocumentParsingError(f"No valid JSON found in response")
+            
+            logger.info(f"✅ [Document Parser] JSON parsing successful")
+            logger.info(f"📊 [Document Parser] Parsed data keys: {list(survey_data.keys()) if isinstance(survey_data, dict) else 'Not a dict'}")
+            logger.info(f"📊 [Document Parser] Full parsed data: {survey_data}")
+            
+            # Validate the expected structure
+            if not isinstance(survey_data, dict):
+                raise ValueError("Response is not a JSON object")
+            
+            if "raw_output" not in survey_data or "final_output" not in survey_data:
+                logger.warning(f"⚠️ [Document Parser] Missing expected structure (raw_output/final_output)")
+                # Try to use the response as-is if it has the old structure
+                if "title" in survey_data and "questions" in survey_data:
+                    logger.info(f"🔧 [Document Parser] Using legacy structure")
+                    survey_data = {
+                        "raw_output": {"document_text": document_text, "extraction_timestamp": "2024-01-01T00:00:00Z"},
+                        "final_output": survey_data
+                    }
+                else:
+                    raise ValueError("Response missing required raw_output and final_output structure")
+            
+            logger.info(f"✅ [Document Parser] JSON structure validation successful")
             
             logger.info(f"🎉 [Document Parser] LLM conversion completed successfully")
             return survey_data
@@ -1316,8 +1274,7 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
                     self.model,
                     input={
                         "prompt": prompt,
-                        "temperature": 0.1,
-                        "max_tokens": 4000,
+                        **get_json_optimized_hyperparameters("rfq_parsing"),
                         "system_prompt": "You are an expert at extracting structured information from research documents. You MUST return ONLY valid JSON that can be parsed by json.loads(). No explanations, no markdown, no backticks. Do NOT output character arrays or individual characters separated by spaces. The response must be a complete, valid JSON object matching the provided schema exactly."
                     }
                 )

@@ -4,7 +4,7 @@ Human Reviews API endpoints for managing prompt review workflows
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List, Optional, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 import asyncio
 from sqlalchemy.orm import Session
@@ -29,7 +29,7 @@ def create_review(
         # Set default deadline if not provided
         deadline = review_data.review_deadline
         if deadline is None:
-            deadline = datetime.utcnow() + timedelta(hours=24)
+            deadline = datetime.now(timezone.utc) + timedelta(hours=24)
         
         # Create new review record
         db_review = HumanReview(
@@ -76,7 +76,7 @@ def get_pending_reviews(
         in_progress_count = db.query(HumanReview).filter(HumanReview.review_status == "in_progress").count()
         
         # Count expired reviews (past deadline)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)  # Use timezone-aware datetime
         expired_count = db.query(HumanReview).filter(
             and_(
                 HumanReview.review_status.in_(["pending", "in_progress"]),
@@ -199,9 +199,9 @@ async def edit_review_prompt(
         # Update the review with edited prompt
         review.edited_prompt_data = edit_request.edited_prompt.strip()
         review.prompt_edited = True
-        review.prompt_edit_timestamp = datetime.utcnow()
+        review.prompt_edit_timestamp = datetime.now(timezone.utc)
         review.edit_reason = edit_request.edit_reason
-        review.updated_at = datetime.utcnow()
+        review.updated_at = datetime.now(timezone.utc)
 
         # TODO: Get actual user ID from authentication context
         # For now, using a placeholder
@@ -273,7 +273,7 @@ async def submit_review_decision(
             await cancel_paused_workflow(review.workflow_id, db, decision.reason)
 
         review.reviewer_notes = decision.notes
-        review.updated_at = datetime.utcnow()
+        review.updated_at = datetime.now(timezone.utc)
 
         db.commit()
         db.refresh(review)
@@ -313,7 +313,7 @@ def resume_review(
             )
         
         review.review_status = "in_progress"
-        review.updated_at = datetime.utcnow()
+        review.updated_at = datetime.now(timezone.utc)
         
         db.commit()
         db.refresh(review)
@@ -651,7 +651,7 @@ def convert_to_response(review: HumanReview) -> HumanReviewResponse:
     time_remaining_hours = None
     
     if review.review_deadline:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)  # Use timezone-aware datetime
         is_expired = now > review.review_deadline
         if not is_expired:
             time_diff = review.review_deadline - now

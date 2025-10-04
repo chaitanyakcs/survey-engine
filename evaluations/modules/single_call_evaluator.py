@@ -8,6 +8,10 @@ import logging
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from datetime import datetime
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+from src.utils.json_generation_utils import parse_llm_json_response, get_json_optimized_hyperparameters, create_json_system_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -67,22 +71,15 @@ class SingleCallEvaluator:
             if self.llm_client:
                 response = await self.llm_client.analyze(prompt, max_tokens=4000, parent_survey_id=survey_id, parent_rfq_id=rfq_id)
                 if response.success:
-                    try:
-                        # Try to parse JSON response
-                        result = json.loads(response.content)
+                    # Use centralized JSON parsing utility
+                    result = parse_llm_json_response(response.content, service_name="SingleCallEvaluator")
+                    
+                    if result is not None:
+                        logger.info(f"✅ Successfully parsed JSON from response")
                         return self._parse_comprehensive_result(result, survey_id, rfq_id)
-                    except json.JSONDecodeError as e:
-                        logger.error(f"❌ JSON parsing failed: {e}")
-                        logger.error(f"❌ Response content length: {len(response.content)}")
-                        logger.error(f"❌ Response content (first 1000 chars): {response.content[:1000]}...")
-                        # Extract JSON from response if it's embedded in text
-                        result = self._extract_json_from_response(response.content)
-                        if result:
-                            logger.info(f"✅ Successfully extracted JSON from response")
-                            return self._parse_comprehensive_result(result, survey_id, rfq_id)
-                        else:
-                            logger.warning("⚠️ Failed to extract valid JSON, using fallback")
-                            logger.error(f"❌ Full response content: {response.content}")
+                    else:
+                        logger.warning("⚠️ Failed to extract valid JSON, using fallback")
+                        logger.error(f"❌ Full response content: {response.content}")
                 else:
                     logger.warning(f"⚠️ LLM response failed: {response.error}")
             

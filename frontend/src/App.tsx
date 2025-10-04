@@ -6,6 +6,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { SurveysPage } from './pages/SurveysPage';
 import { GoldenExampleEditPage } from './pages/GoldenExampleEditPage';
 import { GoldenExampleCreatePage } from './pages/GoldenExampleCreatePage';
+import { LLMAuditViewer } from './components/LLMAuditViewer';
 import { ToastContainer } from './components/Toast';
 import { SidebarProvider } from './contexts/SidebarContext';
 
@@ -35,6 +36,12 @@ function App() {
     }
     if (path === '/golden-examples/new') {
       return 'golden-create';
+    }
+    if (path === '/llm-audit') {
+      return 'llm-audit';
+    }
+    if (path.startsWith('/llm-audit/survey/')) {
+      return 'llm-audit-survey';
     }
     return 'generator';
   };
@@ -89,6 +96,19 @@ function App() {
           <GoldenExampleEditPage />
         ) : currentPage === 'golden-create' ? (
           <GoldenExampleCreatePage />
+        ) : currentPage === 'llm-audit' ? (
+          <LLMAuditViewer 
+            title="LLM Audit Dashboard"
+            showSummary={true}
+            onClose={() => window.history.back()}
+          />
+        ) : currentPage === 'llm-audit-survey' ? (
+          <LLMAuditViewer 
+            surveyId={window.location.pathname.split('/')[3]}
+            title="Survey LLM Audit"
+            showSummary={true}
+            onClose={() => window.history.back()}
+          />
         ) : (
           <SurveyGeneratorPage />
         )}

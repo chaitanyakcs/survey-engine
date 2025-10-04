@@ -3,7 +3,6 @@ import { Sidebar } from '../components/Sidebar';
 import { useSidebarLayout } from '../hooks/useSidebarLayout';
 import { ToastContainer } from '../components/Toast';
 import { useAppStore } from '../store/useAppStore';
-import LLMAuditDashboard from '../components/LLMAuditDashboard';
 import { 
   CogIcon, 
   ClockIcon,
@@ -42,7 +41,6 @@ export const SettingsPage: React.FC = () => {
   const { toasts, removeToast, addToast } = useAppStore();
   const { mainContentClasses } = useSidebarLayout();
   
-  const [showLLMAuditDashboard, setShowLLMAuditDashboard] = useState(false);
   
   const [settings, setSettings] = useState<EvaluationSettings>({
     evaluation_mode: 'single_call',
@@ -315,7 +313,7 @@ export const SettingsPage: React.FC = () => {
                 </div>
                 <div className="flex space-x-3">
                   <button
-                    onClick={() => setShowLLMAuditDashboard(true)}
+                    onClick={() => window.location.href = '/llm-audit'}
                     className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors flex items-center space-x-2"
                   >
                     <ChartBarIcon className="w-4 h-4" />
@@ -539,10 +537,6 @@ export const SettingsPage: React.FC = () => {
         </div>
       </div>
       
-      {/* LLM Audit Dashboard Modal */}
-      {showLLMAuditDashboard && (
-        <LLMAuditDashboard onClose={() => setShowLLMAuditDashboard(false)} />
-      )}
     </div>
   );
 };

@@ -6,12 +6,11 @@ import QuestionAnnotationPanel from './QuestionAnnotationPanel';
 import SectionAnnotationPanel from './SectionAnnotationPanel';
 import AnnotationMode from './AnnotationMode';
 import { SurveyLevelAnnotationPanel } from './SurveyLevelAnnotationPanel';
-import { SystemPromptViewer } from './SystemPromptViewer';
 import MatrixLikert from './MatrixLikert';
 import ConstantSum from './ConstantSum';
 import NumericGrid from './NumericGrid';
 import NumericOpen from './NumericOpen';
-import { PencilIcon, ChevronDownIcon, ChevronRightIcon, TagIcon, CheckIcon, XMarkIcon, StarIcon, TrashIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
+import { PencilIcon, ChevronDownIcon, ChevronRightIcon, TagIcon, CheckIcon, XMarkIcon, StarIcon, TrashIcon, ChevronUpIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 
 // Helper function to extract all questions from survey (supports both formats)
 const extractAllQuestions = (survey: Survey): Question[] => {
@@ -759,13 +758,12 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
   isEditable = false, 
   onSurveyChange 
 }) => {
-  const { currentSurvey, setSurvey, rfqInput, createGoldenExample, isAnnotationMode, setAnnotationMode, currentAnnotations, setCurrentAnnotations, loadAnnotations, saveAnnotations } = useAppStore();
+  const { currentSurvey, setSurvey, fetchSurvey, rfqInput, createGoldenExample, isAnnotationMode, setAnnotationMode, currentAnnotations, setCurrentAnnotations, loadAnnotations, saveAnnotations } = useAppStore();
   const survey = propSurvey || currentSurvey;
   const [editedSurvey, setEditedSurvey] = useState<Survey | null>(null);
   const [isEditingSurvey, setIsEditingSurvey] = useState(isEditable);
   const [showGoldenModal, setShowGoldenModal] = useState(false);
   const [showExportDropdown, setShowExportDropdown] = useState(false);
-  const [showSystemPromptModal, setShowSystemPromptModal] = useState(false);
   const [goldenFormData, setGoldenFormData] = useState({
     title: '',
     industry_category: '',
@@ -1228,6 +1226,40 @@ startxref
     }
   };
 
+  const handleReparseSurvey = async () => {
+    if (!survey?.survey_id) {
+      console.error('No survey ID available for reparse');
+      return;
+    }
+
+    try {
+      console.log('🔄 [SurveyPreview] Starting survey reparse for:', survey.survey_id);
+      
+      const response = await fetch(`/api/v1/survey/${survey.survey_id}/reparse`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Reparse failed: ${response.status} ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ [SurveyPreview] Reparse completed successfully:', result);
+
+      // Refresh the survey data
+      await fetchSurvey(survey.survey_id);
+      
+      alert(`Survey reparsed successfully! Fixed ${result.question_count} questions.`);
+    } catch (error) {
+      console.error('❌ [SurveyPreview] Failed to reparse survey:', error);
+      alert(`Failed to reparse survey: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
   // Validate survey data before rendering
   const isValidSurvey = survey && 
                        typeof survey === 'object' && 
@@ -1652,7 +1684,15 @@ startxref
 
               {/* Utility Buttons */}
               <button 
-                onClick={() => setShowSystemPromptModal(true)}
+                onClick={handleReparseSurvey}
+                className="w-full flex items-center gap-3 px-4 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-lg"
+              >
+                <ArrowPathIcon className="w-5 h-5" />
+                <span className="text-sm font-semibold">Reparse Survey</span>
+              </button>
+              
+              <button 
+                onClick={() => window.location.href = `/llm-audit/survey/${survey?.survey_id}`}
                 className="w-full flex items-center gap-3 px-4 py-3 bg-gray-600 text-white rounded-lg font-medium hover:bg-gray-700 transition-colors shadow-lg"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1869,13 +1909,6 @@ startxref
         </div>
       )}
 
-      {/* System Prompt Modal */}
-      {showSystemPromptModal && (
-        <SystemPromptViewer
-          surveyId={survey?.survey_id || ''}
-          onClose={() => setShowSystemPromptModal(false)}
-        />
-      )}
 
       {/* Survey-Level Annotation Panel */}
       {showSurveyLevelAnnotation && survey?.survey_id && (

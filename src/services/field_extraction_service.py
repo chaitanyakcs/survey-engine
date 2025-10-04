@@ -10,6 +10,7 @@ from ..config.settings import settings
 from ..utils.error_messages import UserFriendlyError, get_api_configuration_error
 from ..utils.llm_audit_decorator import LLMAuditContext
 from ..services.llm_audit_service import LLMAuditService
+from ..utils.json_generation_utils import parse_llm_json_response, get_json_optimized_hyperparameters, create_json_system_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -247,8 +248,7 @@ Return ONLY a JSON object with this exact structure:
                     self.model,
                     input={
                         "prompt": prompt,
-                        "temperature": 0.1,
-                        "max_tokens": 2000,
+                        **get_json_optimized_hyperparameters("rfq_parsing"),
                         "system_prompt": "You are a survey methodology expert. Extract the requested fields from the provided RFQ and Survey content. Return ONLY valid JSON in the exact format specified."
                     }
                 )
@@ -263,9 +263,14 @@ Return ONLY a JSON object with this exact structure:
             logger.info(f"✅ [Field Extraction] LLM response received, length: {len(json_content)} chars")
             logger.info(f"📄 [Field Extraction] Response preview: {json_content[:300]}...")
             
-            # Parse JSON response
+            # Parse JSON response using centralized utility
             logger.info(f"🔍 [Field Extraction] Parsing JSON response")
-            extracted_fields = json.loads(json_content)
+            extracted_fields = parse_llm_json_response(json_content, service_name="FieldExtraction")
+            
+            if extracted_fields is None:
+                logger.error(f"❌ [Field Extraction] JSON parsing failed")
+                raise Exception("Failed to parse JSON response from LLM")
+            
             logger.info(f"✅ [Field Extraction] JSON parsing successful")
             logger.info(f"📊 [Field Extraction] Extracted fields: {extracted_fields}")
             

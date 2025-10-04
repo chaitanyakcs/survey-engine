@@ -286,7 +286,6 @@ async def get_pillar_scores(
         survey_id: UUID of the survey
         force: If True, re-evaluate even if scores exist (default: False)
     """
-    logger.info(f"🏛️ [Pillar Scores API] Getting pillar scores for survey: {survey_id} (force={force})")
     
     # Check if LLM evaluation is enabled
     try:
@@ -296,7 +295,6 @@ async def get_pillar_scores(
         enable_llm_evaluation = evaluation_settings.get('enable_llm_evaluation', True)
         
         if not enable_llm_evaluation:
-            logger.info(f"⏭️ [Pillar Scores API] LLM evaluation disabled, returning basic scores only")
             # Return basic scores without LLM evaluation
             survey = db.query(Survey).filter(Survey.id == survey_id).first()
             if not survey:
@@ -348,7 +346,6 @@ async def get_pillar_scores(
         
         # Check if pillar scores already exist in the survey object (unless forced to re-evaluate)
         if not force and survey.pillar_scores:
-            logger.info("📋 [Pillar Scores API] Returning cached pillar scores from survey object")
             # Convert stored scores to response format
             stored_scores = survey.pillar_scores
             
@@ -380,7 +377,8 @@ async def get_pillar_scores(
                     recommendations=stored_scores.get('recommendations', [])
                 )
             else:
-                logger.warning("⚠️ [Pillar Scores API] Stored pillar scores are incomplete, re-evaluating")
+                # Re-evaluate if scores are incomplete
+                pass
         
         # Use advanced evaluators if available, otherwise fallback to basic
         if ADVANCED_EVALUATORS_AVAILABLE:
@@ -390,10 +388,8 @@ async def get_pillar_scores(
             
             # Try to acquire lock with timeout to prevent hanging
             if not evaluation_lock.acquire(blocking=False):
-                logger.warning(f"⚠️ [Pillar Scores API] Evaluation already in progress for survey {survey_id_str}, returning cached or waiting")
                 # If we can't get the lock, check if there are cached scores
                 if survey.pillar_scores:
-                    logger.info("📋 [Pillar Scores API] Returning existing pillar scores while evaluation is in progress")
                     stored_scores = survey.pillar_scores
                     pillar_breakdown = [
                         PillarScoreResponse(
@@ -419,7 +415,6 @@ async def get_pillar_scores(
                 else:
                     # No cached scores and evaluation is in progress - return a "pending" response
                     # instead of waiting or triggering another evaluation
-                    logger.info(f"⏳ [Pillar Scores API] Evaluation in progress for survey {survey_id_str}, returning pending status")
                     return OverallPillarScoreResponse(
                         overall_grade="Pending",
                         weighted_score=0.0,
@@ -435,7 +430,6 @@ async def get_pillar_scores(
                 if not rfq_text:
                     rfq_text = f"Survey: {survey.final_output.get('title', 'Unnamed Survey')}"
 
-                logger.info("🚀 Using advanced pillar evaluation system")
 
                 # Check if client wants AiRA v1 detailed evaluation
                 evaluation_mode = await _get_evaluation_mode()
@@ -451,9 +445,7 @@ async def get_pillar_scores(
                 # Always release the lock and clean up
                 evaluation_lock.release()
                 _cleanup_evaluation_lock(survey_id_str)
-                logger.info(f"🔓 [Pillar Scores API] Released evaluation lock for survey {survey_id_str}")
         else:
-            logger.info("⚠️  Using legacy pillar scoring system")
             # Fallback to legacy system
             pillar_scoring_service = PillarScoringService(db)
             pillar_scores = pillar_scoring_service.evaluate_survey_pillars(survey.final_output)
@@ -490,7 +482,6 @@ async def get_pillar_scores(
             recommendations=unique_recommendations
         )
         
-        logger.info(f"✅ [Pillar Scores API] Successfully retrieved pillar scores: {pillar_scores.overall_grade} ({pillar_scores.weighted_score:.1%})")
         return response
         
     except HTTPException:
@@ -507,7 +498,6 @@ async def evaluate_survey_pillars(
     """
     Evaluate a survey JSON against pillar rules (for testing/validation)
     """
-    logger.info("🏛️ [Pillar Scores API] Evaluating survey data against pillar rules")
     
     # Check if LLM evaluation is enabled
     try:
@@ -517,7 +507,6 @@ async def evaluate_survey_pillars(
         enable_llm_evaluation = evaluation_settings.get('enable_llm_evaluation', True)
         
         if not enable_llm_evaluation:
-            logger.info(f"⏭️ [Pillar Scores API] LLM evaluation disabled, using basic evaluation for testing")
             # Use basic evaluation instead of LLM
             from src.services.pillar_scoring_service import PillarScoringService
             pillar_scoring_service = PillarScoringService(db)
@@ -555,11 +544,9 @@ async def evaluate_survey_pillars(
             # For testing endpoint, use the survey title/description as RFQ if available
             rfq_text = survey_data.get('description', survey_data.get('title', 'Test survey evaluation'))
             
-            logger.info("🚀 Using advanced pillar evaluation system for testing")
             response = await _evaluate_with_advanced_system(survey_data, rfq_text, db, "test_survey", None)
             return response
         else:
-            logger.info("⚠️  Using legacy pillar scoring system for testing")
             # Fallback to legacy system
             pillar_scoring_service = PillarScoringService(db)
             pillar_scores = pillar_scoring_service.evaluate_survey_pillars(survey_data)
@@ -596,7 +583,6 @@ async def evaluate_survey_pillars(
             recommendations=unique_recommendations
         )
         
-        logger.info(f"✅ [Pillar Scores API] Successfully evaluated survey: {pillar_scores.overall_grade} ({pillar_scores.weighted_score:.1%})")
         return response
         
     except Exception as e:
@@ -608,7 +594,6 @@ async def get_pillar_rules_summary(db: Session = Depends(get_db)):
     """
     Get a summary of all pillar rules for reference
     """
-    logger.info("🏛️ [Pillar Scores API] Getting pillar rules summary")
     
     try:
         from src.database.models import SurveyRule
@@ -657,7 +642,6 @@ async def evaluate_pillar_scores_async(
     Trigger async pillar evaluation for a survey (non-blocking)
     Returns immediately while evaluation runs in background
     """
-    logger.info(f"🏛️ [Pillar Scores API] Starting async pillar evaluation for survey: {survey_id}")
 
     # Check if LLM evaluation is enabled
     try:

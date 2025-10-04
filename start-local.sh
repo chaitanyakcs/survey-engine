@@ -52,12 +52,6 @@ kill_existing_processes() {
         sleep 2
     fi
     
-    # Kill any processes using port 3000
-    if lsof -ti:3000 > /dev/null 2>&1; then
-        echo -e "${YELLOW}🔄 Killing processes using port 3000...${NC}"
-        lsof -ti:3000 | xargs kill -9 2>/dev/null || true
-        sleep 2
-    fi
     
     echo -e "${GREEN}✅ Existing processes cleaned up${NC}"
 }
@@ -80,14 +74,8 @@ check_port_availability() {
         exit 1
     fi
     
-    # Check port 3000
-    if lsof -ti:3000 > /dev/null 2>&1; then
-        echo -e "${RED}❌ Port 3000 is still in use${NC}"
-        echo -e "${YELLOW}💡 Try running: lsof -ti:3000 | xargs kill -9${NC}"
-        exit 1
-    fi
     
-    echo -e "${GREEN}✅ Ports 3000, 4321, and 8000 are available${NC}"
+    echo -e "${GREEN}✅ Ports 4321 and 8000 are available${NC}"
 }
 
 # Function to check environment variables
@@ -300,10 +288,6 @@ start_application() {
             fi
             
             # Force kill any remaining processes on our ports
-            if lsof -ti:3000 > /dev/null 2>&1; then
-                echo -e "${YELLOW}🔄 Force killing remaining processes on port 3000...${NC}"
-                lsof -ti:3000 | xargs kill -9 2>/dev/null || true
-            fi
             if lsof -ti:8000 > /dev/null 2>&1; then
                 echo -e "${YELLOW}🔄 Force killing remaining processes on port 8000...${NC}"
                 lsof -ti:8000 | xargs kill -9 2>/dev/null || true
@@ -483,7 +467,7 @@ case "${1:-startup}" in
         echo "  seed        - Seed database only"
         echo "  preload     - Preload ML models only"
         echo "  dev-checks  - Run development checks (formatting, imports, logger)"
-        echo "  kill        - Kill existing processes on ports 3000, 4321, and 8000"
+        echo "  kill        - Kill existing processes on ports 4321 and 8000"
         echo "  setup-env   - Create .env file from .env.example template"
         echo "  help        - Show this help message"
         ;;

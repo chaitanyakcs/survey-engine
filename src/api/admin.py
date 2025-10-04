@@ -133,7 +133,7 @@ async def fix_migration_state(db: Session = Depends(get_db)):
 @router.post("/fix-document-uploads-schema")
 async def fix_document_uploads_schema(db: Session = Depends(get_db)):
     """
-    Fix the document_uploads table schema by adding missing session_id column
+    Fix the document_uploads table schema by adding missing columns and fix llm_audit schema
     """
     try:
         logger.info("🔧 Fixing document_uploads table schema...")
@@ -188,15 +188,37 @@ async def fix_document_uploads_schema(db: Session = Depends(get_db)):
         db.commit()
         
         logger.info("✅ Document uploads schema fix completed successfully")
+        # Fix llm_audit schema - add raw_response column if missing
+        logger.info("🔧 Checking llm_audit table schema...")
+        
+        try:
+            result = db.execute(text("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'llm_audit' AND column_name = 'raw_response'
+            """))
+            
+            if result.fetchone():
+                logger.info("✅ raw_response column already exists in llm_audit")
+            else:
+                logger.info("❌ raw_response column missing in llm_audit - adding it")
+                db.execute(text("ALTER TABLE llm_audit ADD COLUMN raw_response TEXT"))
+                db.commit()  # Commit the column addition
+                logger.info("✅ Added raw_response column to llm_audit")
+        except Exception as e:
+            logger.error(f"❌ Error adding raw_response column: {str(e)}")
+            # Don't fail the whole operation for this
+        
         return {
             "status": "success",
-            "message": "Document uploads schema fixed successfully",
+            "message": "Document uploads and llm_audit schema fixed successfully",
             "changes": [
                 "Added session_id column",
                 "Added uploaded_by column", 
                 "Made original_filename nullable",
                 "Made file_size nullable",
-                "Created session_id index"
+                "Created session_id index",
+                "Added raw_response column to llm_audit"
             ]
         }
         
@@ -206,4 +228,122 @@ async def fix_document_uploads_schema(db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=500,
             detail=f"Error fixing document uploads schema: {str(e)}"
+        )
+
+@router.get("/check-llm-audit-schema")
+async def check_llm_audit_schema(db: Session = Depends(get_db)):
+    """
+    Check the actual schema of llm_audit table
+    """
+    try:
+        logger.info("🔍 Checking llm_audit table schema...")
+        
+        # Get all columns in llm_audit table
+        result = db.execute(text("""
+            SELECT column_name, data_type, is_nullable
+            FROM information_schema.columns 
+            WHERE table_name = 'llm_audit'
+            ORDER BY ordinal_position
+        """))
+        
+        columns = result.fetchall()
+        
+        return {
+            "status": "success",
+            "message": "llm_audit table schema",
+            "columns": [{"name": col[0], "type": col[1], "nullable": col[2]} for col in columns]
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error checking llm_audit schema: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error checking llm_audit schema: {str(e)}"
+        )
+
+@router.post("/stamp-revision")
+async def stamp_revision(revision: str = "b7ebcbcfc078", db: Session = Depends(get_db)):
+    """
+    Stamp the database to a specific revision
+    """
+    try:
+        logger.info(f"🔧 Stamping database to revision: {revision}")
+        
+        # Mark the database as being at the specified revision
+        logger.info(f"📝 Marking database as revision: {revision}")
+        
+        result = subprocess.run(
+            ["alembic", "stamp", revision],
+            capture_output=True,
+            text=True,
+            cwd="/app"
+        )
+        
+        if result.returncode == 0:
+            logger.info(f"✅ Successfully marked database as revision {revision}")
+            return {
+                "status": "success",
+                "message": f"Database marked as revision {revision}",
+                "output": result.stdout
+            }
+        else:
+            logger.error(f"❌ Failed to stamp database: {result.stderr}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to stamp database: {result.stderr}"
+            )
+            
+    except Exception as e:
+        logger.error(f"❌ Error stamping database: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error stamping database: {str(e)}"
+        )
+
+@router.post("/fix-llm-audit-schema")
+async def fix_llm_audit_schema(db: Session = Depends(get_db)):
+    """
+    Fix llm_audit table schema by adding missing raw_response column
+    """
+    try:
+        logger.info("🔧 Fixing llm_audit table schema...")
+        
+        # Check if raw_response column exists
+        result = db.execute(text("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'llm_audit' 
+            AND column_name = 'raw_response'
+        """))
+        
+        if result.fetchone():
+            logger.info("✅ raw_response column already exists")
+            return {
+                "status": "success",
+                "message": "raw_response column already exists",
+                "changes": []
+            }
+        
+        # Add the raw_response column
+        logger.info("📝 Adding raw_response column to llm_audit table...")
+        db.execute(text("""
+            ALTER TABLE llm_audit 
+            ADD COLUMN raw_response TEXT
+        """))
+        
+        db.commit()
+        
+        logger.info("✅ Successfully added raw_response column to llm_audit table")
+        return {
+            "status": "success",
+            "message": "Successfully added raw_response column to llm_audit table",
+            "changes": ["Added raw_response column to llm_audit table"]
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error fixing llm_audit schema: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fixing llm_audit schema: {str(e)}"
         )

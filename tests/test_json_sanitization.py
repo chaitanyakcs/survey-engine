@@ -791,6 +791,184 @@ questions
         assert result is not None
         assert len(result["sections"][0]["questions"]) == 50
 
+    def test_corrupted_format_with_newlines_between_chars(self, generation_service):
+        """
+        Test the specific corrupted format we're seeing in production:
+        Every character separated by newlines and spaces
+        """
+        # This is the exact format we're seeing in the real corrupted response
+        corrupted_json = '''{
+
+ 
+ "
+title
+":
+ "
+Me
+vo
+ Concept
+ Testing
+ &
+ Price
+ Elastic
+ity
+ (
+Strateg
+ic
+ Targets
+)",
+
+ 
+ "
+description
+":
+ "
+Mixed
+-method
+s
+ quantitative
+ survey
+ to
+ evaluate
+ Me
+vo
+ Start
+ and
+ Me
+vo
+ Str
+atos
+ concepts
+ among
+ Tech
+ies
+,
+ Expression
+ists
+,
+ and
+ traditional
+ Me
+vo
+ targets
+,
+ and
+ to
+ estimate
+ price
+ elasticity
+ for
+ Me
+vo
+ Str
+atos
+.",
+
+ 
+ "
+sections
+":
+ [
+   {
+     "
+id
+":
+ 
+1
+,
+     "
+title
+":
+ "
+Sample
+ Plan
+",
+     "
+questions
+":
+ [
+       {
+         "
+id
+":
+ "
+q
+1
+",
+         "
+text
+":
+ "
+Please
+ confirm
+ you
+ currently
+ reside
+ in
+ the
+ United
+ States
+.",
+         "
+type
+":
+ "
+single
+_choice
+",
+         "
+options
+":
+ [
+           "
+Yes
+,
+ I
+ currently
+ reside
+ in
+ the
+ United
+ States
+",
+           "
+No
+,
+ I
+ do
+ not
+ reside
+ in
+ the
+ United
+ States
+"
+         ]
+       }
+     ]
+   }
+ ]
+}'''
+
+        # Test that the sanitization can handle this format
+        sanitized = generation_service._sanitize_raw_output(corrupted_json)
+        
+        # Should be able to parse the sanitized result
+        parsed = json.loads(sanitized)
+        
+        # Check that the content is preserved correctly
+        assert parsed["title"] == "Mevo Concept Testing & Price Elasticity (Strategic Targets)"
+        assert "Mixed-methods quantitative survey" in parsed["description"]
+        assert len(parsed["sections"]) == 1
+        assert parsed["sections"][0]["id"] == 1
+        assert parsed["sections"][0]["title"] == "Sample Plan"
+        assert len(parsed["sections"][0]["questions"]) == 1
+        
+        question = parsed["sections"][0]["questions"][0]
+        assert question["text"] == "Please confirm you currently reside in the United States."
+        assert question["type"] == "single_choice"
+        assert "Yes, I currently reside in the United States" in question["options"]
+
 
 if __name__ == "__main__":
     # Run the tests

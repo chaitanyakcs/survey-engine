@@ -135,15 +135,25 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) =
 
           {/* External Links */}
           {externalLinks.map((item) => {
+            const isActive = currentView === item.id;
             const Icon = item.icon;
             
             return (
               <a
                 key={item.id}
                 href={item.href}
-                className="group flex items-center px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white rounded-md transition-colors"
+                className={`
+                  group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors
+                  ${isActive 
+                    ? 'bg-yellow-500 text-white border-r-2 border-yellow-400' 
+                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                  }
+                `}
               >
-                <Icon className="flex-shrink-0 h-5 w-5 mr-3 text-gray-400 group-hover:text-gray-300" />
+                <Icon className={`
+                  flex-shrink-0 h-5 w-5 mr-3
+                  ${isActive ? 'text-white' : 'text-gray-400 group-hover:text-gray-300'}
+                `} />
                 {!isCollapsed && (
                   <span className="truncate">{item.name}</span>
                 )}

@@ -365,7 +365,6 @@ class WorkflowService:
 
             # Update survey status to failed
             try:
-                from src.database.models import Survey
                 survey = self.db.query(Survey).filter(Survey.id == survey_id).first()
                 if survey:
                     survey.status = "failed"
@@ -555,7 +554,6 @@ class WorkflowService:
             # Update survey with results (final_state is a dict from LangGraph)
             logger.info("💾 [WorkflowService] Updating survey record with workflow results")
             logger.info(f"💾 [WorkflowService] Final state keys: {list(final_state.keys()) if final_state else 'None'}")
-            logger.info(f"💾 [WorkflowService] Pillar scores in final_state: {final_state.get('pillar_scores') is not None}")
             
             try:
                 # Ensure we have a healthy database session
@@ -570,20 +568,11 @@ class WorkflowService:
                 survey.golden_similarity_score = final_state.get("golden_similarity_score")
                 survey.used_golden_examples = final_state.get("used_golden_examples", [])
                 
-                # Store pillar scores with detailed logging
-                pillar_scores = final_state.get("pillar_scores")
-                logger.info(f"💾 [WorkflowService] Pillar scores to store: {pillar_scores is not None}")
-                if pillar_scores:
-                    logger.info(f"💾 [WorkflowService] Pillar scores type: {type(pillar_scores)}")
-                    logger.info(f"💾 [WorkflowService] Pillar scores keys: {list(pillar_scores.keys()) if isinstance(pillar_scores, dict) else 'Not a dict'}")
-                    logger.info(f"💾 [WorkflowService] Overall grade: {pillar_scores.get('overall_grade', 'N/A')}")
-                
-                survey.pillar_scores = pillar_scores
+                survey.pillar_scores = final_state.get("pillar_scores")
                 survey.status = "validated" if final_state.get("quality_gate_passed", False) else "draft"
                 
                 self.db.commit()
                 logger.info(f"✅ [WorkflowService] Survey record updated: status={survey.status}, golden_examples_used={len(survey.used_golden_examples)}")
-                logger.info(f"✅ [WorkflowService] Pillar scores stored: {survey.pillar_scores is not None}")
             except Exception as db_error:
                 logger.error(f"❌ [WorkflowService] Database update failed: {str(db_error)}")
                 self.db.rollback()
@@ -785,7 +774,6 @@ class WorkflowService:
 
             # Update survey with final results - use the same logic as the main workflow
             try:
-                from src.database.models import Survey
 
                 # Ensure we have a healthy database session
                 if not self._ensure_healthy_db_session():
@@ -806,7 +794,6 @@ class WorkflowService:
 
                     self.db.commit()
                     logger.info(f"✅ [WorkflowService] Survey updated from resumed workflow: status={survey.status}")
-                    logger.info(f"✅ [WorkflowService] Pillar scores stored: {survey.pillar_scores is not None}")
                 else:
                     logger.warning(f"⚠️ [WorkflowService] Survey not found for update: {survey_id}")
             except Exception as e:
@@ -835,7 +822,6 @@ class WorkflowService:
 
             # Update survey status to failed
             try:
-                from src.database.models import Survey
                 survey = self.db.query(Survey).filter(Survey.id == survey_id).first()
                 if survey:
                     survey.status = "failed"

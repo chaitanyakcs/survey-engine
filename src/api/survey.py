@@ -246,7 +246,7 @@ async def reparse_survey(
     db: Session = Depends(get_db)
 ) -> dict[str, Any]:
     """
-    Reparse survey LLM output using latest retrieval service
+    Reparse survey LLM output using raw response from LLM audit
     This fixes surveys generated with outdated validation rules
     """
     logger.info(f"🔄 [Survey API] Starting reparse for survey: {survey_id}")
@@ -257,26 +257,58 @@ async def reparse_survey(
         if not survey:
             raise HTTPException(status_code=404, detail="Survey not found")
         
-        # Get the raw LLM output
-        raw_output = survey.raw_output
-        if not raw_output:
-            raise HTTPException(status_code=400, detail="No raw output found to reparse")
+        # Get the raw LLM response from audit system
+        from src.database.models import LLMAudit
+        from src.services.generation_service import GenerationService
         
-        logger.info(f"📊 [Survey API] Raw output found, starting reparse process")
+        # Find the LLM audit record for this survey
+        audit_record = db.query(LLMAudit).filter(
+            LLMAudit.parent_survey_id == str(survey_id),
+            LLMAudit.purpose == "survey_generation"
+        ).order_by(LLMAudit.created_at.desc()).first()
         
-        # Import retrieval service
-        from src.services.retrieval_service import RetrievalService
-        retrieval_service = RetrievalService(db)
+        if not audit_record:
+            raise HTTPException(status_code=400, detail="No LLM audit record found for this survey")
         
-        # Reparse the survey using the latest retrieval service
-        reparsed_survey = retrieval_service.reparse_survey_output(raw_output)
+        if not audit_record.raw_response:
+            raise HTTPException(status_code=400, detail="No raw response found in LLM audit record")
+        
+        logger.info(f"📊 [Survey API] Raw response found, starting reparse process")
+        logger.info(f"🔍 [Survey API] Raw response length: {len(audit_record.raw_response)} characters")
+        
+        # Use the existing generation service to process the raw response
+        generation_service = GenerationService(db)
+        reparsed_survey = generation_service._extract_survey_json(audit_record.raw_response)
         
         if not reparsed_survey:
-            raise HTTPException(status_code=500, detail="Failed to reparse survey output")
+            raise HTTPException(status_code=500, detail="Failed to extract survey from raw response")
+        
+        logger.info(f"✅ [Survey API] Successfully extracted survey from raw response")
         
         # Update the survey with reparsed data
+        logger.info(f"💾 [Survey API] Updating survey final_output with reparsed data")
+        logger.info(f"🔍 [Survey API] Reparsed survey keys: {list(reparsed_survey.keys())}")
+        
+        # Show sample of questions before saving
+        if 'sections' in reparsed_survey and reparsed_survey['sections']:
+            first_section = reparsed_survey['sections'][0]
+            if 'questions' in first_section and first_section['questions']:
+                first_question = first_section['questions'][0]
+                logger.info(f"🔍 [Survey API] Sample question: '{first_question.get('text', 'No text')}'")
+        
         survey.final_output = reparsed_survey
         survey.status = "reparsed"
+        
+        # Also update the raw_output to reflect the new processing
+        survey.raw_output = reparsed_survey
+        
+        # Update the LLM audit record with the new processed output
+        logger.info(f"📝 [Survey API] Updating LLM audit record with reparsed output")
+        reparsed_output_json = json.dumps(reparsed_survey, indent=2)
+        audit_record.output_content = reparsed_output_json
+        audit_record.output_tokens = len(reparsed_output_json.split()) if reparsed_output_json else 0
+        
+        logger.info(f"💾 [Survey API] Committing changes to database")
         db.commit()
         
         logger.info(f"✅ [Survey API] Successfully reparsed survey: {survey_id}")
@@ -286,10 +318,11 @@ async def reparse_survey(
         
         return {
             "status": "success",
-            "message": "Survey reparsed successfully",
+            "message": "Survey reparsed successfully using raw LLM response",
             "survey_id": str(survey_id),
             "question_count": question_count,
             "sections_count": len(reparsed_survey.get('sections', [])),
+            "raw_response_length": len(audit_record.raw_response),
             "reparsed_at": datetime.now().isoformat()
         }
         

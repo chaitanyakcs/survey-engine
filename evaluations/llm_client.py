@@ -30,6 +30,17 @@ except ImportError:
 # Audit components will be imported when needed to avoid circular imports
 AUDIT_AVAILABLE = True  # We'll try to import when needed
 
+# Import JSON utilities
+try:
+    import sys
+    src_path = os.path.join(os.path.dirname(__file__), '..', 'src')
+    if src_path not in sys.path:
+        sys.path.insert(0, src_path)
+    from src.utils.json_generation_utils import get_json_optimized_hyperparameters
+    JSON_UTILS_AVAILABLE = True
+except ImportError:
+    JSON_UTILS_AVAILABLE = False
+
 @dataclass
 class LLMResponse:
     content: str
@@ -161,13 +172,17 @@ class EvaluationLLMClient:
                     context_type="survey_data",
                     parent_survey_id=parent_survey_id,
                     parent_rfq_id=parent_rfq_id,
-                    hyperparameters={
-                        "max_tokens": max_tokens,
-                        "temperature": 0.3,
-                        "top_p": 0.9,
-                        "frequency_penalty": 0.0,
-                        "presence_penalty": 0.0
-                    },
+                    hyperparameters=(
+                        {"max_tokens": max_tokens, **get_json_optimized_hyperparameters("evaluation")} 
+                        if JSON_UTILS_AVAILABLE 
+                        else {
+                            "max_tokens": max_tokens,
+                            "temperature": 0.3,
+                            "top_p": 0.9,
+                            "frequency_penalty": 0.0,
+                            "presence_penalty": 0.0
+                        }
+                    ),
                     metadata={
                         "prompt_length": len(prompt),
                         "max_tokens": max_tokens
@@ -220,10 +235,12 @@ class EvaluationLLMClient:
                     input={
                         "prompt": prompt,
                         "max_tokens": max_tokens,
-                        "temperature": 0.3,  # Lower temperature for more consistent evaluation
-                        "top_p": 0.9,
-                        "frequency_penalty": 0.0,
-                        "presence_penalty": 0.0
+                        **(get_json_optimized_hyperparameters("evaluation") if JSON_UTILS_AVAILABLE else {
+                            "temperature": 0.3,
+                            "top_p": 0.9,
+                            "frequency_penalty": 0.0,
+                            "presence_penalty": 0.0
+                        })
                     }
                 )
                 
