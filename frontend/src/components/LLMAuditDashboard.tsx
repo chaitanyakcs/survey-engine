@@ -91,12 +91,43 @@ const LLMAuditDashboard: React.FC<LLMAuditDashboardProps> = ({ onClose }) => {
     return `${(ms / 1000).toFixed(2)}s`;
   };
 
+  const getPurposeDisplayName = (purpose: string, sub_purpose?: string) => {
+    const purposeMap: Record<string, string> = {
+      'survey_generation': 'Survey Creation',
+      'evaluation': 'Quality Assessment',
+      'field_extraction': 'Data Extraction',
+      'document_parsing': 'Document Analysis',
+      'embedding': 'Text Processing',
+      'generation': 'Content Generation',
+    };
+
+    const subPurposeMap: Record<string, string> = {
+      'content_validity': 'Content Validation',
+      'methodological_rigor': 'Methodology Review',
+      'rfq_extraction': 'RFQ Data Extraction',
+      'survey_conversion': 'Survey Conversion',
+      'golden_example_fields': 'Example Field Extraction',
+      'text_embedding': 'Text Vectorization',
+    };
+
+    let displayName = purposeMap[purpose] || purpose.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+    
+    if (sub_purpose) {
+      const subDisplayName = subPurposeMap[sub_purpose] || sub_purpose.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+      displayName += ` - ${subDisplayName}`;
+    }
+
+    return displayName;
+  };
+
   const getPurposeColor = (purpose: string) => {
     const colors: Record<string, string> = {
       'survey_generation': 'bg-yellow-100 text-yellow-800',
       'evaluation': 'bg-green-100 text-green-800',
       'field_extraction': 'bg-amber-100 text-amber-800',
       'document_parsing': 'bg-orange-100 text-orange-800',
+      'embedding': 'bg-purple-100 text-purple-800',
+      'generation': 'bg-blue-100 text-blue-800',
     };
     return colors[purpose] || 'bg-gray-100 text-gray-800';
   };
@@ -285,11 +316,8 @@ const LLMAuditDashboard: React.FC<LLMAuditDashboardProps> = ({ onClose }) => {
                       </td>
                       <td className="px-4 py-4 w-32">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getPurposeColor(record.purpose)}`}>
-                          {record.purpose}
+                          {getPurposeDisplayName(record.purpose, record.sub_purpose)}
                         </span>
-                        {record.sub_purpose && (
-                          <div className="text-xs text-gray-500 mt-1 truncate">{record.sub_purpose}</div>
-                        )}
                       </td>
                       <td className="px-4 py-4 w-24">
                         {record.success ? (

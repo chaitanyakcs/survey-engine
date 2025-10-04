@@ -700,7 +700,7 @@ export const SurveysPage: React.FC = () => {
                                     </span>
                                   )}
                                   <span className="text-sm text-gray-500">
-                                    {new Date(survey.created_at).toLocaleDateString()}
+                                    {new Date(survey.created_at).toLocaleString()}
                                   </span>
                                 </div>
                               </div>

@@ -6,9 +6,6 @@ import { useAppStore } from '../store/useAppStore';
 import LLMAuditDashboard from '../components/LLMAuditDashboard';
 import { 
   CogIcon, 
-  CheckCircleIcon,
-  InformationCircleIcon,
-  UserIcon,
   ClockIcon,
   ChartBarIcon
 } from '@heroicons/react/24/outline';
@@ -25,15 +22,11 @@ interface EvaluationSettings {
   // Human Prompt Review Settings
   enable_prompt_review: boolean;
   prompt_review_mode: 'disabled' | 'blocking' | 'parallel';
-  require_approval_for_generation: boolean;
-  auto_approve_trusted_prompts: boolean;
   prompt_review_timeout_hours: number;
   
   // LLM Evaluation Settings
   enable_llm_evaluation: boolean;
   
-  // Survey Generation Mode Settings
-  quick_mode_enabled: boolean;
   
   // Model configuration
   generation_model: string;
@@ -63,15 +56,11 @@ export const SettingsPage: React.FC = () => {
     // Human Prompt Review Settings
     enable_prompt_review: false,
     prompt_review_mode: 'disabled',
-    require_approval_for_generation: false,
-    auto_approve_trusted_prompts: false,
     prompt_review_timeout_hours: 24,
     
     // LLM Evaluation Settings
     enable_llm_evaluation: true,
     
-    // Survey Generation Mode Settings
-    quick_mode_enabled: false, // Default to Enhanced mode
     
     generation_model: 'openai/gpt-5',
     evaluation_model: 'openai/gpt-5',
@@ -280,15 +269,11 @@ export const SettingsPage: React.FC = () => {
       // Human Prompt Review Settings
       enable_prompt_review: false,
       prompt_review_mode: 'disabled',
-      require_approval_for_generation: false,
-      auto_approve_trusted_prompts: false,
       prompt_review_timeout_hours: 24,
       
       // LLM Evaluation Settings
       enable_llm_evaluation: true,
       
-      // Survey Generation Mode Settings
-      quick_mode_enabled: false, // Default to Enhanced mode
       
       // Model configuration
       generation_model: 'openai/gpt-4o-mini',
@@ -355,67 +340,6 @@ export const SettingsPage: React.FC = () => {
           </header>
 
           <div className="p-6 space-y-8">
-            {/* Survey Generation Settings */}
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6">
-              <div className="flex items-center space-x-3 mb-6">
-                <CogIcon className="w-6 h-6 text-blue-600" />
-                <h2 className="text-xl font-semibold text-gray-900">Survey Generation</h2>
-              </div>
-              
-              <div className="space-y-6">
-                {/* Quick Mode Toggle */}
-                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-                  <div>
-                    <h3 className="text-lg font-medium text-gray-900">Enable Quick Mode</h3>
-                    <p className="text-gray-600">
-                      When enabled, users can choose between Quick Mode and Enhanced Mode. 
-                      When disabled, only Enhanced Mode is available.
-                    </p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={settings.quick_mode_enabled}
-                      onChange={(e) => setSettings({ ...settings, quick_mode_enabled: e.target.checked })}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-blue-500 peer-checked:to-indigo-500"></div>
-                  </label>
-                </div>
-
-                {/* Mode Status */}
-                <div className={`p-4 rounded-xl border-2 ${
-                  settings.quick_mode_enabled 
-                    ? 'border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50' 
-                    : 'border-gray-200 bg-gray-50'
-                }`}>
-                  <div className="flex items-center space-x-3">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                      settings.quick_mode_enabled ? 'bg-blue-100' : 'bg-gray-100'
-                    }`}>
-                      <span className="text-lg">
-                        {settings.quick_mode_enabled ? '🚀' : '✨'}
-                      </span>
-                    </div>
-                    <div>
-                      <h4 className={`text-lg font-medium ${
-                        settings.quick_mode_enabled ? 'text-blue-900' : 'text-gray-700'
-                      }`}>
-                        {settings.quick_mode_enabled ? 'Quick Mode Available' : 'Enhanced Mode Only'}
-                      </h4>
-                      <p className={`text-sm ${
-                        settings.quick_mode_enabled ? 'text-blue-700' : 'text-gray-600'
-                      }`}>
-                        {settings.quick_mode_enabled 
-                          ? 'Users can choose between Quick Mode (simple form) and Enhanced Mode (detailed form).'
-                          : 'Only Enhanced Mode is available, providing comprehensive survey creation options.'
-                        }
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
 
             {/* AI Models Configuration */}
             <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6">
@@ -524,8 +448,7 @@ export const SettingsPage: React.FC = () => {
                       onChange={(e) => setSettings({ 
                         ...settings, 
                         enable_prompt_review: e.target.checked,
-                        prompt_review_mode: e.target.checked ? settings.prompt_review_mode : 'disabled',
-                        require_approval_for_generation: e.target.checked ? settings.require_approval_for_generation : false
+                        prompt_review_mode: e.target.checked ? settings.prompt_review_mode : 'disabled'
                       })}
                       className="sr-only peer"
                     />
@@ -585,52 +508,10 @@ export const SettingsPage: React.FC = () => {
                   </div>
                 )}
 
-                {/* Additional Review Options */}
+                {/* Review Timeout */}
                 {settings.enable_prompt_review && (
                   <div className="space-y-4">
-                    <h3 className="text-lg font-medium text-gray-900">Review Options</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Require Approval for Generation */}
-                      <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-                        <div>
-                          <h4 className="font-medium text-gray-900">Require Approval</h4>
-                          <p className="text-sm text-gray-600">Block generation until approved</p>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={settings.require_approval_for_generation}
-                            disabled={settings.prompt_review_mode !== 'blocking'}
-                            onChange={(e) => setSettings({ ...settings, require_approval_for_generation: e.target.checked })}
-                            className="sr-only peer"
-                          />
-                          <div className={`w-11 h-6 rounded-full peer ${
-                            settings.prompt_review_mode !== 'blocking' 
-                              ? 'bg-gray-200 cursor-not-allowed' 
-                              : 'bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 peer-checked:bg-gradient-to-r peer-checked:from-green-500 peer-checked:to-emerald-500'
-                          } peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all`}></div>
-                        </label>
-                      </div>
-
-                      {/* Auto-approve Trusted Prompts */}
-                      <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-                        <div>
-                          <h4 className="font-medium text-gray-900">Auto-approve Similar</h4>
-                          <p className="text-sm text-gray-600">Auto-approve similar prompts</p>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={settings.auto_approve_trusted_prompts}
-                            onChange={(e) => setSettings({ ...settings, auto_approve_trusted_prompts: e.target.checked })}
-                            className="sr-only peer"
-                          />
-                          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-green-500 peer-checked:to-emerald-500"></div>
-                        </label>
-                      </div>
-                    </div>
-
-                    {/* Review Timeout */}
+                    <h3 className="text-lg font-medium text-gray-900">Review Settings</h3>
                     <div className="p-4 bg-gray-50 rounded-xl">
                       <label className="block font-medium text-gray-900 mb-2">
                         Review Timeout (Hours)

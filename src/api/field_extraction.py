@@ -11,7 +11,7 @@ import json
 from ..database import get_db
 from ..services.field_extraction_service import field_extraction_service
 from ..services.progress_service import progress_service
-from ..services.websocket_client import WebSocketNotificationService
+# from ..services.websocket_client import WebSocketNotificationService  # May be used later
 
 logger = logging.getLogger(__name__)
 

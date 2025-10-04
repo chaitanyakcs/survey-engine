@@ -19,8 +19,10 @@ export const EnhancedRFQApp: React.FC = () => {
 
   const handleGenerate = async () => {
     try {
+      console.log('🔍 [EnhancedRFQApp] handleGenerate called - submitting RFQ');
       await submitEnhancedRFQ(enhancedRfq);
       // Clear the form state after successful submission
+      console.log('🔍 [EnhancedRFQApp] RFQ submitted successfully - clearing state');
       clearEnhancedRfqState();
     } catch (error) {
       console.error('Failed to generate survey:', error);

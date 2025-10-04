@@ -76,8 +76,6 @@ class SettingsService:
             "fallback_mode": "basic",
             "enable_prompt_review": False,
             "prompt_review_mode": "disabled",
-            "require_approval_for_generation": False,
-            "auto_approve_trusted_prompts": False,
             "prompt_review_timeout_hours": 24,
             "enable_llm_evaluation": True,  # New setting to make LLM evaluation optional
             "quick_mode_enabled": False,  # Enable Quick mode toggle in UI (default to Enhanced mode)
@@ -115,7 +113,6 @@ class SettingsService:
                 "evaluation_mode", "enable_cost_tracking", "enable_parallel_processing",
                 "enable_ab_testing", "cost_threshold_daily", "cost_threshold_monthly",
                 "fallback_mode", "enable_prompt_review", "prompt_review_mode",
-                "require_approval_for_generation", "auto_approve_trusted_prompts",
                 "prompt_review_timeout_hours",
                 # Model configuration keys
                 "generation_model", "evaluation_model", "embedding_model"
@@ -163,8 +160,6 @@ class SettingsService:
                 "fallback_mode": "basic",
                 "enable_prompt_review": False,
                 "prompt_review_mode": "disabled",
-                "require_approval_for_generation": False,
-                "auto_approve_trusted_prompts": False,
                 "prompt_review_timeout_hours": 24,
                 # Model configuration (overridable via UI)
                 "generation_model": app_settings.generation_model,

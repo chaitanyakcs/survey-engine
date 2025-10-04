@@ -7,6 +7,7 @@ import re
 from io import BytesIO
 from typing import Dict, List, Any
 from docx import Document
+from docx.document import Document as DocumentType
 from docx.shared import Inches, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
@@ -21,20 +22,25 @@ class DocxSurveyRenderer(SurveyExportRenderer):
     Implements all question types with appropriate Word formatting.
     """
 
-    def __init__(self):
-        self.document = None
+    def __init__(self) -> None:
+        self.document: DocumentType | None = None
         super().__init__()
 
     def _register_question_types(self) -> None:
         """Register all implemented question types."""
         self._registered_types = set(QuestionType)
 
+    def _get_document(self) -> DocumentType:
+        """Get the document instance with type assertion."""
+        assert self.document is not None, "Document not initialized"
+        return self.document
+
     def _initialize_document(self, survey_data: Dict[str, Any]) -> None:
         """Initialize the Word document."""
         self.document = Document()
 
         # Set document margins
-        sections = self.document.sections
+        sections = self._get_document().sections
         for section in sections:
             section.top_margin = Inches(1)
             section.bottom_margin = Inches(1)
@@ -43,27 +49,29 @@ class DocxSurveyRenderer(SurveyExportRenderer):
 
     def _render_survey_header(self, title: str, description: str = "") -> None:
         """Render survey title and description."""
+        doc = self._get_document()
         # Title
-        title_paragraph = self.document.add_heading(title, level=1)
+        title_paragraph = doc.add_heading(title, level=1)
         title_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
         # Description
         if description:
-            desc_paragraph = self.document.add_paragraph(description)
+            desc_paragraph = doc.add_paragraph(description)
             desc_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
         # Add some space
-        self.document.add_paragraph("")
+        doc.add_paragraph("")
 
     def _finalize_document(self) -> bytes:
         """Finalize and return the document as bytes."""
         buffer = BytesIO()
-        self.document.save(buffer)
+        self._get_document().save(buffer)
         buffer.seek(0)
         return buffer.getvalue()
 
-    def _add_question_header(self, question: Dict[str, Any], question_number: int = None) -> None:
+    def _add_question_header(self, question: Dict[str, Any], question_number: int | None = None) -> None:
         """Add question header with numbering and text."""
+        doc = self._get_document()
         question_text = question.get("text", "")
 
         if question_number:
@@ -71,7 +79,7 @@ class DocxSurveyRenderer(SurveyExportRenderer):
         else:
             header_text = question_text
 
-        paragraph = self.document.add_paragraph()
+        paragraph = doc.add_paragraph()
         run = paragraph.add_run(header_text)
         run.bold = True
         run.font.size = Pt(11)
@@ -79,7 +87,8 @@ class DocxSurveyRenderer(SurveyExportRenderer):
     def _add_required_indicator(self, question: Dict[str, Any]) -> None:
         """Add required field indicator if applicable."""
         if question.get("required", False):
-            paragraph = self.document.add_paragraph()
+            doc = self._get_document()
+            paragraph = doc.add_paragraph()
             run = paragraph.add_run("* Required")
             run.italic = True
             run.font.size = Pt(9)
@@ -88,49 +97,52 @@ class DocxSurveyRenderer(SurveyExportRenderer):
 
     def _render_instruction(self, question: Dict[str, Any]) -> None:
         """Render instruction question as an information box."""
+        doc = self._get_document()
         # Add instruction header
-        paragraph = self.document.add_paragraph()
+        paragraph = doc.add_paragraph()
         run = paragraph.add_run("📋 Instructions")
         run.bold = True
         run.font.size = Pt(12)
 
         # Add instruction content in a bordered paragraph
-        instruction_paragraph = self.document.add_paragraph()
+        instruction_paragraph = doc.add_paragraph()
         instruction_paragraph.style = 'Quote'
         instruction_run = instruction_paragraph.add_run(question.get("text", ""))
         instruction_run.font.size = Pt(10)
 
-        self.document.add_paragraph("")
+        doc.add_paragraph("")
 
     def _render_multiple_choice(self, question: Dict[str, Any]) -> None:
         """Render multiple choice question with checkboxes."""
         self._add_question_header(question)
         self._add_required_indicator(question)
 
-        paragraph = self.document.add_paragraph()
+        doc = self._get_document()
+        paragraph = doc.add_paragraph()
         paragraph.add_run("Select one or more options:").italic = True
 
         options = question.get("options", [])
         for option in options:
-            option_paragraph = self.document.add_paragraph()
+            option_paragraph = doc.add_paragraph()
             option_paragraph.add_run("☐ " + option)
 
-        self.document.add_paragraph("")
+        doc.add_paragraph("")
 
     def _render_single_choice(self, question: Dict[str, Any]) -> None:
         """Render single choice question with radio buttons."""
         self._add_question_header(question)
         self._add_required_indicator(question)
 
-        paragraph = self.document.add_paragraph()
+        doc = self._get_document()
+        paragraph = doc.add_paragraph()
         paragraph.add_run("Select one option:").italic = True
 
         options = question.get("options", [])
         for option in options:
-            option_paragraph = self.document.add_paragraph()
+            option_paragraph = doc.add_paragraph()
             option_paragraph.add_run("○ " + option)
 
-        self.document.add_paragraph("")
+        doc.add_paragraph("")
 
     def _render_scale(self, question: Dict[str, Any]) -> None:
         """Render scale question with numbered options."""
@@ -142,38 +154,41 @@ class DocxSurveyRenderer(SurveyExportRenderer):
 
         if scale_labels:
             # Show scale with labels
-            paragraph = self.document.add_paragraph()
+            doc = self._get_document()
+            paragraph = doc.add_paragraph()
             paragraph.add_run("Rate on the following scale:").italic = True
 
             for i, option in enumerate(options, 1):
                 label = scale_labels.get(str(i), "")
-                scale_paragraph = self.document.add_paragraph()
+                scale_paragraph = doc.add_paragraph()
                 scale_paragraph.add_run(f"○ {i} - {option}" + (f" ({label})" if label else ""))
         else:
             # Simple numeric scale
-            paragraph = self.document.add_paragraph()
+            doc = self._get_document()
+            paragraph = doc.add_paragraph()
             paragraph.add_run("Rate from 1 to " + str(len(options)) + ":").italic = True
 
-            scale_paragraph = self.document.add_paragraph()
+            scale_paragraph = doc.add_paragraph()
             scale_text = " | ".join([f"○ {i}" for i in range(1, len(options) + 1)])
             scale_paragraph.add_run(scale_text)
 
-        self.document.add_paragraph("")
+        doc.add_paragraph("")
 
     def _render_ranking(self, question: Dict[str, Any]) -> None:
         """Render ranking question with numbered lines."""
         self._add_question_header(question)
         self._add_required_indicator(question)
 
-        paragraph = self.document.add_paragraph()
+        doc = self._get_document()
+        paragraph = doc.add_paragraph()
         paragraph.add_run("Rank the following items in order of preference (1 = most preferred):").italic = True
 
         options = question.get("options", [])
         for option in options:
-            rank_paragraph = self.document.add_paragraph()
+            rank_paragraph = doc.add_paragraph()
             rank_paragraph.add_run(f"___ {option}")
 
-        self.document.add_paragraph("")
+        doc.add_paragraph("")
 
     def _render_text(self, question: Dict[str, Any]) -> None:
         """Render text input question."""
@@ -181,10 +196,11 @@ class DocxSurveyRenderer(SurveyExportRenderer):
         self._add_required_indicator(question)
 
         # Add response area
+        doc = self._get_document()
         for _ in range(3):
-            self.document.add_paragraph("_" * 80)
+            doc.add_paragraph("_" * 80)
 
-        self.document.add_paragraph("")
+        doc.add_paragraph("")
 
     def _render_open_text(self, question: Dict[str, Any]) -> None:
         """Render open text question (alias for text)."""
@@ -195,30 +211,33 @@ class DocxSurveyRenderer(SurveyExportRenderer):
         self._add_question_header(question)
         self._add_required_indicator(question)
 
-        paragraph = self.document.add_paragraph()
+        doc = self._get_document()
+        paragraph = doc.add_paragraph()
         paragraph.add_run("Enter a numeric value: _______________")
 
-        self.document.add_paragraph("")
+        doc.add_paragraph("")
 
     def _render_date(self, question: Dict[str, Any]) -> None:
         """Render date input question."""
         self._add_question_header(question)
         self._add_required_indicator(question)
 
-        paragraph = self.document.add_paragraph()
+        doc = self._get_document()
+        paragraph = doc.add_paragraph()
         paragraph.add_run("Enter date (MM/DD/YYYY): _______________")
 
-        self.document.add_paragraph("")
+        doc.add_paragraph("")
 
     def _render_boolean(self, question: Dict[str, Any]) -> None:
         """Render yes/no question."""
         self._add_question_header(question)
         self._add_required_indicator(question)
 
-        paragraph = self.document.add_paragraph()
+        doc = self._get_document()
+        paragraph = doc.add_paragraph()
         paragraph.add_run("○ Yes    ○ No")
 
-        self.document.add_paragraph("")
+        doc.add_paragraph("")
 
     def _render_multiple_select(self, question: Dict[str, Any]) -> None:
         """Render multiple select question (alias for multiple choice)."""
@@ -230,20 +249,21 @@ class DocxSurveyRenderer(SurveyExportRenderer):
         self._add_required_indicator(question)
 
         # This is a simplified matrix - for complex matrices use matrix_likert
+        doc = self._get_document()
         options = question.get("options", [])
         if len(options) < 2:
-            self.document.add_paragraph("Matrix format: Please specify rows and columns in question options.")
+            doc.add_paragraph("Matrix format: Please specify rows and columns in question options.")
             return
 
         # Create simple table
-        table = self.document.add_table(rows=len(options), cols=2)
+        table = doc.add_table(rows=len(options), cols=2)
         table.style = 'Table Grid'
 
         for i, option in enumerate(options):
             table.cell(i, 0).text = option
             table.cell(i, 1).text = "☐"
 
-        self.document.add_paragraph("")
+        doc.add_paragraph("")
 
     def _extract_attributes_from_text(self, text: str) -> List[str]:
         """Extract attributes from question text (used by specialized components)."""
@@ -274,12 +294,13 @@ class DocxSurveyRenderer(SurveyExportRenderer):
         attributes = self._extract_attributes_from_text(question.get("text", ""))
         options = question.get("options", ["Strongly Disagree", "Disagree", "Neutral", "Agree", "Strongly Agree"])
 
+        doc = self._get_document()
         if not attributes:
-            self.document.add_paragraph("Matrix Likert: Unable to parse attributes from question text.")
+            doc.add_paragraph("Matrix Likert: Unable to parse attributes from question text.")
             return
 
         # Create table with headers
-        table = self.document.add_table(rows=len(attributes) + 1, cols=len(options) + 1)
+        table = doc.add_table(rows=len(attributes) + 1, cols=len(options) + 1)
         table.style = 'Table Grid'
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
 
@@ -294,7 +315,7 @@ class DocxSurveyRenderer(SurveyExportRenderer):
             for j in range(len(options)):
                 table.cell(i + 1, j + 1).text = "○"
 
-        self.document.add_paragraph("")
+        doc.add_paragraph("")
 
     def _render_constant_sum(self, question: Dict[str, Any]) -> None:
         """Render constant sum allocation question."""
@@ -309,15 +330,16 @@ class DocxSurveyRenderer(SurveyExportRenderer):
         # Extract attributes
         attributes = self._extract_attributes_from_text(text)
 
+        doc = self._get_document()
         if not attributes:
-            self.document.add_paragraph("Constant Sum: Unable to parse attributes from question text.")
+            doc.add_paragraph("Constant Sum: Unable to parse attributes from question text.")
             return
 
-        paragraph = self.document.add_paragraph()
+        paragraph = doc.add_paragraph()
         paragraph.add_run(f"Allocate {total_points} points across the following items:").italic = True
 
         # Create allocation table
-        table = self.document.add_table(rows=len(attributes) + 1, cols=2)
+        table = doc.add_table(rows=len(attributes) + 1, cols=2)
         table.style = 'Table Grid'
 
         table.cell(0, 0).text = "Item"
@@ -328,10 +350,10 @@ class DocxSurveyRenderer(SurveyExportRenderer):
             table.cell(i + 1, 1).text = "____"
 
         # Add total row
-        total_paragraph = self.document.add_paragraph()
+        total_paragraph = doc.add_paragraph()
         total_paragraph.add_run(f"Total: _____ / {total_points} points").bold = True
 
-        self.document.add_paragraph("")
+        doc.add_paragraph("")
 
     def _render_numeric_grid(self, question: Dict[str, Any]) -> None:
         """Render numeric grid question."""
@@ -342,15 +364,16 @@ class DocxSurveyRenderer(SurveyExportRenderer):
         attributes = self._extract_attributes_from_text(question.get("text", ""))
         options = question.get("options", [])
 
+        doc = self._get_document()
         if not attributes:
-            self.document.add_paragraph("Numeric Grid: Unable to parse attributes from question text.")
+            doc.add_paragraph("Numeric Grid: Unable to parse attributes from question text.")
             return
 
-        paragraph = self.document.add_paragraph()
+        paragraph = doc.add_paragraph()
         paragraph.add_run("Provide numeric values for each item:").italic = True
 
         # Create grid table
-        table = self.document.add_table(rows=len(attributes) + 1, cols=len(options) + 1)
+        table = doc.add_table(rows=len(attributes) + 1, cols=len(options) + 1)
         table.style = 'Table Grid'
 
         # Header row
@@ -364,7 +387,7 @@ class DocxSurveyRenderer(SurveyExportRenderer):
             for j in range(len(options)):
                 table.cell(i + 1, j + 1).text = "____"
 
-        self.document.add_paragraph("")
+        doc.add_paragraph("")
 
     def _render_numeric_open(self, question: Dict[str, Any]) -> None:
         """Render numeric open question with currency detection."""
@@ -385,21 +408,22 @@ class DocxSurveyRenderer(SurveyExportRenderer):
         # Check for Van Westendorp
         is_van_westendorp = 'van_westendorp' in methodology.lower() or 'van westendorp' in text.lower()
 
+        doc = self._get_document()
         if is_van_westendorp:
-            paragraph = self.document.add_paragraph()
+            paragraph = doc.add_paragraph()
             paragraph.add_run("Van Westendorp Price Sensitivity Question").bold = True
 
-            guidance_paragraph = self.document.add_paragraph()
+            guidance_paragraph = doc.add_paragraph()
             guidance_paragraph.add_run("Please think about the price point where you would have the described reaction to the product. Consider your local market conditions and personal budget.").italic = True
 
         # Currency and amount input
-        input_paragraph = self.document.add_paragraph()
+        input_paragraph = doc.add_paragraph()
         currency_text = f"Currency: {currency}    Amount: {currency}_________"
         if unit:
             currency_text += f" per {unit}"
         input_paragraph.add_run(currency_text)
 
-        self.document.add_paragraph("")
+        doc.add_paragraph("")
 
     def _render_likert(self, question: Dict[str, Any]) -> None:
         """Render Likert scale question."""
@@ -407,9 +431,10 @@ class DocxSurveyRenderer(SurveyExportRenderer):
         self._add_required_indicator(question)
 
         # Add scale labels
-        scale_paragraph = self.document.add_paragraph()
+        doc = self._get_document()
+        scale_paragraph = doc.add_paragraph()
         scale_paragraph.add_run("Scale: ")
-        
+
         scale_labels = ["Very Unlikely", "Unlikely", "Neutral", "Likely", "Very Likely"]
         for i, label in enumerate(scale_labels):
             if i > 0:
@@ -418,11 +443,11 @@ class DocxSurveyRenderer(SurveyExportRenderer):
 
         # Add radio button options
         for i in range(1, 6):
-            option_paragraph = self.document.add_paragraph()
+            option_paragraph = doc.add_paragraph()
             option_paragraph.style = 'List Bullet'
             option_paragraph.add_run(f"○ {i}")
 
-        self.document.add_paragraph("")
+        doc.add_paragraph("")
 
     def _render_open_end(self, question: Dict[str, Any]) -> None:
         """Render open-ended text question."""
@@ -430,40 +455,42 @@ class DocxSurveyRenderer(SurveyExportRenderer):
         self._add_required_indicator(question)
 
         # Add text input area
-        input_paragraph = self.document.add_paragraph()
+        doc = self._get_document()
+        input_paragraph = doc.add_paragraph()
         input_paragraph.add_run("Response: ")
-        
+
         # Add a line for writing
-        response_paragraph = self.document.add_paragraph()
+        response_paragraph = doc.add_paragraph()
         response_paragraph.add_run("_" * 50)
 
-        self.document.add_paragraph("")
+        doc.add_paragraph("")
 
     def _render_display_only(self, question: Dict[str, Any]) -> None:
         """Render display-only instruction block."""
         # Add instruction header
-        paragraph = self.document.add_paragraph()
+        doc = self._get_document()
+        paragraph = doc.add_paragraph()
         run = paragraph.add_run("📋 Programmer Instructions")
         run.bold = True
         run.font.size = Pt(12)
 
         # Add instruction content in a bordered paragraph
-        instruction_paragraph = self.document.add_paragraph()
+        instruction_paragraph = doc.add_paragraph()
         instruction_paragraph.style = 'Quote'
         instruction_paragraph.add_run(question.get("text", ""))
 
         # Add description if present
         if question.get("description"):
-            desc_paragraph = self.document.add_paragraph()
+            desc_paragraph = doc.add_paragraph()
             desc_paragraph.add_run(f"Note: {question['description']}")
             desc_paragraph.style = 'Intense Quote'
 
         # Add metadata
-        meta_paragraph = self.document.add_paragraph()
+        meta_paragraph = doc.add_paragraph()
         meta_paragraph.add_run("Type: Display Only | No response required")
         meta_paragraph.style = 'Caption'
 
-        self.document.add_paragraph("")
+        doc.add_paragraph("")
 
     def _render_single_open(self, question: Dict[str, Any]) -> None:
         """Render single-line open-ended question."""
@@ -471,14 +498,15 @@ class DocxSurveyRenderer(SurveyExportRenderer):
         self._add_required_indicator(question)
 
         # Add single line input
-        input_paragraph = self.document.add_paragraph()
+        doc = self._get_document()
+        input_paragraph = doc.add_paragraph()
         input_paragraph.add_run("Response: ")
-        
+
         # Add a line for writing
-        response_paragraph = self.document.add_paragraph()
+        response_paragraph = doc.add_paragraph()
         response_paragraph.add_run("_" * 50)
 
-        self.document.add_paragraph("")
+        doc.add_paragraph("")
 
     def _render_multiple_open(self, question: Dict[str, Any]) -> None:
         """Render multi-line open-ended question."""
@@ -486,15 +514,16 @@ class DocxSurveyRenderer(SurveyExportRenderer):
         self._add_required_indicator(question)
 
         # Add multi-line input area
-        input_paragraph = self.document.add_paragraph()
+        doc = self._get_document()
+        input_paragraph = doc.add_paragraph()
         input_paragraph.add_run("Response: ")
-        
+
         # Add multiple lines for writing
         for i in range(4):
-            response_paragraph = self.document.add_paragraph()
+            response_paragraph = doc.add_paragraph()
             response_paragraph.add_run("_" * 50)
 
-        self.document.add_paragraph("")
+        doc.add_paragraph("")
 
     def _render_open_ended(self, question: Dict[str, Any]) -> None:
         """Render open-ended question with larger text area."""
@@ -502,15 +531,16 @@ class DocxSurveyRenderer(SurveyExportRenderer):
         self._add_required_indicator(question)
 
         # Add open-ended input area
-        input_paragraph = self.document.add_paragraph()
+        doc = self._get_document()
+        input_paragraph = doc.add_paragraph()
         input_paragraph.add_run("Detailed Response: ")
-        
+
         # Add multiple lines for detailed writing
         for i in range(5):
-            response_paragraph = self.document.add_paragraph()
+            response_paragraph = doc.add_paragraph()
             response_paragraph.add_run("_" * 50)
 
-        self.document.add_paragraph("")
+        doc.add_paragraph("")
 
     def _render_unsupported_question_type(self, question: Dict[str, Any]) -> None:
         """
@@ -524,21 +554,22 @@ class DocxSurveyRenderer(SurveyExportRenderer):
         self._add_required_indicator(question)
 
         # Add warning note
-        warning_paragraph = self.document.add_paragraph()
+        doc = self._get_document()
+        warning_paragraph = doc.add_paragraph()
         warning_run = warning_paragraph.add_run(f"⚠️ Unsupported question type: {question.get('type', 'unknown')}")
         warning_run.font.size = Pt(9)
         warning_run.font.color.rgb = None  # Use default color
 
         # Add generic text input area
-        input_paragraph = self.document.add_paragraph()
+        input_paragraph = doc.add_paragraph()
         input_paragraph.add_run("Response: ")
-        
+
         # Add lines for writing
         for i in range(3):
-            response_paragraph = self.document.add_paragraph()
+            response_paragraph = doc.add_paragraph()
             response_paragraph.add_run("_" * 50)
 
-        self.document.add_paragraph("")
+        doc.add_paragraph("")
 
 
 # Register the DOCX renderer

@@ -3,7 +3,7 @@ Human Reviews API endpoints for managing prompt review workflows
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from typing import List, Optional
+from typing import List, Optional, Any
 from datetime import datetime, timedelta
 import logging
 import asyncio
@@ -23,7 +23,7 @@ router = APIRouter(prefix="/reviews", tags=["human-reviews"])
 def create_review(
     review_data: HumanReviewCreate,
     db: Session = Depends(get_db)
-):
+) -> HumanReviewResponse:
     """Create a new human review record"""
     try:
         # Set default deadline if not provided
@@ -68,7 +68,7 @@ def get_pending_reviews(
     limit: int = 50,
     skip: int = 0,
     db: Session = Depends(get_db)
-):
+) -> PendingReviewsSummary:
     """Get all pending reviews with summary statistics"""
     try:
         # Get counts by status
@@ -130,7 +130,7 @@ def get_pending_reviews(
 def get_review_by_workflow(
     workflow_id: str,
     db: Session = Depends(get_db)
-):
+) -> HumanReviewResponse:
     """Get review by workflow ID"""
     try:
         review = db.query(HumanReview).filter(HumanReview.workflow_id == workflow_id).first()
@@ -158,7 +158,7 @@ async def edit_review_prompt(
     review_id: int,
     edit_request: EditPromptRequest,
     db: Session = Depends(get_db)
-):
+) -> HumanReviewResponse:
     """Edit the system prompt for a review"""
     try:
         logger.info(f"🔧 [HumanReviews API] Editing prompt for review ID: {review_id}")
@@ -230,7 +230,7 @@ async def submit_review_decision(
     review_id: int,
     decision: ReviewDecision,
     db: Session = Depends(get_db)
-):
+) -> HumanReviewResponse:
     """Submit a review decision (approve/reject)"""
     try:
         review = db.query(HumanReview).filter(HumanReview.id == review_id).first()
@@ -295,7 +295,7 @@ async def submit_review_decision(
 def resume_review(
     review_id: int,
     db: Session = Depends(get_db)
-):
+) -> HumanReviewResponse:
     """Resume a review (mark as in_progress)"""
     try:
         review = db.query(HumanReview).filter(HumanReview.id == review_id).first()
@@ -388,7 +388,7 @@ def _validate_workflow_resume(workflow_id: str, db: Session) -> bool:
         return False
 
 
-async def resume_paused_workflow(workflow_id: str, db: Session):
+async def resume_paused_workflow(workflow_id: str, db: Session) -> None:
     """Resume a paused workflow after human review approval"""
     try:
         logger.info(f"🔄 [HumanReview] Resuming workflow: {workflow_id}")
@@ -527,7 +527,7 @@ async def resume_paused_workflow(workflow_id: str, db: Session):
 # Removed duplicate _execute_workflow_from_generation function - now using workflow_service.execute_workflow_from_generation
 
 
-async def _execute_workflow_with_error_handling(workflow_service, initial_state, workflow_id: str, survey_id: str, ws_client, db):
+async def _execute_workflow_with_error_handling(workflow_service: Any, initial_state: Any, workflow_id: str, survey_id: str, ws_client: Any, db: Session) -> Any:
     """Execute workflow with comprehensive error handling and recovery"""
     try:
         logger.info(f"🚀 [HumanReview] Starting workflow execution with error handling for {workflow_id}")
@@ -573,7 +573,7 @@ async def _execute_workflow_with_error_handling(workflow_service, initial_state,
         raise e
 
 
-async def cancel_paused_workflow(workflow_id: str, db: Session, reason: Optional[str] = None):
+async def cancel_paused_workflow(workflow_id: str, db: Session, reason: Optional[str] = None) -> None:
     """Cancel a paused workflow after human review rejection"""
     try:
         logger.info(f"🛑 [HumanReview] Cancelling workflow: {workflow_id}, reason: {reason}")

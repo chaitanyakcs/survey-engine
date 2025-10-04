@@ -666,7 +666,7 @@ AIRA_V1_COMPLETE_QUESTIONS = [
 ]
 
 # Validation: Ensure we have exactly 58 questions
-def validate_question_count():
+def validate_question_count() -> None:
     """Validate that we have exactly 58 questions as per AiRA v1 spec"""
     total_questions = len(AIRA_V1_COMPLETE_QUESTIONS)
 

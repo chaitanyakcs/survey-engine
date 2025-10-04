@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { DocumentUpload } from './DocumentUpload';
 
@@ -77,6 +77,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
   onPreview,
   mode = 'create'
 }) => {
+  console.log('🔍 [EnhancedRFQEditor] Component mounted/rendered', { mode });
   const {
     enhancedRfq,
     setEnhancedRfq,
@@ -99,47 +100,520 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
     );
   };
 
-  const [currentSection, setCurrentSection] = useState<string>('document');
+  const [currentSection, setCurrentSection] = useState<string>(() => {
+    // Resilient section restoration with fallback
+    try {
+      const savedSection = localStorage.getItem('enhanced_rfq_current_section');
+      const validSections = ['document', 'business_context', 'research_objectives', 'methodology', 'survey_requirements'];
+      const isValidSection = savedSection && validSections.includes(savedSection);
+      
+      const finalSection = isValidSection ? savedSection : 'document';
+      
+      console.log('🔍 [EnhancedRFQEditor] Restoring current section:', finalSection);
+      return finalSection;
+    } catch (error) {
+      console.warn('⚠️ [EnhancedRFQEditor] Error restoring section, defaulting to document:', error);
+      return 'document';
+    }
+  });
+
+  // Resilient setCurrentSection that safely persists to localStorage
+  const setCurrentSectionWithPersistence = useCallback((section: string) => {
+    console.log('🔍 [EnhancedRFQEditor] Setting current section with persistence', 'section:', section);
+    setCurrentSection(section);
+    
+    try {
+      localStorage.setItem('enhanced_rfq_current_section', section);
+    } catch (error) {
+      console.warn('⚠️ [EnhancedRFQEditor] Failed to persist section to localStorage:', error);
+      // Continue without persistence - UI still works
+    }
+  }, []);
 
   // Initialize enhanced RFQ with defaults
   const hasInitialized = useRef(false);
+  const hasUserData = useRef(false);
 
-  useEffect(() => {
-    if (!hasInitialized.current) {
-      hasInitialized.current = true;
-      
-      // Check if this is a page refresh vs navigation
-      const isPageRefresh = performance.navigation?.type === 1; // 1 = reload
-      
-      // Try to restore state from localStorage first, but don't show toast on page refresh
-      const wasRestored = restoreEnhancedRfqState(!isPageRefresh);
-      
-      // If no state was restored, initialize with defaults
-      if (!wasRestored && !enhancedRfq.title && !enhancedRfq.description) {
-        setEnhancedRfq({
-          title: '',
-          description: '',
-          business_context: {
-            company_product_background: '',
-            business_problem: '',
-            business_objective: ''
-          },
-          research_objectives: {
-            research_audience: '',
-            success_criteria: '',
-            key_research_questions: []
-          },
-          methodology: {
-            primary_method: 'basic_survey'
-          },
-          survey_requirements: {
-            sample_plan: '',
-            must_have_questions: []
-          }
-        });
-      }
+  // Check if component has been initialized before (persist across remounts)
+  const hasBeenInitialized = localStorage.getItem('enhanced_rfq_initialized') === 'true';
+  
+  // Check if there's existing user data that should be preserved
+  const hasExistingUserData = enhancedRfq.title || 
+                            enhancedRfq.description || 
+                            enhancedRfq.business_context?.company_product_background ||
+                            enhancedRfq.business_context?.business_problem ||
+                            enhancedRfq.business_context?.business_objective ||
+                            enhancedRfq.research_objectives?.research_audience ||
+                            enhancedRfq.research_objectives?.success_criteria ||
+                            (enhancedRfq.research_objectives?.key_research_questions && enhancedRfq.research_objectives.key_research_questions.length > 0) ||
+                            enhancedRfq.methodology?.stimuli_details ||
+                            enhancedRfq.methodology?.methodology_requirements ||
+                            enhancedRfq.survey_requirements?.sample_plan ||
+                            (enhancedRfq.survey_requirements?.must_have_questions && enhancedRfq.survey_requirements.must_have_questions.length > 0);
+
+  // Initialize the component once
+  React.useEffect(() => {
+    if (hasInitialized.current || hasBeenInitialized || hasExistingUserData) {
+      console.log('🔍 [EnhancedRFQEditor] Skipping initialization - already initialized or has user data',
+        'hasInitialized:', hasInitialized.current,
+        'hasBeenInitialized:', hasBeenInitialized,
+        'hasExistingUserData:', hasExistingUserData
+      );
+      return;
     }
-  }, [enhancedRfq.title, enhancedRfq.description, setEnhancedRfq, restoreEnhancedRfqState]);
+    
+    hasInitialized.current = true;
+    localStorage.setItem('enhanced_rfq_initialized', 'true');
+    
+    console.log('🔍 [EnhancedRFQEditor] useEffect triggered', {
+      hasInitialized: hasInitialized.current,
+      enhancedRfqTitle: enhancedRfq.title,
+      enhancedRfqDescription: enhancedRfq.description,
+      currentSection,
+      fieldMappingsCount: fieldMappings.length
+    });
+    
+    // Check if this is a page refresh vs navigation
+    const isPageRefresh = performance.navigation?.type === 1; // 1 = reload
+    console.log('🔍 [EnhancedRFQEditor] Initializing component', {
+      isPageRefresh,
+      navigationType: performance.navigation?.type
+    });
+    
+    // Try to restore state from localStorage first, but don't show toast on page refresh
+    const wasRestored = restoreEnhancedRfqState(!isPageRefresh);
+    console.log('🔍 [EnhancedRFQEditor] State restoration result', { wasRestored });
+    
+    // Check if there's any user data in the form
+    const hasAnyUserData = enhancedRfq.title || 
+                          enhancedRfq.description || 
+                          enhancedRfq.business_context?.company_product_background ||
+                          enhancedRfq.business_context?.business_problem ||
+                          enhancedRfq.business_context?.business_objective ||
+                          enhancedRfq.research_objectives?.research_audience ||
+                          enhancedRfq.research_objectives?.success_criteria ||
+                          (enhancedRfq.research_objectives?.key_research_questions && enhancedRfq.research_objectives.key_research_questions.length > 0) ||
+                          enhancedRfq.methodology?.stimuli_details ||
+                          enhancedRfq.methodology?.methodology_requirements ||
+                          enhancedRfq.survey_requirements?.sample_plan ||
+                          (enhancedRfq.survey_requirements?.must_have_questions && enhancedRfq.survey_requirements.must_have_questions.length > 0);
+
+    // Update the hasUserData flag
+    if (hasAnyUserData) {
+      hasUserData.current = true;
+    }
+
+    // Only initialize with defaults if this is truly a fresh start (no existing data and no user data flag)
+    if (!wasRestored && !hasAnyUserData && !hasUserData.current) {
+      console.log('🔍 [EnhancedRFQEditor] Initializing with default values - form is completely empty');
+      setEnhancedRfq({
+        title: '',
+        description: '',
+        business_context: {
+          company_product_background: '',
+          business_problem: '',
+          business_objective: ''
+        },
+        research_objectives: {
+          research_audience: '',
+          success_criteria: '',
+          key_research_questions: []
+        },
+        methodology: {
+          primary_method: 'basic_survey'
+        },
+        survey_requirements: {
+          sample_plan: '',
+          must_have_questions: []
+        }
+      });
+    } else {
+      console.log('🔍 [EnhancedRFQEditor] Skipping initialization - state already exists or was restored', {
+        wasRestored,
+        hasAnyUserData,
+        hasUserDataFlag: hasUserData.current,
+        hasTitle: !!enhancedRfq.title,
+        hasDescription: !!enhancedRfq.description,
+        hasBusinessContext: !!enhancedRfq.business_context?.company_product_background,
+        hasResearchObjectives: !!enhancedRfq.research_objectives?.research_audience
+      });
+    }
+  });
+
+  // Persist current section to localStorage whenever it changes (except initial mount)
+  const isInitialMount = useRef(true);
+  
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      console.log('🔍 [EnhancedRFQEditor] Skipping section persistence on initial mount', 'currentSection:', currentSection);
+      return;
+    }
+    
+    console.log('🔍 [EnhancedRFQEditor] Persisting current section to localStorage', 'currentSection:', currentSection);
+    
+    try {
+      localStorage.setItem('enhanced_rfq_current_section', currentSection);
+    } catch (error) {
+      console.warn('⚠️ [EnhancedRFQEditor] Failed to persist section to localStorage:', error);
+      // Continue without persistence - UI still works
+    }
+  }, [currentSection]);
+
+  // Status polling for when user returns while processing is still active
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const startStatusPolling = useCallback((sessionId: string) => {
+    // Clear any existing polling interval
+    if (pollingIntervalRef.current) {
+      console.log('🔄 [EnhancedRFQEditor] Clearing existing polling interval');
+      clearInterval(pollingIntervalRef.current);
+    }
+    
+    console.log('🔄 [EnhancedRFQEditor] Starting status polling for sessionId:', sessionId);
+    
+    // Poll every 3 seconds
+    pollingIntervalRef.current = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/v1/rfq/status/${sessionId}`);
+        if (response.ok) {
+          const status = await response.json();
+          console.log('📊 [EnhancedRFQEditor] Polling status:', status.status);
+          
+          if (status.status === 'completed') {
+            console.log('✅ [EnhancedRFQEditor] Processing completed, fetching results');
+            // Stop polling
+            if (pollingIntervalRef.current) {
+              clearInterval(pollingIntervalRef.current);
+              pollingIntervalRef.current = null;
+            }
+            
+            // Fetch the completed document analysis and apply to form
+            if (status.has_results) {
+              console.log('📥 [EnhancedRFQEditor] Fetching completed analysis results');
+              try {
+                // Fetch the analysis results from the backend
+                const resultsResponse = await fetch(`/api/v1/rfq/status/${sessionId}/results`);
+                if (resultsResponse.ok) {
+                  const results = await resultsResponse.json();
+                  console.log('📊 [EnhancedRFQEditor] Retrieved analysis results:', results);
+                  
+                  // Apply the analysis results directly to the store
+                  const { addToast } = useAppStore.getState();
+                  
+                  // Accept all field mappings regardless of confidence
+                  const incomingMappings = results.rfq_analysis?.field_mappings || [];
+                  const autoAccepted = incomingMappings.map((m: any) => ({
+                    ...m,
+                    user_action: 'accepted' as const
+                  }));
+
+                  // Update store with analysis results and auto-accepted mappings
+                  useAppStore.setState({
+                    documentContent: results.document_content,
+                    documentAnalysis: results.rfq_analysis,
+                    fieldMappings: autoAccepted,
+                    isDocumentProcessing: false
+                  });
+
+                  // Auto-apply accepted mappings immediately
+                  const acceptedCount = autoAccepted.filter((m: any) => m.user_action === 'accepted').length;
+                  if (acceptedCount > 0) {
+                    // Apply mappings immediately using the accepted mappings
+                    let rfqUpdates = useAppStore.getState().buildRFQUpdatesFromMappings(autoAccepted.filter((m: any) => m.user_action === 'accepted'));
+
+                    // Apply methodology-based intelligence
+                    rfqUpdates = useAppStore.getState().applyMethodologyIntelligence(rfqUpdates);
+
+                    useAppStore.getState().setEnhancedRfq(rfqUpdates);
+
+                    addToast({
+                      type: 'success',
+                      title: 'Auto-filled from Document',
+                      message: `Applied ${acceptedCount} extracted fields. Review in the sections below. Click "Reset Form" to start fresh with a new RFQ.`,
+                      duration: 8000
+                    });
+                    
+                    // Automatically advance to Business Context section to show auto-filled content
+                    setTimeout(() => {
+                      setCurrentSectionWithPersistence('business_context');
+                    }, 1000); // Small delay to let user see the success message
+                  } else {
+                    addToast({
+                      type: 'info',
+                      title: 'Document Processing Complete',
+                      message: 'Document analysis completed, but no fields were extracted for auto-fill.',
+                      duration: 5000
+                    });
+                  }
+                } else {
+                  console.warn('⚠️ [EnhancedRFQEditor] Failed to fetch analysis results');
+                  useAppStore.setState({ isDocumentProcessing: false });
+                  addToast({
+                    type: 'warning',
+                    title: 'Document Processing Complete',
+                    message: 'Document analysis completed, but results could not be retrieved. Please refresh the page.',
+                    duration: 5000
+                  });
+                }
+              } catch (error) {
+                console.error('❌ [EnhancedRFQEditor] Error fetching analysis results:', error);
+                useAppStore.setState({ isDocumentProcessing: false });
+                addToast({
+                  type: 'error',
+                  title: 'Error Retrieving Results',
+                  message: 'Document analysis completed, but there was an error retrieving the results. Please refresh the page.',
+                  duration: 5000
+                });
+              }
+            } else {
+              console.log('⚠️ [EnhancedRFQEditor] Processing completed but no results available');
+              useAppStore.setState({ isDocumentProcessing: false });
+              addToast({
+                type: 'info',
+                title: 'Document Processing Complete',
+                message: 'Document analysis completed, but no results are available.',
+                duration: 5000
+              });
+            }
+          } else if (status.status === 'failed') {
+            console.log('❌ [EnhancedRFQEditor] Processing failed');
+            // Stop polling
+            if (pollingIntervalRef.current) {
+              clearInterval(pollingIntervalRef.current);
+              pollingIntervalRef.current = null;
+            }
+            
+            resetDocumentProcessingState();
+            addToast({
+              type: 'error',
+              title: 'Document Processing Failed',
+              message: status.error_message || 'Failed to process document.',
+              duration: 5000
+            });
+          }
+          // If still in_progress, continue polling
+        }
+      } catch (error) {
+        console.warn('⚠️ [EnhancedRFQEditor] Polling error:', error);
+        // Continue polling despite errors
+      }
+    }, 3000); // Poll every 3 seconds
+  }, [addToast, resetDocumentProcessingState, setCurrentSectionWithPersistence]);
+  
+  // Clean up polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) {
+        console.log('🧹 [EnhancedRFQEditor] Cleaning up polling interval on unmount');
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, []);
+
+  // Simple section change tracking - just log and handle document processing
+  useEffect(() => {
+    console.log('🔍 [EnhancedRFQEditor] Current section:', currentSection);
+    
+    // If document is processing, stay on document section
+    if (isDocumentProcessing && currentSection !== 'document') {
+      console.log('🔍 [EnhancedRFQEditor] Document processing active - staying on document section');
+      setCurrentSectionWithPersistence('document');
+    }
+  }, [currentSection, isDocumentProcessing, setCurrentSectionWithPersistence]);
+
+  // Resilient component lifecycle with backend status verification (runs once on mount)
+  useEffect(() => {
+    console.log('🔍 [EnhancedRFQEditor] Component mounted');
+    
+    // Check if we need to verify backend status (simple resilience check)
+    const verifyBackendStatus = async () => {
+      const persistedState = localStorage.getItem('document_processing_state');
+      if (persistedState) {
+        try {
+          const state = JSON.parse(persistedState);
+          if (state.sessionId) {
+            console.log('🔍 [EnhancedRFQEditor] Verifying backend status for resilience...', {
+              sessionId: state.sessionId,
+              isProcessing: state.isProcessing
+            });
+            
+            try {
+              // Simple timeout for resilience
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+              
+              const response = await fetch(`/api/v1/rfq/status/${state.sessionId}`, {
+                signal: controller.signal
+              });
+              
+              clearTimeout(timeoutId);
+              
+              if (response.ok) {
+                const backendStatus = await response.json();
+                console.log('🔍 [EnhancedRFQEditor] Backend status:', backendStatus.status);
+                
+                // Handle different backend statuses
+                if (backendStatus.status === 'failed') {
+                  console.log('❌ [EnhancedRFQEditor] Backend confirmed processing failed, clearing state');
+                  resetDocumentProcessingState();
+                  addToast({
+                    type: 'error',
+                    title: 'Document Processing Failed',
+                    message: backendStatus.error_message || 'Failed to process document. Please try again.',
+                    duration: 5000
+                  });
+                } else if (backendStatus.status === 'in_progress') {
+                  console.log('⏳ [EnhancedRFQEditor] Document still processing, starting polling');
+                  // Update Zustand store to reflect processing state if needed
+                  const currentProcessingState = useAppStore.getState().isDocumentProcessing;
+                  if (!currentProcessingState) {
+                    console.log('⚠️ [EnhancedRFQEditor] Frontend state out of sync, updating isDocumentProcessing to true');
+                    useAppStore.setState({ isDocumentProcessing: true });
+                  }
+                  // Start polling to check when processing completes
+                  startStatusPolling(state.sessionId);
+                } else if (backendStatus.status === 'completed') {
+                  console.log('✅ [EnhancedRFQEditor] Document processing complete, fetching results');
+                  // Ensure isDocumentProcessing is false
+                  const currentProcessingState = useAppStore.getState().isDocumentProcessing;
+                  if (currentProcessingState) {
+                    console.log('⚠️ [EnhancedRFQEditor] Frontend state out of sync, updating isDocumentProcessing to false');
+                    useAppStore.setState({ isDocumentProcessing: false });
+                  }
+                  
+                  // Fetch the completed analysis results and apply them
+                  if (backendStatus.has_results) {
+                    console.log('📥 [EnhancedRFQEditor] Fetching completed analysis results on mount');
+                    try {
+                      // Fetch the analysis results from the backend
+                      const resultsResponse = await fetch(`/api/v1/rfq/status/${state.sessionId}/results`);
+                      if (resultsResponse.ok) {
+                        const results = await resultsResponse.json();
+                        console.log('📊 [EnhancedRFQEditor] Retrieved analysis results on mount:', results);
+                        
+                        // Apply the analysis results directly to the store
+                        const { addToast } = useAppStore.getState();
+                        
+                        // Accept all field mappings regardless of confidence
+                        const incomingMappings = results.rfq_analysis?.field_mappings || [];
+                        const autoAccepted = incomingMappings.map((m: any) => ({
+                          ...m,
+                          user_action: 'accepted' as const
+                        }));
+
+                        // Update store with analysis results and auto-accepted mappings
+                        useAppStore.setState({
+                          documentContent: results.document_content,
+                          documentAnalysis: results.rfq_analysis,
+                          fieldMappings: autoAccepted,
+                          isDocumentProcessing: false
+                        });
+
+                        // Auto-apply accepted mappings immediately
+                        const acceptedCount = autoAccepted.filter((m: any) => m.user_action === 'accepted').length;
+                        if (acceptedCount > 0) {
+                          // Apply mappings immediately using the accepted mappings
+                          let rfqUpdates = useAppStore.getState().buildRFQUpdatesFromMappings(autoAccepted.filter((m: any) => m.user_action === 'accepted'));
+
+                          // Apply methodology-based intelligence
+                          rfqUpdates = useAppStore.getState().applyMethodologyIntelligence(rfqUpdates);
+
+                          useAppStore.getState().setEnhancedRfq(rfqUpdates);
+
+                          addToast({
+                            type: 'success',
+                            title: 'Auto-filled from Document',
+                            message: `Applied ${acceptedCount} extracted fields. Review in the sections below. Click "Reset Form" to start fresh with a new RFQ.`,
+                            duration: 8000
+                          });
+                          
+                          // Automatically advance to Business Context section to show auto-filled content
+                          setTimeout(() => {
+                            setCurrentSectionWithPersistence('business_context');
+                          }, 1000); // Small delay to let user see the success message
+                        } else {
+                          addToast({
+                            type: 'info',
+                            title: 'Document Processing Complete',
+                            message: 'Document analysis completed, but no fields were extracted for auto-fill.',
+                            duration: 5000
+                          });
+                        }
+                      } else {
+                        console.warn('⚠️ [EnhancedRFQEditor] Failed to fetch analysis results on mount');
+                        addToast({
+                          type: 'warning',
+                          title: 'Document Processing Complete',
+                          message: 'Document analysis completed, but results could not be retrieved. Please refresh the page.',
+                          duration: 5000
+                        });
+                      }
+                    } catch (error) {
+                      console.error('❌ [EnhancedRFQEditor] Error fetching analysis results on mount:', error);
+                      addToast({
+                        type: 'error',
+                        title: 'Error Retrieving Results',
+                        message: 'Document analysis completed, but there was an error retrieving the results. Please refresh the page.',
+                        duration: 5000
+                      });
+                    }
+                  } else {
+                    console.log('⚠️ [EnhancedRFQEditor] Processing completed but no results available');
+                    addToast({
+                      type: 'info',
+                      title: 'Document Processing Complete',
+                      message: 'Document analysis completed, but no results are available.',
+                      duration: 5000
+                    });
+                  }
+                } else if (backendStatus.status === 'not_found') {
+                  console.log('🔍 [EnhancedRFQEditor] No backend record found, keeping local data if exists');
+                  // Ensure isDocumentProcessing is false
+                  const currentProcessingState = useAppStore.getState().isDocumentProcessing;
+                  if (currentProcessingState) {
+                    console.log('⚠️ [EnhancedRFQEditor] Frontend state out of sync, updating isDocumentProcessing to false');
+                    useAppStore.setState({ isDocumentProcessing: false });
+                  }
+                  // Keep the data and let user continue
+                }
+              } else {
+                console.log('⚠️ [EnhancedRFQEditor] Backend status check failed, keeping current state');
+              }
+            } catch (error) {
+              if (error instanceof Error && error.name === 'AbortError') {
+                console.log('⏰ [EnhancedRFQEditor] Backend status check timed out, keeping current state');
+              } else {
+                console.log('⚠️ [EnhancedRFQEditor] Backend status check error, keeping current state:', error instanceof Error ? error.message : String(error));
+              }
+              // On any error, keep current state (fail-safe)
+            }
+          } else {
+            console.log('🔍 [EnhancedRFQEditor] No sessionId found in persisted state, skipping backend check');
+          }
+        } catch (error) {
+          console.log('⚠️ [EnhancedRFQEditor] Error parsing persisted state:', error instanceof Error ? error.message : String(error));
+        }
+      } else {
+        console.log('🔍 [EnhancedRFQEditor] No persisted document processing state found, skipping backend check');
+      }
+    };
+    
+    // Run verification in background (non-blocking)
+    verifyBackendStatus();
+    
+    // Clean up WebSocket connection if it exists
+    return () => {
+      console.log('🔍 [EnhancedRFQEditor] Component unmounting');
+      if ((window as any).rfqProcessingWebSocket) {
+        console.log('🔌 [EnhancedRFQEditor] Cleaning up WebSocket connection');
+        (window as any).rfqProcessingWebSocket.close();
+        delete (window as any).rfqProcessingWebSocket;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run only once on mount - dependencies are accessed via closures
 
   const sections = [
     { id: 'document', title: 'Document Upload', icon: '📄', description: 'Upload RFQ document for auto-extraction' },
@@ -197,30 +671,71 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
               <h1 className="text-3xl font-bold text-gray-900">Enhanced RFQ Builder</h1>
               <p className="text-gray-600">Create comprehensive research requirements with AI assistance</p>
             </div>
+            <div className="flex items-center space-x-3">
+              {/* Reset Button - always visible */}
+              <button
+                onClick={() => {
+                  if (window.confirm('Are you sure you want to reset the entire form? This will clear all data and return to the document upload section. This action cannot be undone.')) {
+                    clearEnhancedRfqState();
+                    resetDocumentProcessingState();
+                    setCurrentSectionWithPersistence('document');
+                    // Clear localStorage
+                    localStorage.removeItem('enhanced_rfq_current_section');
+                    localStorage.removeItem('enhanced_rfq_initialized');
+                    // Reset user data flag
+                    hasUserData.current = false;
+                    addToast({
+                      type: 'info',
+                      title: 'Form Reset',
+                      message: 'All form data has been cleared. You can start fresh.',
+                      duration: 4000
+                    });
+                  }
+                }}
+                className="flex items-center space-x-2 px-4 py-2 bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 transition-colors font-medium"
+                title="Reset entire form to original state"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span>Reset Form</span>
+              </button>
+            </div>
           </div>
 
           {/* Progress Bar */}
           <div className="bg-gray-100 rounded-2xl p-4 shadow-sm border border-gray-200">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-medium text-gray-800">Progress</span>
+              <span className="text-sm font-medium text-gray-800">
+                {isDocumentProcessing ? 'Document Processing...' : 'Progress'}
+              </span>
               <span className="text-sm text-gray-600">
-                {sections.findIndex(s => s.id === currentSection) + 1} of {sections.length}
+                {isDocumentProcessing ? 'Processing' : `${sections.findIndex(s => s.id === currentSection) + 1} of ${sections.length}`}
               </span>
             </div>
             <div className="w-full bg-gray-300 rounded-full h-2">
               <div
-                className="bg-yellow-500 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${((sections.findIndex(s => s.id === currentSection) + 1) / sections.length) * 100}%` }}
+                className={`h-2 rounded-full transition-all duration-300 ${
+                  isDocumentProcessing ? 'bg-blue-500 animate-pulse' : 'bg-yellow-500'
+                }`}
+                style={{ 
+                  width: isDocumentProcessing 
+                    ? '25%' // Show 25% progress during document processing
+                    : `${((sections.findIndex(s => s.id === currentSection) + 1) / sections.length) * 100}%`
+                }}
               ></div>
             </div>
             <div className="flex justify-between mt-2">
               {sections.map((section, index) => (
                 <button
                   key={section.id}
-                  onClick={() => setCurrentSection(section.id)}
+                  onClick={() => !isDocumentProcessing && setCurrentSectionWithPersistence(section.id)}
+                  disabled={isDocumentProcessing && section.id !== 'document'}
                   className={`flex flex-col items-center space-y-1 p-2 rounded-lg transition-all duration-200 ${
                     currentSection === section.id
                       ? 'bg-yellow-50 text-yellow-700 border border-yellow-200'
+                      : isDocumentProcessing && section.id !== 'document'
+                      ? 'text-gray-400 cursor-not-allowed opacity-50'
                       : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
                   }`}
                 >
@@ -269,7 +784,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                         
                         // Automatically advance to Business Context section to show auto-filled content
                         setTimeout(() => {
-                          setCurrentSection('business_context');
+                          setCurrentSectionWithPersistence('business_context');
                         }, 1000); // Small delay to let user see the success message
                       }}
                     />
@@ -339,7 +854,11 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                             clearEnhancedRfqState();
                             resetDocumentProcessingState();
                             // Reset processing state to show document upload
-                            setCurrentSection('document');
+                            setCurrentSectionWithPersistence('document');
+                            // Clear localStorage
+                            localStorage.removeItem('enhanced_rfq_initialized');
+                            // Reset user data flag
+                            hasUserData.current = false;
                             addToast({
                               type: 'info',
                               title: 'Processing Cancelled',
@@ -358,6 +877,10 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                             clearEnhancedRfqState();
                             resetDocumentProcessingState();
                             setCurrentSection('business_context');
+                            // Clear localStorage
+                            localStorage.removeItem('enhanced_rfq_initialized');
+                            // Reset user data flag
+                            hasUserData.current = false;
                             addToast({
                               type: 'info',
                               title: 'Manual Entry Mode',
@@ -1198,11 +1721,11 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                     {/* Left side - Navigation buttons */}
                     <div className="flex items-center space-x-3">
                       {/* Previous Button */}
-                      {sections.findIndex(s => s.id === currentSection) > 0 && (
+                      {sections.findIndex(s => s.id === currentSection) > 0 && !isDocumentProcessing && (
                         <button
                           onClick={() => {
                             const currentIndex = sections.findIndex(s => s.id === currentSection);
-                            setCurrentSection(sections[currentIndex - 1].id);
+                            setCurrentSectionWithPersistence(sections[currentIndex - 1].id);
                           }}
                           className="flex items-center space-x-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
                         >
@@ -1214,11 +1737,11 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                       )}
 
                       {/* Next Button */}
-                      {sections.findIndex(s => s.id === currentSection) < sections.length - 1 && (
+                      {sections.findIndex(s => s.id === currentSection) < sections.length - 1 && !isDocumentProcessing && (
                         <button
                           onClick={() => {
                             const currentIndex = sections.findIndex(s => s.id === currentSection);
-                            setCurrentSection(sections[currentIndex + 1].id);
+                            setCurrentSectionWithPersistence(sections[currentIndex + 1].id);
                           }}
                           className="flex items-center space-x-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
                         >
@@ -1230,31 +1753,8 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                       )}
                     </div>
 
-                    {/* Right side - Refresh icon and Preview & Generate */}
+                    {/* Right side - Preview & Generate */}
                     <div className="flex items-center space-x-3">
-                      {/* Refresh/Clear Button - only show if not on last section */}
-                      {sections.findIndex(s => s.id === currentSection) < sections.length - 1 && (
-                        <button
-                          onClick={() => {
-                            if (window.confirm('Are you sure you want to clear all form data? This action cannot be undone.')) {
-                              clearEnhancedRfqState();
-                              setCurrentSection('document');
-                              addToast({
-                                type: 'info',
-                                title: 'Form Cleared',
-                                message: 'All form data has been cleared. You can start fresh.',
-                                duration: 4000
-                              });
-                            }
-                          }}
-                          className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Clear form and start over"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                          </svg>
-                        </button>
-                      )}
 
                       {/* Preview & Generate - only show on last section */}
                       {sections.findIndex(s => s.id === currentSection) === sections.length - 1 && (

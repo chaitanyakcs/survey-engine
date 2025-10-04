@@ -100,6 +100,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   setEnhancedRfq: (input) => set((state) => {
+    console.log('🔍 [Store] setEnhancedRfq called', { 
+      input, 
+      currentState: state.enhancedRfq,
+      stackTrace: new Error().stack?.split('\n').slice(0, 5)
+    });
     // Use spread operator to create completely new object without mutations
     const newEnhancedRfq = {
       ...state.enhancedRfq,
@@ -1894,7 +1899,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   // Document Upload Actions
   uploadDocument: async (file: File, sessionId?: string): Promise<DocumentAnalysisResponse> => {
     set({ isDocumentProcessing: true, documentUploadError: undefined });
-    get().persistDocumentProcessingState(true);
+    get().persistDocumentProcessingState(true, sessionId);
 
     try {
       const formData = new FormData();
@@ -1903,10 +1908,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
         formData.append('session_id', sessionId);
       }
 
+      // Add timeout to prevent hanging indefinitely
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout for LLM processing
+
       const response = await fetch('/api/v1/rfq/upload-document', {
         method: 'POST',
         body: formData,
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -1929,7 +1941,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
         fieldMappings: autoAccepted,
         isDocumentProcessing: false
       });
-      get().persistDocumentProcessingState(false);
 
       // Auto-apply accepted mappings immediately
       const acceptedCount = autoAccepted.filter(m => m.user_action === 'accepted').length;
@@ -1945,14 +1956,23 @@ export const useAppStore = create<AppStore>((set, get) => ({
         get().addToast({
           type: 'success',
           title: 'Auto-filled from Document',
-          message: `Applied ${acceptedCount} extracted fields. Review in the sections below.`,
-          duration: 6000
+          message: `Applied ${acceptedCount} extracted fields. Review in the sections below. Click "Reset Form" to start fresh with a new RFQ.`,
+          duration: 8000
         });
       }
+
+      // IMPORTANT: Persist state AFTER auto-fill logic completes
+      // This ensures the enhancedRfq has the auto-filled data
+      get().persistDocumentProcessingState(false);
 
       return result;
     } catch (error) {
       let errorMessage = error instanceof Error ? error.message : 'Document upload failed';
+
+      // Handle timeout errors
+      if (error instanceof Error && error.name === 'AbortError') {
+        errorMessage = 'Document processing timed out after 5 minutes. The document may be too complex. Please try again or contact support.';
+      }
 
       // Enhance error messages with user guidance
       if (errorMessage.includes('AI service not configured')) {
@@ -2021,8 +2041,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
         get().addToast({
           type: 'success',
           title: 'Auto-filled from Text',
-          message: `Applied ${autoAccepted.filter(m => m.user_action === 'accepted').length} extracted fields.`,
-          duration: 5000
+          message: `Applied ${autoAccepted.filter(m => m.user_action === 'accepted').length} extracted fields. Click "Reset Form" to start fresh with a new RFQ.`,
+          duration: 8000
         });
       }
 
@@ -2099,7 +2119,49 @@ export const useAppStore = create<AppStore>((set, get) => ({
           rfqUpdates.description = value;
           break;
         
-        // Basic RFQ fields that map to Enhanced RFQ
+        // Direct Enhanced RFQ field mappings (from document parser)
+        case 'company_product_background':
+          if (!rfqUpdates.business_context) rfqUpdates.business_context = { company_product_background: '', business_problem: '', business_objective: '' };
+          rfqUpdates.business_context.company_product_background = value;
+          break;
+        case 'business_problem':
+          if (!rfqUpdates.business_context) rfqUpdates.business_context = { company_product_background: '', business_problem: '', business_objective: '' };
+          rfqUpdates.business_context.business_problem = value;
+          break;
+        case 'business_objective':
+          if (!rfqUpdates.business_context) rfqUpdates.business_context = { company_product_background: '', business_problem: '', business_objective: '' };
+          rfqUpdates.business_context.business_objective = value;
+          break;
+        case 'research_audience':
+          if (!rfqUpdates.research_objectives) rfqUpdates.research_objectives = { research_audience: '', success_criteria: '', key_research_questions: [] };
+          rfqUpdates.research_objectives.research_audience = value;
+          break;
+        case 'success_criteria':
+          if (!rfqUpdates.research_objectives) rfqUpdates.research_objectives = { research_audience: '', success_criteria: '', key_research_questions: [] };
+          rfqUpdates.research_objectives.success_criteria = value;
+          break;
+        case 'key_research_questions':
+          if (!rfqUpdates.research_objectives) rfqUpdates.research_objectives = { research_audience: '', success_criteria: '', key_research_questions: [] };
+          rfqUpdates.research_objectives.key_research_questions = Array.isArray(value) ? value : (value || '').split('\n').filter((q: string) => q.trim());
+          break;
+        case 'stimuli_details':
+          if (!rfqUpdates.methodology) rfqUpdates.methodology = { primary_method: 'basic_survey', stimuli_details: '', methodology_requirements: '' };
+          rfqUpdates.methodology.stimuli_details = value;
+          break;
+        case 'methodology_requirements':
+          if (!rfqUpdates.methodology) rfqUpdates.methodology = { primary_method: 'basic_survey', stimuli_details: '', methodology_requirements: '' };
+          rfqUpdates.methodology.methodology_requirements = value;
+          break;
+        case 'sample_plan':
+          if (!rfqUpdates.survey_requirements) rfqUpdates.survey_requirements = { sample_plan: '', must_have_questions: [] };
+          rfqUpdates.survey_requirements.sample_plan = value;
+          break;
+        case 'must_have_questions':
+          if (!rfqUpdates.survey_requirements) rfqUpdates.survey_requirements = { sample_plan: '', must_have_questions: [] };
+          rfqUpdates.survey_requirements.must_have_questions = Array.isArray(value) ? value : (value || '').split('\n').filter((q: string) => q.trim());
+          break;
+        
+        // Legacy Basic RFQ fields that map to Enhanced RFQ
         case 'research_goal':
           if (!rfqUpdates.research_objectives) rfqUpdates.research_objectives = { research_audience: '', success_criteria: '', key_research_questions: [] };
           rfqUpdates.research_objectives.success_criteria = value;
@@ -2539,29 +2601,56 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   // Enhanced RFQ State Persistence (simplified - no separate localStorage needed)
   persistEnhancedRfqState: (enhancedRfq: EnhancedRFQRequest) => {
-    // Enhanced RFQ state is already persisted in Zustand store
-    // No need for separate localStorage persistence
-    console.log('💾 [Store] Enhanced RFQ state updated in Zustand store');
+    // Persist enhancedRfq to localStorage so it survives navigation
+    try {
+      localStorage.setItem('enhanced_rfq_data', JSON.stringify(enhancedRfq));
+      console.log('💾 [Store] Enhanced RFQ state persisted to localStorage', {
+        hasBusinessContext: !!enhancedRfq.business_context?.company_product_background,
+        hasResearchObjectives: !!enhancedRfq.research_objectives?.research_audience
+      });
+    } catch (error) {
+      console.error('Failed to persist enhancedRfq state:', error);
+    }
   },
 
   // Document Processing State Persistence
-  persistDocumentProcessingState: (isProcessing: boolean) => {
+  persistDocumentProcessingState: (isProcessing: boolean, sessionId?: string) => {
     try {
+      const state = get();
+      
+      // Always persist the document data AND the auto-filled enhancedRfq
+      // This ensures data is available through all 6 steps until explicit reset
+      const existingState = localStorage.getItem('document_processing_state');
+      let existingSessionId: string | undefined;
+      
+      if (existingState) {
+        try {
+          const parsed = JSON.parse(existingState);
+          existingSessionId = parsed.sessionId;
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+      
+      const stateToSave = {
+        isProcessing,
+        sessionId: sessionId || existingSessionId,
+        documentContent: state.documentContent,
+        documentAnalysis: state.documentAnalysis,
+        fieldMappings: state.fieldMappings,
+        enhancedRfq: state.enhancedRfq,  // CRITICAL: Save auto-filled form data!
+        timestamp: Date.now()
+      };
+      
+      localStorage.setItem('document_processing_state', JSON.stringify(stateToSave));
+      
       if (isProcessing) {
-        // Only persist when processing is active
-        const state = get();
-        localStorage.setItem('document_processing_state', JSON.stringify({
-          isProcessing,
-          documentContent: state.documentContent,
-          documentAnalysis: state.documentAnalysis,
-          fieldMappings: state.fieldMappings,
-          timestamp: Date.now()
-        }));
-        console.log('💾 [Store] Document processing state persisted to localStorage');
+        console.log('💾 [Store] Document processing state persisted (processing)', { sessionId });
       } else {
-        // When processing is complete, clear localStorage instead of persisting
-        localStorage.removeItem('document_processing_state');
-        console.log('🧹 [Store] Document processing state cleared from localStorage');
+        console.log('💾 [Store] Document processing state persisted (complete, with auto-filled data)', { 
+          sessionId: stateToSave.sessionId,
+          hasEnhancedRfqData: !!stateToSave.enhancedRfq.business_context?.company_product_background
+        });
       }
     } catch (error) {
       console.error('Failed to persist document processing state:', error);
@@ -2573,41 +2662,40 @@ export const useAppStore = create<AppStore>((set, get) => ({
       console.log('🔍 [Store] restoreDocumentProcessingState called');
       const persistedState = localStorage.getItem('document_processing_state');
       console.log('🔍 [Store] Persisted document processing state:', persistedState);
-      
+
       if (persistedState) {
         const state = JSON.parse(persistedState);
-        const hoursSinceUpdate = (Date.now() - (state.timestamp || 0)) / (1000 * 60 * 60);
-        
-        console.log('🔍 [Store] Document processing state analysis:', {
+
+        console.log('🔍 [Store] Restoring document processing state from localStorage', {
           isProcessing: state.isProcessing,
-          hoursSinceUpdate,
-          timestamp: state.timestamp,
-          currentTime: Date.now()
+          sessionId: state.sessionId,
+          hasDocumentContent: !!state.documentContent,
+          hasDocumentAnalysis: !!state.documentAnalysis,
+          fieldMappingsCount: state.fieldMappings?.length || 0,
+          hasEnhancedRfq: !!state.enhancedRfq,
+          enhancedRfqHasBusinessContext: !!state.enhancedRfq?.business_context?.company_product_background
         });
+
+        // CRITICAL: Only restore enhancedRfq if it has meaningful data
+        // Don't overwrite current enhancedRfq if the persisted one is empty
+        const shouldRestoreEnhancedRfq = state.enhancedRfq && (
+          state.enhancedRfq.business_context?.company_product_background ||
+          state.enhancedRfq.business_context?.business_problem ||
+          state.enhancedRfq.research_objectives?.research_audience ||
+          (state.enhancedRfq.research_objectives?.key_research_questions?.length > 0)
+        );
         
-        // Restore document data if less than 4 hours old (allow time for user to return)
-        if (hoursSinceUpdate < 4) {
-          console.log('🔄 [Store] Restoring document processing state from localStorage');
-          set({
-            isDocumentProcessing: state.isProcessing || false,
-            documentContent: state.documentContent,
-            documentAnalysis: state.documentAnalysis,
-            fieldMappings: state.fieldMappings || []
-          });
+        console.log('🔍 [Store] Should restore enhancedRfq?', shouldRestoreEnhancedRfq);
+        
+        set({
+          isDocumentProcessing: state.isProcessing || false,
+          documentContent: state.documentContent,
+          documentAnalysis: state.documentAnalysis,
+          fieldMappings: state.fieldMappings || [],
+          ...(shouldRestoreEnhancedRfq ? { enhancedRfq: state.enhancedRfq } : {})  // Only restore if has data
+        });
 
-          // If was processing but now expired, clear processing flag
-          if (state.isProcessing && hoursSinceUpdate > 1) {
-            console.log('⏰ [Store] Document processing likely completed or timed out, clearing processing flag');
-            set({ isDocumentProcessing: false });
-            get().persistDocumentProcessingState(false);
-          }
-
-          return true;
-        } else {
-          // Clean up old state
-          localStorage.removeItem('document_processing_state');
-          console.log('🧹 [Store] Cleaned up old document processing state');
-        }
+        return true;
       } else {
         console.log('🔍 [Store] No persisted document processing state found');
       }
@@ -2619,14 +2707,70 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   restoreEnhancedRfqState: (showToast: boolean = true) => {
-    // Enhanced RFQ state is managed by Zustand store, no localStorage restoration needed
-    console.log('🔍 [Store] Enhanced RFQ state is managed by Zustand store - no restoration needed');
-    return false;
+    // Restore enhancedRfq from localStorage
+    try {
+      const savedRfq = localStorage.getItem('enhanced_rfq_data');
+      
+      if (savedRfq) {
+        const parsed = JSON.parse(savedRfq);
+        
+        // Only restore if it has meaningful data
+        const hasData = parsed.business_context?.company_product_background ||
+                       parsed.business_context?.business_problem ||
+                       parsed.research_objectives?.research_audience ||
+                       (parsed.research_objectives?.key_research_questions?.length > 0);
+        
+        if (hasData) {
+          console.log('🔍 [Store] Restoring enhancedRfq from localStorage', {
+            hasBusinessContext: !!parsed.business_context?.company_product_background,
+            hasResearchObjectives: !!parsed.research_objectives?.research_audience
+          });
+          
+          set({ enhancedRfq: parsed });
+          return true;
+        } else {
+          console.log('🔍 [Store] Enhanced RFQ in localStorage is empty, skipping restore');
+        }
+      } else {
+        console.log('🔍 [Store] No enhanced RFQ found in localStorage');
+      }
+      return false;
+    } catch (error) {
+      console.error('Failed to restore enhancedRfq state:', error);
+      return false;
+    }
   },
 
   clearEnhancedRfqState: () => {
-    // Enhanced RFQ state is managed by Zustand store, no localStorage cleanup needed
-    console.log('🧹 [Store] Enhanced RFQ state cleared from Zustand store');
+    console.log('🧹 [Store] clearEnhancedRfqState called - clearing Enhanced RFQ state');
+    // Reset Enhanced RFQ to default state
+    set({
+      enhancedRfq: {
+        title: '',
+        description: '',
+        business_context: {
+          company_product_background: '',
+          business_problem: '',
+          business_objective: ''
+        },
+        research_objectives: {
+          research_audience: '',
+          success_criteria: '',
+          key_research_questions: []
+        },
+        methodology: {
+          primary_method: 'basic_survey'
+        },
+        survey_requirements: {
+          sample_plan: '',
+          must_have_questions: []
+        }
+      }
+    });
+    // Clear all localStorage keys
+    localStorage.removeItem('enhanced_rfq_initialized');
+    localStorage.removeItem('enhanced_rfq_data');  // Clear persisted enhancedRfq
+    console.log('🧹 [Store] Enhanced RFQ state cleared from Zustand store and localStorage');
   },
 
   resetDocumentProcessingState: () => {
@@ -2637,9 +2781,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
       fieldMappings: [],
       documentUploadError: undefined
     });
-    get().persistDocumentProcessingState(false);
     
-    console.log('🔄 [Store] Document processing state reset');
+    // Clear localStorage when explicitly resetting
+    localStorage.removeItem('document_processing_state');
+    
+    console.log('🔄 [Store] Document processing state reset and localStorage cleared');
   },
 
   // Pillar Evaluation Polling

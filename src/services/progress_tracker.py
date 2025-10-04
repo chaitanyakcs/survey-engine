@@ -3,7 +3,7 @@ Centralized progress tracking system for survey generation workflow.
 This ensures consistent, incremental progress percentages based on actual workflow completion.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import logging
 
 logger = logging.getLogger(__name__)
@@ -51,9 +51,9 @@ class ProgressTracker:
     
     def __init__(self, workflow_id: str):
         self.workflow_id = workflow_id
-        self.current_step = None
+        self.current_step: str | None = None
         self.current_progress = 0
-        self.step_history = []
+        self.step_history: List[Dict[str, Any]] = []
         
     def get_step_progress(self, step: str, substep: Optional[str] = None) -> int:
         """
@@ -166,7 +166,7 @@ class ProgressTracker:
             return f"{base_message} ({substep})"
         return base_message
     
-    def get_progress_data(self, step: str, substep: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+    def get_progress_data(self, step: str, substep: Optional[str] = None, **kwargs: Any) -> Dict[str, Any]:
         """Get complete progress data for a step."""
         progress = self.get_step_progress(step, substep)
         
@@ -180,7 +180,7 @@ class ProgressTracker:
             **kwargs
         }
     
-    def get_completion_data(self, step: str, **kwargs) -> Dict[str, Any]:
+    def get_completion_data(self, step: str, **kwargs: Any) -> Dict[str, Any]:
         """Get completion data for a step."""
         progress = self.get_final_progress(step)
         
@@ -199,11 +199,11 @@ class ProgressTracker:
         from datetime import datetime
         return datetime.now().isoformat()
     
-    def get_history(self) -> list:
+    def get_history(self) -> List[Dict[str, Any]]:
         """Get the complete progress history."""
         return self.step_history.copy()
     
-    def reset(self):
+    def reset(self) -> None:
         """Reset the progress tracker. WARNING: This can cause backward progress!"""
         # Log warning about potential backward movement
         if self.current_progress > 0:
@@ -232,13 +232,13 @@ def get_progress_tracker(workflow_id: str) -> ProgressTracker:
     return _progress_trackers[workflow_id]
 
 
-def cleanup_progress_tracker(workflow_id: str):
+def cleanup_progress_tracker(workflow_id: str) -> None:
     """Clean up a progress tracker when workflow completes."""
     if workflow_id in _progress_trackers:
         del _progress_trackers[workflow_id]
         logger.info(f"🧹 [ProgressTracker] Cleaned up tracker for workflow {workflow_id}")
 
 
-def get_all_active_workflows() -> list:
+def get_all_active_workflows() -> List[str]:
     """Get list of all active workflow IDs."""
     return list(_progress_trackers.keys())

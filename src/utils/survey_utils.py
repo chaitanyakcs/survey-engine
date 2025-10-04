@@ -19,7 +19,7 @@ def extract_all_questions(survey: Optional[Dict[str, Any]]) -> List[Dict[str, An
 
     # Legacy format: questions are directly in survey['questions']
     if survey.get("questions"):
-        return survey["questions"]
+        return list(survey["questions"])  # Ensure we return a new list
 
     # Sectioned format: questions are in survey['sections'][].questions
     if survey.get("sections"):

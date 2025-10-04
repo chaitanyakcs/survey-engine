@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { RFQEditor } from '../components/RFQEditor';
+// RFQEditor removed - only using EnhancedRFQApp
 import { EnhancedRFQApp } from '../components/EnhancedRFQApp';
 import { ProgressStepper } from '../components/ProgressStepper';
 import { Sidebar } from '../components/Sidebar';
@@ -10,56 +10,24 @@ import { ErrorBanner } from '../components/ErrorBanner';
 import { useSidebarLayout } from '../hooks/useSidebarLayout';
 import { RecoveryAction } from '../types';
 
-interface EvaluationSettings {
-  quick_mode_enabled: boolean;
-}
 
 export const SurveyGeneratorPage: React.FC = () => {
   const { workflow, currentSurvey, toasts, removeToast, addToast, resetWorkflow, clearEnhancedRfqState, loadPillarScoresAsync } = useAppStore();
   const [currentView, setCurrentView] = useState<'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings'>('survey');
-  const [useEnhancedRFQ, setUseEnhancedRFQ] = useState<boolean>(false);
-  const [settings, setSettings] = useState<EvaluationSettings>({ quick_mode_enabled: false });
-  const [settingsLoaded, setSettingsLoaded] = useState<boolean>(false);
   const { mainContentClasses } = useSidebarLayout();
 
-  // Fetch settings on component mount
-  useEffect(() => {
-    const fetchSettings = async () => {
-      try {
-        const response = await fetch('/api/v1/settings/evaluation');
-        if (response.ok) {
-          const data = await response.json();
-          setSettings(data);
-          // Set default mode based on settings
-          // If quick_mode_enabled is false, default to Enhanced mode (true)
-          // If quick_mode_enabled is true, default to Quick mode (false)
-          setUseEnhancedRFQ(!data.quick_mode_enabled);
-        }
-      } catch (error) {
-        console.error('Failed to fetch settings:', error);
-        // Default to Enhanced mode if settings fetch fails
-        setUseEnhancedRFQ(true);
-      } finally {
-        setSettingsLoaded(true);
-      }
-    };
-
-    fetchSettings();
-  }, []);
-
-  // Debug logging
+  // Debug logging (reduced frequency to prevent render loops)
   React.useEffect(() => {
+    const surveyId = currentSurvey?.survey_id;
     console.log('🔍 [SurveyGeneratorPage] State update:', {
       workflowStatus: workflow.status,
       hasSurvey: !!currentSurvey,
-      surveyId: currentSurvey?.survey_id,
+      surveyId: surveyId,
       workflowSurveyId: workflow.survey_id,
-      currentView,
-      settingsLoaded,
-      quickModeEnabled: settings.quick_mode_enabled,
-      useEnhancedRFQ
+      currentView
     });
-  }, [workflow.status, currentSurvey, currentView, workflow.survey_id, settingsLoaded, settings.quick_mode_enabled, useEnhancedRFQ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workflow.status, currentSurvey?.survey_id, workflow.survey_id, currentView]); // Only watch survey_id, not entire object
 
 
   // Fallback: Fetch survey if workflow is completed but survey is not loaded
@@ -91,18 +59,20 @@ export const SurveyGeneratorPage: React.FC = () => {
     }
   }, [workflow.status, currentSurvey, workflow.survey_id, workflow.survey_fetch_failed, resetWorkflow, loadPillarScoresAsync]);
 
-  // Load survey from URL parameters if present
+  // Load survey from URL parameters if present (run once on mount)
   React.useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const surveyId = urlParams.get('surveyId');
     const view = urlParams.get('view');
+    const currentSurveyId = currentSurvey?.survey_id;
     
     console.log('🔍 [SurveyGeneratorPage] Checking URL parameters:', {
       currentUrl: window.location.href,
       search: window.location.search,
       surveyId: surveyId,
       view,
-      hasCurrentSurvey: !!currentSurvey
+      hasCurrentSurvey: !!currentSurvey,
+      currentSurveyId: currentSurveyId
     });
     
     // Handle view parameter
@@ -132,7 +102,8 @@ export const SurveyGeneratorPage: React.FC = () => {
     } else if (currentSurvey) {
       console.log('✅ [SurveyGeneratorPage] Survey already loaded, skipping fetch');
     }
-  }, [currentSurvey, workflow.status]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSurvey?.survey_id, workflow.status]); // Only watch survey_id, not the entire object
 
   // Load pillar scores asynchronously when survey is available (non-blocking)
   React.useEffect(() => {
@@ -185,34 +156,7 @@ export const SurveyGeneratorPage: React.FC = () => {
                 </div>
               </div>
               
-              {/* Mode Selection and Progress Controls */}
               <div className="flex items-center space-x-4">
-                {/* Mode Selection - Only show when idle and quick mode is enabled */}
-                {workflow.status === 'idle' && settingsLoaded && settings.quick_mode_enabled && (
-                  <div className="flex items-center space-x-3">
-                    <button
-                      onClick={() => setUseEnhancedRFQ(false)}
-                      className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
-                        !useEnhancedRFQ
-                          ? 'bg-gradient-to-r from-yellow-500 to-amber-500 text-white shadow-lg'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      🚀 Quick Mode
-                    </button>
-                    <button
-                      onClick={() => setUseEnhancedRFQ(true)}
-                      className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
-                        useEnhancedRFQ
-                          ? 'bg-gradient-to-r from-yellow-500 to-amber-500 text-white shadow-lg'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      ✨ Enhanced Mode
-                    </button>
-                  </div>
-                )}
-                
                 {/* Progress Status and Cancel - Only show during generation */}
                 {(workflow.status === 'started' || workflow.status === 'in_progress') && (
                   <div className="flex items-center space-x-4">
@@ -247,7 +191,7 @@ export const SurveyGeneratorPage: React.FC = () => {
             {workflow.status === 'idle' && (
               <div>
                 {/* RFQ Interface */}
-                {useEnhancedRFQ ? <EnhancedRFQApp /> : <RFQEditor />}
+                <EnhancedRFQApp key="enhanced-rfq" />
               </div>
             )}
 

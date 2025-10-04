@@ -275,6 +275,46 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                 json_content = "".join(str(chunk) for chunk in output).strip()
             else:
                 json_content = str(output).strip()
+            
+            # CRITICAL FIX: Handle character array output from LLM
+            # Sometimes the LLM returns a character array instead of a JSON string
+            if json_content.startswith('[') and json_content.endswith(']'):
+                try:
+                    # Try to parse as a character array and join it
+                    import ast
+                    char_array = ast.literal_eval(json_content)
+                    if isinstance(char_array, list) and all(isinstance(c, str) for c in char_array):
+                        json_content = ''.join(char_array).strip()
+                        logger.info(f"🔧 [Document Parser] Converted character array to string, length: {len(json_content)}")
+                        logger.info(f"🔧 [Document Parser] First 200 chars: {json_content[:200]}")
+                    else:
+                        logger.warning(f"⚠️ [Document Parser] Character array contains non-string elements")
+                except Exception as e:
+                    logger.warning(f"⚠️ [Document Parser] Failed to parse character array: {e}")
+                    logger.warning(f"⚠️ [Document Parser] Raw content: {json_content[:100]}")
+            
+            logger.info(f"📝 [Document Parser] Final JSON content length: {len(json_content)}")
+            logger.debug(f"📝 [Document Parser] JSON content preview: {json_content[:200]}...")
+            
+            # CRITICAL FIX: Handle character array output from LLM
+            # Sometimes the LLM returns a character array instead of a JSON string
+            if json_content.startswith('[') and json_content.endswith(']'):
+                try:
+                    # Try to parse as a character array and join it
+                    import ast
+                    char_array = ast.literal_eval(json_content)
+                    if isinstance(char_array, list) and all(isinstance(c, str) for c in char_array):
+                        json_content = ''.join(char_array).strip()
+                        logger.info(f"🔧 [Document Parser] Converted character array to string, length: {len(json_content)}")
+                        logger.info(f"🔧 [Document Parser] First 200 chars: {json_content[:200]}")
+                    else:
+                        logger.warning(f"⚠️ [Document Parser] Character array contains non-string elements")
+                except Exception as e:
+                    logger.warning(f"⚠️ [Document Parser] Failed to parse character array: {e}")
+                    logger.warning(f"⚠️ [Document Parser] Raw content: {json_content[:100]}")
+            
+            logger.info(f"📝 [Document Parser] Final JSON content length: {len(json_content)}")
+            logger.debug(f"📝 [Document Parser] JSON content preview: {json_content[:200]}...")
                 
             logger.info(f"✅ [Document Parser] LLM response received, length: {len(json_content)} chars")
             logger.info(f"📄 [Document Parser] LLM response preview: {json_content[:500]}...")
@@ -282,6 +322,10 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
             
             # Try to parse the JSON
             logger.info(f"🔍 [Document Parser] Parsing JSON response")
+            logger.info(f"🔍 [Document Parser] JSON content length: {len(json_content)}")
+            logger.info(f"🔍 [Document Parser] JSON content starts with: {json_content[:50]}")
+            logger.info(f"🔍 [Document Parser] JSON content ends with: {json_content[-50:]}")
+            
             try:
                 survey_data = json.loads(json_content)
                 logger.info(f"✅ [Document Parser] JSON parsing successful")
@@ -307,6 +351,7 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                 logger.info(f"✅ [Document Parser] JSON structure validation successful")
             except json.JSONDecodeError as e:
                 logger.warning(f"⚠️ [Document Parser] LLM returned invalid JSON: {str(e)}")
+                logger.warning(f"⚠️ [Document Parser] JSON error at position {e.pos}: {json_content[max(0, e.pos-50):e.pos+50]}")
                 logger.info(f"🔧 [Document Parser] Attempting to extract JSON from response")
                 logger.debug(f"🔧 [Document Parser] Full LLM response: {json_content}")
                 
@@ -454,6 +499,8 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
 
         prompt = f"""You are an expert research consultant. Extract RFQ (Request for Quotation) information from the following document and convert it to structured data.
 
+CRITICAL: You MUST return ONLY valid JSON. No explanations, no markdown, no backticks. Do NOT output character arrays or individual characters separated by spaces. Return a complete JSON string that can be parsed by json.loads().
+
 DOCUMENT TEXT:
 {document_text}
 
@@ -461,23 +508,55 @@ FIELD PRIORITIZATION (extract in this order of importance):
 CRITICAL FIELDS (highest priority - extract first):
 1. title - The main title or subject of the RFQ (usually in headers or at the beginning)
 2. description - Core description of what research is needed (often the largest text block)
-3. objectives - Specific research objectives or goals (look for numbered lists, bullet points)
 
-HIGH PRIORITY FIELDS:
-4. research_goal - Overall purpose of the research (business questions to answer)
-5. target_segment - Target audience or demographics (age groups, income levels, behaviors)
-6. product_category - The product/service being researched (explicit mentions or context clues)
+BUSINESS CONTEXT FIELDS (Critical):
+3. company_product_background - Company background, product context, business overview
+4. business_problem - What business challenge or problem needs to be solved
+5. business_objective - What the business wants to achieve from this research
+6. stakeholder_requirements - Key stakeholder needs and requirements
+7. decision_criteria - What defines success for this research
+8. budget_range - Budget constraints (under_10k, 10k_50k, 50k_100k, 100k_plus)
+9. timeline_constraints - Timeline requirements (rush, standard, flexible)
 
-MEDIUM PRIORITY FIELDS:
-7. constraints - Budget, timeline, methodology constraints (look for "must", "cannot", "within")
-8. deliverables - Expected outputs (reports, presentations, data files)
-9. timeline - Project deadlines or milestones
+RESEARCH OBJECTIVES FIELDS (High Priority):
+10. research_audience - Target audience, demographics, respondent segments
+11. success_criteria - Desired outcome and success criteria
+12. key_research_questions - Key research questions and considerations (as array)
+13. success_metrics - How research success will be measured
+14. validation_requirements - What validation is needed
+15. measurement_approach - Research approach (quantitative, qualitative, mixed_methods)
 
-SURVEY STRUCTURE FIELDS (methodology-driven):
-10. qnr_sections - Required QNR sections based on methodology (7-section standard)
-11. text_requirements - Required text introductions based on methodology
-12. survey_logic - Survey logic requirements (piping, sampling, screener logic)
-13. brand_usage_requirements - Brand tracking and usage requirements
+METHODOLOGY FIELDS (High Priority):
+16. primary_method - Research methodology (van_westendorp, gabor_granger, conjoint, basic_survey)
+17. stimuli_details - Concept details, price ranges, stimuli information
+18. methodology_requirements - Additional methodology notes and requirements
+19. complexity_level - Research complexity (simple, standard, advanced)
+20. required_methodologies - Specific methodologies required (as array)
+21. sample_size_target - Target number of respondents
+
+SURVEY REQUIREMENTS FIELDS (Medium Priority):
+22. sample_plan - Sample structure, LOI, recruiting criteria
+23. must_have_questions - Must-have questions per respondent type (as array)
+24. completion_time_target - Target completion time (5_10_min, 10_15_min, 15_25_min, 25_plus_min)
+25. device_compatibility - Device requirements (mobile_first, desktop_first, both)
+26. accessibility_requirements - Accessibility needs (standard, enhanced, full_compliance)
+27. data_quality_requirements - Data quality standards (basic, standard, premium)
+
+SURVEY STRUCTURE FIELDS (Medium Priority):
+28. qnr_sections_detected - Required QNR sections (as array)
+29. text_requirements_detected - Required text introductions (as array)
+
+SURVEY LOGIC FIELDS (Medium Priority):
+30. requires_piping_logic - Whether piping/carry-forward logic is needed (boolean)
+31. requires_sampling_logic - Whether sampling/randomization logic is needed (boolean)
+32. requires_screener_logic - Whether screener/qualification logic is needed (boolean)
+33. custom_logic_requirements - Custom logic requirements and specifications
+
+BRAND USAGE FIELDS (Medium Priority):
+34. brand_recall_required - Whether brand recall questions are needed (boolean)
+35. brand_awareness_funnel - Whether brand awareness funnel is needed (boolean)
+36. brand_product_satisfaction - Whether brand/product satisfaction is needed (boolean)
+37. usage_frequency_tracking - Whether usage frequency tracking is needed (boolean)
 
 SIMPLIFIED FIELD-SPECIFIC EXTRACTION GUIDANCE:
 
@@ -498,31 +577,175 @@ COMPANY_PRODUCT_BACKGROUND (Critical):
 - Patterns: "Company background", "Business context", "About [company]"
 - Strategy: Extract company and product context paragraphs
 
-BUSINESS_PROBLEM (High):
+BUSINESS_PROBLEM (Critical):
 - Keywords: "problem", "challenge", "issue", "need", "goal"
 - Patterns: "Business challenge", "We need to", "The problem is"
 - Strategy: Extract problem statement sentences
 
-BUSINESS_OBJECTIVE (High):
+BUSINESS_OBJECTIVE (Critical):
 - Keywords: "objective", "goal", "achieve", "outcome", "want to"
 - Patterns: "Business objective", "We want to achieve", "The goal is"
 - Strategy: Extract objective statements
 
-METHODOLOGY DETECTION (High):
-- Van Westendorp: "van westendorp", "price sensitivity", "too cheap", "too expensive"
-- Gabor Granger: "gabor granger", "price acceptance", "purchase intent"
-- Conjoint: "conjoint", "trade-off", "choice task", "feature importance"
-- Strategy: Keyword-based methodology detection
+STAKEHOLDER_REQUIREMENTS (Critical):
+- Keywords: "stakeholder", "decision maker", "key users", "requirements"
+- Patterns: "Stakeholder needs", "Decision maker requirements", "Key user needs"
+- Strategy: Extract stakeholder and decision maker requirements
 
-RESEARCH_AUDIENCE (Medium):
+DECISION_CRITERIA (Critical):
+- Keywords: "success", "criteria", "measure", "evaluate", "judge"
+- Patterns: "Success criteria", "How we measure success", "Decision criteria"
+- Strategy: Extract success measurement criteria
+
+BUDGET_RANGE (Critical):
+- Keywords: "budget", "cost", "price", "under", "less than", "more than"
+- Patterns: "Budget: $X", "Under $10k", "Less than $50k", "Budget range"
+- Strategy: Extract budget information and map to ranges
+
+TIMELINE_CONSTRAINTS (Critical):
+- Keywords: "timeline", "deadline", "urgent", "rush", "flexible", "standard"
+- Patterns: "Timeline: X weeks", "Urgent deadline", "Flexible timeline"
+- Strategy: Extract timeline information and map to constraints
+
+RESEARCH_AUDIENCE (High Priority):
 - Keywords: "audience", "target", "respondents", "participants", "demographics"
 - Patterns: "Target audience", "Respondent profile", demographic descriptions
 - Strategy: Extract audience descriptions
 
-SAMPLE_PLAN (Medium):
-- Keywords: "sample", "LOI", "length of interview", "recruiting", "n="
+SUCCESS_CRITERIA (High Priority):
+- Keywords: "success", "outcome", "result", "achieve", "deliverable"
+- Patterns: "Success criteria", "Expected outcomes", "What we want to achieve"
+- Strategy: Extract success criteria and expected outcomes
+
+KEY_RESEARCH_QUESTIONS (High Priority):
+- Keywords: "questions", "research questions", "objectives", "goals"
+- Patterns: "Key questions:", "Research objectives:", numbered/bulleted lists
+- Strategy: Extract research questions as array
+
+SUCCESS_METRICS (High Priority):
+- Keywords: "metrics", "measure", "KPI", "track", "monitor"
+- Patterns: "Success metrics", "How we measure", "Key performance indicators"
+- Strategy: Extract measurement and tracking requirements
+
+VALIDATION_REQUIREMENTS (High Priority):
+- Keywords: "validate", "verify", "confirm", "test", "check"
+- Patterns: "Validation requirements", "Need to verify", "Confirm results"
+- Strategy: Extract validation and verification needs
+
+MEASUREMENT_APPROACH (High Priority):
+- Keywords: "quantitative", "qualitative", "mixed", "survey", "interview"
+- Patterns: "Quantitative research", "Qualitative approach", "Mixed methods"
+- Strategy: Extract research approach and map to options
+
+PRIMARY_METHOD (High Priority):
+- Keywords: "van westendorp", "gabor granger", "conjoint", "survey", "interview"
+- Patterns: "Use van westendorp", "Conjoint analysis", "Price sensitivity"
+- Strategy: Extract methodology and map to options
+
+STIMULI_DETAILS (High Priority):
+- Keywords: "concept", "stimuli", "product", "price", "feature"
+- Patterns: "Concept details", "Product stimuli", "Price points"
+- Strategy: Extract concept and stimuli information
+
+METHODOLOGY_REQUIREMENTS (High Priority):
+- Keywords: "methodology", "approach", "technique", "method", "process"
+- Patterns: "Methodology requirements", "Research approach", "Technique needed"
+- Strategy: Extract methodology-specific requirements
+
+COMPLEXITY_LEVEL (High Priority):
+- Keywords: "simple", "standard", "advanced", "complex", "basic"
+- Patterns: "Simple research", "Advanced analysis", "Complex methodology"
+- Strategy: Extract complexity level and map to options
+
+REQUIRED_METHODOLOGIES (High Priority):
+- Keywords: "methodologies", "techniques", "approaches", "methods"
+- Patterns: "Required methodologies", "Use techniques", "Approaches needed"
+- Strategy: Extract methodology requirements as array
+
+SAMPLE_SIZE_TARGET (High Priority):
+- Keywords: "sample", "respondents", "participants", "n=", "number"
+- Patterns: "Sample size: X", "N=500", "Recruit X participants"
+- Strategy: Extract target sample size
+
+SAMPLE_PLAN (Medium Priority):
+- Keywords: "sample", "LOI", "length of interview", "recruiting", "criteria"
 - Patterns: "Sample size", "LOI: X minutes", "Recruit X participants"
 - Strategy: Extract sampling specifications
+
+MUST_HAVE_QUESTIONS (Medium Priority):
+- Keywords: "questions", "must have", "required", "essential", "key"
+- Patterns: "Must-have questions", "Required questions", "Essential questions"
+- Strategy: Extract required questions as array
+
+COMPLETION_TIME_TARGET (Medium Priority):
+- Keywords: "time", "minutes", "duration", "length", "LOI"
+- Patterns: "5-10 minutes", "15 minute survey", "LOI: 10 minutes"
+- Strategy: Extract completion time and map to options
+
+DEVICE_COMPATIBILITY (Medium Priority):
+- Keywords: "mobile", "desktop", "device", "platform", "responsive"
+- Patterns: "Mobile-first", "Desktop only", "All devices"
+- Strategy: Extract device requirements and map to options
+
+ACCESSIBILITY_REQUIREMENTS (Medium Priority):
+- Keywords: "accessibility", "ADA", "compliance", "inclusive", "accessible"
+- Patterns: "Accessibility requirements", "ADA compliant", "Inclusive design"
+- Strategy: Extract accessibility needs and map to options
+
+DATA_QUALITY_REQUIREMENTS (Medium Priority):
+- Keywords: "quality", "data quality", "validation", "verification", "standards"
+- Patterns: "Data quality standards", "Quality requirements", "Validation needed"
+- Strategy: Extract data quality requirements and map to options
+
+QNR_SECTIONS_DETECTED (Medium Priority):
+- Keywords: "sections", "questionnaire", "survey", "screener", "demographics"
+- Patterns: "Survey sections", "Questionnaire structure", "Required sections"
+- Strategy: Auto-detect required QNR sections based on methodology
+
+TEXT_REQUIREMENTS_DETECTED (Medium Priority):
+- Keywords: "introduction", "instructions", "confidentiality", "study intro"
+- Patterns: "Study introduction", "Confidentiality agreement", "Instructions"
+- Strategy: Auto-detect required text blocks based on methodology
+
+REQUIRES_PIPING_LOGIC (Medium Priority):
+- Keywords: "pipe", "carry forward", "previous answer", "based on response"
+- Patterns: "Pipe responses", "Carry forward answers", "Based on previous"
+- Strategy: Detect piping logic requirements
+
+REQUIRES_SAMPLING_LOGIC (Medium Priority):
+- Keywords: "random", "quota", "balance", "representative sample"
+- Patterns: "Random sampling", "Quota requirements", "Balanced sample"
+- Strategy: Detect sampling logic requirements
+
+REQUIRES_SCREENER_LOGIC (Medium Priority):
+- Keywords: "qualify", "screen out", "terminate", "continue if", "skip if"
+- Patterns: "Qualify respondents", "Screen out", "Terminate if"
+- Strategy: Detect screener logic requirements
+
+CUSTOM_LOGIC_REQUIREMENTS (Medium Priority):
+- Keywords: "logic", "skip pattern", "routing", "conditional", "branching"
+- Patterns: "Skip patterns", "Conditional logic", "Routing requirements"
+- Strategy: Extract custom logic requirements
+
+BRAND_RECALL_REQUIRED (Medium Priority):
+- Keywords: "brand awareness", "top of mind", "unaided", "aided recall"
+- Patterns: "Brand awareness", "Top of mind", "Unaided recall"
+- Strategy: Detect brand recall requirements
+
+BRAND_AWARENESS_FUNNEL (Medium Priority):
+- Keywords: "awareness", "consideration", "trial", "purchase", "loyalty"
+- Patterns: "Awareness funnel", "Consideration", "Purchase intent"
+- Strategy: Detect brand awareness funnel requirements
+
+BRAND_PRODUCT_SATISFACTION (Medium Priority):
+- Keywords: "satisfaction", "rating", "experience", "recommend", "NPS"
+- Patterns: "Satisfaction rating", "Product experience", "Recommendation"
+- Strategy: Detect brand/product satisfaction requirements
+
+USAGE_FREQUENCY_TRACKING (Medium Priority):
+- Keywords: "how often", "frequency", "usage", "habits", "occasions"
+- Patterns: "Usage frequency", "How often", "Usage habits"
+- Strategy: Detect usage frequency tracking requirements
 
 SURVEY STRUCTURE FIELDS (methodology-driven):
 
@@ -691,6 +914,94 @@ EXPECTED JSON STRUCTURE:
       "confidence": 0.85,
       "source": "The challenge we face is determining which features...",
       "reasoning": "Clear problem statement in business context",
+      "priority": "critical"
+    }},
+    {{
+      "field": "business_objective",
+      "value": "Determine which features to prioritize for next product release",
+      "confidence": 0.85,
+      "source": "Our objective is to determine feature priorities...",
+      "reasoning": "Clear business objective statement",
+      "priority": "critical"
+    }},
+    {{
+      "field": "stakeholder_requirements",
+      "value": "Product managers, engineering team, and executive leadership need input",
+      "confidence": 0.75,
+      "source": "Stakeholders include product managers and engineering...",
+      "reasoning": "Stakeholder requirements mentioned in context",
+      "priority": "critical"
+    }},
+    {{
+      "field": "decision_criteria",
+      "value": "Feature prioritization based on customer value and development effort",
+      "confidence": 0.80,
+      "source": "We need to balance customer value with development effort...",
+      "reasoning": "Decision criteria implied from business context",
+      "priority": "critical"
+    }},
+    {{
+      "field": "budget_range",
+      "value": "10k_50k",
+      "confidence": 0.70,
+      "source": "Budget: $25,000 for this research project",
+      "reasoning": "Budget mentioned falls within 10k-50k range",
+      "priority": "critical"
+    }},
+    {{
+      "field": "timeline_constraints",
+      "value": "standard",
+      "confidence": 0.75,
+      "source": "Timeline: 6 weeks for completion",
+      "reasoning": "Standard timeline mentioned, not urgent or flexible",
+      "priority": "critical"
+    }},
+    {{
+      "field": "research_audience",
+      "value": "Small business owners, 25-50 years old, currently using productivity software",
+      "confidence": 0.90,
+      "source": "Target participants: small business owners aged 25-50...",
+      "reasoning": "Clear demographic and behavioral criteria",
+      "priority": "high"
+    }},
+    {{
+      "field": "success_criteria",
+      "value": "Clear feature prioritization ranking with confidence scores",
+      "confidence": 0.85,
+      "source": "Success will be measured by clear feature ranking...",
+      "reasoning": "Success criteria explicitly mentioned",
+      "priority": "high"
+    }},
+    {{
+      "field": "key_research_questions",
+      "value": ["Which features are most important to customers?", "What is the relative value of each feature?", "How do features interact with each other?"],
+      "confidence": 0.90,
+      "source": "Key questions: 1) Feature importance 2) Relative value 3) Feature interactions",
+      "reasoning": "Research questions clearly listed",
+      "priority": "high"
+    }},
+    {{
+      "field": "success_metrics",
+      "value": "Feature importance scores, relative value rankings, and interaction effects",
+      "confidence": 0.80,
+      "source": "Metrics: importance scores, rankings, interaction effects",
+      "reasoning": "Success metrics mentioned in context",
+      "priority": "high"
+    }},
+    {{
+      "field": "validation_requirements",
+      "value": "Statistical significance testing and confidence intervals",
+      "confidence": 0.75,
+      "source": "Need statistical validation with confidence intervals",
+      "reasoning": "Validation requirements mentioned",
+      "priority": "high"
+    }},
+    {{
+      "field": "measurement_approach",
+      "value": "quantitative",
+      "confidence": 0.85,
+      "source": "Quantitative research approach using conjoint analysis",
+      "reasoning": "Quantitative approach explicitly mentioned",
       "priority": "high"
     }},
     {{
@@ -702,43 +1013,139 @@ EXPECTED JSON STRUCTURE:
       "priority": "high"
     }},
     {{
-      "field": "research_audience",
-      "value": "Small business owners, 25-50 years old, currently using productivity software",
-      "confidence": 0.9,
-      "source": "Target participants: small business owners aged 25-50...",
-      "reasoning": "Clear demographic and behavioral criteria",
+      "field": "stimuli_details",
+      "value": "Product features: AI automation, mobile app, cloud sync, advanced analytics",
+      "confidence": 0.85,
+      "source": "Features to test: AI automation, mobile app, cloud sync, analytics",
+      "reasoning": "Product features clearly listed for conjoint stimuli",
+      "priority": "high"
+    }},
+    {{
+      "field": "methodology_requirements",
+      "value": "Conjoint analysis with 16 choice tasks, randomized presentation",
+      "confidence": 0.80,
+      "source": "16 choice tasks with randomized presentation order",
+      "reasoning": "Methodology requirements specified",
+      "priority": "high"
+    }},
+    {{
+      "field": "complexity_level",
+      "value": "advanced",
+      "confidence": 0.75,
+      "source": "Complex conjoint analysis with multiple attributes",
+      "reasoning": "Advanced complexity due to conjoint methodology",
+      "priority": "high"
+    }},
+    {{
+      "field": "required_methodologies",
+      "value": ["conjoint", "choice_modeling", "statistical_analysis"],
+      "confidence": 0.85,
+      "source": "Conjoint analysis, choice modeling, and statistical analysis required",
+      "reasoning": "Required methodologies explicitly mentioned",
+      "priority": "high"
+    }},
+    {{
+      "field": "sample_size_target",
+      "value": "500",
+      "confidence": 0.90,
+      "source": "Sample size: 500 respondents",
+      "reasoning": "Sample size explicitly stated",
+      "priority": "high"
+    }},
+    {{
+      "field": "sample_plan",
+      "value": "500 small business owners, 15-minute LOI, recruited via panel",
+      "confidence": 0.85,
+      "source": "Recruit 500 small business owners, 15-minute survey via panel",
+      "reasoning": "Sample plan details provided",
+      "priority": "medium"
+    }},
+    {{
+      "field": "must_have_questions",
+      "value": ["Feature importance ranking", "Purchase intent", "Demographics"],
+      "confidence": 0.80,
+      "source": "Must include: feature ranking, purchase intent, demographics",
+      "reasoning": "Required questions mentioned",
+      "priority": "medium"
+    }},
+    {{
+      "field": "completion_time_target",
+      "value": "15_25_min",
+      "confidence": 0.85,
+      "source": "15-minute survey length",
+      "reasoning": "Survey length specified as 15 minutes",
+      "priority": "medium"
+    }},
+    {{
+      "field": "device_compatibility",
+      "value": "both",
+      "confidence": 0.80,
+      "source": "Survey should work on mobile and desktop",
+      "reasoning": "Device compatibility requirements mentioned",
+      "priority": "medium"
+    }},
+    {{
+      "field": "accessibility_requirements",
+      "value": "standard",
+      "confidence": 0.75,
+      "source": "Standard accessibility compliance needed",
+      "reasoning": "Accessibility requirements mentioned",
+      "priority": "medium"
+    }},
+    {{
+      "field": "data_quality_requirements",
+      "value": "premium",
+      "confidence": 0.80,
+      "source": "High-quality data with validation checks required",
+      "reasoning": "Premium data quality requirements mentioned",
       "priority": "medium"
     }},
     {{
       "field": "qnr_sections_detected",
       "value": ["sample_plan", "screener", "concept_exposure", "methodology_section", "additional_questions", "programmer_instructions"],
-      "confidence": 0.80,
-      "source": "Conjoint analysis methodology detected",
-      "reasoning": "Based on conjoint methodology, these QNR sections are required",
+      "confidence": 0.85,
+      "source": "Based on conjoint methodology requirements",
+      "reasoning": "Auto-detected based on conjoint analysis methodology",
       "priority": "medium"
     }},
     {{
       "field": "text_requirements_detected",
       "value": ["Study_Intro", "Confidentiality_Agreement"],
-      "confidence": 0.9,
-      "source": "Conjoint study with sensitive data collection",
-      "reasoning": "Conjoint studies require study intro and confidentiality agreement",
+      "confidence": 0.80,
+      "source": "Standard conjoint study requirements",
+      "reasoning": "Auto-detected based on conjoint methodology",
       "priority": "medium"
     }},
     {{
       "field": "requires_piping_logic",
       "value": true,
-      "confidence": 0.9,
-      "source": "Complex conjoint design with feature dependencies",
-      "reasoning": "Conjoint analysis typically requires piping logic for dynamic choice tasks",
+      "confidence": 0.75,
+      "source": "Conjoint analysis requires complex branching",
+      "reasoning": "Conjoint methodology inherently requires piping logic",
       "priority": "medium"
     }},
     {{
       "field": "requires_sampling_logic",
       "value": false,
-      "confidence": 0.65,
-      "source": "No specific quota or randomization requirements mentioned",
-      "reasoning": "Standard sampling approach implied",
+      "confidence": 0.80,
+      "source": "No specific sampling requirements mentioned",
+      "reasoning": "No quota or randomization requirements detected",
+      "priority": "medium"
+    }},
+    {{
+      "field": "requires_screener_logic",
+      "value": true,
+      "confidence": 0.85,
+      "source": "Need to screen for small business owners using productivity software",
+      "reasoning": "Screener logic needed for target audience qualification",
+      "priority": "medium"
+    }},
+    {{
+      "field": "custom_logic_requirements",
+      "value": "Randomize choice task order, balance attribute levels",
+      "confidence": 0.80,
+      "source": "Randomize choice tasks and balance attribute levels",
+      "reasoning": "Custom logic requirements for conjoint analysis",
       "priority": "medium"
     }},
     {{
@@ -747,6 +1154,30 @@ EXPECTED JSON STRUCTURE:
       "confidence": 0.80,
       "source": "Focus on product features, not brand awareness",
       "reasoning": "Feature research doesn't require brand recall questions",
+      "priority": "medium"
+    }},
+    {{
+      "field": "brand_awareness_funnel",
+      "value": false,
+      "confidence": 0.80,
+      "source": "No brand awareness measurement needed",
+      "reasoning": "Feature research doesn't require brand awareness funnel",
+      "priority": "medium"
+    }},
+    {{
+      "field": "brand_product_satisfaction",
+      "value": false,
+      "confidence": 0.80,
+      "source": "Focus on feature preferences, not satisfaction",
+      "reasoning": "Feature research doesn't require satisfaction measurement",
+      "priority": "medium"
+    }},
+    {{
+      "field": "usage_frequency_tracking",
+      "value": false,
+      "confidence": 0.80,
+      "source": "No usage frequency tracking needed",
+      "reasoning": "Feature research doesn't require usage frequency tracking",
       "priority": "medium"
     }}
   ]
@@ -757,6 +1188,57 @@ IMPORTANT:
 - Use null for missing or unclear information
 - Be conservative with confidence scores
 - Include source text snippets for traceability
+- CRITICAL: Replace all newline characters (\n) in field values with spaces to ensure clean JSON
+- Clean field values by removing excessive whitespace and line breaks
+
+COMPLETE JSON EXAMPLE:
+{{
+  "confidence": 0.85,
+  "field_mappings": [
+    {{
+      "field": "title",
+      "value": "Quantitative Market Research for Contact Lens Pricing",
+      "confidence": 0.95,
+      "source": "Request for Quotation (RFQ): Quantitative Market Research for Contact Lens Pricing",
+      "reasoning": "Clear title in document header",
+      "priority": "critical"
+    }},
+    {{
+      "field": "description", 
+      "value": "Comprehensive quantitative pricing study for AIR OPTIX plus HydraGlyde contact lens product to determine optimal price points for market acceptance",
+      "confidence": 0.90,
+      "source": "Alcon Consumer Insights team is seeking proposals from qualified market research agencies to conduct a comprehensive quantitative pricing study",
+      "reasoning": "Main research description in executive summary",
+      "priority": "critical"
+    }},
+    {{
+      "field": "research_audience",
+      "value": "Current contact lens wearers (70% of sample), age 18-45 with focus on 25-34, 60% female/40% male, middle to upper-middle income, monthly replacement users seeking premium comfort",
+      "confidence": 0.95,
+      "source": "Primary Target Demographics: Current Contact Lens Wearers (70% of sample) Age: 18-45 years (primary focus on 25-34 age group representing 39% of wearers)",
+      "reasoning": "Explicit audience details listed",
+      "priority": "high"
+    }},
+    {{
+      "field": "primary_method",
+      "value": "gabor_granger",
+      "confidence": 0.62,
+      "source": "Assess consumer willingness to pay at various price levels and evaluating price elasticity",
+      "reasoning": "WTP at various price levels and elasticity align with Gabor-Granger methodology",
+      "priority": "high"
+    }},
+    {{
+      "field": "sample_size_target",
+      "value": "800-1200",
+      "confidence": 0.97,
+      "source": "Total Sample Size: 800-1,200 respondents",
+      "reasoning": "Explicit sample size range provided",
+      "priority": "high"
+    }}
+  ]
+}}
+
+REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or formatting.
 """
         return prompt
 
@@ -785,7 +1267,7 @@ IMPORTANT:
                         context_type="document",
                         hyperparameters={
                             "temperature": 0.1,
-                            "max_tokens": 3000
+                            "max_tokens": 4000
                         },
                         metadata={
                             "document_length": len(document_text),
@@ -802,8 +1284,8 @@ IMPORTANT:
                             input={
                                 "prompt": prompt,
                                 "temperature": 0.1,
-                                "max_tokens": 3000,
-                                "system_prompt": "You are an expert at extracting structured information from research documents. Return only valid JSON that matches the exact schema provided."
+                                "max_tokens": 4000,
+                                "system_prompt": "You are an expert at extracting structured information from research documents. You MUST return ONLY valid JSON that can be parsed by json.loads(). No explanations, no markdown, no backticks. Do NOT output character arrays or individual characters separated by spaces. The response must be a complete, valid JSON object matching the provided schema exactly."
                             }
                         )
                         
@@ -822,8 +1304,8 @@ IMPORTANT:
                         input={
                             "prompt": prompt,
                             "temperature": 0.1,
-                            "max_tokens": 3000,
-                            "system_prompt": "You are an expert at extracting structured information from research documents. Return only valid JSON that matches the exact schema provided."
+                            "max_tokens": 4000,
+                            "system_prompt": "You are an expert at extracting structured information from research documents. You MUST return ONLY valid JSON that can be parsed by json.loads(). No explanations, no markdown, no backticks. Do NOT output character arrays or individual characters separated by spaces. The response must be a complete, valid JSON object matching the provided schema exactly."
                         }
                     )
             except Exception as audit_error:
@@ -835,8 +1317,8 @@ IMPORTANT:
                     input={
                         "prompt": prompt,
                         "temperature": 0.1,
-                        "max_tokens": 3000,
-                        "system_prompt": "You are an expert at extracting structured information from research documents. Return only valid JSON that matches the exact schema provided."
+                        "max_tokens": 4000,
+                        "system_prompt": "You are an expert at extracting structured information from research documents. You MUST return ONLY valid JSON that can be parsed by json.loads(). No explanations, no markdown, no backticks. Do NOT output character arrays or individual characters separated by spaces. The response must be a complete, valid JSON object matching the provided schema exactly."
                     }
                 )
 
@@ -845,14 +1327,85 @@ IMPORTANT:
                 json_content = "".join(str(chunk) for chunk in output).strip()
             else:
                 json_content = str(output).strip()
+            
+            # CRITICAL FIX: Handle character array output from LLM
+            # Sometimes the LLM returns a character array instead of a JSON string
+            if json_content.startswith('[') and json_content.endswith(']'):
+                try:
+                    # Try to parse as a character array and join it
+                    import ast
+                    char_array = ast.literal_eval(json_content)
+                    if isinstance(char_array, list) and all(isinstance(c, str) for c in char_array):
+                        json_content = ''.join(char_array).strip()
+                        logger.info(f"🔧 [Document Parser] Converted character array to string, length: {len(json_content)}")
+                        logger.info(f"🔧 [Document Parser] First 200 chars: {json_content[:200]}")
+                    else:
+                        logger.warning(f"⚠️ [Document Parser] Character array contains non-string elements")
+                except Exception as e:
+                    logger.warning(f"⚠️ [Document Parser] Failed to parse character array: {e}")
+                    logger.warning(f"⚠️ [Document Parser] Raw content: {json_content[:100]}")
 
             logger.info(f"✅ [Document Parser] RFQ extraction response received, length: {len(json_content)} chars")
             logger.info(f"🔍 [Document Parser] Raw LLM response: {json_content[:500]}...")
 
             # Parse and validate JSON using robust extraction like survey generation
             rfq_data = self._extract_rfq_json(json_content)
+            
+            # CRITICAL FIX: Clean up newline characters in field values
+            if 'field_mappings' in rfq_data:
+                for mapping in rfq_data['field_mappings']:
+                    if 'value' in mapping and isinstance(mapping['value'], str):
+                        # Replace newlines with spaces and clean up whitespace
+                        mapping['value'] = ' '.join(mapping['value'].replace('\n', ' ').split())
+                        # Also clean source and reasoning fields
+                        if 'source' in mapping and isinstance(mapping['source'], str):
+                            mapping['source'] = ' '.join(mapping['source'].replace('\n', ' ').split())
+                        if 'reasoning' in mapping and isinstance(mapping['reasoning'], str):
+                            mapping['reasoning'] = ' '.join(mapping['reasoning'].replace('\n', ' ').split())
+            
+            # Log the cleaned JSON that will be used by the frontend
             logger.info(f"✅ [Document Parser] RFQ data parsing successful")
             logger.info(f"🔍 [Document Parser] Parsed data keys: {list(rfq_data.keys())}")
+            if 'field_mappings' in rfq_data:
+                logger.info(f"📊 [Document Parser] Field mappings found: {len(rfq_data['field_mappings'])}")
+                for i, mapping in enumerate(rfq_data['field_mappings'][:3]):
+                    field_value = mapping.get('value', '')
+                    value_preview = field_value[:50] if field_value is not None else '<null>'
+                    logger.info(f"  {i+1}. {mapping.get('field', 'unknown')}: {value_preview}...")
+            
+            # Log the complete cleaned JSON structure for frontend debugging
+            logger.info(f"🎯 [Document Parser] CLEANED JSON FOR FRONTEND:")
+            logger.info(f"📄 [Document Parser] Complete RFQ data structure:")
+            logger.info(f"   - Confidence: {rfq_data.get('confidence', 'N/A')}")
+            logger.info(f"   - Field mappings count: {len(rfq_data.get('field_mappings', []))}")
+            
+            # Log each field mapping in detail
+            if 'field_mappings' in rfq_data:
+                for i, mapping in enumerate(rfq_data['field_mappings']):
+                    field_name = mapping.get('field', 'unknown')
+                    field_value = mapping.get('value', '')
+                    field_confidence = mapping.get('confidence', 'N/A')
+                    field_priority = mapping.get('priority', 'N/A')
+                    logger.info(f"   📋 Field {i+1}: {field_name}")
+                    
+                    # Safe handling of field_value which might be None
+                    if field_value is not None:
+                        value_str = str(field_value)
+                        logger.info(f"      Value: {value_str[:100]}{'...' if len(value_str) > 100 else ''}")
+                    else:
+                        logger.info(f"      Value: <null>")
+                    
+                    logger.info(f"      Confidence: {field_confidence}, Priority: {field_priority}")
+            
+            # Log the complete JSON as a string for debugging
+            try:
+                import json
+                json_str = json.dumps(rfq_data, indent=2, ensure_ascii=False)
+                logger.info(f"🔍 [Document Parser] Complete JSON structure (first 1000 chars):")
+                logger.info(f"{json_str[:1000]}{'...' if len(json_str) > 1000 else ''}")
+            except Exception as json_error:
+                logger.warning(f"⚠️ [Document Parser] Could not serialize JSON for logging: {json_error}")
+            
             return rfq_data
 
         except Exception as e:

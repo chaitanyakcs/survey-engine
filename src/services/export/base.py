@@ -255,7 +255,7 @@ class ExportRegistry:
             raise ValueError(f"No renderer registered for format: {format_name}")
 
         renderer_class = self._renderers[format_name]
-        return renderer_class()
+        return renderer_class()  # type: ignore[no-any-return]
 
     def get_available_formats(self) -> List[str]:
         """Get list of available export formats."""

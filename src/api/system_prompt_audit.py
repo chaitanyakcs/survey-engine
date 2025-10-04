@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from src.database import get_db
 from src.database.models import LLMAudit
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from uuid import UUID
 import logging
 
@@ -38,7 +38,7 @@ class LLMAuditResponse(BaseModel):
     cost_usd: Optional[float]
     success: bool
     error_message: Optional[str]
-    interaction_metadata: Optional[dict]
+    interaction_metadata: Optional[Dict[Any, Any]]
     tags: Optional[List[str]]
     created_at: str
     updated_at: str
@@ -55,7 +55,7 @@ async def get_system_prompts_for_survey(
     purpose: Optional[str] = Query(None, description="Filter by purpose (e.g., 'survey_generation', 'evaluation')"),
     context_type: Optional[str] = Query(None, description="Filter by context type (e.g., 'generation', 'validation')"),
     db: Session = Depends(get_db)
-):
+) -> SystemPromptAuditListResponse:
     """
     Get all LLM interactions (including system prompts) for a specific survey
     """
@@ -126,7 +126,7 @@ async def get_system_prompts_for_survey(
 async def get_llm_interaction_by_id(
     interaction_id: str,
     db: Session = Depends(get_db)
-):
+) -> LLMAuditResponse:
     """
     Get a specific LLM interaction by interaction_id
     """
@@ -188,7 +188,7 @@ async def list_llm_interactions(
     context_type: Optional[str] = Query(None, description="Filter by context type"),
     survey_id: Optional[str] = Query(None, description="Filter by survey ID"),
     db: Session = Depends(get_db)
-):
+) -> SystemPromptAuditListResponse:
     """
     List LLM interactions with optional filtering
     """

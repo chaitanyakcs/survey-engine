@@ -174,7 +174,9 @@ Return ONLY a JSON object with this exact structure:
             # Sample questions
             summary_parts.append("Sample Questions:")
             for i, q in enumerate(questions[:3]):  # First 3 questions
-                summary_parts.append(f"  {i+1}. {q.get('text', 'No text')[:100]}...")
+                question_text = q.get('text', 'No text')
+                text_preview = question_text[:100] if question_text is not None else '<null>'
+                summary_parts.append(f"  {i+1}. {text_preview}...")
         
         # Methodologies
         methodologies = survey_json.get('methodologies', [])

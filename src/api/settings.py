@@ -29,8 +29,6 @@ class EvaluationSettings(BaseModel):
     # Human Prompt Review Settings
     enable_prompt_review: bool = False
     prompt_review_mode: str = 'disabled'  # 'disabled', 'blocking', 'parallel'
-    require_approval_for_generation: bool = False
-    auto_approve_trusted_prompts: bool = False
     prompt_review_timeout_hours: int = 24
     
     # LLM Evaluation Settings
@@ -200,9 +198,6 @@ async def update_evaluation_settings(settings: EvaluationSettings, db: Session =
             raise HTTPException(status_code=400, detail="Prompt review timeout must be between 1 and 168 hours")
         
         # Logical validation
-        if settings.require_approval_for_generation and not settings.enable_prompt_review:
-            raise HTTPException(status_code=400, detail="Cannot require approval without enabling prompt review")
-        
         if settings.prompt_review_mode != 'disabled' and not settings.enable_prompt_review:
             raise HTTPException(status_code=400, detail="Cannot set review mode without enabling prompt review")
         

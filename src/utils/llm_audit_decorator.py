@@ -10,7 +10,7 @@ import time
 import asyncio
 import logging
 from functools import wraps
-from typing import Dict, Any, Optional, Callable, Union
+from typing import Dict, Any, Optional, Callable, Union, List
 from sqlalchemy.orm import Session
 
 from src.services.llm_audit_service import LLMAuditService, LLMAuditContext
@@ -21,17 +21,17 @@ logger = logging.getLogger(__name__)
 
 def audit_llm_call(
     purpose: str,
-    sub_purpose: str = None,
-    context_type: str = None,
-    model_name: str = None,
-    model_provider: str = None,
-    hyperparameters: Dict[str, Any] = None,
-    metadata: Dict[str, Any] = None,
-    tags: list = None,
-    parent_workflow_id: str = None,
-    parent_survey_id: str = None,
-    parent_rfq_id: str = None
-):
+    sub_purpose: Optional[str] = None,
+    context_type: Optional[str] = None,
+    model_name: Optional[str] = None,
+    model_provider: Optional[str] = None,
+    hyperparameters: Optional[Dict[str, Any]] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+    tags: Optional[List[str]] = None,
+    parent_workflow_id: Optional[str] = None,
+    parent_survey_id: Optional[str] = None,
+    parent_rfq_id: Optional[str] = None
+) -> Callable:
     """
     Decorator for automatically auditing LLM calls
     
@@ -48,9 +48,9 @@ def audit_llm_call(
         parent_survey_id: Parent survey ID (can be overridden at runtime)
         parent_rfq_id: Parent RFQ ID (can be overridden at runtime)
     """
-    def decorator(func: Callable):
+    def decorator(func: Callable) -> Callable:
         @wraps(func)
-        async def async_wrapper(*args, **kwargs):
+        async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             # Generate unique interaction ID
             interaction_id = f"{purpose}_{uuid.uuid4().hex[:8]}"
             

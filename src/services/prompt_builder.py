@@ -32,10 +32,10 @@ class RAGContext:
 class SectionManager:
     """Manages prompt sections with clean organization"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.sections: Dict[str, PromptSection] = {}
 
-    def add_section(self, key: str, section: PromptSection):
+    def add_section(self, key: str, section: PromptSection) -> None:
         """Add a section to the manager"""
         self.sections[key] = section
 
@@ -138,6 +138,7 @@ class OutputFormatter:
             "🚨 MANDATORY: Generate survey using SECTIONS format with exactly 7 sections",
             "🚨 MANDATORY: Return ONLY valid JSON - NO markdown, explanations, or additional text",
             "🚨 MANDATORY: Start response with { and end with } - this is the ONLY format accepted",
+            "🚨 MANDATORY: Include ALL required text blocks (introText, textBlocks, closingText) as specified in text requirements",
             "",
             "## SECTION ORGANIZATION:",
             "1. **Sample Plan** (id: 1): Participant qualification criteria, recruitment requirements, and quotas",
@@ -153,6 +154,7 @@ class OutputFormatter:
             "✅ Section IDs are numbers (1,2,3,4,5,6,7), Question IDs are strings (q1,q2,q3)",
             "✅ All question text on single lines - NO newlines within strings",
             "✅ No markdown formatting, bullet points, or special characters in text",
+            "✅ Include text blocks (introText, textBlocks, closingText) with proper structure and labels",
             "",
             "## QUESTION TYPE GUIDELINES:",
             "📊 **matrix_likert**: For rating multiple attributes on a scale",
@@ -326,7 +328,7 @@ class PromptBuilder:
         self.pillar_rules = {}
         self._load_rules_from_database()
 
-    def _load_rules_from_database(self):
+    def _load_rules_from_database(self) -> None:
         """Load rules from database"""
         if not self.db_session:
             return
@@ -482,32 +484,46 @@ class PromptBuilder:
         try:
             # Check if enhanced RFQ data is available in context
             enhanced_rfq_data = context.get("enhanced_rfq_data")
-            if not enhanced_rfq_data:
-                return None
-
+            
             # Import the enhanced RFQ converter utility
             from src.utils.enhanced_rfq_converter import generate_text_requirements
 
             # Generate text requirements from enhanced RFQ data
-            text_requirements = generate_text_requirements(enhanced_rfq_data)
+            if enhanced_rfq_data:
+                text_requirements = generate_text_requirements(enhanced_rfq_data)
+            else:
+                # Fallback: Generate default text requirements based on methodology tags
+                methodology_tags = context.get("rfq_details", {}).get("methodology_tags", [])
+                if not methodology_tags:
+                    methodology_tags = ["survey"]  # Default fallback
+                
+                # Create default text requirements
+                text_requirements = self._generate_default_text_requirements(methodology_tags)
 
             if not text_requirements.strip():
                 return None
 
             # Create the prompt section
             content = [
-                "# MANDATORY TEXT INTRODUCTION REQUIREMENTS",
+                "# 🚨 MANDATORY TEXT INTRODUCTION REQUIREMENTS 🚨",
                 "",
                 "⚠️ **CRITICAL**: The following text requirements are MANDATORY based on the research methodologies identified:",
                 "",
                 text_requirements,
                 "",
-                "**IMPLEMENTATION REQUIREMENTS:**",
+                "🚨 **IMPLEMENTATION REQUIREMENTS - MUST FOLLOW:**",
                 "1. Each mandatory text introduction MUST be included in the appropriate QNR section",
                 "2. Use 'introText' for section introductions, 'textBlocks' for mid-section content, 'closingText' for endings",
                 "3. Use the specified labels (e.g., 'Study_Intro', 'Concept_Intro') in the text block 'label' field",
                 "4. Text blocks should have appropriate types: 'study_intro', 'concept_intro', 'product_usage', etc.",
                 "5. Follow the 7-section QNR structure with proper text placement",
+                "",
+                "🚨 **VALIDATION CHECKLIST - VERIFY BEFORE SUBMITTING:**",
+                "- [ ] Study_Intro text block included in Section 1 (Sample Plan)",
+                "- [ ] Product_Usage text block included in Section 3 (Brand/Product Awareness)",
+                "- [ ] Concept_Intro text block included in Section 4 (Concept Exposure)",
+                "- [ ] All text blocks have correct 'label' field matching requirements",
+                "- [ ] All text blocks have 'mandatory': true",
                 "",
                 "**QNR SECTION TEXT PLACEMENT:**",
                 "- **Sample Plan (Section 1)**: Study_Intro, Confidentiality_Agreement",
@@ -515,6 +531,7 @@ class PromptBuilder:
                 "- **Concept Exposure (Section 4)**: Concept_Intro for concept presentation",
                 "- **Methodology (Section 5)**: Methodology-specific instructions",
                 "",
+                "🚨 **FAILURE TO INCLUDE THESE TEXT BLOCKS WILL RESULT IN INVALID SURVEY** 🚨",
                 ""
             ]
 
@@ -528,3 +545,61 @@ class PromptBuilder:
         except Exception as e:
             logger.warning(f"⚠️ [PromptBuilder] Failed to build text requirements section: {str(e)}")
             return None
+
+    def _generate_default_text_requirements(self, methodology_tags: List[str]) -> str:
+        """Generate default text requirements based on methodology tags"""
+        # Default text requirements mapping
+        default_requirements = {
+            "van_westendorp": ["Study_Intro", "Product_Usage"],
+            "gabor_granger": ["Study_Intro", "Product_Usage"],
+            "conjoint": ["Study_Intro", "Confidentiality_Agreement"],
+            "concept_test": ["Study_Intro", "Concept_Intro"],
+            "brand_tracker": ["Study_Intro", "Product_Usage"],
+            "pricing": ["Study_Intro", "Product_Usage"],
+            "survey": ["Study_Intro"]  # Default fallback
+        }
+        
+        # Find matching requirements
+        required_texts = set()
+        for tag in methodology_tags:
+            tag_lower = tag.lower()
+            if tag_lower in default_requirements:
+                required_texts.update(default_requirements[tag_lower])
+        
+        # Always include Study_Intro as default
+        if not required_texts:
+            required_texts.add("Study_Intro")
+        
+        # Generate text requirements
+        sections = []
+        sections.append("### Study Introduction (REQUIRED at beginning):")
+        sections.append("- Thank participants for participation")
+        sections.append("- Explain study purpose and estimated completion time")
+        sections.append("- Provide confidentiality assurances")
+        sections.append("- Mention voluntary participation and withdrawal rights")
+        sections.append("")
+        
+        if "Product_Usage" in required_texts:
+            sections.append("### Product Usage Introduction (REQUIRED before usage questions):")
+            sections.append("- Introduce product category")
+            sections.append("- Request experience information")
+            sections.append("- Explain qualification purpose")
+            sections.append("")
+        
+        if "Concept_Intro" in required_texts:
+            sections.append("### Concept Introduction (REQUIRED before concept evaluation):")
+            sections.append("- Present concept details clearly")
+            sections.append("- Include any stimuli or materials")
+            sections.append("- Instruct participants to review carefully")
+            sections.append("")
+        
+        if "Confidentiality_Agreement" in required_texts:
+            sections.append("### Confidentiality Agreement (REQUIRED):")
+            sections.append("- Assure response confidentiality")
+            sections.append("- Explain research-only usage")
+            sections.append("- Confirm no third-party sharing")
+            sections.append("")
+        
+        sections.append("**IMPORTANT**: These text introductions must appear as standalone content blocks before their related question sections, not as question text.")
+        
+        return "\n".join(sections)

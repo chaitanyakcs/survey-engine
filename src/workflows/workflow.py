@@ -92,7 +92,9 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
             logger.info(f"✅ [Workflow] Golden pairs retrieval completed. Found {len(result.get('golden_examples', []))} examples")
             if result.get('golden_examples'):
                 for i, example in enumerate(result['golden_examples'][:3]):  # Log first 3 examples
-                    logger.info(f"📋 [Workflow] Example {i+1}: {example.get('rfq_text', 'No text')[:50]}... (Score: {example.get('similarity_score', 'N/A')})")
+                    rfq_text = example.get('rfq_text', 'No text')
+                    text_preview = rfq_text[:50] if rfq_text is not None else '<null>'
+                    logger.info(f"📋 [Workflow] Example {i+1}: {text_preview}... (Score: {example.get('similarity_score', 'N/A')})")
             return result
         except Exception as e:
             logger.error(f"❌ [Workflow] Golden pairs retrieval failed: {str(e)}", exc_info=True)

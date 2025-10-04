@@ -14,7 +14,11 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 from src.config import settings
 from src.services.embedding_service import EmbeddingService
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 logger = logging.getLogger(__name__)
 
 async def preload_models():

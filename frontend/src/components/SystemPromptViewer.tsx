@@ -132,9 +132,39 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
     }
   };
 
+
   const formatDuration = (ms: number) => {
     if (ms < 1000) return `${ms}ms`;
     return `${(ms / 1000).toFixed(2)}s`;
+  };
+
+  const getPurposeDisplayName = (purpose: string, sub_purpose?: string) => {
+    const purposeMap: Record<string, string> = {
+      'survey_generation': 'Survey Creation',
+      'evaluation': 'Quality Assessment',
+      'field_extraction': 'Data Extraction',
+      'document_parsing': 'Document Analysis',
+      'embedding': 'Text Processing',
+      'generation': 'Content Generation',
+    };
+
+    const subPurposeMap: Record<string, string> = {
+      'content_validity': 'Content Validation',
+      'methodological_rigor': 'Methodology Review',
+      'rfq_extraction': 'RFQ Data Extraction',
+      'survey_conversion': 'Survey Conversion',
+      'golden_example_fields': 'Example Field Extraction',
+      'text_embedding': 'Text Vectorization',
+    };
+
+    let displayName = purposeMap[purpose] || purpose.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+    
+    if (sub_purpose) {
+      const subDisplayName = subPurposeMap[sub_purpose] || sub_purpose.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+      displayName += ` - ${subDisplayName}`;
+    }
+
+    return displayName;
   };
 
   const getPurposeColor = (purpose: string) => {
@@ -143,6 +173,7 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
       'evaluation': 'bg-green-100 text-green-800',
       'field_extraction': 'bg-amber-100 text-amber-800',
       'document_parsing': 'bg-orange-100 text-orange-800',
+      'embedding': 'bg-purple-100 text-purple-800',
       'generation': 'bg-blue-100 text-blue-800',
     };
     return colors[purpose] || 'bg-gray-100 text-gray-800';
@@ -156,7 +187,7 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
       if (item.prompt_type === 'evaluation') return 'Pillar Evaluation';
       return item.prompt_type;
     } else {
-      return `${item.purpose}${item.sub_purpose ? ` - ${item.sub_purpose}` : ''}`;
+      return getPurposeDisplayName(item.purpose, item.sub_purpose);
     }
   };
 
@@ -419,12 +450,6 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
                         )}
                       </div>
                     </div>
-                    <button
-                      onClick={() => copyToClipboard(getItemContent(selectedItem), 'prompt')}
-                      className="px-3 py-1 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-                    >
-                      Copy
-                    </button>
                   </div>
 
                   {/* Context Information */}
@@ -487,39 +512,78 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
                   {/* Tab Navigation */}
                   <div className="border-b border-gray-200 mb-4">
                     <nav className="-mb-px flex space-x-8">
-                      <button
-                        onClick={() => setActiveTab('prompt')}
-                        className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                          activeTab === 'prompt'
-                            ? 'border-blue-500 text-blue-600'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                        }`}
-                      >
-                        {isSystemPromptAudit(selectedItem) ? 'System Prompt' : 'Input Prompt'}
-                      </button>
-                      {isLLMInteraction(selectedItem) && selectedItem.output_content && (
+                      <div className="flex items-center space-x-2">
                         <button
-                          onClick={() => setActiveTab('output')}
+                          onClick={() => setActiveTab('prompt')}
                           className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                            activeTab === 'output'
+                            activeTab === 'prompt'
                               ? 'border-blue-500 text-blue-600'
                               : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                           }`}
                         >
-                          Output Content
+                          {isSystemPromptAudit(selectedItem) ? 'System Prompt' : 'Input Prompt'}
                         </button>
+                        <button
+                          onClick={() => copyToClipboard(getItemContent(selectedItem), 'prompt')}
+                          className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                          title="Copy prompt"
+                        >
+                          {copiedTab === 'prompt' ? (
+                            <CheckIcon className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <ClipboardDocumentIcon className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                      {isLLMInteraction(selectedItem) && selectedItem.output_content && (
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => setActiveTab('output')}
+                            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                              activeTab === 'output'
+                                ? 'border-blue-500 text-blue-600'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                            }`}
+                          >
+                            Output Content
+                          </button>
+                          <button
+                            onClick={() => copyToClipboard(selectedItem.output_content || '', 'output')}
+                            className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                            title="Copy output"
+                          >
+                            {copiedTab === 'output' ? (
+                              <CheckIcon className="h-4 w-4 text-green-600" />
+                            ) : (
+                              <ClipboardDocumentIcon className="h-4 w-4" />
+                            )}
+                          </button>
+                        </div>
                       )}
                       {isLLMInteraction(selectedItem) && selectedItem.interaction_metadata && Object.keys(selectedItem.interaction_metadata).length > 0 && (
-                        <button
-                          onClick={() => setActiveTab('metadata')}
-                          className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                            activeTab === 'metadata'
-                              ? 'border-blue-500 text-blue-600'
-                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                          }`}
-                        >
-                          Metadata
-                        </button>
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => setActiveTab('metadata')}
+                            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                              activeTab === 'metadata'
+                                ? 'border-blue-500 text-blue-600'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                            }`}
+                          >
+                            Metadata
+                          </button>
+                          <button
+                            onClick={() => copyToClipboard(JSON.stringify(selectedItem.interaction_metadata, null, 2), 'metadata')}
+                            className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                            title="Copy metadata"
+                          >
+                            {copiedTab === 'metadata' ? (
+                              <CheckIcon className="h-4 w-4 text-green-600" />
+                            ) : (
+                              <ClipboardDocumentIcon className="h-4 w-4" />
+                            )}
+                          </button>
+                        </div>
                       )}
                     </nav>
                   </div>
@@ -528,26 +592,10 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
                   <div className="min-h-[400px]">
                     {activeTab === 'prompt' && (
                       <div>
-                        <div className="flex items-center justify-between mb-2">
+                        <div className="mb-2">
                           <h4 className="text-sm font-medium text-gray-900">
                             {isSystemPromptAudit(selectedItem) ? 'System Prompt' : 'Input Prompt'}
                           </h4>
-                          <button
-                            onClick={() => copyToClipboard(getItemContent(selectedItem), 'prompt')}
-                            className="flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
-                          >
-                            {copiedTab === 'prompt' ? (
-                              <>
-                                <CheckIcon className="h-4 w-4 mr-1 text-green-600" />
-                                Copied!
-                              </>
-                            ) : (
-                              <>
-                                <ClipboardDocumentIcon className="h-4 w-4 mr-1" />
-                                Copy
-                              </>
-                            )}
-                          </button>
                         </div>
                         <div className="overflow-x-auto">
                           <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono bg-gray-50 p-4 rounded-lg border border-gray-200 min-w-0 max-h-[400px] overflow-y-auto">
@@ -559,24 +607,8 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
 
                     {activeTab === 'output' && isLLMInteraction(selectedItem) && selectedItem.output_content && (
                       <div>
-                        <div className="flex items-center justify-between mb-2">
+                        <div className="mb-2">
                           <h4 className="text-sm font-medium text-gray-900">Output Content</h4>
-                          <button
-                            onClick={() => copyToClipboard(selectedItem.output_content || '', 'output')}
-                            className="flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
-                          >
-                            {copiedTab === 'output' ? (
-                              <>
-                                <CheckIcon className="h-4 w-4 mr-1 text-green-600" />
-                                Copied!
-                              </>
-                            ) : (
-                              <>
-                                <ClipboardDocumentIcon className="h-4 w-4 mr-1" />
-                                Copy
-                              </>
-                            )}
-                          </button>
                         </div>
                         <div className="overflow-x-auto">
                           <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono bg-gray-50 p-4 rounded-lg border border-gray-200 min-w-0 max-h-[400px] overflow-y-auto">
@@ -588,24 +620,8 @@ export const SystemPromptViewer: React.FC<SystemPromptViewerProps> = ({ surveyId
 
                     {activeTab === 'metadata' && isLLMInteraction(selectedItem) && selectedItem.interaction_metadata && Object.keys(selectedItem.interaction_metadata).length > 0 && (
                       <div>
-                        <div className="flex items-center justify-between mb-2">
+                        <div className="mb-2">
                           <h4 className="text-sm font-medium text-gray-900">Metadata</h4>
-                          <button
-                            onClick={() => copyToClipboard(JSON.stringify(selectedItem.interaction_metadata, null, 2), 'metadata')}
-                            className="flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
-                          >
-                            {copiedTab === 'metadata' ? (
-                              <>
-                                <CheckIcon className="h-4 w-4 mr-1 text-green-600" />
-                                Copied!
-                              </>
-                            ) : (
-                              <>
-                                <ClipboardDocumentIcon className="h-4 w-4 mr-1" />
-                                Copy
-                              </>
-                            )}
-                          </button>
                         </div>
                         <div className="overflow-x-auto">
                           <pre className="text-sm text-gray-700 bg-gray-50 p-4 rounded-lg border border-gray-200 min-w-0 max-h-[400px] overflow-y-auto">

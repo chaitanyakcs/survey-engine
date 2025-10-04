@@ -4,7 +4,7 @@ Enhanced response models for detailed question-level evaluation results
 """
 
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from enum import Enum
 
 class QuestionType(str, Enum):
@@ -127,10 +127,10 @@ class AiRAComparisonResponse(BaseModel):
 
 # Utility functions for converting between internal and API models
 
-def convert_aira_result_to_api(aira_result, include_detailed_questions: bool = True) -> AiRAEvaluationResponse:
+def convert_aira_result_to_api(aira_result: Any, include_detailed_questions: bool = True) -> AiRAEvaluationResponse:
     """Convert internal AiRAEvaluationResult to API response model"""
 
-    from ..modules.aira_v1_evaluator import AiRAEvaluationResult
+    # from ..modules.aira_v1_evaluator import AiRAEvaluationResult  # Used conditionally
 
     # Convert pillar results
     pillar_responses = []

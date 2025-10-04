@@ -206,9 +206,32 @@ async def upload_and_analyze_document(
     """
     logger.info(f"📄 [RFQ API] Received document upload: filename='{file.filename}', content_type='{file.content_type}'")
 
+    # Create DocumentUpload record immediately to track processing status
+    from src.database.models import DocumentUpload
+    
+    document_upload = DocumentUpload(
+        filename=file.filename or "document.docx",
+        original_filename=file.filename or "document.docx",
+        file_size=0,  # Will update after reading
+        content_type=file.content_type or "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        session_id=session_id,
+        processing_status="pending",
+        uploaded_by=None  # Could add user tracking later
+    )
+    db.add(document_upload)
+    db.commit()
+    db.refresh(document_upload)
+    
+    logger.info(f"✅ [RFQ API] Created DocumentUpload record with ID: {document_upload.id}, session_id: {session_id}")
+
     try:
         # Validate file type
         if not file.filename or not file.filename.lower().endswith('.docx'):
+            # Update status to failed
+            document_upload.processing_status = "failed"
+            document_upload.error_message = "Only DOCX files are supported"
+            db.commit()
+            
             raise HTTPException(
                 status_code=400,
                 detail="Only DOCX files are supported. Please upload a Microsoft Word document."
@@ -225,9 +248,19 @@ async def upload_and_analyze_document(
             raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
         if len(file_content) > 10 * 1024 * 1024:  # 10MB limit
+            # Update status to failed
+            document_upload.processing_status = "failed"
+            document_upload.error_message = "File too large. Maximum size is 10MB"
+            db.commit()
+            
             raise HTTPException(status_code=400, detail="File too large. Maximum size is 10MB")
 
         logger.info(f"✅ [RFQ API] File read successfully, size: {len(file_content)} bytes")
+        
+        # Update file size and status to processing
+        document_upload.file_size = len(file_content)
+        document_upload.processing_status = "processing"
+        db.commit()
 
         # Parse document using enhanced document parser
         logger.info(f"🤖 [RFQ API] Starting document analysis")
@@ -246,6 +279,13 @@ async def upload_and_analyze_document(
         logger.info(f"✅ [RFQ API] Document analysis completed")
         logger.info(f"📊 [RFQ API] Analysis confidence: {analysis_result.get('rfq_analysis', {}).get('confidence', 0)}")
         logger.info(f"📊 [RFQ API] Field mappings: {len(analysis_result.get('rfq_analysis', {}).get('field_mappings', []))}")
+
+        # Update DocumentUpload record to completed
+        document_upload.processing_status = "completed"
+        document_upload.analysis_result = analysis_result
+        db.commit()
+        
+        logger.info(f"✅ [RFQ API] Updated DocumentUpload record to completed status")
 
         # Create response
         response = DocumentAnalysisResponse(
@@ -275,6 +315,13 @@ async def upload_and_analyze_document(
             error_message = "AI service returned invalid response. Please try again."
         else:
             error_message = f"Processing error: {str(e)}"
+        
+        # Update DocumentUpload record to failed
+        document_upload.processing_status = "failed"
+        document_upload.error_message = error_message
+        db.commit()
+        
+        logger.info(f"✅ [RFQ API] Updated DocumentUpload record to failed status")
 
         # Return error response instead of throwing exception
         error_response = DocumentAnalysisResponse(
@@ -301,6 +348,154 @@ async def upload_and_analyze_document(
         )
 
         return error_response
+
+
+@router.get("/status/{session_id}", response_model=Dict[str, Any])
+async def get_document_processing_status(
+    session_id: str,
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Get the current processing status for a document upload session.
+    Returns: current status, progress, and any results if completed.
+    """
+    logger.info(f"📊 [RFQ API] Checking processing status for session_id={session_id}")
+    
+    try:
+        # Check if we have any active WebSocket connections for this session
+        from src.api.field_extraction import rfq_parsing_manager
+        
+        has_active_connections = session_id in rfq_parsing_manager.active_connections
+        logger.info(f"🔍 [RFQ API] Active WebSocket connections for session_id={session_id}: {has_active_connections}")
+        
+        # Query database for document upload record by session_id
+        from src.database.models import DocumentUpload
+        
+        document_upload = db.query(DocumentUpload).filter(
+            DocumentUpload.session_id == session_id
+        ).order_by(DocumentUpload.created_at.desc()).first()
+        
+        if document_upload:
+            logger.info(f"📄 [RFQ API] Found document upload record for session_id={session_id}: status={document_upload.processing_status}")
+            
+            # Return status based on database record
+            if document_upload.processing_status == 'completed':
+                return {
+                    "status": "completed",
+                    "session_id": session_id,
+                    "processing_status": document_upload.processing_status,
+                    "has_results": document_upload.analysis_result is not None,
+                    "timestamp": document_upload.updated_at.isoformat() if document_upload.updated_at else None,
+                    "message": "Document processing completed successfully"
+                }
+            elif document_upload.processing_status == 'failed':
+                return {
+                    "status": "failed",
+                    "session_id": session_id,
+                    "processing_status": document_upload.processing_status,
+                    "error_message": document_upload.error_message,
+                    "timestamp": document_upload.updated_at.isoformat() if document_upload.updated_at else None,
+                    "message": "Document processing failed"
+                }
+            elif document_upload.processing_status in ['pending', 'processing']:
+                return {
+                    "status": "in_progress",
+                    "session_id": session_id,
+                    "processing_status": document_upload.processing_status,
+                    "has_active_connections": has_active_connections,
+                    "timestamp": document_upload.updated_at.isoformat() if document_upload.updated_at else None,
+                    "message": "Document processing in progress"
+                }
+        
+        # If no database record found, check if there are active WebSocket connections
+        if has_active_connections:
+            logger.info(f"⏳ [RFQ API] No database record but active WebSocket connections found")
+            return {
+                "status": "in_progress",
+                "session_id": session_id,
+                "processing_status": "processing",
+                "has_active_connections": True,
+                "message": "Document processing in progress (WebSocket active)"
+            }
+        
+        # No active processing found
+        logger.info(f"❌ [RFQ API] No active processing found for session_id={session_id}")
+        return {
+            "status": "not_found",
+            "session_id": session_id,
+            "message": "No active document processing found for this session"
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ [RFQ API] Error checking processing status for session_id={session_id}: {str(e)}", exc_info=True)
+        return {
+            "status": "error",
+            "session_id": session_id,
+            "error": str(e),
+            "message": "Error checking processing status"
+        }
+
+
+@router.get("/status/{session_id}/results", response_model=DocumentAnalysisResponse)
+async def get_document_analysis_results(
+    session_id: str,
+    db: Session = Depends(get_db)
+) -> DocumentAnalysisResponse:
+    """
+    Get the completed analysis results for a document upload session.
+    Returns: document content, RFQ analysis, and field mappings if processing is completed.
+    """
+    logger.info(f"📊 [RFQ API] Getting analysis results for session_id={session_id}")
+    
+    try:
+        # Query database for document upload record by session_id
+        from src.database.models import DocumentUpload
+        
+        document_upload = db.query(DocumentUpload).filter(
+            DocumentUpload.session_id == session_id
+        ).order_by(DocumentUpload.created_at.desc()).first()
+        
+        if not document_upload:
+            logger.warning(f"❌ [RFQ API] No document upload record found for session_id={session_id}")
+            raise HTTPException(
+                status_code=404,
+                detail="No document processing found for this session"
+            )
+        
+        if document_upload.processing_status != 'completed':
+            logger.warning(f"⚠️ [RFQ API] Document processing not completed for session_id={session_id}, status={document_upload.processing_status}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Document processing not completed. Current status: {document_upload.processing_status}"
+            )
+        
+        if not document_upload.analysis_result:
+            logger.warning(f"⚠️ [RFQ API] No analysis results available for session_id={session_id}")
+            raise HTTPException(
+                status_code=404,
+                detail="Analysis results not available"
+            )
+        
+        logger.info(f"✅ [RFQ API] Returning analysis results for session_id={session_id}")
+        
+        # Create response from stored analysis result
+        response = DocumentAnalysisResponse(
+            document_content=document_upload.analysis_result.get("document_content", {}),
+            rfq_analysis=document_upload.analysis_result.get("rfq_analysis", {}),
+            processing_status="completed",
+            errors=document_upload.analysis_result.get("errors", [])
+        )
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [RFQ API] Error getting analysis results for session_id={session_id}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Error retrieving analysis results"
+        )
 
 
 @router.post("/enhanced", response_model=EnhancedRFQResponse)

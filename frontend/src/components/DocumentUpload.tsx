@@ -92,6 +92,21 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
                 progress: progressData.progress,
                 message: progressData.message
               });
+            } else if (progressData.type === 'completed') {
+              console.log('✅ [Document Upload] Received completion message from WebSocket');
+              setUploadProgress({
+                stage: 'completed',
+                progress: 100,
+                message: progressData.message || 'Document analysis completed!'
+              });
+            } else if (progressData.type === 'error') {
+              console.log('❌ [Document Upload] Received error message from WebSocket');
+              setUploadProgress({
+                stage: 'error',
+                progress: 0,
+                message: progressData.message || 'Processing failed',
+                error: progressData.error
+              });
             }
           } catch (error) {
             console.warn('⚠️ [Document Upload] Failed to parse WebSocket message:', error);
@@ -176,6 +191,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
 
     const file = files[0];
     uploadDocument(file);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleDrop = useCallback((e: React.DragEvent) => {

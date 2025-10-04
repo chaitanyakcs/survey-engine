@@ -4,12 +4,13 @@ Admin API endpoints for database management
 
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from src.database.connection import get_db
 import subprocess
-import os
 import logging
 
 logger = logging.getLogger(__name__)
+
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
@@ -127,4 +128,82 @@ async def fix_migration_state(db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=500,
             detail=f"Error fixing migration state: {str(e)}"
+        )
+
+@router.post("/fix-document-uploads-schema")
+async def fix_document_uploads_schema(db: Session = Depends(get_db)):
+    """
+    Fix the document_uploads table schema by adding missing session_id column
+    """
+    try:
+        logger.info("🔧 Fixing document_uploads table schema...")
+        
+        # Check if session_id column exists
+        result = db.execute(text("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'document_uploads' AND column_name = 'session_id'
+        """))
+        
+        if result.fetchone():
+            logger.info("✅ session_id column already exists")
+        else:
+            logger.info("❌ session_id column missing - adding it")
+            db.execute(text("ALTER TABLE document_uploads ADD COLUMN session_id VARCHAR(100)"))
+            logger.info("✅ Added session_id column")
+        
+        # Check if uploaded_by column exists
+        result = db.execute(text("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'document_uploads' AND column_name = 'uploaded_by'
+        """))
+        
+        if result.fetchone():
+            logger.info("✅ uploaded_by column already exists")
+        else:
+            logger.info("❌ uploaded_by column missing - adding it")
+            db.execute(text("ALTER TABLE document_uploads ADD COLUMN uploaded_by VARCHAR(255)"))
+            logger.info("✅ Added uploaded_by column")
+        
+        # Make original_filename nullable
+        db.execute(text("ALTER TABLE document_uploads ALTER COLUMN original_filename DROP NOT NULL"))
+        logger.info("✅ Made original_filename nullable")
+        
+        # Make file_size nullable
+        db.execute(text("ALTER TABLE document_uploads ALTER COLUMN file_size DROP NOT NULL"))
+        logger.info("✅ Made file_size nullable")
+        
+        # Create index on session_id if it doesn't exist
+        try:
+            db.execute(text("CREATE INDEX idx_document_uploads_session_id ON document_uploads (session_id)"))
+            logger.info("✅ Created session_id index")
+        except Exception as e:
+            if "already exists" in str(e):
+                logger.info("✅ session_id index already exists")
+            else:
+                raise e
+        
+        # Commit all changes
+        db.commit()
+        
+        logger.info("✅ Document uploads schema fix completed successfully")
+        return {
+            "status": "success",
+            "message": "Document uploads schema fixed successfully",
+            "changes": [
+                "Added session_id column",
+                "Added uploaded_by column", 
+                "Made original_filename nullable",
+                "Made file_size nullable",
+                "Created session_id index"
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error fixing document uploads schema: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fixing document uploads schema: {str(e)}"
         )

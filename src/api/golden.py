@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from sqlalchemy.orm import Session
 from src.database import get_db
 from src.services.golden_service import GoldenService
-# from src.services.document_parser import document_parser, DocumentParsingError
+from src.services.document_parser import document_parser, DocumentParsingError
 from src.utils.error_messages import UserFriendlyError, create_error_response
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
@@ -253,7 +253,9 @@ async def parse_document(
         logger.info(f"📊 [Document Parse] Survey data keys: {list(survey_data.keys()) if isinstance(survey_data, dict) else 'Not a dict'}")
         if isinstance(survey_data, dict):
             logger.info(f"📊 [Document Parse] Survey title: {survey_data.get('title', 'No title')}")
-            logger.info(f"📊 [Document Parse] Survey description: {survey_data.get('description', 'No description')[:100]}...")
+            description = survey_data.get('description', 'No description')
+            desc_preview = description[:100] if description is not None else '<null>'
+            logger.info(f"📊 [Document Parse] Survey description: {desc_preview}...")
             logger.info(f"📊 [Document Parse] Questions count: {len(survey_data.get('questions', []))}")
             logger.info(f"📊 [Document Parse] Confidence score: {survey_data.get('confidence_score', 'No score')}")
             logger.info(f"📊 [Document Parse] Methodologies: {survey_data.get('methodologies', [])}")

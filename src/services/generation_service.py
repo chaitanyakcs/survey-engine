@@ -363,61 +363,6 @@ class GenerationService:
                     "survey": survey_data
                 }
 
-                # Handle different output formats from Replicate
-                if isinstance(output, list):
-                    survey_text = "".join(output)
-                    logger.info(f"📝 [GenerationService] Joined list response, length: {len(survey_text)}")
-                else:
-                    survey_text = str(output)
-                    logger.info(f"📝 [GenerationService] String response, length: {len(survey_text)}")
-
-                logger.info(f"📊 [GenerationService] Final response length: {len(survey_text)} characters")
-
-                # Log detailed JSON object count for debugging
-                opening_braces = survey_text.count('{')
-                closing_braces = survey_text.count('}')
-                logger.info(f"🔍 [GenerationService] JSON structure analysis:")
-                logger.info(f"🔍 [GenerationService] - Opening braces {{ : {opening_braces}")
-                logger.info(f"🔍 [GenerationService] - Closing braces }} : {closing_braces}")
-                logger.info(f"🔍 [GenerationService] - Brace balance: {opening_braces - closing_braces}")
-
-                # Count potential question objects
-                import re
-                id_text_pairs = len([m for m in re.finditer(r'"id"[^}]*"text"', survey_text)])
-                text_id_pairs = len([m for m in re.finditer(r'"text"[^}]*"id"', survey_text)])
-                logger.info(f"🔍 [GenerationService] - Potential question patterns: {id_text_pairs + text_id_pairs}")
-
-                # Track question extraction metrics
-                self._log_question_extraction_metrics(survey_text)
-
-                # Log the full response for debugging (but truncate if too long)
-                if len(survey_text) > 2000:
-                    logger.info(f"🔍 [GenerationService] Full LLM response (truncated): {survey_text[:2000]}...")
-                    logger.info(f"🔍 [GenerationService] Response end: ...{survey_text[-500:]}")
-                else:
-                    logger.info(f"🔍 [GenerationService] Full LLM response: {survey_text}")
-
-                # Check if response is empty or too short
-                if not survey_text or len(survey_text.strip()) < 10:
-                    logger.error("❌ [GenerationService] Empty or very short response from API")
-                    logger.error(f"❌ [GenerationService] Response content: '{survey_text}'")
-                    raise Exception("API returned empty or invalid response. Please check your API configuration and try again.")
-
-                # Extract survey JSON (sanitization happens inside _extract_survey_json)
-                logger.info("🔍 [GenerationService] Extracting survey JSON from raw LLM output...")
-                survey_json = self._extract_survey_json(survey_text)
-
-                final_question_count = get_questions_count(survey_json)
-                logger.info(f"🎉 [GenerationService] Successfully generated survey with {final_question_count} questions")
-                logger.info(f"🎉 [GenerationService] Survey keys: {list(survey_json.keys())}")
-
-                # Log final extraction summary
-                self._log_final_extraction_summary(survey_json, survey_text)
-
-                return {
-                    "survey": survey_json
-                }
-
         except UserFriendlyError as e:
             logger.error(f"❌ [GenerationService] UserFriendlyError: {e.message}")
             # Re-raise user-friendly errors as-is
@@ -571,32 +516,48 @@ class GenerationService:
 
     def _gentle_sanitize_json(self, raw_text: str) -> str:
         """
-        Gentle JSON sanitization that only fixes obvious issues without corrupting valid JSON.
+        Gentle JSON sanitization that fixes control characters and obvious issues without corrupting valid JSON.
         """
         import re
-        
+
         logger.info("🧹 [GenerationService] Starting gentle JSON sanitization...")
-        
+
+        # CRITICAL FIX: Remove invalid control characters first
+        # Remove all control characters except \n, \t, \r which are handled later
+        control_chars_pattern = r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]'
+        sanitized = re.sub(control_chars_pattern, '', raw_text)
+        logger.info(f"🧹 [GenerationService] Removed control characters. Length: {len(raw_text)} -> {len(sanitized)}")
+
         # Only remove markdown code blocks if present
-        sanitized = re.sub(r'^.*?```(?:json)?\s*', '', raw_text, flags=re.DOTALL)
+        sanitized = re.sub(r'^.*?```(?:json)?\s*', '', sanitized, flags=re.DOTALL)
         sanitized = re.sub(r'```.*$', '', sanitized, flags=re.DOTALL)
-        
+
         # Remove any leading text before the first {
         sanitized = re.sub(r'^[^{]*', '', sanitized)
-        
+
         # Find last } and trim properly
         last_brace_pos = sanitized.rfind('}')
         if last_brace_pos >= 0:
             sanitized = sanitized[:last_brace_pos + 1]
-        
+
+        # Fix control characters and newlines within JSON strings
+        # Replace problematic newlines, tabs, carriage returns within quoted strings
+        def clean_string_content(match):
+            content = match.group(1)
+            # Replace control characters with spaces
+            content = re.sub(r'[\t\r\n]+', ' ', content)
+            # Collapse multiple spaces
+            content = re.sub(r'\s+', ' ', content)
+            return f'"{content.strip()}"'
+
+        # Apply to quoted strings
+        sanitized = re.sub(r'"([^"]*)"', clean_string_content, sanitized)
+
         # Only fix obvious JSON issues:
         # 1. Remove trailing commas
         sanitized = re.sub(r',\s*}', '}', sanitized)
         sanitized = re.sub(r',\s*]', ']', sanitized)
-        
-        # 2. Fix line breaks within string values (but preserve structure)
-        sanitized = re.sub(r'"([^"]*)\n([^"]*)"', r'"\1 \2"', sanitized)
-        
+
         logger.info(f"🧹 [GenerationService] Gentle sanitization complete. Length: {len(raw_text)} -> {len(sanitized)}")
         return sanitized
 
@@ -617,6 +578,27 @@ class GenerationService:
         except json.JSONDecodeError as e:
             logger.info(f"⚠️ [GenerationService] Direct JSON parsing failed: {e}")
             logger.info(f"🔍 [GenerationService] JSON error at position {e.pos}: {raw_text[max(0, e.pos-50):e.pos+50]}")
+
+        # Strategy 1.5: Quick fix for common delimiter issues
+        logger.info("🔧 [GenerationService] Trying quick delimiter fixes...")
+        try:
+            import re
+            # Fix common JSON syntax issues that cause "Expecting ',' delimiter" errors
+            quick_fixed = raw_text
+
+            # Fix missing commas between objects/arrays
+            quick_fixed = re.sub(r'}\s*{', '}, {', quick_fixed)
+            quick_fixed = re.sub(r']\s*\[', '], [', quick_fixed)
+            quick_fixed = re.sub(r'}\s*\[', '}, [', quick_fixed)
+            quick_fixed = re.sub(r']\s*{', '], {', quick_fixed)
+
+            # Try parsing the quick-fixed version
+            result = json.loads(quick_fixed)
+            logger.info(f"✅ [GenerationService] Quick delimiter fix succeeded!")
+            self._validate_and_fix_survey_structure(result)
+            return result
+        except Exception as e:
+            logger.info(f"⚠️ [GenerationService] Quick delimiter fix failed: {e}")
 
         # Strategy 2: Try to extract JSON from markdown code blocks
         logger.info("🔧 [GenerationService] Trying JSON extraction from markdown...")
@@ -683,8 +665,21 @@ class GenerationService:
         except Exception as e:
             logger.warning(f"⚠️ [GenerationService] Force rebuild failed: {e}")
 
-        # If all strategies fail, create a minimal valid survey
+        # If all strategies fail, log the problematic response and create a minimal valid survey
         logger.error("❌ [GenerationService] All JSON extraction strategies failed")
+        logger.error(f"❌ [GenerationService] Raw response length: {len(raw_text)}")
+        logger.error(f"❌ [GenerationService] Raw response preview (first 1000 chars): {raw_text[:1000]}")
+        logger.error(f"❌ [GenerationService] Raw response ending (last 500 chars): {raw_text[-500:]}")
+
+        # Check for specific problematic patterns
+        if '\x00' in raw_text:
+            logger.error("❌ [GenerationService] Response contains NULL bytes")
+        if any(ord(c) < 32 and c not in '\n\r\t' for c in raw_text[:1000]):
+            logger.error("❌ [GenerationService] Response contains unexpected control characters")
+            # Show hex representation of problematic characters
+            problem_chars = [f"0x{ord(c):02x}" for c in raw_text[:100] if ord(c) < 32 and c not in '\n\r\t']
+            logger.error(f"❌ [GenerationService] Control characters found: {problem_chars}")
+
         return self._create_minimal_survey(raw_text)
 
     def _extract_direct_json(self, sanitized_text: str) -> Optional[Dict[str, Any]]:
@@ -1303,7 +1298,9 @@ class GenerationService:
         
         # Debug: Show the questions we extracted
         for i, q in enumerate(questions):
-            logger.info(f"🔍 [GenerationService] Question {i+1}: id='{q.get('id', 'N/A')}', text='{q.get('text', 'N/A')[:50]}...', options={len(q.get('options', []))}")
+            question_text = q.get('text', 'N/A')
+            text_preview = question_text[:50] if question_text is not None else '<null>'
+            logger.info(f"🔍 [GenerationService] Question {i+1}: id='{q.get('id', 'N/A')}', text='{text_preview}...', options={len(q.get('options', []))}")
 
         # Remove duplicates based on text similarity
         unique_questions = []

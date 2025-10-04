@@ -1059,7 +1059,7 @@ export interface AppStore {
   resetDocumentProcessingState: () => void;
 
   // Document Processing State Persistence
-  persistDocumentProcessingState: (isProcessing: boolean) => void;
+  persistDocumentProcessingState: (isProcessing: boolean, sessionId?: string) => void;
   restoreDocumentProcessingState: () => boolean;
 
   // Enhanced RFQ Conversion

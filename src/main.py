@@ -5,10 +5,14 @@ from src.config import settings
 import logging
 import asyncio
 import json
-from typing import Dict, List
+from typing import Dict, List, Any
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging with timestamps
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 # Suppress SQLAlchemy engine logs
 logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
@@ -35,24 +39,24 @@ app.add_middleware(
 
 # WebSocket connection manager
 class ConnectionManager:
-    def __init__(self):
+    def __init__(self) -> None:
         self.active_connections: Dict[str, List[WebSocket]] = {}
 
-    async def connect(self, websocket: WebSocket, workflow_id: str):
+    async def connect(self, websocket: WebSocket, workflow_id: str) -> None:
         await websocket.accept()
         if workflow_id not in self.active_connections:
             self.active_connections[workflow_id] = []
         self.active_connections[workflow_id].append(websocket)
         logger.info(f"🔌 [WebSocket] Connection established for workflow_id={workflow_id}. Total active: {len(self.active_connections[workflow_id])}")
 
-    def disconnect(self, websocket: WebSocket, workflow_id: str):
+    def disconnect(self, websocket: WebSocket, workflow_id: str) -> None:
         if workflow_id in self.active_connections:
             self.active_connections[workflow_id].remove(websocket)
             if not self.active_connections[workflow_id]:
                 del self.active_connections[workflow_id]
         logger.info(f"🔌 [WebSocket] Connection closed for workflow_id={workflow_id}")
 
-    async def send_progress(self, workflow_id: str, message: dict):
+    async def send_progress(self, workflow_id: str, message: Dict[str, Any]) -> None:
         if workflow_id in self.active_connections:
             for connection in self.active_connections[workflow_id]:
                 try:
@@ -61,14 +65,14 @@ class ConnectionManager:
                 except Exception as e:
                     logger.warning(f"⚠️ [WebSocket] Failed to send message to workflow_id={workflow_id}: {str(e)}")
 
-    async def broadcast_to_workflow(self, workflow_id: str, message: dict):
+    async def broadcast_to_workflow(self, workflow_id: str, message: Dict[str, Any]) -> None:
         """Alias for send_progress for compatibility with workflow service"""
         await self.send_progress(workflow_id, message)
 
 manager = ConnectionManager()
 
 @app.on_event("startup")
-async def startup_event():
+async def startup_event() -> None:
     logger.info("🚀 [FastAPI] Starting Survey Generation Engine...")
     
     # Note: Models are preloaded by start.sh before FastAPI starts
@@ -94,7 +98,7 @@ app.include_router(admin.router)
 
 
 @app.websocket("/ws/survey/{workflow_id}")
-async def websocket_endpoint(websocket: WebSocket, workflow_id: str):
+async def websocket_endpoint(websocket: WebSocket, workflow_id: str) -> None:
     """
     WebSocket endpoint for real-time survey generation progress
     """
@@ -109,7 +113,7 @@ async def websocket_endpoint(websocket: WebSocket, workflow_id: str):
 
 
 @app.websocket("/ws/rfq-parsing/{session_id}")
-async def rfq_parsing_websocket(websocket: WebSocket, session_id: str):
+async def rfq_parsing_websocket(websocket: WebSocket, session_id: str) -> None:
     """
     WebSocket endpoint for real-time progress updates during RFQ document parsing.
     """
@@ -137,12 +141,12 @@ async def rfq_parsing_websocket(websocket: WebSocket, session_id: str):
 
 
 @app.get("/")
-async def root():
+async def root() -> Dict[str, Any]:
     """Root endpoint - should be served by nginx, but fallback here"""
     return {"message": "Survey Generation Engine API", "status": "running", "version": "0.1.0"}
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> Dict[str, Any]:
     return {"status": "healthy", "version": "0.1.0"}
 
 

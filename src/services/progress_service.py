@@ -12,7 +12,7 @@ class ProgressService:
     def __init__(self, ws_client: Optional[WebSocketNotificationService] = None):
         self.ws_client = ws_client
     
-    async def send_progress_update(self, session_id: str, step: str, percent: int, message: str, details: Optional[Dict[str, Any]] = None):
+    async def send_progress_update(self, session_id: str, step: str, percent: int, message: str, details: Optional[Dict[str, Any]] = None) -> None:
         """Send a progress update via WebSocket."""
         if not self.ws_client:
             logger.warning(f"⚠️ [ProgressService] No WebSocket client available, skipping progress update")
@@ -34,7 +34,7 @@ class ProgressService:
         except Exception as e:
             logger.error(f"❌ [ProgressService] Failed to send progress update: {str(e)}")
     
-    async def send_field_extraction_progress(self, session_id: str, step: str, message: str, extracted_data: Optional[Dict[str, Any]] = None):
+    async def send_field_extraction_progress(self, session_id: str, step: str, message: str, extracted_data: Optional[Dict[str, Any]] = None) -> None:
         """Send field extraction progress update."""
         # Import progress tracker
         from .progress_tracker import get_progress_tracker

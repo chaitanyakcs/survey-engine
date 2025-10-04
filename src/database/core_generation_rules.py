@@ -1107,7 +1107,8 @@ def validate_rules_structure() -> None:
             pillar_counts[pillar] = 0
             pillar_weights[pillar] = 0.0
         pillar_counts[pillar] += 1
-        pillar_weights[pillar] += float(rule['weight'])
+        weight_value = rule.get('weight', 0)
+        pillar_weights[pillar] += float(weight_value) if weight_value is not None else 0.0
 
     # Expected counts
     expected_counts = {
@@ -1151,7 +1152,6 @@ def validate_rules_structure() -> None:
     )
 
     print(f"\n{'✅ Validation PASSED' if is_valid else '❌ Validation FAILED'}")
-    return is_valid
 
 if __name__ == "__main__":
     validate_rules_structure()

@@ -115,6 +115,7 @@ run_migrations() {
     log_info "Executing migration command..."
     if $UV_CMD run alembic upgrade head 2>&1; then
         log_success "Database migrations completed successfully"
+        return 0
     else
         local exit_code=$?
         log_error "Database migrations failed with exit code $exit_code"
@@ -128,6 +129,7 @@ run_migrations() {
         # For Railway, we should be more lenient but still log the issue
         log_warning "Migration failed, but continuing for Railway deployment..."
         log_warning "This may cause database schema issues. Check Railway logs for details."
+        log_warning "You can fix this by running the admin endpoint: /api/v1/admin/fix-document-uploads-schema"
         return 0
     fi
 }
@@ -465,8 +467,11 @@ main() {
     check_redis || true  # Redis is optional, don't exit if unavailable
     
     log_info "Step 3: Running migrations and seeding..."
-    # Use our comprehensive startup script for database operations
-    if [ -f "start-local.sh" ]; then
+    # For Railway, use Alembic migrations directly
+    if [ -n "$RAILWAY_ENVIRONMENT" ] || [ -n "$RAILWAY_PROJECT_ID" ]; then
+        log_info "Railway environment detected - using Alembic migrations..."
+        run_migrations || exit 1
+    elif [ -f "start-local.sh" ]; then
         log_info "Using comprehensive startup script for database operations..."
         ./start-local.sh migrate
         ./start-local.sh seed

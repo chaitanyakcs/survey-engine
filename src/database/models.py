@@ -321,9 +321,11 @@ class DocumentUpload(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     filename = Column(String(255), nullable=False)
-    original_filename = Column(String(255), nullable=False)
-    file_size = Column(Integer, nullable=False)
+    original_filename = Column(String(255), nullable=True)  # Made nullable for compatibility
+    file_size = Column(Integer, nullable=True)  # Made nullable since we update it after reading
     content_type = Column(String(100))
+    session_id = Column(String(100), nullable=True, index=True)  # Track session for status lookup
+    uploaded_by = Column(String(255), nullable=True)  # User tracking (optional)
     upload_timestamp = Column(DateTime(timezone=True), default=func.now())
     processing_status = Column(
         String(50),
@@ -345,6 +347,7 @@ class DocumentUpload(Base):
         Index('idx_document_uploads_status', 'processing_status'),
         Index('idx_document_uploads_timestamp', 'upload_timestamp'),
         Index('idx_document_uploads_filename', 'original_filename'),
+        Index('idx_document_uploads_session_id', 'session_id'),  # Index for fast session lookup
     )
 
 

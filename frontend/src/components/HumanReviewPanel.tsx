@@ -582,29 +582,6 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
         </div>
       </div>
 
-      {/* Review Criteria Checklist */}
-      <div className="bg-gray-50 rounded-lg p-3">
-        <h3 className="font-medium text-gray-900 mb-2 text-sm">Review Criteria</h3>
-        <div className="grid grid-cols-2 gap-2">
-          {[
-            'Clear instructions',
-            'Appropriate methodology',
-            'No biased language',
-            'Suitable length',
-            'Demographics included',
-            'Actionable insights'
-          ].map((criteria, index) => (
-            <div key={index} className="flex items-center space-x-2">
-              <input
-                type="checkbox"
-                className="w-3 h-3 text-yellow-600 rounded focus:ring-yellow-500"
-                defaultChecked={false}
-              />
-              <span className="text-xs text-gray-700">{criteria}</span>
-            </div>
-          ))}
-        </div>
-      </div>
 
       {/* Review Notes */}
       {(activeReview.review_status === 'pending' || activeReview.review_status === 'in_review') && (
