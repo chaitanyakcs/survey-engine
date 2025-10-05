@@ -112,7 +112,7 @@ const MAIN_WORKFLOW_STEPS: MainWorkflowStep[] = [
       {
         key: 'llm_processing',
         label: 'LLM Processing',
-        backendStep: 'generating_questions', // Primary step
+        backendStep: 'llm_processing', // Primary step
         message: 'AI creating and processing survey questions'
       },
       {
@@ -736,11 +736,8 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                       <div className="space-y-3 mb-6">
                         <h3 className="text-lg font-semibold text-gray-900 mb-4">Process Steps</h3>
                         {currentMainStep.subSteps.map((subStep, index) => {
-                          // Handle multiple backend steps for the same substep
-                          const isActive = (
-                            (subStep.backendStep === workflow.current_step) ||
-                            (subStep.key === 'llm_processing' && (workflow.current_step === 'generating_questions' || workflow.current_step === 'resuming_generation'))
-                          ) && workflowStatus === 'in_progress';
+                          // Check if this substep is currently active
+                          const isActive = (subStep.backendStep === workflow.current_step) && workflowStatus === 'in_progress';
                           
                           // Debug logging for substep status
                           if (subStep.key === 'llm_processing') {
@@ -760,7 +757,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                           const currentSubStepIndex = currentMainStep.subSteps.findIndex(s => s.backendStep === workflow.current_step);
                           
                           // Additional check: if we're on a step that comes after this substep in the workflow
-                          const stepOrder = ['preparing_generation', 'generating_questions', 'resuming_generation', 'parsing_output'];
+                          const stepOrder = ['preparing_generation', 'llm_processing', 'generating_questions', 'resuming_generation', 'parsing_output'];
                           const currentStepOrderIndex = workflow.current_step ? stepOrder.indexOf(workflow.current_step) : -1;
                           const thisStepOrderIndex = stepOrder.indexOf(subStep.backendStep);
                           
