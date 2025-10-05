@@ -81,7 +81,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
         'additional_questions',
         'programmer_instructions'
       ],
-      text_requirements: ['Study_Intro']
+      text_requirements: [
+        'study_intro',
+        'concept_intro',
+        'product_usage',
+        'confidentiality_agreement',
+        'methodology_instructions',
+        'closing_thank_you'
+      ]
     },
     // Smart defaults for survey logic
     survey_logic: {
@@ -1759,7 +1766,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
           'additional_questions',
           'programmer_instructions'
         ],
-        text_requirements: ['Study_Intro']
+        text_requirements: [
+          'study_intro',
+          'concept_intro',
+          'product_usage',
+          'confidentiality_agreement',
+          'methodology_instructions',
+          'closing_thank_you'
+        ]
       },
 
       // Smart defaults for survey logic

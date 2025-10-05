@@ -513,70 +513,100 @@ class PromptBuilder:
 
             # Create the prompt section
             content = [
-                "# 🚨 MANDATORY TEXT INTRODUCTION REQUIREMENTS 🚨",
+                "# 🚨 CRITICAL: MANDATORY TEXT BLOCK REQUIREMENTS 🚨",
                 "",
-                "⚠️ **CRITICAL**: The following text requirements are MANDATORY based on the research methodologies identified:",
+                "⚠️ **ABSOLUTELY CRITICAL**: The following text requirements are MANDATORY and MUST be included in EVERY survey:",
                 "",
                 text_requirements,
                 "",
-                "🚨 **IMPLEMENTATION REQUIREMENTS - MUST FOLLOW:**",
-                "1. Each mandatory text introduction MUST be included in the appropriate QNR section",
+                "🚨 **IMPLEMENTATION REQUIREMENTS - MUST FOLLOW EXACTLY:**",
+                "1. **EVERY** mandatory text block MUST be included in the appropriate QNR section",
                 "2. Use 'introText' for section introductions, 'textBlocks' for mid-section content, 'closingText' for endings",
-                "3. Use the specified labels (e.g., 'Study_Intro', 'Concept_Intro') in the text block 'label' field",
-                "4. Text blocks should have appropriate types: 'study_intro', 'concept_intro', 'product_usage', etc.",
+                "3. Use the specified labels (e.g., 'Study_Intro', 'Concept_Intro', 'Survey_Closing') in the text block 'label' field",
+                "4. Text blocks should have appropriate types: 'study_intro', 'concept_intro', 'product_usage', 'survey_closing', etc.",
                 "5. Follow the 7-section QNR structure with proper text placement",
+                "6. **MOST IMPORTANT**: Include 'closingText' in the final section for professional survey completion",
                 "",
-                "📋 **JSON TEXT BLOCK STRUCTURE EXAMPLES:**",
+                "📋 **COMPLETE TEXT BLOCK EXAMPLES - COPY THESE EXACTLY:**",
                 "",
-                "For Section 1 (Sample Plan) - Study Introduction:",
+                "=== SECTION 1 (Sample Plan) - Study Introduction ===",
                 '```json',
                 '"introText": {',
                 '  "id": "intro_1",',
                 '  "type": "study_intro",',
                 '  "label": "Study_Intro",',
-                '  "content": "Thank you for participating in this research study...",',
+                '  "content": "Thank you for participating in this research study about contact lenses. The survey will take about 15 to 20 minutes. Your responses are confidential, reported in aggregate, and used for research purposes only. Participation is voluntary and you may stop at any time without penalty.",',
                 '  "mandatory": true',
                 '}',
                 '```',
                 "",
-                "For Section 3 (Brand/Product Awareness) - Product Usage:",
+                "=== SECTION 3 (Brand/Product Awareness) - Product Usage ===",
                 '```json',
                 '"textBlocks": [',
                 '  {',
                 '    "id": "text_3",',
                 '    "type": "product_usage",',
                 '    "label": "Product_Usage",',
-                '    "content": "Before we begin, please tell us about your experience with...",',
+                '    "content": "Before we begin, please tell us about your experience with contact lenses and your current usage patterns.",',
                 '    "mandatory": true',
                 '  }',
                 ']',
                 '```',
                 "",
-                "For Section 4 (Concept Exposure) - Concept Introduction:",
+                "=== SECTION 4 (Concept Exposure) - Concept Introduction ===",
                 '```json',
                 '"introText": {',
                 '  "id": "intro_4",',
                 '  "type": "concept_intro",',
                 '  "label": "Concept_Intro",',
-                '  "content": "Please review the following concept carefully...",',
+                '  "content": "Please review the following product concept carefully. We will ask you questions about your reactions and preferences.",',
                 '  "mandatory": true',
                 '}',
                 '```',
                 "",
-                "🚨 **VALIDATION CHECKLIST - VERIFY BEFORE SUBMITTING:**",
+                "=== SECTION 7 (Programmer Instructions) - Survey Closing ===",
+                '```json',
+                '"closingText": {',
+                '  "id": "closing_1",',
+                '  "type": "survey_closing",',
+                '  "label": "Survey_Closing",',
+                '  "content": "Thank you for completing this survey! Your responses are valuable and will help us better understand market preferences. If you have any questions about this research, please contact us at research@company.com. You may now close this window.",',
+                '  "mandatory": true',
+                '}',
+                '```',
+                "",
+                "=== OPTIONAL: Confidentiality Agreement (if needed) ===",
+                '```json',
+                '"textBlocks": [',
+                '  {',
+                '    "id": "conf_1",',
+                '    "type": "confidentiality_agreement",',
+                '    "label": "Confidentiality_Agreement",',
+                '    "content": "This research contains confidential information. Please do not share any details with others outside this study.",',
+                '    "mandatory": true',
+                '  }',
+                ']',
+                '```',
+                "",
+                "🚨 **MANDATORY VALIDATION CHECKLIST - VERIFY ALL BEFORE SUBMITTING:**",
                 "- [ ] Study_Intro text block included in Section 1 (Sample Plan)",
-                "- [ ] Product_Usage text block included in Section 3 (Brand/Product Awareness)",
-                "- [ ] Concept_Intro text block included in Section 4 (Concept Exposure)",
+                "- [ ] Product_Usage text block included in Section 3 (Brand/Product Awareness) if applicable",
+                "- [ ] Concept_Intro text block included in Section 4 (Concept Exposure) if applicable",
+                "- [ ] **Survey_Closing text block included in Section 7 (Programmer Instructions) - THIS IS MANDATORY**",
                 "- [ ] All text blocks have correct 'label' field matching requirements",
                 "- [ ] All text blocks have 'mandatory': true",
+                "- [ ] All text blocks have proper 'type' field",
                 "",
-                "**QNR SECTION TEXT PLACEMENT:**",
-                "- **Sample Plan (Section 1)**: Study_Intro, Confidentiality_Agreement",
-                "- **Brand/Product Awareness (Section 3)**: Product_Usage introduction",
-                "- **Concept Exposure (Section 4)**: Concept_Intro for concept presentation",
-                "- **Methodology (Section 5)**: Methodology-specific instructions",
+                "**QNR SECTION TEXT PLACEMENT MAPPING:**",
+                "- **Sample Plan (Section 1)**: Study_Intro in introText, Confidentiality_Agreement in textBlocks (if needed)",
+                "- **Brand/Product Awareness (Section 3)**: Product_Usage in textBlocks (if applicable)",
+                "- **Concept Exposure (Section 4)**: Concept_Intro in introText (if applicable)",
+                "- **Methodology (Section 5)**: Methodology-specific instructions in textBlocks (if needed)",
+                "- **Programmer Instructions (Section 7)**: Survey_Closing in closingText (MANDATORY)",
                 "",
-                "🚨 **FAILURE TO INCLUDE THESE TEXT BLOCKS WILL RESULT IN INVALID SURVEY** 🚨",
+                "🚨 **CRITICAL FAILURE WARNING:**",
+                "🚨 **FAILURE TO INCLUDE THE SURVEY_CLOSING TEXT BLOCK WILL RESULT IN INVALID SURVEY** 🚨",
+                "🚨 **FAILURE TO INCLUDE ANY REQUIRED TEXT BLOCKS WILL RESULT IN INVALID SURVEY** 🚨",
                 ""
             ]
 
@@ -611,7 +641,9 @@ class PromptBuilder:
             if tag_lower in default_requirements:
                 required_texts.update(default_requirements[tag_lower])
         
-        # Always include Study_Intro as default
+        # Always include Study_Intro and Survey_Closing as mandatory defaults
+        required_texts.add("Study_Intro")
+        required_texts.add("Survey_Closing")
         if not required_texts:
             required_texts.add("Study_Intro")
         
@@ -643,6 +675,14 @@ class PromptBuilder:
             sections.append("- Assure response confidentiality")
             sections.append("- Explain research-only usage")
             sections.append("- Confirm no third-party sharing")
+            sections.append("")
+        
+        if "Survey_Closing" in required_texts:
+            sections.append("### Survey Closing (MANDATORY at end):")
+            sections.append("- Thank participants for completion")
+            sections.append("- Acknowledge value of their responses")
+            sections.append("- Provide contact information for questions")
+            sections.append("- Give clear completion instructions")
             sections.append("")
         
         sections.append("**IMPORTANT**: These text introductions must appear as standalone content blocks before their related question sections, not as question text.")
