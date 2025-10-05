@@ -999,7 +999,6 @@ export interface AppStore {
   
   
   // Actions
-  submitRFQ: (rfq: RFQRequest) => Promise<void>;
   submitEnhancedRFQ: (rfq: EnhancedRFQRequest) => Promise<void>;
   fetchSurvey: (surveyId: string) => Promise<void>;
   loadPillarScoresAsync: (surveyId: string) => Promise<any>;

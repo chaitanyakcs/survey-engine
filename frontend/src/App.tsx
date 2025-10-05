@@ -11,7 +11,7 @@ import { ToastContainer } from './components/Toast';
 import { SidebarProvider } from './contexts/SidebarContext';
 
 function App() {
-  const { toasts, removeToast, currentSurvey, workflow, recoverWorkflowState, restoreDocumentProcessingState, restoreEnhancedRfqState } = useAppStore();
+  const { toasts, removeToast, currentSurvey, recoverWorkflowState, restoreDocumentProcessingState, restoreEnhancedRfqState } = useAppStore();
   
   // Simple routing based on URL path
   const getCurrentPage = () => {

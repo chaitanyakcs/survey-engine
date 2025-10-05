@@ -28,6 +28,18 @@ const hasSections = (survey: Survey): boolean => {
   return !!survey.sections && survey.sections.length > 0;
 };
 
+// Utility function to safely render values that might be objects
+const safeRenderValue = (value: any): string => {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'boolean') return String(value);
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') {
+    return (value as any)?.text || (value as any)?.label || (value as any)?.name || JSON.stringify(value);
+  }
+  return String(value);
+};
+
 const QuestionCard: React.FC<{ 
   question: Question; 
   index: number; 
@@ -190,7 +202,10 @@ const QuestionCard: React.FC<{
                     <div key={idx} className="flex items-center space-x-2">
                       <input
                         type="text"
-                        value={typeof option === 'string' ? option : ((option as any)?.text || (option as any)?.label || 'Option')}
+                        value={typeof option === 'string' ? option : 
+                               typeof option === 'object' && option !== null ? 
+                                 (option as any)?.text || (option as any)?.label || 'Option' : 
+                                 String(option)}
                         onChange={(e) => updateOption(idx, e.target.value)}
                         className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm"
                         placeholder={`Option ${idx + 1}`}
@@ -220,7 +235,10 @@ const QuestionCard: React.FC<{
                     className="h-4 w-4 text-amber-600 border-gray-300"
                   />
                   <label className="ml-2 text-sm text-gray-700">
-                    {typeof option === 'string' ? option : ((option as any)?.text || (option as any)?.label || 'Option')}
+                    {typeof option === 'string' ? option : 
+                     typeof option === 'object' && option !== null ? 
+                       (option as any)?.text || (option as any)?.label || 'Option' : 
+                       String(option)}
                   </label>
                 </div>
               ))
@@ -240,7 +258,10 @@ const QuestionCard: React.FC<{
                     className="h-4 w-4 text-amber-600 border-gray-300"
                   />
                   <label className="ml-2 text-sm text-gray-700">
-                    {typeof option === 'string' ? option : ((option as any)?.text || (option as any)?.label || 'Option')}
+                    {typeof option === 'string' ? option : 
+                     typeof option === 'object' && option !== null ? 
+                       (option as any)?.text || (option as any)?.label || 'Option' : 
+                       String(option)}
                   </label>
                 </div>
               ))}
@@ -274,7 +295,10 @@ const QuestionCard: React.FC<{
                   <div className="flex items-center justify-center w-6 h-6 bg-amber-100 text-amber-600 rounded-full text-sm font-medium mr-3">
                     {idx + 1}
                   </div>
-                  <span className="text-sm text-gray-700 flex-1">{typeof option === 'string' ? option : ((option as any)?.text || (option as any)?.label || 'Option')}</span>
+                  <span className="text-sm text-gray-700 flex-1">{typeof option === 'string' ? option : 
+                     typeof option === 'object' && option !== null ? 
+                       (option as any)?.text || (option as any)?.label || 'Option' : 
+                       String(option)}</span>
                   <div className="flex space-x-1">
                     <button
                       disabled
@@ -354,7 +378,10 @@ const QuestionCard: React.FC<{
                   className="h-4 w-4 text-amber-600 border-gray-300"
                 />
                 <label className="ml-2 text-sm text-gray-700">
-                  {typeof option === 'string' ? option : ((option as any)?.text || (option as any)?.label || 'Option')}
+                  {typeof option === 'string' ? option : 
+                     typeof option === 'object' && option !== null ? 
+                       (option as any)?.text || (option as any)?.label || 'Option' : 
+                       String(option)}
                 </label>
               </div>
             ))}
@@ -373,7 +400,10 @@ const QuestionCard: React.FC<{
                   {question.options.slice(0, 3).map((option, idx) => (
                     <div key={idx} className="flex items-center justify-between p-2 bg-white rounded border">
                       <span className="text-sm text-gray-700">
-                        {typeof option === 'string' ? option : ((option as any)?.text || (option as any)?.label || 'Item')}
+                        {typeof option === 'string' ? option : 
+                         typeof option === 'object' && option !== null ? 
+                           (option as any)?.text || (option as any)?.label || 'Item' : 
+                           String(option)}
                       </span>
                       <div className="flex space-x-2">
                         {[1,2,3,4,5].map(num => (
@@ -453,7 +483,10 @@ const QuestionCard: React.FC<{
                   className="h-4 w-4 text-amber-600 border-gray-300 rounded"
                 />
                 <label className="ml-2 text-sm text-gray-700">
-                  {typeof option === 'string' ? option : ((option as any)?.text || (option as any)?.label || 'Option')}
+                  {typeof option === 'string' ? option : 
+                     typeof option === 'object' && option !== null ? 
+                       (option as any)?.text || (option as any)?.label || 'Option' : 
+                       String(option)}
                 </label>
               </div>
             ))}

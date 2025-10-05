@@ -196,20 +196,25 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const currentState = get();
     const currentProgress = currentState.workflow.progress || 0;
     const newProgress = workflowState.progress;
+    
 
     // Apply smooth progress transition to prevent jarring jumps
     let smoothedProgress = newProgress;
     if (newProgress !== undefined && newProgress !== currentProgress) {
-      // Only allow forward progress or resets (to prevent backward jumps)
-      if (newProgress >= currentProgress || newProgress === 0) {
+      // Only allow forward progress or legitimate resets
+      if (newProgress >= currentProgress) {
+        smoothedProgress = newProgress;
+      } else if (newProgress === 0) {
+        // Allow 0% reset (legitimate restart)
         smoothedProgress = newProgress;
       } else {
-        // Keep current progress if new progress is backward (unless it's a reset)
+        // Keep current progress if new progress is backward
         console.log('🚫 [Store] Preventing backward progress jump from', currentProgress, 'to', newProgress);
         smoothedProgress = currentProgress;
       }
     }
 
+    
     set((state) => ({
       workflow: {
         ...state.workflow,
@@ -217,6 +222,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
         ...(smoothedProgress !== undefined && { progress: smoothedProgress })
       }
     }));
+
+    // Persist workflow state for recovery
+    const updatedWorkflow = get().workflow;
+    if (updatedWorkflow.workflow_id && (updatedWorkflow.status === 'started' || updatedWorkflow.status === 'in_progress' || updatedWorkflow.status === 'paused' || updatedWorkflow.status === 'completed')) {
+      get().persistWorkflowState(updatedWorkflow.workflow_id, updatedWorkflow);
+      console.log('💾 [Store] Workflow state persisted after setWorkflowState');
+    }
 
     // Set up completion timeout protection
     const { workflowTimeoutId } = get();
@@ -341,119 +353,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
 
   // Actions
-  submitRFQ: async (rfq: RFQRequest) => {
-    try {
-      // Prevent multiple simultaneous workflows
-      const currentWorkflow = get().workflow;
-      if (currentWorkflow.status === 'started' || currentWorkflow.status === 'in_progress') {
-        console.warn('⚠️ [Store] Workflow already in progress, ignoring duplicate submission');
-        get().addToast({
-          type: 'warning',
-          title: 'Generation in Progress',
-          message: 'A survey is already being generated. Please wait for it to complete.',
-          duration: 5000
-        });
-        return;
-      }
-
-      // Clear any existing survey data and stale workflow state
-      set({
-        currentSurvey: undefined,
-        workflow: {
-          status: 'idle'
-        }
-      });
-
-      // Clear any persisted workflow state to prevent conflicts
-      localStorage.removeItem('survey_workflow_state');
-
-      // Set initial progress state
-      set((state) => ({
-        workflow: {
-          ...state.workflow,
-          status: 'started',
-          progress: 0,
-          current_step: 'initializing',
-          message: 'Submitting request and preparing workflow...'
-        }
-      }));
-
-      console.log('🚀 [Store] Starting new workflow submission');
-
-      // Convert basic RFQ to Enhanced RFQ with smart defaults
-      const enhancedRfq = get().createEnhancedRfqFromBasic(rfq);
-
-      console.log('🔄 [Store] Converted basic RFQ to enhanced RFQ with smart defaults:', {
-        originalFields: Object.keys(rfq),
-        enhancedSections: Object.keys(enhancedRfq),
-        industryClassification: enhancedRfq.advanced_classification?.industry_classification,
-        respondentClassification: enhancedRfq.advanced_classification?.respondent_classification,
-        methodologyTags: enhancedRfq.advanced_classification?.methodology_tags
-      });
-
-      // Submit using the enhanced RFQ flow for better context
-      // But we need to return the workflow response, not the enhanced RFQ response
-      // So let's call submitEnhancedRFQ directly with manual workflow handling
-      const { createEnhancedDescription } = await import('../utils/enhancedRfqConverter');
-      const enhancedDescription = createEnhancedDescription(enhancedRfq);
-
-      const enhancedRfqPayload = {
-        title: enhancedRfq.title,
-        description: enhancedDescription,
-        target_segment: enhancedRfq.research_objectives?.research_audience || '',
-        enhanced_rfq_data: enhancedRfq
-      };
-
-      const response = await apiService.submitRFQ(enhancedRfqPayload as any);
-      
-      set((state) => ({
-        workflow: {
-          ...state.workflow,
-          workflow_id: response.workflow_id,
-          survey_id: response.survey_id,
-          status: 'in_progress',
-          progress: 5,
-          current_step: 'initializing_workflow',
-          message: 'Starting survey generation workflow...'
-        }
-      }));
-
-      // Show info toast that generation has started
-      get().addToast({
-        type: 'info',
-        title: 'Survey Generation Started',
-        message: 'Your survey is being generated. You can step away and we\'ll notify you when it\'s ready!',
-        duration: 5000
-      });
-
-      // Connect to WebSocket for progress updates
-      get().connectWebSocket(response.workflow_id);
-
-    } catch (error) {
-      // Classify the error for better handling
-      const detailedError = ErrorClassifier.classifyError(
-        error,
-        { component: 'RFQSubmission', action: 'submit_rfq' }
-      );
-
-      set((state) => ({
-        workflow: {
-          ...state.workflow,
-          status: 'failed',
-          error: error instanceof Error ? error.message : 'Unknown error',
-          detailedError: detailedError
-        }
-      }));
-
-      // Show enhanced error toast
-      get().addToast({
-        type: 'error',
-        title: 'Submission Failed',
-        message: `${detailedError.userMessage}\n\nDebug Code: ${ErrorClassifier.generateDebugHandle(detailedError.code, new Date())}`,
-        duration: 8000
-      });
-    }
-  },
 
   fetchSurvey: async (surveyId: string) => {
     // Validate survey ID before making request
@@ -617,25 +516,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
             console.log('✅ [Frontend] Workflow marked as completed via progress message');
           } else {
           // Normal progress update
-          console.log('🔍 [Frontend] Updating workflow state with step:', message.step);
+          console.log('🔍 [Frontend] Updating workflow state with step:', message.step, 'progress:', message.percent);
           const newWorkflowState = {
             current_step: message.step,
             progress: message.percent,
             message: message.message
           };
-          set((state) => ({
-            workflow: {
-              ...state.workflow,
-              ...newWorkflowState
-            }
-          }));
-          console.log('✅ [Frontend] Workflow state updated with step:', message.step);
-          }
-
-          // Persist workflow state for recovery
-          const currentState = get().workflow;
-          if (currentState.workflow_id) {
-            get().persistWorkflowState(currentState.workflow_id, currentState);
+          
+          // Use setWorkflowState to get progress smoothing
+          get().setWorkflowState(newWorkflowState);
+          console.log('✅ [Frontend] Workflow state updated with step:', message.step, 'progress:', message.percent);
           }
 
           console.log('✅ [Frontend] Progress state updated');
@@ -1596,20 +1486,33 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   recoverWorkflowState: async () => {
     try {
+      console.log('🔄 [Store] Starting workflow state recovery...');
+      
       // Check localStorage for interrupted workflows
       const persistedState = localStorage.getItem('survey_workflow_state');
+      console.log('🔍 [Store] Persisted state found:', !!persistedState);
+      
       if (persistedState) {
         const state = JSON.parse(persistedState);
         const hoursSinceUpdate = (Date.now() - state.timestamp) / (1000 * 60 * 60);
 
+        console.log('🔍 [Store] Parsed persisted state:', {
+          status: state.status,
+          workflowId: state.workflow_id,
+          surveyId: state.survey_id,
+          progress: state.progress,
+          hoursSinceUpdate: hoursSinceUpdate.toFixed(2)
+        });
+
         // Only recover if less than 24 hours old
         if (hoursSinceUpdate < 24) {
-          console.log('🔄 [Store] Recovering workflow state:', state);
+          console.log('🔄 [Store] Recovering workflow state (less than 24 hours old):', state);
 
           // Check if there's a pending review for this workflow
           try {
             const review = await get().fetchReviewByWorkflow(state.workflow_id);
             if (review && review.review_status === 'pending') {
+              console.log('🔍 [Store] Found pending review:', review);
               get().setActiveReview(review);
 
               // Show recovery notification
@@ -1631,7 +1534,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
             state.status === 'started' ||
             (state.status === 'completed' && currentPath === '/');
 
+          console.log('🔍 [Store] Restoration decision:', {
+            currentPath,
+            stateStatus: state.status,
+            shouldRestoreWorkflow,
+            isInProgress: state.status === 'in_progress',
+            isStarted: state.status === 'started',
+            isCompletedOnRoot: state.status === 'completed' && currentPath === '/'
+          });
+
           if (shouldRestoreWorkflow) {
+            console.log('✅ [Store] Restoring workflow state:', state);
             get().setWorkflowState(state);
 
             // Try to reconnect WebSocket if workflow was in progress
@@ -1640,14 +1553,24 @@ export const useAppStore = create<AppStore>((set, get) => ({
             }
           } else {
             // Clean up completed workflows that shouldn't be restored
+            console.log('🧹 [Store] Not restoring workflow state:', {
+              reason: 'shouldRestoreWorkflow is false',
+              currentPath,
+              stateStatus: state.status
+            });
             console.log('🧹 [Store] Cleaning up completed workflow state for non-generator page');
             localStorage.removeItem('survey_workflow_state');
           }
         } else {
           // Clean up old state
+          console.log('🧹 [Store] Cleaning up old workflow state (older than 24 hours)');
           localStorage.removeItem('survey_workflow_state');
         }
+      } else {
+        console.log('ℹ️ [Store] No persisted workflow state found');
       }
+      
+      console.log('✅ [Store] Workflow state recovery completed');
 
       // Check for pending reviews
       await get().checkPendingReviews();
@@ -1801,6 +1724,32 @@ export const useAppStore = create<AppStore>((set, get) => ({
   // Enhanced RFQ Actions
   submitEnhancedRFQ: async (rfq: EnhancedRFQRequest) => {
     try {
+      // Prevent multiple simultaneous workflows
+      const currentWorkflow = get().workflow;
+      if (currentWorkflow.status === 'started' || currentWorkflow.status === 'in_progress') {
+        console.warn('⚠️ [Store] Enhanced RFQ workflow already in progress, ignoring duplicate submission');
+        get().addToast({
+          type: 'warning',
+          title: 'Generation in Progress',
+          message: 'A survey is already being generated. Please wait for it to complete.',
+          duration: 5000
+        });
+        return;
+      }
+
+      // Clear any existing survey data and stale workflow state
+      set({
+        currentSurvey: undefined,
+        workflow: {
+          status: 'idle'
+        }
+      });
+
+      // Clear any persisted workflow state to prevent conflicts
+      localStorage.removeItem('survey_workflow_state');
+
+      console.log('🚀 [Store] Starting enhanced RFQ workflow submission');
+
       // Import the enhanced text converter
       const { createEnhancedDescription } = await import('../utils/enhancedRfqConverter');
 
@@ -1846,11 +1795,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
           workflow_id: responseData.workflow_id,
           survey_id: responseData.survey_id,
           status: 'in_progress',
-          progress: 5,
+          progress: 0,
           current_step: 'initializing_workflow',
           message: 'Starting enhanced survey generation workflow...'
         }
       }));
+
+      // Persist workflow state immediately for recovery
+      const currentState = get().workflow;
+      get().persistWorkflowState(responseData.workflow_id, currentState);
+      console.log('💾 [Store] Enhanced RFQ workflow state persisted after submission');
 
       // Show info toast that enhanced generation has started
       get().addToast({

@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from '../components/Sidebar';
-import { SurveyCard } from '../components/SurveyCard';
+import { SurveyGenerationIndicator } from '../components/SurveyGenerationIndicator';
 import { SurveyPreview } from '../components/SurveyPreview';
 import { useAppStore } from '../store/useAppStore';
 import { SurveyListItem } from '../types';
@@ -15,21 +15,8 @@ import {
   CheckIcon
 } from '@heroicons/react/24/outline';
 
-interface Survey {
-  id: string;
-  title: string;
-  description: string;
-  status: string;
-  created_at: string;
-  methodology_tags: string[];
-  quality_score?: number;
-  estimated_time?: number;
-  question_count: number;
-  questions?: any[];
-}
-
 export const SurveysPage: React.FC = () => {
-  const { setSurvey, setRFQInput, toasts, removeToast, addToast } = useAppStore();
+  const { setSurvey, setRFQInput, toasts, removeToast, addToast, workflow } = useAppStore();
   const [surveys, setSurveys] = useState<SurveyListItem[]>([]);
   const [selectedSurvey, setSelectedSurvey] = useState<SurveyListItem | null>(null);
   const [loading, setLoading] = useState(true);
@@ -43,58 +30,7 @@ export const SurveysPage: React.FC = () => {
   const [currentUrl, setCurrentUrl] = useState(window.location.search);
   const [isRetrying, setIsRetrying] = useState(false);
 
-  // Load surveys from URL parameter
-  useEffect(() => {
-    fetchSurveys();
-  }, []);
-
-  // Handle URL parameter after surveys are loaded
-  useEffect(() => {
-    const urlParams = new URLSearchParams(currentUrl);
-    const surveyId = urlParams.get('id');
-    
-    if (surveyId && surveys.length > 0) {
-      console.log('🔍 [URL] Looking for survey with ID:', surveyId);
-      console.log('🔍 [URL] Available surveys:', surveys.length);
-      const survey = surveys.find(s => s.id === surveyId);
-      console.log('🔍 [URL] Found survey:', survey);
-      if (survey) {
-        console.log('🔍 [URL] Setting selected survey:', survey.title);
-        setSelectedSurvey(survey);
-        // Also fetch the full survey data for preview
-        handleViewSurvey(survey);
-      } else {
-        console.log('❌ [URL] Survey not found with ID:', surveyId);
-      }
-    }
-  }, [surveys, currentUrl]);
-
-  // Listen for URL changes
-  useEffect(() => {
-    const handleUrlChange = () => {
-      setCurrentUrl(window.location.search);
-    };
-
-    // Listen for URL changes (back/forward navigation)
-    window.addEventListener('popstate', handleUrlChange);
-    
-    // Cleanup
-    return () => {
-      window.removeEventListener('popstate', handleUrlChange);
-    };
-  }, []);
-
-  // Update URL when survey is selected
-  useEffect(() => {
-    if (selectedSurvey) {
-      const url = new URL(window.location.href);
-      url.searchParams.set('id', selectedSurvey.id);
-      window.history.replaceState({}, '', url.toString());
-      setCurrentUrl(url.search);
-    }
-  }, [selectedSurvey]);
-
-  const fetchSurveys = async (isRetry = false) => {
+  const fetchSurveys = useCallback(async (isRetry = false) => {
     try {
       if (isRetry) {
         setIsRetrying(true);
@@ -143,7 +79,163 @@ export const SurveysPage: React.FC = () => {
       setLoading(false);
       setIsRetrying(false);
     }
-  };
+  }, [addToast]);
+
+  const handleViewSurvey = useCallback(async (survey: SurveyListItem) => {
+    try {
+      console.log('🔍 [Survey View] Starting to view survey:', survey.id);
+      console.log('🔍 [Survey View] Survey object keys:', Object.keys(survey));
+      console.log('🔍 [Survey View] Survey type:', typeof survey);
+      console.log('🔍 [Survey View] Full survey object:', survey);
+
+      // Fetch the full survey data
+      console.log('🌐 [Survey View] Making API call to:', `/api/v1/survey/${survey.id}`);
+      const response = await fetch(`/api/v1/survey/${survey.id}`);
+      console.log('🌐 [Survey View] API response status:', response.status);
+      console.log('🌐 [Survey View] API response headers:', Object.fromEntries(response.headers.entries()));
+
+      if (!response.ok) {
+        console.error('❌ [Survey View] API response not OK:', response.status, response.statusText);
+        const errorText = await response.text();
+        console.error('❌ [Survey View] Error response body:', errorText);
+        throw new Error('Failed to fetch survey');
+      }
+
+      const surveyData = await response.json();
+      console.log('📊 [Survey View] API response data:', surveyData);
+      console.log('📊 [Survey View] Raw output questions:', surveyData.raw_output?.questions);
+      console.log('📊 [Survey View] Final output questions:', surveyData.final_output?.questions);
+
+      // Convert to the format expected by SurveyPreview
+      // Handle both legacy questions format and new sections format
+      let extractedQuestions = [];
+      let sections = [];
+
+      if (surveyData.final_output?.sections && surveyData.final_output.sections.length > 0) {
+        // New sections format
+        sections = surveyData.final_output.sections;
+        extractedQuestions = sections.flatMap((section: any) => section.questions || []);
+        console.log('📋 [Survey View] Using sections format - sections:', sections.length, 'questions:', extractedQuestions.length);
+      } else if (surveyData.final_output?.questions && surveyData.final_output.questions.length > 0) {
+        // Legacy questions format
+        extractedQuestions = surveyData.final_output.questions;
+        console.log('📋 [Survey View] Using legacy questions format - questions:', extractedQuestions.length);
+      } else if (surveyData.raw_output?.sections && surveyData.raw_output.sections.length > 0) {
+        // Fallback to raw_output sections
+        sections = surveyData.raw_output.sections;
+        extractedQuestions = sections.flatMap((section: any) => section.questions || []);
+        console.log('📋 [Survey View] Using raw_output sections format - sections:', sections.length, 'questions:', extractedQuestions.length);
+      } else if (surveyData.raw_output?.questions && surveyData.raw_output.questions.length > 0) {
+        // Fallback to raw_output questions
+        extractedQuestions = surveyData.raw_output.questions;
+        console.log('📋 [Survey View] Using raw_output questions format - questions:', extractedQuestions.length);
+      }
+
+      console.log('📋 [Survey View] Extracted questions:', extractedQuestions);
+      console.log('📋 [Survey View] Questions count:', extractedQuestions.length);
+
+      const surveyForPreview = {
+        survey_id: survey.id,
+        title: survey.title,
+        description: survey.description,
+        estimated_time: survey.estimated_time || 10,
+        confidence_score: survey.quality_score || 0.8,
+        methodologies: survey.methodology_tags || [],
+        golden_examples: [], // Empty for now
+        questions: extractedQuestions,
+        sections: sections, // Include sections for new format
+        metadata: {
+          target_responses: 100,
+          methodology: survey.methodology_tags || [],
+          estimated_time: survey.estimated_time,
+          quality_score: survey.quality_score,
+          methodology_tags: survey.methodology_tags
+        },
+        pillar_scores: surveyData.pillar_scores // Include pillar scores from API response
+      };
+
+      console.log('🎯 [Survey View] Converted survey for preview:', surveyForPreview);
+
+      // Set the survey in the app store
+      setSurvey(surveyForPreview);
+      console.log('✅ [Survey View] Survey set in store');
+
+      // Load existing annotations for this survey
+      try {
+        console.log('🔍 [Survey View] Loading annotations for survey:', survey.id);
+        await useAppStore.getState().loadAnnotations(survey.id);
+        console.log('✅ [Survey View] Annotations loaded successfully');
+      } catch (error) {
+        console.warn('⚠️ [Survey View] Failed to load annotations:', error);
+        // Continue without annotations - they'll be created when needed
+      }
+
+      // Set a mock RFQ input for context
+      setRFQInput({
+        title: survey.title,
+        description: survey.description,
+        product_category: survey.methodology_tags?.[0] || 'General',
+        target_segment: 'General',
+        research_goal: 'Survey Analysis'
+      });
+
+      setSelectedSurvey(survey);
+      console.log('🎉 [Survey View] Survey view setup complete');
+    } catch (err) {
+      console.error('Failed to load survey:', err);
+    }
+  }, [setSurvey, setRFQInput]);
+
+  // Load surveys from URL parameter
+  useEffect(() => {
+    fetchSurveys();
+  }, [fetchSurveys]);
+
+  // Handle URL parameter after surveys are loaded
+  useEffect(() => {
+    const urlParams = new URLSearchParams(currentUrl);
+    const surveyId = urlParams.get('id');
+    
+    if (surveyId && surveys.length > 0) {
+      console.log('🔍 [URL] Looking for survey with ID:', surveyId);
+      console.log('🔍 [URL] Available surveys:', surveys.length);
+      const survey = surveys.find(s => s.id === surveyId);
+      console.log('🔍 [URL] Found survey:', survey);
+      if (survey) {
+        console.log('🔍 [URL] Setting selected survey:', survey.title);
+        setSelectedSurvey(survey);
+        // Also fetch the full survey data for preview
+        handleViewSurvey(survey);
+      } else {
+        console.log('❌ [URL] Survey not found with ID:', surveyId);
+      }
+    }
+  }, [surveys, currentUrl, handleViewSurvey]);
+
+  // Listen for URL changes
+  useEffect(() => {
+    const handleUrlChange = () => {
+      setCurrentUrl(window.location.search);
+    };
+
+    // Listen for URL changes (back/forward navigation)
+    window.addEventListener('popstate', handleUrlChange);
+    
+    // Cleanup
+    return () => {
+      window.removeEventListener('popstate', handleUrlChange);
+    };
+  }, []);
+
+  // Update URL when survey is selected
+  useEffect(() => {
+    if (selectedSurvey) {
+      const url = new URL(window.location.href);
+      url.searchParams.set('id', selectedSurvey.id);
+      window.history.replaceState({}, '', url.toString());
+      setCurrentUrl(url.search);
+    }
+  }, [selectedSurvey]);
 
   const handleDeleteSurvey = async (surveyId: string) => {
     try {
@@ -240,109 +332,22 @@ export const SurveysPage: React.FC = () => {
     }
   };
 
-  const handleViewSurvey = async (survey: SurveyListItem) => {
-    try {
-      console.log('🔍 [Survey View] Starting to view survey:', survey.id);
-      console.log('🔍 [Survey View] Survey object keys:', Object.keys(survey));
-      console.log('🔍 [Survey View] Survey type:', typeof survey);
-      console.log('🔍 [Survey View] Full survey object:', survey);
-      
-      // Fetch the full survey data
-      console.log('🌐 [Survey View] Making API call to:', `/api/v1/survey/${survey.id}`);
-      const response = await fetch(`/api/v1/survey/${survey.id}`);
-      console.log('🌐 [Survey View] API response status:', response.status);
-      console.log('🌐 [Survey View] API response headers:', Object.fromEntries(response.headers.entries()));
-      
-      if (!response.ok) {
-        console.error('❌ [Survey View] API response not OK:', response.status, response.statusText);
-        const errorText = await response.text();
-        console.error('❌ [Survey View] Error response body:', errorText);
-        throw new Error('Failed to fetch survey');
-      }
-      
-      const surveyData = await response.json();
-      console.log('📊 [Survey View] API response data:', surveyData);
-      console.log('📊 [Survey View] Raw output questions:', surveyData.raw_output?.questions);
-      console.log('📊 [Survey View] Final output questions:', surveyData.final_output?.questions);
-      
-      // Convert to the format expected by SurveyPreview
-      // Handle both legacy questions format and new sections format
-      let extractedQuestions = [];
-      let sections = [];
-      
-      if (surveyData.final_output?.sections && surveyData.final_output.sections.length > 0) {
-        // New sections format
-        sections = surveyData.final_output.sections;
-        extractedQuestions = sections.flatMap((section: any) => section.questions || []);
-        console.log('📋 [Survey View] Using sections format - sections:', sections.length, 'questions:', extractedQuestions.length);
-      } else if (surveyData.final_output?.questions && surveyData.final_output.questions.length > 0) {
-        // Legacy questions format
-        extractedQuestions = surveyData.final_output.questions;
-        console.log('📋 [Survey View] Using legacy questions format - questions:', extractedQuestions.length);
-      } else if (surveyData.raw_output?.sections && surveyData.raw_output.sections.length > 0) {
-        // Fallback to raw_output sections
-        sections = surveyData.raw_output.sections;
-        extractedQuestions = sections.flatMap((section: any) => section.questions || []);
-        console.log('📋 [Survey View] Using raw_output sections format - sections:', sections.length, 'questions:', extractedQuestions.length);
-      } else if (surveyData.raw_output?.questions && surveyData.raw_output.questions.length > 0) {
-        // Fallback to raw_output questions
-        extractedQuestions = surveyData.raw_output.questions;
-        console.log('📋 [Survey View] Using raw_output questions format - questions:', extractedQuestions.length);
-      }
-      
-      console.log('📋 [Survey View] Extracted questions:', extractedQuestions);
-      console.log('📋 [Survey View] Questions count:', extractedQuestions.length);
-      
-      const surveyForPreview = {
-        survey_id: survey.id,
-        title: survey.title,
-        description: survey.description,
-        estimated_time: survey.estimated_time || 10,
-        confidence_score: survey.quality_score || 0.8,
-        methodologies: survey.methodology_tags || [],
-        golden_examples: [], // Empty for now
-        questions: extractedQuestions,
-        sections: sections, // Include sections for new format
-        metadata: {
-          target_responses: 100,
-          methodology: survey.methodology_tags || [],
-          estimated_time: survey.estimated_time,
-          quality_score: survey.quality_score,
-          methodology_tags: survey.methodology_tags
-        },
-        pillar_scores: surveyData.pillar_scores // Include pillar scores from API response
-      };
-      
-      console.log('🎯 [Survey View] Converted survey for preview:', surveyForPreview);
-      
-      // Set the survey in the app store
-      setSurvey(surveyForPreview);
-      console.log('✅ [Survey View] Survey set in store');
-      
-      // Load existing annotations for this survey
-      try {
-        console.log('🔍 [Survey View] Loading annotations for survey:', survey.id);
-        await useAppStore.getState().loadAnnotations(survey.id);
-        console.log('✅ [Survey View] Annotations loaded successfully');
-      } catch (error) {
-        console.warn('⚠️ [Survey View] Failed to load annotations:', error);
-        // Continue without annotations - they'll be created when needed
-      }
-      
-      // Set a mock RFQ input for context
-      setRFQInput({
-        title: survey.title,
-        description: survey.description,
-        product_category: survey.methodology_tags?.[0] || 'General',
-        target_segment: 'General',
-        research_goal: 'Survey Analysis'
-      });
-      
-      setSelectedSurvey(survey);
-      console.log('🎉 [Survey View] Survey view setup complete');
-    } catch (err) {
-      console.error('Failed to load survey:', err);
-    }
+  // Helper function to check if a survey is currently being generated
+  const isSurveyGenerating = (surveyId: string) => {
+    return workflow.survey_id === surveyId && 
+           (workflow.status === 'started' || workflow.status === 'in_progress' || workflow.status === 'paused');
+  };
+
+  // Helper function to get generation status for a survey
+  const getGenerationStatus = (surveyId: string) => {
+    if (!isSurveyGenerating(surveyId)) return null;
+    
+    return {
+      isGenerating: true,
+      progress: workflow.progress || 0,
+      status: workflow.status as 'started' | 'in_progress' | 'completed' | 'failed' | 'paused',
+      message: workflow.message
+    };
   };
 
   const handleBack = () => {
@@ -683,14 +688,30 @@ export const SurveysPage: React.FC = () => {
                                   {survey.description}
                                 </p>
                                 <div className="flex items-center space-x-4 mt-3">
-                                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                    survey.status === 'draft' ? 'bg-yellow-100 text-yellow-800' :
-                                    survey.status === 'validated' ? 'bg-green-100 text-green-800' :
-                                    survey.status === 'edited' ? 'bg-blue-100 text-blue-800' :
-                                    'bg-gray-100 text-gray-800'
-                                  }`}>
-                                    {survey.status}
-                                  </span>
+                                  <div className="flex items-center space-x-2">
+                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                      survey.status === 'draft' ? 'bg-yellow-100 text-yellow-800' :
+                                      survey.status === 'validated' ? 'bg-green-100 text-green-800' :
+                                      survey.status === 'edited' ? 'bg-blue-100 text-blue-800' :
+                                      'bg-gray-100 text-gray-800'
+                                    }`}>
+                                      {survey.status}
+                                    </span>
+                                    
+                                    {/* Generation Indicator */}
+                                    {(() => {
+                                      const generationStatus = getGenerationStatus(survey.id);
+                                      return generationStatus ? (
+                                        <SurveyGenerationIndicator
+                                          isGenerating={generationStatus.isGenerating}
+                                          progress={generationStatus.progress}
+                                          status={generationStatus.status}
+                                          message={generationStatus.message}
+                                          className="text-xs"
+                                        />
+                                      ) : null;
+                                    })()}
+                                  </div>
                                   <span className="text-sm text-gray-500">
                                     {survey.question_count} questions
                                   </span>

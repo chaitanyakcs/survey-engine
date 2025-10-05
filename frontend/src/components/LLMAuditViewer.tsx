@@ -218,7 +218,10 @@ export const LLMAuditViewer: React.FC<LLMAuditViewerProps> = ({
         
         <div className="bg-gray-50 rounded-lg p-4 max-h-96 overflow-y-auto">
           <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono">
-            {content[activeTab]}
+            {typeof content[activeTab] === 'string' 
+              ? content[activeTab] 
+              : JSON.stringify(content[activeTab], null, 2)
+            }
           </pre>
         </div>
       </div>

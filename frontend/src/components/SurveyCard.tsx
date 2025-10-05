@@ -7,6 +7,7 @@ import {
   TagIcon,
   StarIcon
 } from '@heroicons/react/24/outline';
+import { SurveyGenerationIndicator } from './SurveyGenerationIndicator';
 
 interface SurveyCardProps {
   survey: {
@@ -24,6 +25,11 @@ interface SurveyCardProps {
   onSelect: () => void;
   onDelete: () => void;
   onView: () => void;
+  // Generation indicator props
+  isGenerating?: boolean;
+  generationProgress?: number;
+  generationStatus?: 'started' | 'in_progress' | 'completed' | 'failed' | 'paused';
+  generationMessage?: string;
 }
 
 export const SurveyCard: React.FC<SurveyCardProps> = ({
@@ -31,7 +37,11 @@ export const SurveyCard: React.FC<SurveyCardProps> = ({
   isSelected,
   onSelect,
   onDelete,
-  onView
+  onView,
+  isGenerating = false,
+  generationProgress = 0,
+  generationStatus = 'in_progress',
+  generationMessage
 }) => {
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -141,17 +151,28 @@ export const SurveyCard: React.FC<SurveyCardProps> = ({
           
           {/* Status Badge and Quality Score */}
           <div className="flex items-center justify-between mb-4">
-            <span className={`
-              inline-flex items-center px-3 py-1.5 rounded-full text-sm font-semibold border-2 shadow-sm
-              ${getStatusColor(survey.status)}
-            `}>
-              <div className={`w-2 h-2 rounded-full mr-2 ${
-                survey.status === 'completed' ? 'bg-green-400' :
-                survey.status === 'failed' ? 'bg-red-400' :
-                survey.status === 'in_progress' ? 'bg-blue-400' : 'bg-gray-400'
-              }`}></div>
-              {survey.status.charAt(0).toUpperCase() + survey.status.slice(1)}
-            </span>
+            <div className="flex items-center space-x-2">
+              <span className={`
+                inline-flex items-center px-3 py-1.5 rounded-full text-sm font-semibold border-2 shadow-sm
+                ${getStatusColor(survey.status)}
+              `}>
+                <div className={`w-2 h-2 rounded-full mr-2 ${
+                  survey.status === 'completed' ? 'bg-green-400' :
+                  survey.status === 'failed' ? 'bg-red-400' :
+                  survey.status === 'in_progress' ? 'bg-blue-400' : 'bg-gray-400'
+                }`}></div>
+                {survey.status.charAt(0).toUpperCase() + survey.status.slice(1)}
+              </span>
+              
+              {/* Generation Indicator */}
+              <SurveyGenerationIndicator
+                isGenerating={isGenerating}
+                progress={generationProgress}
+                status={generationStatus}
+                message={generationMessage}
+                className="text-xs"
+              />
+            </div>
             
             {/* Quality Score */}
             {survey.quality_score && (

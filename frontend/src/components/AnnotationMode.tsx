@@ -541,21 +541,6 @@ const QuestionAnnotationForm: React.FC<{
 
         {/* Advanced Classification */}
 
-        {/* Actions */}
-        <div className="flex justify-end space-x-2 pt-4">
-          <button
-            onClick={onCancel}
-            className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            Save
-          </button>
-        </div>
       </div>
     </div>
   );

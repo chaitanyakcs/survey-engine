@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   QuestionAnnotation,
-  LikertScale as LikertScaleType,
   Question
 } from '../types';
 import LikertScale from './LikertScale';
@@ -70,7 +69,6 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
       timestamp: new Date().toISOString()
     });
   }, [question.id, annotation]);
-
 
   const handleSave = () => {
     onSave(formData);

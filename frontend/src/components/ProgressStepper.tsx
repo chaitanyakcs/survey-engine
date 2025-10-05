@@ -1183,7 +1183,10 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                                                 {question.options.map((option, optionIndex) => (
                                                   <div key={optionIndex} className="flex items-center space-x-2 text-xs text-gray-600">
                                                     <span className="w-4 h-4 border border-gray-300 rounded flex-shrink-0"></span>
-                                                    <span>{typeof option === 'string' ? option : ((option as any).text || (option as any).label || 'Option')}</span>
+                                                    <span>{typeof option === 'string' ? option : 
+                                                         typeof option === 'object' && option !== null ? 
+                                                           (option as any)?.text || (option as any)?.label || 'Option' : 
+                                                           String(option)}</span>
                                                   </div>
                                                 ))}
                                               </div>
@@ -1213,7 +1216,10 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                                               {question.options.map((option, optionIndex) => (
                                                 <div key={optionIndex} className="flex items-center space-x-2 text-xs text-gray-600">
                                                   <span className="w-4 h-4 border border-gray-300 rounded flex-shrink-0"></span>
-                                                  <span>{typeof option === 'string' ? option : ((option as any).text || (option as any).label || 'Option')}</span>
+                                                  <span>{typeof option === 'string' ? option : 
+                                                         typeof option === 'object' && option !== null ? 
+                                                           (option as any)?.text || (option as any)?.label || 'Option' : 
+                                                           String(option)}</span>
                                                 </div>
                                               ))}
                                             </div>
