@@ -276,9 +276,18 @@ async def reparse_survey(
         logger.info(f"📊 [Survey API] Raw response found, starting reparse process")
         logger.info(f"🔍 [Survey API] Raw response length: {len(audit_record.raw_response)} characters")
         
-        # Use the existing generation service to process the raw response
-        generation_service = GenerationService(db)
-        reparsed_survey = generation_service._extract_survey_json(audit_record.raw_response)
+        # Extract survey data directly from the parsed raw_response
+        if isinstance(audit_record.raw_response, dict):
+            # If raw_response is already parsed, extract the json_output field
+            if 'json_output' in audit_record.raw_response:
+                reparsed_survey = audit_record.raw_response['json_output']
+            else:
+                # Fallback to the original raw_response if no json_output field
+                reparsed_survey = audit_record.raw_response
+        else:
+            # If raw_response is still a string, use the generation service
+            generation_service = GenerationService(db)
+            reparsed_survey = generation_service._extract_survey_json(audit_record.raw_response)
         
         if not reparsed_survey:
             raise HTTPException(status_code=500, detail="Failed to extract survey from raw response")

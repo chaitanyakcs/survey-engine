@@ -27,6 +27,29 @@ class LLMAuditService:
     def __init__(self, db_session: Session):
         self.db_session = db_session
     
+    def _convert_raw_response_to_json(self, raw_response: str) -> str:
+        """
+        Convert raw response to valid JSON format if it's a Python dictionary string
+        """
+        if not raw_response:
+            return raw_response
+        
+        try:
+            # Try to parse as Python dictionary string
+            import ast
+            parsed_dict = ast.literal_eval(raw_response)
+            
+            if isinstance(parsed_dict, dict):
+                # Convert to JSON string
+                import json
+                return json.dumps(parsed_dict, indent=2)
+            else:
+                # Not a dictionary, return as-is
+                return raw_response
+        except (ValueError, SyntaxError, TypeError):
+            # Not a Python dictionary string, return as-is
+            return raw_response
+
     async def log_llm_interaction(
         self,
         interaction_id: str,
@@ -108,6 +131,9 @@ class LLMAuditService:
                 except ValueError:
                     logger.warning(f"Invalid RFQ ID format: {parent_rfq_id}")
             
+            # Convert raw_response to JSON format if it's a Python dictionary string
+            json_raw_response = self._convert_raw_response_to_json(raw_response)
+            
             # Create audit record
             audit_record = LLMAudit(
                 interaction_id=interaction_id,
@@ -124,7 +150,7 @@ class LLMAuditService:
                 input_tokens=input_tokens,
                 output_content=output_content,
                 output_tokens=output_tokens,
-                raw_response=raw_response,
+                raw_response=json_raw_response,
                 temperature=temperature,
                 top_p=top_p,
                 max_tokens=max_tokens,

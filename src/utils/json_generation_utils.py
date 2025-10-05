@@ -377,6 +377,19 @@ Your response must be parseable by json.loads() without any modification."""
                     data = json.loads(sanitized_content)
                     return JSONParseResult(success=True, data=data)
             
+            # Check if it's a Replicate response with 'json_output' field
+            if isinstance(parsed_dict, dict) and 'json_output' in parsed_dict:
+                json_content = parsed_dict['json_output']
+                if isinstance(json_content, dict):
+                    # The json_output is already a dictionary, return it directly
+                    return JSONParseResult(success=True, data=json_content)
+                elif isinstance(json_content, str) and json_content.strip().startswith('{'):
+                    # Apply sanitization to fix common JSON issues
+                    sanitized_content = JSONGenerationUtils._gentle_sanitize(json_content.strip())
+                    # Try to parse the sanitized JSON
+                    data = json.loads(sanitized_content)
+                    return JSONParseResult(success=True, data=data)
+            
             return JSONParseResult(success=False, error="No valid JSON found in Replicate response")
         except (ValueError, SyntaxError, TypeError, json.JSONDecodeError) as e:
             return JSONParseResult(success=False, error=f"Replicate extract failed: {e}")

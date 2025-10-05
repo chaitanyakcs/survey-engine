@@ -1485,6 +1485,12 @@ class GenerationService:
         logger.info(f"🔧 [GenerationService] Single-question sections: {len(single_question_sections)}")
         logger.info(f"🔧 [GenerationService] Multi-question sections: {len(multi_question_sections)}")
 
+        # If we have a well-structured survey with multiple sections that each have multiple questions,
+        # don't consolidate them - just return as-is
+        if len(multi_question_sections) >= 3 and len(single_question_sections) <= 2:
+            logger.info(f"🔧 [GenerationService] Well-structured survey detected, keeping {len(sections)} sections as-is")
+            return sections
+
         # Strategy: If we have more than 2 single-question sections, consolidate them
         if len(single_question_sections) > 2:
             consolidated_sections = []

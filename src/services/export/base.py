@@ -32,6 +32,7 @@ class QuestionType(Enum):
     SINGLE_OPEN = "single_open"
     MULTIPLE_OPEN = "multiple_open"
     OPEN_ENDED = "open_ended"
+    GABOR_GRANGER = "gabor_granger"
 
 
 class SurveyExportRenderer(ABC):
@@ -233,6 +234,10 @@ class SurveyExportRenderer(ABC):
 
     @abstractmethod
     def _render_open_ended(self, question: Dict[str, Any]) -> None:
+        pass
+
+    @abstractmethod
+    def _render_gabor_granger(self, question: Dict[str, Any]) -> None:
         pass
 
 

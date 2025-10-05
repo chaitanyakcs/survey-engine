@@ -127,7 +127,7 @@ export const PromptPreview: React.FC<PromptPreviewProps> = ({ rfq }) => {
       )}
 
       {/* Prompt Metadata */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         <div className="p-4 bg-blue-50 rounded-xl">
           <h4 className="font-semibold text-blue-800 mb-1">Prompt Length</h4>
           <p className="text-blue-700 text-lg font-bold">{promptData.prompt_length.toLocaleString()} chars</p>
@@ -139,10 +139,6 @@ export const PromptPreview: React.FC<PromptPreviewProps> = ({ rfq }) => {
         <div className="p-4 bg-purple-50 rounded-xl">
           <h4 className="font-semibold text-purple-800 mb-1">Methodology Blocks</h4>
           <p className="text-purple-700 text-lg font-bold">{promptData.methodology_blocks_count}</p>
-        </div>
-        <div className="p-4 bg-orange-50 rounded-xl">
-          <h4 className="font-semibold text-orange-800 mb-1">Enhanced RFQ</h4>
-          <p className="text-orange-700 text-lg font-bold">{promptData.enhanced_rfq_used ? 'Yes' : 'No'}</p>
         </div>
       </div>
 

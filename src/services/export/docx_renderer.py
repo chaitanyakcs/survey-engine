@@ -147,9 +147,9 @@ class DocxSurveyRenderer(SurveyExportRenderer):
         if section.get("introText"):
             self._render_text_block(section["introText"], "Introduction")
         
-        # Render text blocks if available
+        # Render text blocks if available (sorted by order)
         text_blocks = section.get("textBlocks", [])
-        for text_block in text_blocks:
+        for text_block in sorted(text_blocks, key=lambda x: x.get("order", 0)):
             self._render_text_block(text_block, "Information")
         
         # Render questions if available
@@ -759,6 +759,63 @@ class DocxSurveyRenderer(SurveyExportRenderer):
         for i in range(5):
             response_paragraph = doc.add_paragraph()
             response_paragraph.add_run("_" * 50)
+
+        doc.add_paragraph("")
+
+    def _render_gabor_granger(self, question: Dict[str, Any]) -> None:
+        """Render Gabor-Granger price sensitivity question."""
+        self._add_question_header(question)
+        self._add_required_indicator(question)
+
+        # Extract price points from question text or options
+        text = question.get("text", "")
+        options = question.get("options", [])
+        
+        # Try to extract prices from text if options are not provided
+        if not options:
+            # Look for price patterns like $249, $299, etc.
+            import re
+            price_pattern = r'\$[\d,]+(?:\.\d{2})?'
+            prices = re.findall(price_pattern, text)
+            if prices:
+                options = prices
+
+        # Default price points if none found
+        if not options:
+            options = ["$249", "$299", "$349", "$399", "$449", "$499", "$549", "$599"]
+
+        doc = self._get_document()
+        
+        # Add instruction text
+        instruction_paragraph = doc.add_paragraph()
+        instruction_paragraph.add_run("Please indicate your purchase likelihood at each price point:").italic = True
+        
+        # Create table with price points and likelihood scale
+        table = doc.add_table(rows=len(options) + 1, cols=2)
+        table.style = 'Table Grid'
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+
+        # Header row
+        table.cell(0, 0).text = "Price Point"
+        table.cell(0, 1).text = "Purchase Likelihood"
+
+        # Data rows with price points and radio buttons
+        for i, price in enumerate(options):
+            table.cell(i + 1, 0).text = price
+            
+            # Add likelihood scale options
+            likelihood_cell = table.cell(i + 1, 1)
+            likelihood_paragraph = likelihood_cell.paragraphs[0]
+            likelihood_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            
+            # Add scale options (Definitely Not, Probably Not, Maybe, Probably Yes, Definitely Yes)
+            scale_options = ["Definitely Not", "Probably Not", "Maybe", "Probably Yes", "Definitely Yes"]
+            for j, scale_option in enumerate(scale_options):
+                if j > 0:
+                    likelihood_paragraph.add_run("  ")
+                likelihood_paragraph.add_run(f"○ {scale_option}")
+                if j < len(scale_options) - 1:
+                    likelihood_paragraph.add_run("  |  ")
 
         doc.add_paragraph("")
 

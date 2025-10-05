@@ -16,10 +16,35 @@ import logging
 from src.database import get_db
 from src.services.llm_audit_service import LLMAuditService
 from src.database.models import LLMAudit, LLMHyperparameterConfig, LLMPromptTemplate
+import json
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/llm-audit", tags=["LLM Audit"])
+
+
+def parse_raw_response(raw_response: str) -> Any:
+    """
+    Parse raw_response field to return proper JSON if it's a Python dictionary string
+    """
+    if not raw_response:
+        return raw_response
+    
+    try:
+        # Try to parse as JSON first
+        return json.loads(raw_response)
+    except json.JSONDecodeError:
+        try:
+            # Try to parse as Python dictionary string
+            import ast
+            parsed_dict = ast.literal_eval(raw_response)
+            if isinstance(parsed_dict, dict):
+                return parsed_dict
+            else:
+                return raw_response
+        except (ValueError, SyntaxError, TypeError):
+            # Not a dictionary, return as-is
+            return raw_response
 
 
 # Pydantic models for API responses
@@ -40,7 +65,7 @@ class LLMAuditResponse(BaseModel):
     input_tokens: Optional[int]
     output_content: Optional[str]
     output_tokens: Optional[int]
-    raw_response: Optional[str] = None
+    raw_response: Optional[Any] = None
     temperature: Optional[float]
     top_p: Optional[float]
     max_tokens: Optional[int]
@@ -203,7 +228,7 @@ async def get_llm_interactions(
                 input_tokens=record.input_tokens,
                 output_content=record.output_content,
                 output_tokens=record.output_tokens,
-                raw_response=record.raw_response,
+                raw_response=parse_raw_response(record.raw_response),
                 temperature=float(record.temperature) if record.temperature else None,
                 top_p=float(record.top_p) if record.top_p else None,
                 max_tokens=record.max_tokens,
@@ -260,7 +285,7 @@ async def get_llm_interaction(
             input_tokens=record.input_tokens,
             output_content=record.output_content,
             output_tokens=record.output_tokens,
-            raw_response=record.raw_response,
+            raw_response=parse_raw_response(record.raw_response),
             temperature=float(record.temperature) if record.temperature else None,
             top_p=float(record.top_p) if record.top_p else None,
             max_tokens=record.max_tokens,

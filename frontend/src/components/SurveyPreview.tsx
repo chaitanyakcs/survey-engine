@@ -10,7 +10,9 @@ import MatrixLikert from './MatrixLikert';
 import ConstantSum from './ConstantSum';
 import NumericGrid from './NumericGrid';
 import NumericOpen from './NumericOpen';
-import { PencilIcon, ChevronDownIcon, ChevronRightIcon, TagIcon, CheckIcon, XMarkIcon, StarIcon, TrashIcon, ChevronUpIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import GaborGranger from './GaborGranger';
+import SurveyTextBlock from './SurveyTextBlock';
+import { PencilIcon, ChevronDownIcon, ChevronRightIcon, TagIcon, CheckIcon, XMarkIcon, StarIcon, TrashIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
 
 // Helper function to extract all questions from survey (supports both formats)
 const extractAllQuestions = (survey: Survey): Question[] => {
@@ -467,6 +469,10 @@ const QuestionCard: React.FC<{
           <ConstantSum question={question} isPreview={true} />
         )}
 
+        {question.type === 'gabor_granger' && (
+          <GaborGranger question={question} isPreview={true} />
+        )}
+
         {question.type === 'numeric_grid' && (
           <NumericGrid question={question} isPreview={true} />
         )}
@@ -559,7 +565,7 @@ const QuestionCard: React.FC<{
         )}
 
         {/* Default fallback for unknown question types */}
-        {!['multiple_choice', 'scale', 'ranking', 'text', 'instruction', 'single_choice', 'matrix', 'numeric', 'date', 'boolean', 'open_text', 'multiple_select', 'matrix_likert', 'constant_sum', 'numeric_grid', 'numeric_open', 'likert', 'open_end', 'display_only', 'single_open', 'multiple_open', 'open_ended'].includes(question.type) && (
+        {!['multiple_choice', 'scale', 'ranking', 'text', 'instruction', 'single_choice', 'matrix', 'numeric', 'date', 'boolean', 'open_text', 'multiple_select', 'matrix_likert', 'constant_sum', 'numeric_grid', 'numeric_open', 'likert', 'open_end', 'display_only', 'single_open', 'multiple_open', 'open_ended', 'gabor_granger'].includes(question.type) && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
             <div className="flex items-center space-x-2">
               <svg className="w-5 h-5 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
@@ -721,6 +727,29 @@ const SectionCard: React.FC<{
       {/* Section Questions */}
       {isExpanded && (
         <div className="p-6 space-y-4">
+          {/* Introduction Text Block */}
+          {section.introText && (
+            <SurveyTextBlock
+              textContent={section.introText}
+              className="mb-6"
+            />
+          )}
+
+          {/* Additional Text Blocks (ordered) */}
+          {section.textBlocks && section.textBlocks.length > 0 && (
+            <div className="mb-6 space-y-4">
+              {section.textBlocks
+                .sort((a, b) => (a.order || 0) - (b.order || 0))
+                .map((textBlock) => (
+                  <SurveyTextBlock
+                    key={textBlock.id}
+                    textContent={textBlock}
+                  />
+                ))}
+            </div>
+          )}
+
+          {/* Questions */}
           {section.questions.map((question, index) => (
             <QuestionCard
               key={question.id}
@@ -739,6 +768,14 @@ const SectionCard: React.FC<{
             <div className="text-center py-8 text-gray-500">
               <p>No questions in this section yet.</p>
             </div>
+          )}
+
+          {/* Closing Text Block */}
+          {section.closingText && (
+            <SurveyTextBlock
+              textContent={section.closingText}
+              className="mt-6"
+            />
           )}
 
           {/* Section Annotation Panel - Show when expanded and in annotation mode */}
@@ -767,7 +804,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
   isEditable = false, 
   onSurveyChange 
 }) => {
-  const { currentSurvey, setSurvey, fetchSurvey, rfqInput, createGoldenExample, isAnnotationMode, setAnnotationMode, currentAnnotations, setCurrentAnnotations, loadAnnotations, saveAnnotations } = useAppStore();
+  const { currentSurvey, setSurvey, rfqInput, createGoldenExample, isAnnotationMode, setAnnotationMode, currentAnnotations, setCurrentAnnotations, loadAnnotations, saveAnnotations } = useAppStore();
   const survey = propSurvey || currentSurvey;
   const [editedSurvey, setEditedSurvey] = useState<Survey | null>(null);
   const [isEditingSurvey, setIsEditingSurvey] = useState(isEditable);
@@ -1235,39 +1272,6 @@ startxref
     }
   };
 
-  const handleReparseSurvey = async () => {
-    if (!survey?.survey_id) {
-      console.error('No survey ID available for reparse');
-      return;
-    }
-
-    try {
-      console.log('🔄 [SurveyPreview] Starting survey reparse for:', survey.survey_id);
-      
-      const response = await fetch(`/api/v1/survey/${survey.survey_id}/reparse`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Reparse failed: ${response.status} ${errorText}`);
-      }
-
-      const result = await response.json();
-      console.log('✅ [SurveyPreview] Reparse completed successfully:', result);
-
-      // Refresh the survey data
-      await fetchSurvey(survey.survey_id);
-      
-      alert(`Survey reparsed successfully! Fixed ${result.question_count} questions.`);
-    } catch (error) {
-      console.error('❌ [SurveyPreview] Failed to reparse survey:', error);
-      alert(`Failed to reparse survey: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  };
 
   // Validate survey data before rendering
   const isValidSurvey = survey && 
@@ -1691,14 +1695,6 @@ startxref
                 </>
               )}
 
-              {/* Utility Buttons */}
-              <button 
-                onClick={handleReparseSurvey}
-                className="w-full flex items-center gap-3 px-4 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-lg"
-              >
-                <ArrowPathIcon className="w-5 h-5" />
-                <span className="text-sm font-semibold">Reparse Survey</span>
-              </button>
               
               <button 
                 onClick={() => window.location.href = `/llm-audit/survey/${survey?.survey_id}`}

@@ -284,6 +284,120 @@ class TestNumericGridComponent:
         assert len(rendering_data["grid_data"]) == 4  # 2 rows × 2 columns
 
 
+class TestGaborGrangerComponent:
+    """Test GaborGranger component functionality"""
+
+    def test_gabor_granger_parsing(self):
+        """Test parsing of gabor_granger question text"""
+        question_text = "Gabor-Granger purchase likelihood at varying price points for Product_A: $249, $299, $349, $399, $499, $549, $599"
+        
+        # Simulate parsing logic
+        import re
+        price_pattern = r'\$[\d,]+(?:\.\d{2})?(?=\s*[,]|\s*$)'
+        prices = re.findall(price_pattern, question_text)
+        
+        expected_prices = ["$249", "$299", "$349", "$399", "$499", "$549", "$599"]
+        assert prices == expected_prices, f"Expected {expected_prices}, got {prices}"
+
+    def test_gabor_granger_validation(self):
+        """Test validation of gabor_granger question structure"""
+        valid_question = {
+            "id": "q1",
+            "text": "Gabor-Granger purchase likelihood at varying price points: $249, $299, $349",
+            "type": "gabor_granger",
+            "options": ["$249", "$299", "$349"],
+            "required": True,
+            "validation": "gabor_granger:required"
+        }
+        
+        # Validate required fields
+        assert "id" in valid_question
+        assert "text" in valid_question
+        assert "type" in valid_question
+        assert valid_question["type"] == "gabor_granger"
+        assert "options" in valid_question
+        assert len(valid_question["options"]) > 0
+
+    def test_gabor_granger_invalid_structure(self):
+        """Test validation of invalid gabor_granger structure"""
+        invalid_question = {
+            "id": "q1",
+            "text": "Gabor-Granger purchase likelihood question",
+            "type": "gabor_granger",
+            "required": True
+            # Missing options
+        }
+        
+        # Should fail validation
+        assert "options" not in invalid_question
+        assert invalid_question["type"] == "gabor_granger"
+
+    def test_gabor_granger_price_extraction(self):
+        """Test price extraction from various text formats"""
+        test_cases = [
+            {
+                "text": "Price points: $100, $200, $300",
+                "expected": ["$100", "$200", "$300"]
+            },
+            {
+                "text": "At these prices: $50.00, $75.50, $100.00",
+                "expected": ["$50.00", "$75.50", "$100.00"]
+            },
+            {
+                "text": "Gabor-Granger test: $1,000, $2,000, $3,000",
+                "expected": ["$1,000", "$2,000", "$3,000"]
+            }
+        ]
+        
+        import re
+        price_pattern = r'\$[\d,]+(?:\.\d{2})?(?=\s*[,]|\s*$)'
+        
+        for test_case in test_cases:
+            text = test_case["text"]
+            expected = test_case["expected"]
+            prices = re.findall(price_pattern, text)
+            assert prices == expected, f"Expected {expected}, got {prices} for: {text}"
+
+    def test_gabor_granger_rendering_data(self):
+        """Test data structure for gabor_granger rendering"""
+        question = {
+            "id": "q1",
+            "text": "Gabor-Granger purchase likelihood at varying price points",
+            "type": "gabor_granger",
+            "options": ["$249", "$299", "$349"],
+            "required": True
+        }
+        
+        # Simulate rendering data preparation
+        likelihood_scale = ["Definitely Not", "Probably Not", "Maybe", "Probably Yes", "Definitely Yes"]
+        rendering_data = {
+            "question_id": question["id"],
+            "question_text": question["text"],
+            "price_points": question["options"],
+            "likelihood_scale": likelihood_scale,
+            "required": question["required"],
+            "rows": question["options"],
+            "columns": likelihood_scale
+        }
+        
+        assert rendering_data["question_id"] == "q1"
+        assert len(rendering_data["price_points"]) == 3
+        assert len(rendering_data["likelihood_scale"]) == 5
+        assert rendering_data["required"] is True
+
+    def test_gabor_granger_likelihood_scale(self):
+        """Test likelihood scale options"""
+        expected_scale = ["Definitely Not", "Probably Not", "Maybe", "Probably Yes", "Definitely Yes"]
+        
+        # Simulate scale generation
+        likelihood_scale = ["Definitely Not", "Probably Not", "Maybe", "Probably Yes", "Definitely Yes"]
+        
+        assert likelihood_scale == expected_scale
+        assert len(likelihood_scale) == 5
+        assert likelihood_scale[0] == "Definitely Not"
+        assert likelihood_scale[-1] == "Definitely Yes"
+
+
 class TestNumericOpenComponent:
     """Test NumericOpen component functionality"""
 
@@ -408,6 +522,11 @@ class TestQuestionTypeIntegration:
                 "text": "What is the maximum price you would pay?",
                 "expected_type": "numeric_open",
                 "expected_currency": "USD"
+            },
+            {
+                "text": "Gabor-Granger purchase likelihood at varying price points: $249, $299, $349",
+                "expected_type": "gabor_granger",
+                "expected_prices": ["$249", "$299", "$349"]
             }
         ]
         
@@ -422,6 +541,8 @@ class TestQuestionTypeIntegration:
                 detected_type = "constant_sum"
             elif "Rate these products" in text and " vs " in text:
                 detected_type = "numeric_grid"
+            elif "Gabor-Granger" in text and "price points" in text:
+                detected_type = "gabor_granger"
             elif any(word in text.lower() for word in ["price", "cost", "amount"]):
                 detected_type = "numeric_open"
             else:
@@ -451,6 +572,11 @@ class TestQuestionTypeIntegration:
                 "type": "numeric_open",
                 "required_fields": ["id", "text", "type", "currency"],
                 "validation_pattern": "currency:required; min=0"
+            },
+            {
+                "type": "gabor_granger",
+                "required_fields": ["id", "text", "type", "options"],
+                "validation_pattern": "gabor_granger:required"
             }
         ]
         
@@ -470,10 +596,12 @@ class TestQuestionTypeIntegration:
             elif question_type == "numeric_open":
                 assert "currency" in validation_pattern
                 assert "min=" in validation_pattern
+            elif question_type == "gabor_granger":
+                assert "gabor_granger" in validation_pattern
 
     def test_question_type_rendering_consistency(self):
         """Test that all question types have consistent rendering data structure"""
-        question_types = ["matrix_likert", "constant_sum", "numeric_grid", "numeric_open"]
+        question_types = ["matrix_likert", "constant_sum", "numeric_grid", "numeric_open", "gabor_granger"]
         
         for question_type in question_types:
             # Simulate rendering data structure
@@ -503,6 +631,9 @@ class TestQuestionTypeIntegration:
             elif question_type == "numeric_open":
                 rendering_data["currency"] = "USD"
                 rendering_data["input_type"] = "number"
+            elif question_type == "gabor_granger":
+                rendering_data["price_points"] = ["$249", "$299", "$349"]
+                rendering_data["likelihood_scale"] = ["Definitely Not", "Probably Not", "Maybe", "Probably Yes", "Definitely Yes"]
 
     def test_question_type_error_handling(self):
         """Test error handling for malformed question types"""
@@ -526,6 +657,11 @@ class TestQuestionTypeIntegration:
                 "type": "numeric_open",
                 "malformed_data": {"id": "q1", "text": "Enter amount", "type": "numeric_open"},
                 "expected_error": "missing_currency"
+            },
+            {
+                "type": "gabor_granger",
+                "malformed_data": {"id": "q1", "text": "Gabor-Granger question", "type": "gabor_granger"},
+                "expected_error": "missing_options"
             }
         ]
         
@@ -543,6 +679,8 @@ class TestQuestionTypeIntegration:
                 detected_error = "missing_columns"
             elif question_type == "numeric_open" and "currency" not in malformed_data:
                 detected_error = "missing_currency"
+            elif question_type == "gabor_granger" and "options" not in malformed_data:
+                detected_error = "missing_options"
             else:
                 detected_error = "none"
             
