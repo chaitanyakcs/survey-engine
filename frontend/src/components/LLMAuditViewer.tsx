@@ -38,6 +38,8 @@ interface LLMAuditRecord {
   cost_usd?: number;
   success: boolean;
   error_message?: string;
+  old_fields?: Record<string, any>;
+  new_fields?: Record<string, any>;
   interaction_metadata?: Record<string, any>;
   tags?: string[];
   created_at: string;

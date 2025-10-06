@@ -436,15 +436,15 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
           Original Request Context
         </h3>
         <div className="text-yellow-800 text-xs leading-relaxed">
-          <pre className="whitespace-pre-wrap font-sans">
-            {showFullOriginalRequest ? activeReview.original_rfq : truncateToLines(activeReview.original_rfq)}
+          <pre className={`whitespace-pre-wrap font-sans ${!showFullOriginalRequest ? 'max-h-48 overflow-hidden' : 'max-h-96 overflow-y-auto'}`}>
+            {activeReview.original_rfq}
           </pre>
-          {activeReview.original_rfq.split('\n').length > 4 && (
+          {activeReview.original_rfq.split('\n').length > 8 && (
             <button
               onClick={() => setShowFullOriginalRequest(!showFullOriginalRequest)}
               className="mt-2 text-yellow-700 hover:text-yellow-900 font-medium text-xs underline focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-opacity-50 rounded"
             >
-              {showFullOriginalRequest ? 'Read less' : 'Read more'}
+              {showFullOriginalRequest ? 'Show Less' : 'Show Full Content'}
             </button>
           )}
         </div>
@@ -555,12 +555,30 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
           ) : (
             // Display Mode
             <div className="space-y-2">
-              <div className={`text-gray-800 text-xs leading-relaxed whitespace-pre-wrap font-mono ${!showFullPrompt ? 'max-h-32 overflow-hidden' : 'max-h-96 overflow-y-auto'} border border-gray-200 rounded p-3 bg-gray-50`}>
+              <div className={`text-gray-800 text-xs leading-relaxed whitespace-pre-wrap font-mono ${!showFullPrompt ? 'max-h-64 overflow-hidden' : 'max-h-96 overflow-y-auto'} border border-gray-200 rounded p-3 bg-gray-50`}>
                 {(() => {
                   const currentPrompt = activeReview.edited_prompt_data || activeReview.prompt_data;
                   return currentPrompt; // Always show full prompt, just limit height with scrolling
                 })()}
               </div>
+              
+              {!showFullPrompt && (
+                <button
+                  onClick={() => setShowFullPrompt(true)}
+                  className="mt-2 text-blue-600 hover:text-blue-800 font-medium text-xs underline focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 rounded"
+                >
+                  Show Full Content
+                </button>
+              )}
+              
+              {showFullPrompt && (
+                <button
+                  onClick={() => setShowFullPrompt(false)}
+                  className="mt-2 text-gray-600 hover:text-gray-800 font-medium text-xs underline focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50 rounded"
+                >
+                  Show Less
+                </button>
+              )}
 
               {activeReview.prompt_edited && activeReview.edited_by && (
                 <div className="text-xs text-gray-500 border-t pt-2">

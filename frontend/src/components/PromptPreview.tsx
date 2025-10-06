@@ -113,7 +113,7 @@ export const PromptPreview: React.FC<PromptPreviewProps> = ({ rfq }) => {
 
   const promptPreview = showFullPrompt 
     ? promptData.prompt 
-    : promptData.prompt.substring(0, 1000) + (promptData.prompt.length > 1000 ? '...' : '');
+    : promptData.prompt.substring(0, 5000) + (promptData.prompt.length > 5000 ? '...' : '');
 
   return (
     <div className="bg-white/70 backdrop-blur-lg rounded-3xl shadow-2xl border border-white/20 p-8">

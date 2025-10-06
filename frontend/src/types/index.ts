@@ -1048,6 +1048,10 @@ export interface AppStore {
   isDocumentProcessing: boolean;
   documentUploadError?: string;
 
+  // Edit Tracking State
+  editedFields: Set<string>;
+  originalFieldValues: Record<string, any>;
+
   // Document Upload Actions
   uploadDocument: (file: File, sessionId?: string) => Promise<DocumentAnalysisResponse>;
   analyzeText: (text: string, filename?: string) => Promise<DocumentAnalysisResponse>;
@@ -1057,6 +1061,11 @@ export interface AppStore {
   clearDocumentData: () => void;
   applyDocumentMappings: () => void;
   buildRFQUpdatesFromMappings: (mappings: RFQFieldMapping[]) => Partial<EnhancedRFQRequest>;
+
+  // Edit Tracking Actions
+  trackFieldEdit: (fieldPath: string, newValue: any) => void;
+  getEditedFieldsSummary: () => Array<{ field: string; originalValue: any; currentValue: any }>;
+  clearEditTracking: () => void;
 
   // Enhanced RFQ State Persistence
   persistEnhancedRfqState: (enhancedRfq: EnhancedRFQRequest) => void;

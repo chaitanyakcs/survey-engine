@@ -348,6 +348,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
   isDocumentProcessing: false,
   documentUploadError: undefined,
 
+  // Edit Tracking State
+  editedFields: new Set<string>(),
+  originalFieldValues: {},
+
   // WebSocket connection
   websocket: undefined as WebSocket | undefined,
 
@@ -1756,12 +1760,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
       // Create enriched description that combines original text with structured data
       const enhancedDescription = createEnhancedDescription(rfq);
 
+      // Get edited fields summary for generation context
+      const editedFieldsSummary = get().getEditedFieldsSummary();
+      
       // Convert enhanced RFQ to format that includes both enriched text and structured data
       const enhancedRfqPayload = {
         title: rfq.title,
         description: enhancedDescription, // 🎯 Key change: Use enriched description instead of basic description
         target_segment: rfq.research_objectives?.research_audience || '',
-        enhanced_rfq_data: rfq // 🎯 Send the full structured data for storage and analytics
+        enhanced_rfq_data: rfq, // 🎯 Send the full structured data for storage and analytics
+        edited_fields: editedFieldsSummary // 🎯 Send edited fields for generation context
       };
 
       console.log('🚀 [Enhanced RFQ] Submitting with enriched description and structured data:', {
@@ -1770,7 +1778,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
         hasObjectives: (rfq.research_objectives?.key_research_questions?.length || 0) > 0,
         hasConstraints: false, // constraints field not in EnhancedRFQRequest interface
         hasStakeholders: false, // stakeholders field not in EnhancedRFQRequest interface
-        structuredDataSize: JSON.stringify(rfq).length
+        structuredDataSize: JSON.stringify(rfq).length,
+        editedFieldsCount: editedFieldsSummary.length,
+        editedFields: editedFieldsSummary.map(f => f.field)
       });
 
       // Send enhanced payload directly to API to bypass legacy submitRFQ conversion
@@ -1864,6 +1874,64 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
   },
 
+  // Edit Tracking Actions
+  trackFieldEdit: (fieldPath: string, newValue: any) => {
+    const state = get();
+    
+    // Get the current value using the field path
+    const getNestedValue = (obj: any, path: string) => {
+      return path.split('.').reduce((current, key) => current?.[key], obj);
+    };
+    
+    const currentFieldValue = getNestedValue(state.enhancedRfq, fieldPath);
+    
+    // If this is the first time we're tracking this field, store the original value
+    if (!state.originalFieldValues[fieldPath]) {
+      state.originalFieldValues[fieldPath] = currentFieldValue;
+    }
+    
+    // Check if the new value is different from the original
+    const originalValue = state.originalFieldValues[fieldPath];
+    const hasChanged = JSON.stringify(newValue) !== JSON.stringify(originalValue);
+    
+    if (hasChanged) {
+      state.editedFields.add(fieldPath);
+    } else {
+      state.editedFields.delete(fieldPath);
+    }
+    
+    console.log(`🔍 [Edit Tracking] Field ${fieldPath}: ${hasChanged ? 'edited' : 'reverted'}`, {
+      original: originalValue,
+      newValue: newValue,
+      editedFields: Array.from(state.editedFields)
+    });
+  },
+
+  getEditedFieldsSummary: () => {
+    const state = get();
+    const editedFields = Array.from(state.editedFields);
+    const summary = editedFields.map(fieldPath => ({
+      field: fieldPath,
+      originalValue: state.originalFieldValues[fieldPath],
+      currentValue: (() => {
+        const getNestedValue = (obj: any, path: string) => {
+          return path.split('.').reduce((current, key) => current?.[key], obj);
+        };
+        return getNestedValue(state.enhancedRfq, fieldPath);
+      })()
+    }));
+    
+    console.log('📝 [Edit Tracking] Edited fields summary:', summary);
+    return summary;
+  },
+
+  clearEditTracking: () => {
+    set({
+      editedFields: new Set<string>(),
+      originalFieldValues: {}
+    });
+  },
+
   // Document Upload Actions
   uploadDocument: async (file: File, sessionId?: string): Promise<DocumentAnalysisResponse> => {
     set({ isDocumentProcessing: true, documentUploadError: undefined });
@@ -1912,14 +1980,21 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
       // Auto-apply accepted mappings immediately
       const acceptedCount = autoAccepted.filter(m => m.user_action === 'accepted').length;
+      console.log('🔍 [Document Upload] Field mappings received:', autoAccepted.length, 'mappings');
+      console.log('🔍 [Document Upload] Accepted count:', acceptedCount);
+      console.log('🔍 [Document Upload] Field mappings details:', autoAccepted);
+      
       if (acceptedCount > 0) {
         // Apply mappings immediately using the accepted mappings
         let rfqUpdates = get().buildRFQUpdatesFromMappings(autoAccepted.filter(m => m.user_action === 'accepted'));
+        console.log('🔍 [Document Upload] RFQ updates generated for', Object.keys(rfqUpdates).length, 'sections');
+        console.log('🔍 [Document Upload] RFQ updates details:', rfqUpdates);
 
         // Apply methodology-based intelligence
         rfqUpdates = get().applyMethodologyIntelligence(rfqUpdates);
 
         get().setEnhancedRfq(rfqUpdates);
+        console.log('🔍 [Document Upload] Enhanced RFQ updated in store');
 
         get().addToast({
           type: 'success',
@@ -2077,8 +2152,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     mappings.forEach(mapping => {
       const value = mapping.value;
+      
+      // Extract field name from dot notation (e.g., 'business_context.company_product_background' -> 'company_product_background')
+      const fieldName = mapping.field.includes('.') ? mapping.field.split('.').pop() : mapping.field;
 
-      switch (mapping.field) {
+      switch (fieldName) {
         // Basic Info
         case 'title':
           rfqUpdates.title = value;
@@ -2239,18 +2317,23 @@ export const useAppStore = create<AppStore>((set, get) => ({
         // Advanced Survey Requirements fields
         case 'completion_time_target':
           if (!rfqUpdates.survey_requirements) rfqUpdates.survey_requirements = { sample_plan: '', must_have_questions: [] };
-          // Map completion time text to options
+          // Map completion time text to options (check specific patterns first)
           const timeText = (value || '').toString().toLowerCase();
-          if (timeText.includes('5') && timeText.includes('10')) {
-            rfqUpdates.survey_requirements.completion_time_target = '5_10_min';
+          // Extract numbers from text to check ranges
+          const numbers = timeText.match(/\d+/g)?.map(Number) || [];
+          const hasPlus = timeText.includes('plus') || timeText.includes('+');
+          
+          // Check for specific range patterns first
+          if (timeText.includes('15') && timeText.includes('25')) {
+            rfqUpdates.survey_requirements.completion_time_target = '15_25_min';
           } else if (timeText.includes('10') && timeText.includes('15')) {
             rfqUpdates.survey_requirements.completion_time_target = '10_15_min';
-          } else if (timeText.includes('15') && timeText.includes('25')) {
-            rfqUpdates.survey_requirements.completion_time_target = '15_25_min';
-          } else if (timeText.includes('25') || timeText.includes('plus')) {
+          } else if (timeText.includes('5') && timeText.includes('10')) {
+            rfqUpdates.survey_requirements.completion_time_target = '5_10_min';
+          } else if (hasPlus || (numbers.length > 0 && Math.max(...numbers) > 25)) {
             rfqUpdates.survey_requirements.completion_time_target = '25_plus_min';
           } else {
-            rfqUpdates.survey_requirements.completion_time_target = '10_15_min';
+            rfqUpdates.survey_requirements.completion_time_target = '15_25_min';
           }
           break;
         case 'device_compatibility':
@@ -2288,6 +2371,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
           } else {
             rfqUpdates.survey_requirements.data_quality_requirements = 'standard';
           }
+          break;
+        case 'screener_requirements':
+          if (!rfqUpdates.survey_requirements) rfqUpdates.survey_requirements = { sample_plan: '', must_have_questions: [] };
+          rfqUpdates.survey_requirements.screener_requirements = value;
           break;
 
         // Survey Structure fields
@@ -2346,6 +2433,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
         case 'respondent_classification':
           if (!rfqUpdates.advanced_classification) rfqUpdates.advanced_classification = { industry_classification: '', respondent_classification: '', methodology_tags: [], compliance_requirements: [] };
           rfqUpdates.advanced_classification.respondent_classification = value;
+          break;
+
+        // Rules and Definitions field
+        case 'rules_and_definitions':
+          rfqUpdates.rules_and_definitions = value;
           break;
 
         // Legacy field mapping for backward compatibility
