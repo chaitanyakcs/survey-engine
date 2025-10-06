@@ -212,6 +212,11 @@ class EvaluationLLMClient:
                     
                     # Process the output and set audit context
                     response_time_ms = int((time.time() - start_time) * 1000)
+                    
+                    # Set the raw response before processing
+                    audit_context.set_raw_response(str(response))
+                    
+                    # Set the processed output
                     audit_context.set_output(
                         output_content=content
                     )

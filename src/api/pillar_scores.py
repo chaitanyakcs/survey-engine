@@ -17,6 +17,7 @@ import sys
 import os
 import threading
 from functools import lru_cache
+from datetime import datetime
 
 # Add evaluations directory to path for advanced evaluators
 # Find project root by looking for the evaluations directory
@@ -440,6 +441,43 @@ async def get_pillar_scores(
                 else:
                     response = await _evaluate_with_advanced_system(survey.final_output, rfq_text, db, str(survey.id), str(survey.rfq_id) if survey.rfq_id else None)
                 
+                # Update survey record with pillar scores
+                if response:
+                    try:
+                        # Convert response to dict format for storage
+                        pillar_scores_data = {
+                            "overall_grade": response.overall_grade,
+                            "weighted_score": response.weighted_score,
+                            "total_score": response.total_score,
+                            "summary": response.summary,
+                            "pillar_breakdown": [
+                                {
+                                    "pillar_name": pillar.pillar_name,
+                                    "display_name": pillar.display_name,
+                                    "score": pillar.score,
+                                    "weighted_score": pillar.weighted_score,
+                                    "weight": pillar.weight,
+                                    "criteria_met": pillar.criteria_met,
+                                    "total_criteria": pillar.total_criteria,
+                                    "grade": pillar.grade
+                                }
+                                for pillar in response.pillar_breakdown
+                            ],
+                            "recommendations": response.recommendations,
+                            "evaluation_timestamp": datetime.now().isoformat(),
+                            "evaluation_mode": evaluation_mode
+                        }
+                        
+                        # Update survey record
+                        survey.pillar_scores = pillar_scores_data
+                        db.commit()
+                        
+                        logger.info(f"✅ [Pillar Scores API] Updated survey {survey_id} with pillar scores: {response.overall_grade} ({response.weighted_score:.2f})")
+                        
+                    except Exception as e:
+                        logger.error(f"❌ [Pillar Scores API] Failed to update survey with pillar scores: {str(e)}")
+                        # Don't fail the request, just log the error
+                
                 return response
             finally:
                 # Always release the lock and clean up
@@ -631,81 +669,6 @@ async def get_pillar_rules_summary(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"❌ [Pillar Scores API] Error getting pillar rules summary: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get pillar rules summary: {str(e)}")
-
-@router.post("/{survey_id}/evaluate-async")
-async def evaluate_pillar_scores_async(
-    survey_id: UUID,
-    force: bool = False,
-    db: Session = Depends(get_db)
-):
-    """
-    Trigger async pillar evaluation for a survey (non-blocking)
-    Returns immediately while evaluation runs in background
-    """
-
-    # Check if LLM evaluation is enabled
-    try:
-        from src.services.settings_service import SettingsService
-        settings_service = SettingsService(db)
-        evaluation_settings = settings_service.get_evaluation_settings()
-        enable_llm_evaluation = evaluation_settings.get('enable_llm_evaluation', True)
-        
-        if not enable_llm_evaluation:
-            logger.info(f"⏭️ [Pillar Scores API] LLM evaluation disabled, skipping async evaluation")
-            return {
-                "status": "skipped",
-                "message": "LLM evaluation is disabled in settings",
-                "survey_id": str(survey_id)
-            }
-    except Exception as e:
-        logger.warning(f"⚠️ [Pillar Scores API] Error checking LLM evaluation setting: {e}, proceeding with evaluation")
-
-    try:
-        # Check if survey exists
-        survey = db.query(Survey).filter(Survey.id == survey_id).first()
-        if not survey:
-            raise HTTPException(status_code=404, detail="Survey not found")
-
-        if not survey.final_output:
-            raise HTTPException(status_code=400, detail="Survey has not been generated yet")
-
-        # If scores already exist and not forced, return immediately
-        if not force and survey.pillar_scores:
-            logger.info(f"📋 [Pillar Scores API] Pillar scores already exist for survey {survey_id}")
-            return {
-                "status": "completed",
-                "message": "Pillar scores already available",
-                "cached": True
-            }
-
-        # Import async pillar evaluation service
-        from src.services.async_pillar_evaluation_service import AsyncPillarEvaluationService
-
-        # Start async evaluation (don't await - let it run in background)
-        async_service = AsyncPillarEvaluationService(db)
-
-        # Use asyncio to run evaluation in background without blocking the response
-        import asyncio
-        asyncio.create_task(async_service.evaluate_survey_pillars_async(
-            survey_id=str(survey_id),
-            force=force
-        ))
-
-        logger.info(f"✅ [Pillar Scores API] Async pillar evaluation started for survey {survey_id}")
-
-        return {
-            "status": "started",
-            "message": "Pillar evaluation started in background",
-            "survey_id": str(survey_id),
-            "estimated_completion": "30-60 seconds"
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ [Pillar Scores API] Error starting async pillar evaluation for survey {survey_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to start pillar evaluation: {str(e)}")
-
 
 async def _evaluate_with_aira_v1_system(survey_data: Dict[str, Any], rfq_text: str, db: Session, survey_id: str = None, rfq_id: str = None):
     """
