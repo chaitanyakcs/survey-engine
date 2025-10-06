@@ -23,6 +23,9 @@ class JSONParseStrategy(Enum):
     SANITIZE_AND_PARSE = "sanitize_and_parse"
     AGGRESSIVE_SANITIZE = "aggressive_sanitize"
     FORCE_REBUILD = "force_rebuild"
+    ESCAPED_JSON_HANDLE = "escaped_json_handle"
+    LARGE_JSON_PARSE = "large_json_parse"
+    PARTIAL_JSON_RECOVERY = "partial_json_recovery"
 
 
 @dataclass
@@ -278,6 +281,12 @@ Your response must be parseable by json.loads() without any modification."""
                 return JSONGenerationUtils._replicate_extract(content)
             elif strategy == JSONParseStrategy.FORCE_REBUILD:
                 return JSONGenerationUtils._force_rebuild(content)
+            elif strategy == JSONParseStrategy.ESCAPED_JSON_HANDLE:
+                return JSONGenerationUtils._handle_escaped_json(content)
+            elif strategy == JSONParseStrategy.LARGE_JSON_PARSE:
+                return JSONGenerationUtils._parse_large_json(content)
+            elif strategy == JSONParseStrategy.PARTIAL_JSON_RECOVERY:
+                return JSONGenerationUtils._partial_json_recovery(content)
             else:
                 return JSONParseResult(success=False, error=f"Unknown strategy: {strategy}")
         except Exception as e:
@@ -475,6 +484,186 @@ Your response must be parseable by json.loads() without any modification."""
             return None
 
     @staticmethod
+    def _handle_escaped_json(content: str) -> JSONParseResult:
+        """Handle JSON with escaped characters and complex formatting"""
+        try:
+            # First, try to decode common escape sequences
+            decoded_content = content
+            
+            # Handle common escape sequences
+            escape_sequences = {
+                '\\"': '"',  # Escaped quotes
+                '\\n': '\n',  # Newlines
+                '\\r': '\r',  # Carriage returns
+                '\\t': '\t',  # Tabs
+                '\\\\': '\\',  # Backslashes
+            }
+            
+            for escaped, unescaped in escape_sequences.items():
+                decoded_content = decoded_content.replace(escaped, unescaped)
+            
+            # Try to parse the decoded content
+            data = json.loads(decoded_content)
+            return JSONParseResult(success=True, data=data)
+            
+        except json.JSONDecodeError as e:
+            # If that fails, try more aggressive cleaning
+            try:
+                # Remove problematic characters that might cause parsing issues
+                cleaned = content
+                
+                # Remove null bytes and control characters (except newlines, tabs, carriage returns)
+                cleaned = ''.join(char for char in cleaned if ord(char) >= 32 or char in '\n\r\t')
+                
+                # Fix common JSON issues
+                cleaned = re.sub(r',\s*}', '}', cleaned)  # Remove trailing commas
+                cleaned = re.sub(r',\s*]', ']', cleaned)  # Remove trailing commas in arrays
+                
+                # Try to find the JSON boundaries more intelligently
+                start = cleaned.find('{')
+                end = cleaned.rfind('}')
+                if start != -1 and end > start:
+                    cleaned = cleaned[start:end+1]
+                
+                data = json.loads(cleaned)
+                return JSONParseResult(success=True, data=data)
+                
+            except json.JSONDecodeError as e2:
+                return JSONParseResult(success=False, error=f"Escaped JSON handling failed: {e2}")
+        except Exception as e:
+            return JSONParseResult(success=False, error=f"Escaped JSON handling exception: {e}")
+
+    @staticmethod
+    def _parse_large_json(content: str) -> JSONParseResult:
+        """Handle very large JSON responses that might cause memory issues"""
+        try:
+            # For large JSON, try to parse in chunks or with streaming
+            # First, try normal parsing
+            data = json.loads(content)
+            return JSONParseResult(success=True, data=data)
+            
+        except json.JSONDecodeError as e:
+            # If normal parsing fails, try to identify and fix common large JSON issues
+            try:
+                # Check if it's a memory issue by looking at content length
+                if len(content) > 1000000:  # 1MB threshold
+                    logger.warning(f"⚠️ [JSONGenerationUtils] Large JSON detected ({len(content)} chars), using chunked parsing")
+                
+                # Try to find the main JSON object boundaries
+                start = content.find('{')
+                if start == -1:
+                    return JSONParseResult(success=False, error="No JSON object found")
+                
+                # Find the matching closing brace
+                brace_count = 0
+                end = start
+                for i in range(start, len(content)):
+                    if content[i] == '{':
+                        brace_count += 1
+                    elif content[i] == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            end = i + 1
+                            break
+                
+                if brace_count != 0:
+                    return JSONParseResult(success=False, error="Unbalanced braces in large JSON")
+                
+                # Extract the main JSON object
+                json_content = content[start:end]
+                
+                # Apply gentle sanitization
+                sanitized = JSONGenerationUtils._gentle_sanitize(json_content)
+                data = json.loads(sanitized)
+                return JSONParseResult(success=True, data=data)
+                
+            except json.JSONDecodeError as e2:
+                return JSONParseResult(success=False, error=f"Large JSON parsing failed: {e2}")
+        except Exception as e:
+            return JSONParseResult(success=False, error=f"Large JSON parsing exception: {e}")
+
+    @staticmethod
+    def _partial_json_recovery(content: str) -> JSONParseResult:
+        """Attempt to recover partial JSON structures and extract survey data"""
+        try:
+            # This is the most sophisticated recovery method
+            # Try to extract survey structure even from malformed JSON
+            
+            # First, try to find any valid JSON fragments
+            json_objects = []
+            
+            # Look for complete JSON objects within the content
+            start = 0
+            while start < len(content):
+                obj_start = content.find('{', start)
+                if obj_start == -1:
+                    break
+                
+                # Try to find the matching closing brace
+                brace_count = 0
+                obj_end = obj_start
+                for i in range(obj_start, len(content)):
+                    if content[i] == '{':
+                        brace_count += 1
+                    elif content[i] == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            obj_end = i + 1
+                            break
+                
+                if brace_count == 0:
+                    # Found a complete object, try to parse it
+                    obj_content = content[obj_start:obj_end]
+                    try:
+                        obj_data = json.loads(obj_content)
+                        json_objects.append(obj_data)
+                    except json.JSONDecodeError:
+                        pass  # Skip invalid objects
+                
+                start = obj_end + 1
+            
+            # If we found valid JSON objects, try to merge them or use the largest one
+            if json_objects:
+                # Find the object with the most survey-like structure
+                best_object = None
+                best_score = 0
+                
+                for obj in json_objects:
+                    score = 0
+                    if isinstance(obj, dict):
+                        # Score based on survey-like fields
+                        if 'title' in obj:
+                            score += 10
+                        if 'sections' in obj:
+                            score += 20
+                        if 'questions' in obj:
+                            score += 15
+                        if 'metadata' in obj:
+                            score += 5
+                        
+                        # Check for question arrays
+                        if 'sections' in obj and isinstance(obj['sections'], list):
+                            for section in obj['sections']:
+                                if isinstance(section, dict) and 'questions' in section:
+                                    score += len(section['questions']) * 2
+                        
+                        if 'questions' in obj and isinstance(obj['questions'], list):
+                            score += len(obj['questions']) * 2
+                    
+                    if score > best_score:
+                        best_score = score
+                        best_object = obj
+                
+                if best_object and best_score > 0:
+                    return JSONParseResult(success=True, data=best_object)
+            
+            # If no valid JSON objects found, try to extract survey data using text patterns
+            return JSONParseResult(success=False, error="No recoverable JSON structure found")
+            
+        except Exception as e:
+            return JSONParseResult(success=False, error=f"Partial JSON recovery exception: {e}")
+
+    @staticmethod
     def _validate_against_schema(data: Dict[str, Any], schema: Dict[str, Any]) -> JSONParseResult:
         """Validate parsed data against expected schema"""
         try:
@@ -520,6 +709,57 @@ Your response must be parseable by json.loads() without any modification."""
             logger.error(f"   Error: {result.error}")
             logger.error(f"   Response preview: {response_content[:200]}...")
             logger.error(f"   Response ending: ...{response_content[-200:]}")
+            
+            # Additional diagnostic information
+            logger.error(f"   Character analysis:")
+            null_bytes_present = '\x00' in response_content
+            logger.error(f"     - Contains null bytes: {null_bytes_present}")
+            control_chars_present = any(ord(c) < 32 and c not in '\n\r\t' for c in response_content[:1000])
+            logger.error(f"     - Contains control chars: {control_chars_present}")
+            starts_with_brace = response_content.strip().startswith('{')
+            logger.error(f"     - Starts with {{: {starts_with_brace}")
+            ends_with_brace = response_content.strip().endswith('}')
+            logger.error(f"     - Ends with }}: {ends_with_brace}")
+            contains_sections = 'sections' in response_content.lower()
+            logger.error(f"     - Contains sections: {contains_sections}")
+            contains_questions = 'questions' in response_content.lower()
+            logger.error(f"     - Contains questions: {contains_questions}")
+            
+            # Check for common issues
+            issues = []
+            if '\\"' in response_content:
+                issues.append("escaped quotes")
+            if response_content.count('{') != response_content.count('}'):
+                issues.append("unbalanced braces")
+            if response_content.count('[') != response_content.count(']'):
+                issues.append("unbalanced brackets")
+            if ',\\n}' in response_content or ',\\n]' in response_content:
+                issues.append("trailing commas")
+            
+            if issues:
+                logger.error(f"   Detected issues: {', '.join(issues)}")
+        else:
+            # Log success details
+            if result.data and isinstance(result.data, dict):
+                data_keys = list(result.data.keys())
+                logger.info(f"   Parsed data keys: {data_keys}")
+                
+                # Check for survey structure
+                if 'sections' in result.data:
+                    sections_count = len(result.data['sections']) if isinstance(result.data['sections'], list) else 0
+                    logger.info(f"   Sections found: {sections_count}")
+                    
+                    if sections_count > 0 and isinstance(result.data['sections'], list):
+                        total_questions = 0
+                        for section in result.data['sections']:
+                            if isinstance(section, dict) and 'questions' in section:
+                                questions_count = len(section['questions']) if isinstance(section['questions'], list) else 0
+                                total_questions += questions_count
+                        logger.info(f"   Total questions found: {total_questions}")
+                
+                if 'questions' in result.data:
+                    questions_count = len(result.data['questions']) if isinstance(result.data['questions'], list) else 0
+                    logger.info(f"   Direct questions found: {questions_count}")
 
 
 # Convenience functions for easy integration

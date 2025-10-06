@@ -276,23 +276,40 @@ async def reparse_survey(
         logger.info(f"📊 [Survey API] Raw response found, starting reparse process")
         logger.info(f"🔍 [Survey API] Raw response length: {len(audit_record.raw_response)} characters")
         
-        # Extract survey data directly from the parsed raw_response
+        # Extract survey data using enhanced parsing logic
+        generation_service = GenerationService(db)
+        
         if isinstance(audit_record.raw_response, dict):
             # If raw_response is already parsed, extract the json_output field
             if 'json_output' in audit_record.raw_response:
-                reparsed_survey = audit_record.raw_response['json_output']
+                logger.info(f"🔍 [Survey API] Found json_output in raw_response, applying enhanced parsing")
+                # Use enhanced parsing even for pre-parsed data to ensure proper structure
+                json_output = audit_record.raw_response['json_output']
+                if isinstance(json_output, dict):
+                    # Apply enhanced validation and structure fixing
+                    generation_service._validate_and_fix_survey_structure(json_output)
+                    reparsed_survey = json_output
+                else:
+                    # If json_output is a string, parse it with enhanced logic
+                    reparsed_survey = generation_service._extract_survey_json(str(json_output))
             else:
                 # Fallback to the original raw_response if no json_output field
+                logger.info(f"🔍 [Survey API] No json_output found, using raw_response directly")
                 reparsed_survey = audit_record.raw_response
         else:
-            # If raw_response is still a string, use the generation service
-            generation_service = GenerationService(db)
+            # If raw_response is still a string, use the enhanced generation service
+            logger.info(f"🔍 [Survey API] Raw response is string, using enhanced parsing")
             reparsed_survey = generation_service._extract_survey_json(audit_record.raw_response)
         
         if not reparsed_survey:
             raise HTTPException(status_code=500, detail="Failed to extract survey from raw response")
         
         logger.info(f"✅ [Survey API] Successfully extracted survey from raw response")
+        
+        # Count questions before updating
+        question_count = get_questions_count(reparsed_survey)
+        sections_count = len(reparsed_survey.get('sections', []))
+        logger.info(f"📊 [Survey API] Reparsed survey contains {question_count} questions across {sections_count} sections")
         
         # Update the survey with reparsed data
         logger.info(f"💾 [Survey API] Updating survey final_output with reparsed data")
@@ -304,6 +321,11 @@ async def reparse_survey(
             if 'questions' in first_section and first_section['questions']:
                 first_question = first_section['questions'][0]
                 logger.info(f"🔍 [Survey API] Sample question: '{first_question.get('text', 'No text')}'")
+        
+        # Log detailed section breakdown
+        for i, section in enumerate(reparsed_survey.get('sections', [])):
+            section_questions = len(section.get('questions', []))
+            logger.info(f"📋 [Survey API] Section {i+1}: '{section.get('title', 'Unknown')}' - {section_questions} questions")
         
         survey.final_output = reparsed_survey
         survey.status = "reparsed"
@@ -322,16 +344,13 @@ async def reparse_survey(
         
         logger.info(f"✅ [Survey API] Successfully reparsed survey: {survey_id}")
         
-        # Get question count for response
-        question_count = get_questions_count(reparsed_survey)
-        
         return {
             "status": "success",
-            "message": "Survey reparsed successfully using raw LLM response",
+            "message": "Survey reparsed successfully using enhanced JSON parsing",
             "survey_id": str(survey_id),
             "question_count": question_count,
-            "sections_count": len(reparsed_survey.get('sections', [])),
-            "raw_response_length": len(audit_record.raw_response),
+            "sections_count": sections_count,
+            "raw_response_length": len(str(audit_record.raw_response)),
             "reparsed_at": datetime.now().isoformat()
         }
         
