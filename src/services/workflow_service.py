@@ -567,10 +567,19 @@ class WorkflowService:
                 survey.final_output = final_state.get("generated_survey")
                 survey.golden_similarity_score = final_state.get("golden_similarity_score")
                 survey.used_golden_examples = final_state.get("used_golden_examples", [])
-                
-                survey.pillar_scores = final_state.get("pillar_scores")
-                survey.status = "validated" if final_state.get("quality_gate_passed", False) else "draft"
-                
+
+                # Check if this is a failed survey (minimal fallback due to LLM failure)
+                generated_survey = final_state.get("generated_survey", {})
+                is_failed_survey = generated_survey.get('metadata', {}).get('generation_failed', False)
+
+                if is_failed_survey:
+                    logger.warning(f"⚠️ [WorkflowService] Survey {survey.id} marked as failed due to generation failure")
+                    survey.status = "failed"
+                    survey.pillar_scores = None  # Don't store pillar scores for failed surveys
+                else:
+                    survey.pillar_scores = final_state.get("pillar_scores")
+                    survey.status = "validated" if final_state.get("quality_gate_passed", False) else "draft"
+
                 self.db.commit()
                 logger.info(f"✅ [WorkflowService] Survey record updated: status={survey.status}, golden_examples_used={len(survey.used_golden_examples)}")
             except Exception as db_error:
@@ -586,7 +595,19 @@ class WorkflowService:
                         survey.final_output = final_state.get("generated_survey")
                         survey.golden_similarity_score = final_state.get("golden_similarity_score")
                         survey.used_golden_examples = final_state.get("used_golden_examples", [])
-                        survey.status = "validated" if final_state.get("quality_gate_passed", False) else "draft"
+
+                        # Check if this is a failed survey (minimal fallback due to LLM failure)
+                        generated_survey = final_state.get("generated_survey", {})
+                        is_failed_survey = generated_survey.get('metadata', {}).get('generation_failed', False)
+
+                        if is_failed_survey:
+                            logger.warning(f"⚠️ [WorkflowService] Survey {survey.id} marked as failed due to generation failure (retry path)")
+                            survey.status = "failed"
+                            survey.pillar_scores = None  # Don't store pillar scores for failed surveys
+                        else:
+                            survey.pillar_scores = final_state.get("pillar_scores")
+                            survey.status = "validated" if final_state.get("quality_gate_passed", False) else "draft"
+
                         new_db.commit()
                         logger.info(f"✅ [WorkflowService] Survey record updated with new session: status={survey.status}")
                         # Update self.db to use the new session for subsequent operations
@@ -789,8 +810,18 @@ class WorkflowService:
                     survey.final_output = generation_result.get("generated_survey")
                     survey.golden_similarity_score = validation_result.get("golden_similarity_score")
                     survey.used_golden_examples = initial_state.used_golden_examples
-                    survey.pillar_scores = generation_result.get("pillar_scores")
-                    survey.status = "validated" if validation_result.get("quality_gate_passed", False) else "draft"
+
+                    # Check if this is a failed survey (minimal fallback due to LLM failure)
+                    generated_survey = generation_result.get("generated_survey", {})
+                    is_failed_survey = generated_survey.get('metadata', {}).get('generation_failed', False)
+
+                    if is_failed_survey:
+                        logger.warning(f"⚠️ [WorkflowService] Survey {survey.id} marked as failed due to generation failure (prompt review path)")
+                        survey.status = "failed"
+                        survey.pillar_scores = None  # Don't store pillar scores for failed surveys
+                    else:
+                        survey.pillar_scores = generation_result.get("pillar_scores")
+                        survey.status = "validated" if validation_result.get("quality_gate_passed", False) else "draft"
 
                     self.db.commit()
                     logger.info(f"✅ [WorkflowService] Survey updated from resumed workflow: status={survey.status}")

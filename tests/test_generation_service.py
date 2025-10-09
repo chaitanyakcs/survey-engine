@@ -338,15 +338,6 @@ class TestGenerationService:
         assert "Demographics" in section_titles or "Background & Experience" in section_titles
         assert "Satisfaction & Rating" in section_titles
 
-    def test_create_minimal_survey_fallback(self, generation_service):
-        """Test minimal survey creation as fallback"""
-        response_text = 'What is your favorite color? How old are you? Do you like our product?'
-
-        result = generation_service._create_minimal_survey(response_text)
-
-        assert result["title"] == "Generated Survey"
-        assert "sections" in result
-        assert result["estimated_time"] == 5
         assert result["confidence_score"] == 0.5
 
         # Should extract some questions

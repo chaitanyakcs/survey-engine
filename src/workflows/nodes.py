@@ -647,6 +647,22 @@ class ValidatorAgent:
                     "quality_gate_passed": False
                 }
 
+            # Check if this is a failed survey that should skip evaluation
+            is_failed_survey = state.generated_survey.get('metadata', {}).get('generation_failed', False)
+            skip_evaluation = state.generated_survey.get('metadata', {}).get('skip_evaluation', False)
+
+            if is_failed_survey or skip_evaluation:
+                self.logger.warning(f"⚠️ [ValidatorAgent] Skipping evaluation for failed survey (generation_failed={is_failed_survey}, skip_evaluation={skip_evaluation})")
+                return {
+                    "pillar_scores": {},
+                    "quality_gate_passed": False,
+                    "validation_results": {"schema_valid": False, "methodology_compliant": False},
+                    "retry_count": state.retry_count,
+                    "workflow_should_continue": True,
+                    "error_message": None,
+                    "evaluation_skipped": True
+                }
+
             # Get a fresh database session to avoid transaction issues
             from src.database import get_db
             fresh_db = next(get_db())

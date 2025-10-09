@@ -120,11 +120,19 @@ class EvaluatorService:
                 from src.services.progress_tracker import get_progress_tracker
                 progress_tracker = get_progress_tracker(self.workflow_id)
                 progress_data = progress_tracker.get_progress_data("validation_scoring")
-                progress_data["message"] = "Evaluation encountered issues, using basic scoring..."
+                progress_data["message"] = "Evaluation encountered issues, survey will be generated without quality scores..."
                 await self._send_progress_update_with_data(progress_data)
 
-            # Return basic fallback scores
-            return self._create_fallback_scores(survey_data)
+            # Return empty scores with evaluation failure message
+            return {
+                "overall_grade": "N/A",
+                "weighted_score": 0.0,
+                "total_score": 0.0,
+                "pillar_breakdown": [],
+                "evaluation_failed": True,
+                "evaluation_error": str(e),
+                "message": "Quality evaluation could not be completed. Survey generated successfully but without quality scores."
+            }
         
         finally:
             # Release evaluation lock if we acquired it
@@ -189,15 +197,25 @@ class EvaluatorService:
         except Exception as e:
             logger.warning(f"⚠️ [EvaluatorService] Legacy evaluation failed: {e}")
 
-        # Fallback: Basic scores (local)
-        logger.warning("🚨 [EvaluatorService] All evaluation methods failed, using basic fallback")
+        # Fallback: No scores, just message
+        logger.warning("🚨 [EvaluatorService] All evaluation methods failed, survey will be generated without quality scores")
         if self.workflow_id:
             from src.services.progress_tracker import get_progress_tracker
             progress_tracker = get_progress_tracker(self.workflow_id)
             progress_data = progress_tracker.get_progress_data("evaluating_pillars", "fallback_evaluation")
-            progress_data["message"] = "Ensuring evaluation completeness and reliability"
+            progress_data["message"] = "Evaluation could not be completed, survey will be generated without quality scores"
             await self._send_progress_update_with_data(progress_data)
-        return self._create_fallback_scores(survey_data)
+        
+        # Return empty scores with evaluation failure message
+        return {
+            "overall_grade": "N/A",
+            "weighted_score": 0.0,
+            "total_score": 0.0,
+            "pillar_breakdown": [],
+            "evaluation_failed": True,
+            "evaluation_error": "All evaluation methods failed",
+            "message": "Quality evaluation could not be completed. Survey generated successfully but without quality scores."
+        }
 
     async def _evaluate_with_single_call(self, survey_data: Dict[str, Any], rfq_text: str) -> Optional[Dict[str, Any]]:
         """Single-call comprehensive evaluation using SingleCallEvaluator"""

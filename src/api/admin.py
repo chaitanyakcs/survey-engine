@@ -447,7 +447,7 @@ async def verify_processing_status_constraint(db: Session = Depends(get_db)):
     """
     try:
         logger.info("🔍 Verifying processing_status constraint...")
-        
+
         # Check current constraint
         result = db.execute(text("""
             SELECT constraint_name, check_clause
@@ -455,9 +455,9 @@ async def verify_processing_status_constraint(db: Session = Depends(get_db)):
             WHERE constraint_name = 'check_processing_status'
             AND constraint_schema = 'public'
         """))
-        
+
         current_constraint = result.fetchone()
-        
+
         if not current_constraint:
             logger.warning("⚠️ check_processing_status constraint not found")
             return {
@@ -465,12 +465,12 @@ async def verify_processing_status_constraint(db: Session = Depends(get_db)):
                 "message": "check_processing_status constraint not found",
                 "constraint_exists": False
             }
-        
+
         constraint_clause = current_constraint[1]
         logger.info(f"📋 Current constraint: {constraint_clause}")
-        
+
         has_cancelled = "'cancelled'" in constraint_clause
-        
+
         if has_cancelled:
             logger.info("✅ Constraint includes 'cancelled' status")
             return {
@@ -489,10 +489,168 @@ async def verify_processing_status_constraint(db: Session = Depends(get_db)):
                 "has_cancelled": False,
                 "constraint_clause": constraint_clause
             }
-        
+
     except Exception as e:
         logger.error(f"❌ Error verifying processing_status constraint: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Error verifying processing_status constraint: {str(e)}"
+        )
+
+@router.post("/add-failed-status-to-surveys")
+async def add_failed_status_to_surveys(db: Session = Depends(get_db)):
+    """
+    Add 'failed' status to surveys table constraint
+    This allows marking surveys that used minimal fallback due to LLM generation failures
+    """
+    try:
+        logger.info("🔧 Adding 'failed' status to surveys table constraint...")
+
+        # Check current constraint
+        result = db.execute(text("""
+            SELECT constraint_name, check_clause
+            FROM information_schema.check_constraints
+            WHERE constraint_schema = 'public'
+            AND check_clause LIKE '%status%'
+            AND constraint_name LIKE '%survey%'
+        """))
+
+        constraints = result.fetchall()
+        logger.info(f"📋 Found {len(constraints)} survey-related constraints")
+
+        for constraint in constraints:
+            logger.info(f"   - {constraint[0]}: {constraint[1]}")
+
+        # Find the specific survey status constraint
+        survey_status_constraint = None
+        for constraint in constraints:
+            if "'draft'" in constraint[1] and "'validated'" in constraint[1]:
+                survey_status_constraint = constraint
+                break
+
+        if survey_status_constraint:
+            constraint_name = survey_status_constraint[0]
+            constraint_clause = survey_status_constraint[1]
+            logger.info(f"📋 Current survey status constraint: {constraint_clause}")
+
+            if "'failed'" in constraint_clause:
+                logger.info("✅ Constraint already includes 'failed' status")
+                return {
+                    "status": "success",
+                    "message": "Constraint already includes 'failed' status",
+                    "current_constraint": constraint_clause,
+                    "changes": []
+                }
+
+        # Drop existing constraint
+        logger.info("🗑️ Dropping existing survey status constraint...")
+        try:
+            if survey_status_constraint:
+                db.execute(text(f"ALTER TABLE surveys DROP CONSTRAINT {survey_status_constraint[0]}"))
+                logger.info(f"✅ Dropped constraint: {survey_status_constraint[0]}")
+            else:
+                # Try common constraint name
+                db.execute(text("ALTER TABLE surveys DROP CONSTRAINT surveys_status_check"))
+                logger.info("✅ Dropped constraint: surveys_status_check")
+        except Exception as e:
+            if "does not exist" in str(e):
+                logger.info("ℹ️ Constraint doesn't exist, continuing...")
+            else:
+                raise e
+
+        # Add new constraint with 'failed' status
+        logger.info("📝 Adding new constraint with 'failed' status...")
+        db.execute(text("""
+            ALTER TABLE surveys
+            ADD CONSTRAINT surveys_status_check
+            CHECK (status IN ('draft', 'validated', 'edited', 'final', 'failed', 'reparsed'))
+        """))
+
+        db.commit()
+
+        logger.info("✅ Successfully updated survey status constraint")
+
+        return {
+            "status": "success",
+            "message": "Successfully added 'failed' status to surveys constraint",
+            "changes": [
+                "Dropped old survey status constraint",
+                "Added new constraint with 'failed' and 'reparsed' statuses"
+            ]
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Error adding failed status to surveys: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error adding failed status to surveys: {str(e)}"
+        )
+
+@router.get("/verify-survey-status-constraint")
+async def verify_survey_status_constraint(db: Session = Depends(get_db)):
+    """
+    Verify that the survey status constraint includes 'failed' status
+    """
+    try:
+        logger.info("🔍 Verifying survey status constraint...")
+
+        # Check current constraint
+        result = db.execute(text("""
+            SELECT constraint_name, check_clause
+            FROM information_schema.check_constraints
+            WHERE constraint_schema = 'public'
+            AND check_clause LIKE '%status%'
+            AND constraint_name LIKE '%survey%'
+        """))
+
+        constraints = result.fetchall()
+
+        if not constraints:
+            logger.warning("⚠️ Survey status constraint not found")
+            return {
+                "status": "error",
+                "message": "Survey status constraint not found",
+                "constraint_exists": False
+            }
+
+        for constraint in constraints:
+            constraint_name = constraint[0]
+            constraint_clause = constraint[1]
+            logger.info(f"📋 Found constraint: {constraint_name}")
+            logger.info(f"    Clause: {constraint_clause}")
+
+            if "'draft'" in constraint_clause and "'validated'" in constraint_clause:
+                has_failed = "'failed'" in constraint_clause
+
+                if has_failed:
+                    logger.info("✅ Constraint includes 'failed' status")
+                    return {
+                        "status": "success",
+                        "message": "Constraint includes 'failed' status",
+                        "constraint_exists": True,
+                        "has_failed": True,
+                        "constraint_clause": constraint_clause
+                    }
+                else:
+                    logger.warning("⚠️ Constraint does not include 'failed' status")
+                    return {
+                        "status": "warning",
+                        "message": "Constraint does not include 'failed' status",
+                        "constraint_exists": True,
+                        "has_failed": False,
+                        "constraint_clause": constraint_clause
+                    }
+
+        return {
+            "status": "warning",
+            "message": "No matching survey status constraint found",
+            "constraint_exists": False
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Error verifying survey status constraint: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error verifying survey status constraint: {str(e)}"
         )

@@ -434,6 +434,30 @@ This roadmap outlines planned enhancements and improvements across all aspects o
 
 ---
 
+## 💾 Data Infrastructure & Seeding
+
+*Current State: Partial seeding system with only rules being populated*
+
+### 1. Golden Pair Seeding System Repair 🟢
+**Complexity**: Simple ⏱️ (1 week)
+- **Description**: Fix seeding scripts to properly populate golden pairs for semantic retrieval
+- **Current Issue**:
+  - Only `seed_rules.py` runs in `start-local.sh` (107 rules loaded ✅)
+  - `seed_data.py` NOT running (0 of 7 reference examples ❌)
+  - `seed_golden_pairs.py` NOT running (only 1 of 6 production golden pairs ❌)
+  - Vector similarity search severely degraded (needs 6-13 examples, has only 1)
+- **Features**:
+  - Update `start-local.sh` to run `seed_golden_pairs.py` during setup
+  - Consolidate or remove redundant `seed_data.py` (overlaps with golden_pairs)
+  - Delete duplicate `/src/scripts/seed_rules.py`
+  - Document seeding dependencies and Railway deployment strategy
+- **Impact**: Low - Quality-of-life improvement for local development and golden pair retrieval
+- **Dependencies**: None - standalone infrastructure fix
+- **Status**: 📋 Planned
+- **Note**: Golden pair retrieval is actively used in production via `RetrievalService.retrieve_golden_pairs()` called during every survey generation
+
+---
+
 ## 🔮 Future Considerations
 
 *Items for future roadmap iterations*

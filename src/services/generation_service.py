@@ -24,6 +24,18 @@ from src.utils.json_generation_utils import parse_llm_json_response, get_json_op
 logger = logging.getLogger(__name__)
 
 
+class SurveyGenerationError(UserFriendlyError):
+    """Exception raised when survey generation fails"""
+    def __init__(self, message: str, error_code: str = None, details: Dict[str, Any] = None):
+        self.error_code = error_code
+        self.details = details or {}
+        super().__init__(
+            message=message,
+            technical_details=f"Error Code: {error_code}" if error_code else None,
+            action_required=details.get("suggestion") if details else None
+        )
+
+
 class GenerationService:
     def __init__(self, db_session: Optional[Session] = None, workflow_id: Optional[str] = None, connection_manager=None) -> None:
         logger.info(f"🚀 [GenerationService] Starting initialization...")
@@ -600,7 +612,17 @@ class GenerationService:
                 problem_chars = [f"0x{ord(c):02x}" for c in raw_text[:100] if ord(c) < 32 and c not in '\n\r\t']
                 logger.error(f"❌ [GenerationService] Control characters found: {problem_chars}")
 
-            return self._create_minimal_survey(raw_text)
+            # Hard fail for LLM generation failures - no minimal survey fallback
+            raise SurveyGenerationError(
+                "LLM generation failed - unable to parse response as valid survey JSON. "
+                "Please try again with a different model or check your input parameters.",
+                error_code="GEN_001",
+                details={
+                    "raw_response_length": len(raw_text),
+                    "response_preview": raw_text[:500],
+                    "suggestion": "Try selecting a different model or retry the generation"
+                }
+            )
 
     def _extract_direct_json(self, sanitized_text: str) -> Optional[Dict[str, Any]]:
         """
@@ -1828,42 +1850,6 @@ class GenerationService:
             logger.warning(f"⚠️ [GenerationService] Content extraction failed: {e}")
             return None
 
-    def _create_minimal_survey(self, sanitized_text: str) -> Dict[str, Any]:
-        """
-        Create a minimal valid survey as absolute fallback
-        """
-        logger.warning("🔧 [GenerationService] Creating minimal survey as fallback")
-
-        # Try one last time to extract any text that looks like questions
-        import re
-        question_texts = re.findall(r'"([^"]{20,200})"', sanitized_text)
-
-        questions = []
-        for i, text in enumerate(question_texts[:10]):  # Max 10 questions
-            if any(word in text.lower() for word in ['what', 'how', 'why', 'when', 'where', 'which', 'would', 'do', 'are', 'is']):
-                questions.append({
-                    "id": f"q{i+1}",
-                    "text": text,
-                    "type": "text",
-                    "required": True,
-                    "category": "general"
-                })
-
-        return {
-            "title": "Generated Survey",
-            "description": "Survey generated from response",
-            "sections": [{
-                "id": 1,
-                "title": "Questions",
-                "description": "Extracted questions",
-                "questions": questions
-            }] if questions else [],
-            "estimated_time": 5,
-            "confidence_score": 0.5,
-            "methodologies": ["survey"],
-            "golden_examples": [],
-            "metadata": {"target_responses": 100, "methodology": ["survey"]}
-        }
 
     # ============================================================================
     # STREAMING GENERATION METHODS (OPTIONAL - DISABLED BY DEFAULT)

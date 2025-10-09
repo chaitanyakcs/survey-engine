@@ -983,8 +983,29 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                             </div>
                           )}
 
+                          {/* Evaluation Failure Message */}
+                          {currentSurvey?.pillar_scores && (currentSurvey.pillar_scores as any).evaluation_failed && (
+                            <div className="mb-6">
+                              <div className="bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 rounded-xl p-4">
+                                <div className="flex items-center space-x-3">
+                                  <div className="flex-shrink-0">
+                                    <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                                    </svg>
+                                  </div>
+                                  <div>
+                                    <h5 className="text-sm font-medium text-yellow-900">Quality Evaluation Unavailable</h5>
+                                    <p className="text-sm text-yellow-800 mt-1">
+                                      {(currentSurvey.pillar_scores as any).message || "Quality evaluation could not be completed, but your survey was generated successfully."}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
                           {/* Quality Assessment Results */}
-                          {currentSurvey?.pillar_scores && (
+                          {currentSurvey?.pillar_scores && !(currentSurvey.pillar_scores as any).evaluation_failed && (
                             <div className="mb-6">
                               <h4 className="text-md font-semibold text-amber-900 mb-3 flex items-center">
                                 <svg className="w-5 h-5 mr-2 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -992,6 +1013,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                                 </svg>
                                 Quality Assessment
                               </h4>
+                              
                               <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
                                 <div className="flex items-center justify-between mb-3">
                                   <div className="flex items-center space-x-2">

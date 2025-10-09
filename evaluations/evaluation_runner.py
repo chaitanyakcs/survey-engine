@@ -22,9 +22,28 @@ except ImportError:
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
-from demo_server import generate_survey_with_gpt5, generate_fallback_survey, RFQSubmissionRequest
+# Import test cases and utilities
 from test_cases import COMPLEX_RFQ_TEST_CASES
 from utils import extract_all_questions
+
+# For survey generation, we'll use the production service instead of demo_server
+try:
+    from src.services.generation_service import GenerationService
+    from pydantic import BaseModel
+    from typing import Optional
+
+    # Define RFQSubmissionRequest model (previously from demo_server)
+    class RFQSubmissionRequest(BaseModel):
+        title: Optional[str] = None
+        description: str
+        product_category: Optional[str] = None
+        target_segment: Optional[str] = None
+        research_goal: Optional[str] = None
+
+    GENERATION_SERVICE_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Generation service not available: {e}")
+    GENERATION_SERVICE_AVAILABLE = False
 
 # Import database connection
 try:
@@ -106,21 +125,54 @@ class EvaluationRunner:
                 description=test_case['rfq_text'],
                 title=f"Evaluation Test: {test_case['id']}"
             )
-            
-            # Try GPT-5 generation first, fallback if needed
+
+            # Use production GenerationService
             try:
-                survey_result = await generate_survey_with_gpt5(rfq_request)
+                if not GENERATION_SERVICE_AVAILABLE:
+                    raise Exception("Generation service not available")
+
+                # Create database session if available
+                db_session = next(get_db()) if DATABASE_AVAILABLE else None
+
+                # Initialize generation service
+                generation_service = GenerationService(db_session=db_session)
+
+                # Generate survey using production service
+                context = {
+                    "rfq_text": test_case['rfq_text'],
+                    "title": rfq_request.title,
+                    "description": rfq_request.description,
+                    "product_category": rfq_request.product_category,
+                    "target_segment": rfq_request.target_segment,
+                    "research_goal": rfq_request.research_goal
+                }
+
+                generation_result = await generation_service.generate_survey(
+                    context=context,
+                    golden_examples=[],
+                    methodology_blocks=[],
+                    custom_rules={"rules": []}
+                )
+
+                survey_result = generation_result.get("survey", {})
                 used_ai = True
-                model_version = "gpt-5-via-replicate"
+                model_version = generation_service.model
+
             except Exception as ai_error:
-                print(f"🔄 AI generation failed ({ai_error}), using fallback template")
-                survey_result = generate_fallback_survey(rfq_request)
+                print(f"🔄 AI generation failed ({ai_error}), using minimal fallback")
+                # Create minimal fallback survey
+                survey_result = {
+                    "title": rfq_request.title or "Evaluation Test Survey",
+                    "description": "Fallback survey for evaluation",
+                    "sections": [],
+                    "metadata": {"fallback": True}
+                }
                 used_ai = False
                 model_version = "fallback-template"
-            
+
             end_time = time.time()
             processing_time = end_time - start_time
-            
+
             # Package result in expected format
             result = {
                 "survey": survey_result,
