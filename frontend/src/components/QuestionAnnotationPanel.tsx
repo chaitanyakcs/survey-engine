@@ -82,29 +82,29 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
 
 
   return (
-    <div className="bg-gradient-to-br from-yellow-50 to-amber-50 border-2 border-yellow-200 rounded-xl p-6 mt-4 shadow-lg">
+    <div className="card-highlighted mt-4">
       {/* Header */}
-      <div className="bg-white rounded-lg p-4 mb-6 shadow-sm border border-gray-200">
+      <div className="card-default-sm mb-6">
         <div className="flex justify-between items-start">
           {/* Left side - Title and AI Status */}
           <div className="flex-1">
             <div className="flex items-center space-x-3 mb-2">
-              <div className="w-3 h-3 bg-amber-500 rounded-full"></div>
-              <h4 className="text-lg font-semibold text-gray-800">
+              <div className="w-3 h-3 bg-primary-500 rounded-full"></div>
+              <h4 className="heading-4">
                 Question Annotation
               </h4>
             </div>
             
             {/* AI Status Card */}
             {annotation?.aiGenerated && (
-              <div className="inline-flex items-center bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg px-3 py-2">
+              <div className="badge-secondary">
                 <div className="flex items-center space-x-2">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                  <span className="text-sm font-medium text-blue-800">AI Generated</span>
+                  <div className="w-2 h-2 bg-secondary-500 rounded-full animate-pulse"></div>
+                  <span className="text-sm font-medium text-secondary-800">AI Generated</span>
                   {annotation.aiConfidence && (
                     <div className="flex items-center space-x-1 ml-2">
-                      <div className="w-1 h-1 bg-blue-400 rounded-full"></div>
-                      <span className="text-xs text-blue-600 font-medium">
+                      <div className="w-1 h-1 bg-secondary-400 rounded-full"></div>
+                      <span className="text-xs text-secondary-600 font-medium">
                         {(annotation.aiConfidence * 100).toFixed(0)}% confidence
                       </span>
                     </div>
@@ -118,13 +118,13 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
           <div className="flex items-center gap-2 ml-4">
             <button
               onClick={onCancel}
-              className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg text-sm font-medium transition-all duration-200 border border-gray-300 hover:border-gray-400"
+              className="btn-secondary-sm"
             >
               Cancel
             </button>
             <button
               onClick={handleSave}
-              className="px-4 py-2 bg-orange-500 text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-all duration-200 shadow-sm hover:shadow-md"
+              className="btn-primary-sm"
             >
               Override
             </button>
@@ -140,7 +140,7 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
                     console.error('Failed to verify annotation:', error);
                   }
                 }}
-                className="px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 transition-all duration-200 shadow-sm hover:shadow-md"
+                className="btn-success-sm"
               >
                 Mark as Verified
               </button>
@@ -154,8 +154,8 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
         {/* Basic Ratings - Each in its own row */}
         <div className="space-y-6">
           {/* Required Toggle */}
-          <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
-            <label className="block text-sm font-semibold text-gray-700 mb-3">
+          <div className="card-default-sm">
+            <label className="label-default mb-3">
               Required Question
             </label>
             <div className="flex items-center">
@@ -164,7 +164,7 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
                   type="checkbox"
                   checked={formData.required}
                   onChange={(e) => updateField('required', e.target.checked)}
-                  className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                  className="w-5 h-5 text-primary-600 bg-gray-100 border-gray-300 rounded focus:ring-primary-500 focus:ring-2"
                 />
                 <span className="ml-3 text-sm font-medium text-gray-700">
                   {formData.required ? 'Yes, this question is required' : 'No, this question is optional'}
@@ -174,7 +174,7 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
           </div>
 
           {/* Quality Rating */}
-          <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
+          <div className="card-default-sm">
             <LikertScale
               label="Overall Quality"
               value={formData.quality}
@@ -185,7 +185,7 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
           </div>
 
           {/* Relevance Rating */}
-          <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
+          <div className="card-default-sm">
             <LikertScale
               label="Relevance"
               value={formData.relevant}
@@ -197,7 +197,7 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
         </div>
 
         {/* Five Pillars Section - Each pillar in its own row */}
-        <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200">
+        <div className="card-default">
           <h5 className="text-lg font-semibold text-gray-800 mb-6 flex items-center">
             <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
             Five Pillars Assessment
@@ -242,7 +242,7 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
         </div>
 
         {/* Labels Section */}
-        <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200">
+        <div className="card-default">
           <label className="block text-sm font-semibold text-gray-700 mb-3">
             Labels
           </label>
@@ -275,7 +275,7 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
         )}
 
         {/* Comment Section */}
-        <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200">
+        <div className="card-default">
           <label className="block text-sm font-semibold text-gray-700 mb-3">
             Additional Comments & Observations
           </label>

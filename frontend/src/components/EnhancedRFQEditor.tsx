@@ -5,11 +5,11 @@ import { DocumentUpload } from './DocumentUpload';
 // Animated sprinkle component
 const AnimatedSprinkle: React.FC<{ className?: string }> = ({ className = "" }) => (
   <span 
-    className={`inline-block text-yellow-500 text-lg font-bold animate-pulse hover:animate-bounce drop-shadow-sm ${className}`} 
+    className={`inline-block text-primary-500 text-lg font-bold animate-pulse hover:animate-bounce drop-shadow-sm ${className}`} 
     title="Auto-filled from document"
     style={{ 
-      filter: 'drop-shadow(0 0 3px rgba(251, 191, 36, 0.6))',
-      textShadow: '0 0 4px rgba(251, 191, 36, 0.8)'
+      filter: 'drop-shadow(0 0 3px rgba(234, 179, 8, 0.6))',
+      textShadow: '0 0 4px rgba(234, 179, 8, 0.8)'
     }}
   >
     ✨
@@ -28,22 +28,24 @@ const FormField: React.FC<{
   isEdited?: boolean;
   options?: { value: string; label: string; }[];
 }> = ({ label, value, onChange, placeholder = '', type = 'text', rows = 4, isAutoFilled = false, isEdited = false, options = [] }) => {
-  const inputClasses = `w-full px-4 py-4 bg-white border border-gray-200 rounded-2xl focus:ring-4 focus:ring-yellow-500/20 focus:border-yellow-500 transition-all duration-300 ${
-    isAutoFilled ? 'bg-yellow-50 border-yellow-200' : ''
-  } ${isEdited ? 'bg-blue-50 border-blue-200' : ''} ${type === 'textarea' ? 'resize-none' : ''}`;
+  const inputClasses = `${
+    isAutoFilled ? 'input-highlighted' : 
+    isEdited ? 'w-full px-4 py-4 bg-secondary-50 border border-secondary-200 rounded-2xl focus:ring-4 focus:ring-secondary-500/20 focus:border-secondary-500 transition-all duration-300' :
+    'input-default'
+  } ${type === 'textarea' ? 'resize-none' : ''}`;
 
   return (
     <div>
-      <label className="block text-sm font-semibold text-gray-800 mb-3 flex items-center space-x-2">
+      <label className="label-default mb-3 flex items-center space-x-2">
         <span>{label}</span>
         {isAutoFilled && <AnimatedSprinkle />}
         {isEdited && !isAutoFilled && (
           <span 
-            className="inline-block text-blue-500 text-lg font-bold animate-pulse hover:animate-bounce drop-shadow-sm" 
+            className="inline-block text-secondary-500 text-lg font-bold animate-pulse hover:animate-bounce drop-shadow-sm" 
             title="Manually edited"
             style={{ 
-              filter: 'drop-shadow(0 0 3px rgba(59, 130, 246, 0.6))',
-              textShadow: '0 0 4px rgba(59, 130, 246, 0.8)'
+              filter: 'drop-shadow(0 0 3px rgba(37, 99, 235, 0.6))',
+              textShadow: '0 0 4px rgba(37, 99, 235, 0.8)'
             }}
           >
             ✏️

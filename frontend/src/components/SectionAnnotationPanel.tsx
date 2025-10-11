@@ -74,10 +74,10 @@ const SectionAnnotationPanel: React.FC<SectionAnnotationPanelProps> = ({
   };
 
   const getComplianceScoreColor = (score: number) => {
-    if (score >= 80) return 'bg-green-500';
-    if (score >= 60) return 'bg-yellow-500';
-    if (score >= 40) return 'bg-orange-500';
-    return 'bg-red-500';
+    if (score >= 80) return 'bg-success-500';
+    if (score >= 60) return 'bg-warning-500';
+    if (score >= 40) return 'bg-primary-500';
+    return 'bg-error-500';
   };
 
   const getComplianceScoreLabel = (score: number) => {
@@ -92,29 +92,29 @@ const SectionAnnotationPanel: React.FC<SectionAnnotationPanelProps> = ({
   const missingElements = mandatoryElements.missing || [];
 
   return (
-    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-6 mt-4 shadow-lg">
+    <div className="card-highlighted mt-4">
       {/* Header */}
-      <div className="bg-white rounded-lg p-4 mb-6 shadow-sm border border-gray-200">
+      <div className="card-default-sm mb-6">
         <div className="flex justify-between items-start">
           {/* Left side - Title and AI Status */}
           <div className="flex-1">
             <div className="flex items-center space-x-3 mb-2">
-              <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-              <h4 className="text-lg font-semibold text-gray-800">
+              <div className="w-3 h-3 bg-secondary-500 rounded-full"></div>
+              <h4 className="heading-4">
                 Section Annotation
               </h4>
             </div>
             
             {/* AI Status Card */}
             {annotation?.aiGenerated && (
-              <div className="inline-flex items-center bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg px-3 py-2">
+              <div className="badge-secondary">
                 <div className="flex items-center space-x-2">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                  <span className="text-sm font-medium text-blue-800">AI Generated</span>
+                  <div className="w-2 h-2 bg-secondary-500 rounded-full animate-pulse"></div>
+                  <span className="text-sm font-medium text-secondary-800">AI Generated</span>
                   {annotation.aiConfidence && (
                     <div className="flex items-center space-x-1 ml-2">
-                      <div className="w-1 h-1 bg-blue-400 rounded-full"></div>
-                      <span className="text-xs text-blue-600 font-medium">
+                      <div className="w-1 h-1 bg-secondary-400 rounded-full"></div>
+                      <span className="text-xs text-secondary-600 font-medium">
                         {(annotation.aiConfidence * 100).toFixed(0)}% confidence
                       </span>
                     </div>

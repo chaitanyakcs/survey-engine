@@ -29,38 +29,38 @@ export const ErrorBanner: React.FC<ErrorBannerProps> = ({
     switch (severity) {
       case 'low':
         return {
-          border: 'border-yellow-300',
-          bg: 'bg-yellow-50',
-          text: 'text-yellow-800',
-          icon: 'text-yellow-600'
+          border: 'border-warning-300',
+          bg: 'bg-warning-50',
+          text: 'text-warning-800',
+          icon: 'text-warning-600'
         };
       case 'medium':
         return {
-          border: 'border-orange-300',
-          bg: 'bg-orange-50',
-          text: 'text-orange-800',
-          icon: 'text-orange-600'
+          border: 'border-primary-300',
+          bg: 'bg-primary-50',
+          text: 'text-primary-800',
+          icon: 'text-primary-600'
         };
       case 'high':
         return {
-          border: 'border-red-300',
-          bg: 'bg-red-50',
-          text: 'text-red-800',
-          icon: 'text-red-600'
+          border: 'border-error-300',
+          bg: 'bg-error-50',
+          text: 'text-error-800',
+          icon: 'text-error-600'
         };
       case 'critical':
         return {
-          border: 'border-red-500',
-          bg: 'bg-red-100',
-          text: 'text-red-900',
-          icon: 'text-red-700'
+          border: 'border-error-500',
+          bg: 'bg-error-100',
+          text: 'text-error-900',
+          icon: 'text-error-700'
         };
       default:
         return {
-          border: 'border-gray-300',
-          bg: 'bg-gray-50',
-          text: 'text-gray-800',
-          icon: 'text-gray-600'
+          border: 'border-info-300',
+          bg: 'bg-info-50',
+          text: 'text-info-800',
+          icon: 'text-info-600'
         };
     }
   };

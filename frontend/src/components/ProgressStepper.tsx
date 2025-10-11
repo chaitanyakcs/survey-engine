@@ -535,13 +535,13 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
 
   const getColorClasses = (color: string) => {
     const colorMap = {
-      gold: { bg: 'bg-gradient-to-r from-yellow-400 to-amber-500', light: 'bg-gradient-to-r from-yellow-50 to-amber-50', text: 'text-amber-800', ring: 'ring-yellow-400/30' },
-      blue: { bg: 'bg-gradient-to-r from-yellow-400 to-amber-500', light: 'bg-gradient-to-r from-yellow-50 to-amber-50', text: 'text-amber-800', ring: 'ring-yellow-400/30' },
-      purple: { bg: 'bg-gradient-to-r from-yellow-400 to-amber-500', light: 'bg-gradient-to-r from-yellow-50 to-amber-50', text: 'text-amber-800', ring: 'ring-yellow-400/30' },
-      orange: { bg: 'bg-gradient-to-r from-yellow-400 to-amber-500', light: 'bg-gradient-to-r from-yellow-50 to-amber-50', text: 'text-amber-800', ring: 'ring-yellow-400/30' },
-      green: { bg: 'bg-gradient-to-r from-yellow-400 to-amber-500', light: 'bg-gradient-to-r from-yellow-50 to-amber-50', text: 'text-amber-800', ring: 'ring-yellow-400/30' },
-      yellow: { bg: 'bg-gradient-to-r from-yellow-400 to-amber-500', light: 'bg-gradient-to-r from-yellow-50 to-amber-50', text: 'text-amber-800', ring: 'ring-yellow-400/30' },
-      emerald: { bg: 'bg-gradient-to-r from-yellow-400 to-amber-500', light: 'bg-gradient-to-r from-yellow-50 to-amber-50', text: 'text-amber-800', ring: 'ring-yellow-400/30' }
+      gold: { bg: 'bg-gradient-to-r from-primary-500 to-primary-600', light: 'bg-gradient-to-r from-primary-50 to-primary-100', text: 'text-primary-800', ring: 'ring-primary-400/30' },
+      blue: { bg: 'bg-gradient-to-r from-secondary-500 to-secondary-600', light: 'bg-gradient-to-r from-secondary-50 to-secondary-100', text: 'text-secondary-800', ring: 'ring-secondary-400/30' },
+      purple: { bg: 'bg-gradient-to-r from-primary-500 to-primary-600', light: 'bg-gradient-to-r from-primary-50 to-primary-100', text: 'text-primary-800', ring: 'ring-primary-400/30' },
+      orange: { bg: 'bg-gradient-to-r from-primary-500 to-primary-600', light: 'bg-gradient-to-r from-primary-50 to-primary-100', text: 'text-primary-800', ring: 'ring-primary-400/30' },
+      green: { bg: 'bg-gradient-to-r from-success-500 to-success-600', light: 'bg-gradient-to-r from-success-50 to-success-100', text: 'text-success-800', ring: 'ring-success-400/30' },
+      yellow: { bg: 'bg-gradient-to-r from-primary-500 to-primary-600', light: 'bg-gradient-to-r from-primary-50 to-primary-100', text: 'text-primary-800', ring: 'ring-primary-400/30' },
+      emerald: { bg: 'bg-gradient-to-r from-success-500 to-success-600', light: 'bg-gradient-to-r from-success-50 to-success-100', text: 'text-success-800', ring: 'ring-success-400/30' }
     };
     return colorMap[color as keyof typeof colorMap] || colorMap.gold;
   };
@@ -564,7 +564,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
       <div className="h-screen flex flex-col bg-white">
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-500 mx-auto mb-4"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500 mx-auto mb-4"></div>
             <p className="text-gray-600">Loading settings...</p>
           </div>
         </div>
@@ -578,16 +578,16 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
       <div className="flex-shrink-0 px-8 py-6 bg-white/80 backdrop-blur-sm border-b border-gray-200/50">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <div className="p-3 bg-gradient-to-r from-yellow-500 to-amber-600 rounded-xl">
+            <div className="p-3 bg-gradient-to-r from-primary-500 to-primary-600 rounded-xl">
               <SparklesIcon className="w-6 h-6 text-white" />
             </div>
-            <h1 className="text-2xl font-bold text-amber-900">Survey Generation</h1>
+            <h1 className="heading-2 text-primary-900">Survey Generation</h1>
           </div>
           <div className="text-right">
-            <div className="text-3xl font-bold bg-gradient-to-r from-yellow-600 to-amber-600 bg-clip-text text-transparent">
+            <div className="text-3xl font-bold bg-gradient-to-r from-primary-600 to-primary-700 bg-clip-text text-transparent">
               {workflowStatus === 'completed' ? 100 : (workflow.progress || 0)}%
             </div>
-            <div className="text-sm text-amber-600">Complete</div>
+            <div className="text-sm text-primary-600">Complete</div>
           </div>
         </div>
         
@@ -595,7 +595,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
         <div className="mt-4">
           <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
             <div 
-              className="bg-gradient-to-r from-yellow-500 via-amber-500 to-orange-500 h-2 rounded-full transition-all duration-1000 ease-out relative"
+              className="bg-gradient-to-r from-primary-500 via-primary-600 to-primary-700 h-2 rounded-full transition-all duration-1000 ease-out relative"
               style={{ width: `${workflowStatus === 'completed' ? 100 : (workflow.progress || 0)}%` }}
             >
               <div className="absolute inset-0 bg-white/30 animate-pulse rounded-full"></div>
@@ -610,12 +610,12 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
         <div className="w-1/4 border-r border-gray-200/50 bg-white/40 backdrop-blur-sm">
           <div className="h-full overflow-y-auto">
             <div className="p-8">
-              <h2 className="text-lg font-semibold text-amber-900 mb-6">Progress Timeline</h2>
+              <h2 className="heading-4 text-primary-900 mb-6">Progress Timeline</h2>
               
               {/* Vertical Progress Timeline */}
               <div className="relative">
                 {/* Connecting Line */}
-                <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-gradient-to-b from-amber-200 via-yellow-300 to-amber-200"></div>
+                <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-gradient-to-b from-primary-200 via-primary-300 to-primary-200"></div>
                 
                 {enabledSteps.map((step, index) => {
                   const status = getStepStatus(index);
@@ -634,8 +634,8 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                             ${isCurrent 
                               ? `${colors.bg} text-white shadow-lg ${colors.ring} ring-8 scale-110` 
                               : isCompleted 
-                              ? 'bg-gradient-to-r from-yellow-500 to-amber-600 text-white shadow-md' 
-                              : 'bg-gradient-to-r from-yellow-100 to-amber-100 text-amber-600'
+                              ? 'bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-md' 
+                              : 'bg-gradient-to-r from-primary-100 to-primary-200 text-primary-600'
                             }
                           `}>
                             {isCompleted ? (
@@ -659,13 +659,13 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                         {/* Step Content */}
                         <div className="ml-6 flex-1">
                           <div className="pb-8">
-                            <h3 className={`text-lg font-semibold mb-1 transition-colors duration-300 ${
-                              isCurrent ? 'text-amber-900' : isCompleted ? 'text-amber-800' : 'text-amber-600'
+                            <h3 className={`heading-4 mb-1 transition-colors duration-300 ${
+                              isCurrent ? 'text-primary-900' : isCompleted ? 'text-primary-800' : 'text-primary-600'
                             }`}>
                               {step.label}
                             </h3>
                             <p className={`text-sm mb-3 transition-colors duration-300 ${
-                              isCurrent ? 'text-amber-700' : isCompleted ? 'text-amber-600' : 'text-amber-500'
+                              isCurrent ? 'text-primary-700' : isCompleted ? 'text-primary-600' : 'text-primary-500'
                             }`}>
                               {step.description}
                             </p>
@@ -674,20 +674,20 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                             <div className="flex items-center space-x-2">
                               {isCurrent && (
                                 <>
-                                  <ClockIcon className="w-4 h-4 text-amber-600 animate-pulse" />
-                                  <span className="text-sm font-medium text-amber-700">In Progress</span>
+                                  <ClockIcon className="w-4 h-4 text-primary-600 animate-pulse" />
+                                  <span className="text-sm font-medium text-primary-700">In Progress</span>
                                 </>
                               )}
                               {isCompleted && (
                                 <>
-                                  <CheckIcon className="w-4 h-4 text-amber-600" />
-                                  <span className="text-sm font-medium text-amber-700">Completed</span>
+                                  <CheckIcon className="w-4 h-4 text-primary-600" />
+                                  <span className="text-sm font-medium text-primary-700">Completed</span>
                                 </>
                               )}
                               {isPending && (
                                 <>
-                                  <div className="w-4 h-4 rounded-full border-2 border-amber-300" />
-                                  <span className="text-sm font-medium text-amber-500">Pending</span>
+                                  <div className="w-4 h-4 rounded-full border-2 border-primary-300" />
+                                  <span className="text-sm font-medium text-primary-500">Pending</span>
                                 </>
                               )}
                             </div>
@@ -734,7 +734,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                     <div>
                       {/* Substeps List */}
                       <div className="space-y-3 mb-6">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Process Steps</h3>
+                        <h3 className="heading-4 mb-4">Process Steps</h3>
                         {currentMainStep.subSteps.map((subStep, index) => {
                           // Check if this substep is currently active
                           const isActive = (subStep.backendStep === workflow.current_step) && workflowStatus === 'in_progress';
@@ -1102,7 +1102,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                                       window.location.href = `/surveys?id=${currentSurvey.survey_id}`;
                                     }
                                   }}
-                                  className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 shadow-md hover:shadow-lg flex items-center text-sm"
+                                  className="btn-primary flex items-center text-sm"
                                 >
                                   <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -1131,7 +1131,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                                       window.location.href = `/annotations/${currentSurvey.survey_id}`;
                                     }
                                   }}
-                                  className="bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 shadow-md hover:shadow-lg flex items-center text-sm"
+                                  className="btn-secondary flex items-center text-sm"
                                 >
                                   <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
@@ -1160,7 +1160,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                                       onCancelGeneration();
                                     }
                                   }}
-                                  className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 shadow-md hover:shadow-lg flex items-center text-sm"
+                                  className="btn-primary flex items-center text-sm"
                                 >
                                   <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />

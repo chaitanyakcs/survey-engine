@@ -124,7 +124,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) =
                 className={`
                   group w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors
                   ${isActive 
-                    ? 'bg-yellow-500 text-white border-r-2 border-yellow-400' 
+                    ? 'bg-primary-500 text-white border-r-2 border-primary-400' 
                     : 'text-gray-300 hover:bg-gray-700 hover:text-white'
                   }
                 `}
@@ -152,7 +152,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) =
                 className={`
                   group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors
                   ${isActive 
-                    ? 'bg-yellow-500 text-white border-r-2 border-yellow-400' 
+                    ? 'bg-primary-500 text-white border-r-2 border-primary-400' 
                     : 'text-gray-300 hover:bg-gray-700 hover:text-white'
                   }
                 `}
@@ -176,18 +176,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) =
               className="flex items-center cursor-pointer hover:bg-gray-700 rounded-lg p-2 transition-colors group relative"
               onClick={() => setShowAIInfoModal(true)}
             >
-              <div className="w-8 h-8 bg-gradient-to-r from-yellow-500 to-amber-600 rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 bg-gradient-to-r from-primary-500 to-primary-600 rounded-lg flex items-center justify-center">
                 <DocumentTextIcon className="h-5 w-5 text-white" />
               </div>
               <div className="ml-3 flex-1">
                 <div className="flex items-center space-x-2">
                   <p className="text-xs font-medium text-white">AI Survey Engine</p>
-                  <InformationCircleIcon className="h-4 w-4 text-yellow-400 group-hover:text-yellow-300 transition-colors" />
+                  <InformationCircleIcon className="h-4 w-4 text-primary-400 group-hover:text-primary-300 transition-colors" />
                 </div>
                 <p className="text-xs text-gray-400">v1.0.0 - Click to learn more</p>
               </div>
               {/* Animated indicator */}
-              <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full animate-pulse"></div>
+              <div className="absolute -top-1 -right-1 w-3 h-3 bg-primary-400 rounded-full animate-pulse"></div>
             </div>
           </div>
         )}
@@ -196,13 +196,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) =
         {isCollapsed && (
           <div className="p-4 border-t border-gray-700">
             <div 
-              className="w-8 h-8 bg-gradient-to-r from-yellow-500 to-amber-600 rounded-lg flex items-center justify-center cursor-pointer hover:bg-gradient-to-r hover:from-yellow-600 hover:to-amber-700 transition-colors group relative mx-auto"
+              className="w-8 h-8 bg-gradient-to-r from-primary-500 to-primary-600 rounded-lg flex items-center justify-center cursor-pointer hover:bg-gradient-to-r hover:from-primary-600 hover:to-primary-700 transition-colors group relative mx-auto"
               onClick={() => setShowAIInfoModal(true)}
               title="AI Survey Engine - Click to learn more"
             >
               <DocumentTextIcon className="h-5 w-5 text-white" />
               {/* Animated indicator */}
-              <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full animate-pulse"></div>
+              <div className="absolute -top-1 -right-1 w-3 h-3 bg-primary-400 rounded-full animate-pulse"></div>
             </div>
           </div>
         )}

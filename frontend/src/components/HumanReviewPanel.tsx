@@ -401,12 +401,12 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
 
       {/* Timeout Warning Message */}
       {showTimeoutWarning && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+        <div className="bg-error-50 border border-error-200 rounded-lg p-3">
           <div className="flex items-start">
-            <ExclamationTriangleIcon className="w-5 h-5 text-red-600 mr-2 mt-0.5" />
+            <ExclamationTriangleIcon className="w-5 h-5 text-error-600 mr-2 mt-0.5" />
             <div>
-              <h4 className="text-red-900 font-medium text-sm">Review Timeout Warning</h4>
-              <p className="text-red-700 text-xs mt-1">
+              <h4 className="text-error-900 font-medium text-sm">Review Timeout Warning</h4>
+              <p className="text-error-700 text-xs mt-1">
                 Only <strong>{formatTimeRemaining(timeoutRemaining)}</strong> remaining!
                 The workflow will auto-resume with the default prompt if no action is taken.
               </p>
@@ -430,19 +430,19 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
       </div>
 
       {/* Original RFQ Context */}
-      <div className="bg-yellow-50 rounded-lg p-3">
-        <h3 className="font-medium text-yellow-900 mb-1 flex items-center text-sm">
+      <div className="bg-warning-50 rounded-lg p-3">
+        <h3 className="font-medium text-warning-900 mb-1 flex items-center text-sm">
           <DocumentTextIcon className="w-4 h-4 mr-1" />
           Original Request Context
         </h3>
-        <div className="text-yellow-800 text-xs leading-relaxed">
+        <div className="text-warning-800 text-xs leading-relaxed">
           <pre className={`whitespace-pre-wrap font-sans ${!showFullOriginalRequest ? 'max-h-48 overflow-hidden' : 'max-h-96 overflow-y-auto'}`}>
             {activeReview.original_rfq}
           </pre>
           {activeReview.original_rfq.split('\n').length > 8 && (
             <button
               onClick={() => setShowFullOriginalRequest(!showFullOriginalRequest)}
-              className="mt-2 text-yellow-700 hover:text-yellow-900 font-medium text-xs underline focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-opacity-50 rounded"
+              className="mt-2 text-warning-700 hover:text-warning-900 font-medium text-xs underline focus:outline-none focus:ring-2 focus:ring-warning-500 focus:ring-opacity-50 rounded"
             >
               {showFullOriginalRequest ? 'Show Less' : 'Show Full Content'}
             </button>
@@ -457,7 +457,7 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
             <ChatBubbleLeftRightIcon className="w-4 h-4 mr-1" />
             System Prompt
             {activeReview.prompt_edited && (
-              <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+              <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-secondary-100 text-secondary-800">
                 Edited
               </span>
             )}
@@ -466,7 +466,7 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
             {!editingPrompt && (activeReview.review_status === 'pending' || activeReview.review_status === 'in_review') && (
               <button
                 onClick={handleStartEdit}
-                className="text-blue-600 hover:text-blue-800 text-xs font-medium flex items-center"
+                className="text-secondary-600 hover:text-secondary-800 text-xs font-medium flex items-center"
               >
                 <PencilIcon className="w-3 h-3 mr-1" />
                 Edit
@@ -474,7 +474,7 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
             )}
             <button
               onClick={() => setShowFullPrompt(!showFullPrompt)}
-              className="text-yellow-600 hover:text-yellow-800 text-xs font-medium"
+              className="text-warning-600 hover:text-warning-800 text-xs font-medium"
             >
               {showFullPrompt ? 'Show Less' : 'Show Full'}
             </button>
@@ -545,7 +545,7 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
                   <button
                     onClick={handleSaveEdit}
                     disabled={savingEdit || editedPrompt.trim().length < 10 || editedPrompt.length > 50000}
-                    className="px-3 py-1 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-3 py-1 text-xs font-medium text-white bg-secondary-600 hover:bg-secondary-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {savingEdit ? 'Saving...' : 'Save Changes'}
                   </button>
@@ -565,7 +565,7 @@ export const HumanReviewPanel: React.FC<HumanReviewPanelProps> = ({
               {!showFullPrompt && (
                 <button
                   onClick={() => setShowFullPrompt(true)}
-                  className="mt-2 text-blue-600 hover:text-blue-800 font-medium text-xs underline focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 rounded"
+                  className="mt-2 text-secondary-600 hover:text-secondary-800 font-medium text-xs underline focus:outline-none focus:ring-2 focus:ring-secondary-500 focus:ring-opacity-50 rounded"
                 >
                   Show Full Content
                 </button>
