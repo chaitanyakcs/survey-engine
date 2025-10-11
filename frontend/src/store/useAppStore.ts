@@ -1109,7 +1109,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
           },
           comment: qa.comment,
           annotatorId: qa.annotator_id,
-          timestamp: qa.created_at
+          timestamp: qa.created_at,
+          // AI annotation fields
+          aiGenerated: qa.ai_generated,
+          aiConfidence: qa.ai_confidence,
+          humanVerified: qa.human_verified,
+          generationTimestamp: qa.generation_timestamp,
+          // Human override tracking fields
+          humanOverridden: qa.human_overridden,
+          overrideTimestamp: qa.override_timestamp,
+          originalAiQuality: qa.original_ai_quality,
+          originalAiRelevant: qa.original_ai_relevant,
+          originalAiComment: qa.original_ai_comment
         })),
         sectionAnnotations: (backendAnnotations.section_annotations || []).map((sa: any) => ({
           sectionId: sa.section_id.toString(),
@@ -1128,7 +1139,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
           // Advanced labeling fields
           section_classification: sa.section_classification,
           mandatory_elements: sa.mandatory_elements,
-          compliance_score: sa.compliance_score
+          compliance_score: sa.compliance_score,
+          // AI annotation fields
+          aiGenerated: sa.ai_generated,
+          aiConfidence: sa.ai_confidence,
+          humanVerified: sa.human_verified,
+          generationTimestamp: sa.generation_timestamp,
+          // Human override tracking fields
+          humanOverridden: sa.human_overridden,
+          overrideTimestamp: sa.override_timestamp,
+          originalAiQuality: sa.original_ai_quality,
+          originalAiRelevant: sa.original_ai_relevant,
+          originalAiComment: sa.original_ai_comment
         })),
         overallComment: backendAnnotations.overall_comment || '',
         annotatorId: backendAnnotations.annotator_id,
@@ -1153,6 +1175,74 @@ export const useAppStore = create<AppStore>((set, get) => ({
         message: 'Failed to load annotations.',
         duration: 5000
       });
+    }
+  },
+
+  verifyAIAnnotation: async (surveyId: string, annotationId: number, annotationType: 'question' | 'section') => {
+    console.log('🔍 [Store] verifyAIAnnotation called:', { surveyId, annotationId, annotationType });
+    try {
+      const response = await fetch(`/api/v1/pillar-scores/${surveyId}/verify-annotation`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          annotation_id: annotationId,
+          annotation_type: annotationType
+        }),
+      });
+      
+      if (!response.ok) throw new Error('Failed to verify annotation');
+      
+      const result = await response.json();
+      console.log('✅ [Store] Annotation verified:', result);
+      
+      // Update the annotation in current annotations
+      const { currentAnnotations } = get();
+      if (currentAnnotations) {
+        if (annotationType === 'question') {
+          const updatedAnnotations = {
+            ...currentAnnotations,
+            questionAnnotations: currentAnnotations.questionAnnotations.map(qa => 
+              qa.questionId === annotationId.toString() 
+                ? { ...qa, humanVerified: true }
+                : qa
+            )
+          };
+          set({ currentAnnotations: updatedAnnotations });
+        } else {
+          const updatedAnnotations = {
+            ...currentAnnotations,
+            sectionAnnotations: currentAnnotations.sectionAnnotations.map(sa => 
+              sa.sectionId === annotationId.toString() 
+                ? { ...sa, humanVerified: true }
+                : sa
+            )
+          };
+          set({ currentAnnotations: updatedAnnotations });
+        }
+      }
+      
+      // Show success toast
+      get().addToast({
+        type: 'success',
+        title: 'Annotation Verified',
+        message: `${annotationType} annotation verified successfully`,
+        duration: 3000
+      });
+      
+    } catch (error) {
+      console.error('Failed to verify annotation:', error);
+      
+      // Show error toast
+      get().addToast({
+        type: 'error',
+        title: 'Verification Error',
+        message: 'Failed to verify annotation. Please try again.',
+        duration: 5000
+      });
+      
+      throw error;
     }
   },
 

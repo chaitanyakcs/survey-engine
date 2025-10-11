@@ -14,7 +14,7 @@ A production-ready full-stack application that transforms RFQs into professional
 
 ### **Backend (Python)**
 ```
-├── websocket_server.py      # Main WebSocket-enabled API server
+├── src/main.py              # Main FastAPI application with WebSocket support
 ├── demo_server.py           # Original sync API (kept for compatibility)
 ├── src/                     # Core application modules
 ├── evaluations/             # Quality assurance & testing
@@ -42,7 +42,8 @@ frontend/
 ### **1. Start Backend (WebSocket Server)**
 ```bash
 # Start the enhanced WebSocket server
-REPLICATE_API_TOKEN=your_token python3 websocket_server.py
+# Start the FastAPI server with WebSocket support
+uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
 # Server runs on http://localhost:8001
 ```
 
@@ -226,7 +227,7 @@ npm run build         # Production build
 ### **Backend Development:**
 ```bash
 # Test new endpoints
-python3 websocket_server.py
+uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
 
 # Run evaluations
 ./run_evaluations.sh

@@ -1513,12 +1513,8 @@ startxref
               <button 
                 onClick={async () => {
                   if (!isAnnotationMode && survey?.survey_id) {
-                    // Entering annotation mode - ensure annotations are loaded
-                    if (!currentAnnotations || currentAnnotations.surveyId !== survey.survey_id) {
-                      console.log('🔍 [SurveyPreview] Loading annotations before entering annotation mode');
-                      await loadAnnotations(survey.survey_id);
-                    }
-                    setAnnotationMode(true);
+                    // Navigate to dedicated annotation route
+                    window.location.href = `/annotations/${survey.survey_id}`;
                   } else {
                     // Exiting annotation mode - save annotations first
                     await handleExitAnnotationMode();

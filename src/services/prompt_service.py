@@ -190,7 +190,7 @@ class PromptService:
         # (58 pillar-based generation rules provide better coverage)
         self.quality_rules = {}
     
-    def build_system_prompt(
+    async def build_system_prompt(
         self,
         context: Dict[str, Any],
         methodology_tags: Optional[List[str]] = None,
@@ -201,14 +201,14 @@ class PromptService:
         """
         # Use new PromptBuilder system
         rfq_text = context.get("rfq_details", {}).get("text", "")
-        return self.prompt_builder.build_survey_generation_prompt(
+        return await self.prompt_builder.build_survey_generation_prompt(
             rfq_text=rfq_text,
             context=context,
             rag_context=None,  # No RAG context for simple system prompt
             methodology_tags=methodology_tags or []
         )
     
-    def create_survey_prompt(
+    async def create_survey_prompt(
         self,
         rfq_text: str,
         context: Dict[str, Any],
@@ -236,14 +236,14 @@ class PromptService:
         methodology_tags = self._extract_methodology_tags(context, golden_examples)
 
         # Use new PromptBuilder
-        return self.prompt_builder.build_survey_generation_prompt(
+        return await self.prompt_builder.build_survey_generation_prompt(
             rfq_text=rfq_text,
             context=context,
             rag_context=rag_context,
             methodology_tags=methodology_tags
         )
     
-    def create_survey_generation_prompt(
+    async def create_survey_generation_prompt(
         self,
         rfq_text: str,
         context: Dict[str, Any],
@@ -255,7 +255,7 @@ class PromptService:
         Create a survey generation prompt with RFQ text, context, and examples.
         This is an alias for create_survey_prompt to maintain backward compatibility.
         """
-        return self.create_survey_prompt(
+        return await self.create_survey_prompt(
             rfq_text=rfq_text,
             context=context,
             golden_examples=golden_examples,
@@ -305,7 +305,7 @@ class PromptService:
         # Remove duplicates and convert to lowercase
         return list(set([tag.lower() for tag in methodology_tags]))
     
-    def build_golden_enhanced_prompt(
+    async def build_golden_enhanced_prompt(
         self,
         context: Dict[str, Any],
         golden_examples: List[Dict[str, Any]],
@@ -325,7 +325,7 @@ class PromptService:
         methodology_tags = self._extract_methodology_tags(context, golden_examples)
 
         # Use new PromptBuilder
-        return self.prompt_builder.build_survey_generation_prompt(
+        return await self.prompt_builder.build_survey_generation_prompt(
             rfq_text=rfq_text,
             context=context,
             rag_context=rag_context,

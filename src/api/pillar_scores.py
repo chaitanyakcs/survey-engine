@@ -126,6 +126,27 @@ async def _evaluate_with_advanced_system(survey_data: Dict[str, Any], rfq_text: 
             # Use single-call evaluator for cost efficiency
             evaluator = SingleCallEvaluator(llm_client=llm_client, db_session=db)
             result = await evaluator.evaluate_survey(survey_data, rfq_text, survey_id, rfq_id)
+            
+            # Generate AI annotations
+            try:
+                from src.services.ai_annotation_service import AIAnnotationService
+                ai_service = AIAnnotationService(db)
+                
+                # Create AI annotations from evaluation result
+                annotation_result = await ai_service.create_annotations_from_evaluation(
+                    result, survey_id, "ai_system"
+                )
+                
+                logger.info(f"🤖 Generated {annotation_result['total_created']} AI annotations for survey {survey_id}")
+                
+                # Add annotation info to evaluation metadata
+                if hasattr(result, 'evaluation_metadata'):
+                    result.evaluation_metadata['ai_annotations_created'] = annotation_result['total_created']
+                    result.evaluation_metadata['annotation_errors'] = len(annotation_result['errors'])
+                
+            except Exception as e:
+                logger.error(f"❌ Failed to generate AI annotations: {str(e)}")
+                # Don't fail the evaluation, just log the error
         elif evaluation_mode == "multiple_calls":
             # Use multiple-call evaluator for detailed analysis
             evaluator = PillarBasedEvaluator(llm_client=llm_client, db_session=db)
@@ -139,6 +160,28 @@ async def _evaluate_with_advanced_system(survey_data: Dict[str, Any], rfq_text: 
             # Use single-call for now (can implement hybrid later)
             evaluator = SingleCallEvaluator(llm_client=llm_client, db_session=db)
             result = await evaluator.evaluate_survey(survey_data, rfq_text, survey_id, rfq_id)
+        
+        # Generate AI annotations if using single-call evaluator
+        if evaluation_mode == "single_call" and hasattr(result, 'question_annotations') and hasattr(result, 'section_annotations'):
+            try:
+                from src.services.ai_annotation_service import AIAnnotationService
+                ai_service = AIAnnotationService(db)
+                
+                # Create AI annotations from evaluation result
+                annotation_result = await ai_service.create_annotations_from_evaluation(
+                    result, survey_id, "ai_system"
+                )
+                
+                logger.info(f"🤖 Generated {annotation_result['total_created']} AI annotations for survey {survey_id}")
+                
+                # Add annotation info to evaluation metadata
+                if hasattr(result, 'evaluation_metadata'):
+                    result.evaluation_metadata['ai_annotations_created'] = annotation_result['total_created']
+                    result.evaluation_metadata['annotation_errors'] = len(annotation_result['errors'])
+                
+            except Exception as e:
+                logger.error(f"❌ Failed to generate AI annotations: {str(e)}")
+                # Don't fail the evaluation, just log the error
         
         # Convert advanced results to API format
         pillar_breakdown = []
@@ -626,6 +669,68 @@ async def evaluate_survey_pillars(
     except Exception as e:
         logger.error(f"❌ [Pillar Scores API] Error evaluating survey: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to evaluate survey: {str(e)}")
+
+@router.get("/{survey_id}/ai-annotations")
+async def get_ai_annotations(
+    survey_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Get AI-generated annotations for a specific survey
+    """
+    try:
+        from src.services.ai_annotation_service import AIAnnotationService
+        ai_service = AIAnnotationService(db)
+        
+        annotations = ai_service.get_ai_annotations_for_survey(str(survey_id))
+        
+        return {
+            "survey_id": str(survey_id),
+            "question_annotations": annotations["question_annotations"],
+            "section_annotations": annotations["section_annotations"],
+            "total_annotations": len(annotations["question_annotations"]) + len(annotations["section_annotations"])
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error getting AI annotations: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get AI annotations: {str(e)}"
+        )
+
+class VerifyAnnotationRequest(BaseModel):
+    annotation_id: int
+    annotation_type: str
+
+@router.post("/{survey_id}/verify-annotation")
+async def verify_ai_annotation(
+    survey_id: UUID,
+    request_data: VerifyAnnotationRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Mark an AI-generated annotation as human verified
+    """
+    try:
+        from src.services.ai_annotation_service import AIAnnotationService
+        ai_service = AIAnnotationService(db)
+        
+        success = ai_service.mark_annotation_as_verified(request_data.annotation_id, request_data.annotation_type)
+        
+        if success:
+            return {"status": "success", "message": "Annotation marked as verified"}
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail="Annotation not found or verification failed"
+            )
+        
+    except Exception as e:
+        logger.error(f"❌ Error verifying annotation: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to verify annotation: {str(e)}"
+        )
 
 @router.get("/rules/summary")
 async def get_pillar_rules_summary(db: Session = Depends(get_db)):

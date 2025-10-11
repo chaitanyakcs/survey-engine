@@ -7,13 +7,14 @@ import {
   Cog6ToothIcon,
   HomeIcon,
   InformationCircleIcon,
-  DocumentCheckIcon
+  DocumentCheckIcon,
+  ChartBarIcon
 } from '@heroicons/react/24/outline';
 import AIEngineInfoModal from './AIEngineInfoModal';
 import { useSidebar } from '../contexts/SidebarContext';
 
 interface SidebarProps {
-  currentView: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings';
+  currentView: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings' | 'annotation-insights';
   onViewChange: (view: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings') => void;
 }
 
@@ -54,6 +55,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) =
       name: 'Settings',
       icon: Cog6ToothIcon,
       href: '/settings'
+    },
+    {
+      id: 'annotation-insights',
+      name: 'Annotation Insights',
+      icon: ChartBarIcon,
+      href: '/annotation-insights'
     }
   ];
 

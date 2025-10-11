@@ -24,6 +24,8 @@ class SingleCallEvaluationResult:
     detailed_analysis: Dict[str, Any]
     cross_pillar_insights: List[str]
     overall_recommendations: List[str]
+    question_annotations: List[Dict[str, Any]]
+    section_annotations: List[Dict[str, Any]]
     evaluation_metadata: Dict[str, Any]
     cost_savings: Dict[str, Any]  # Track cost savings vs multi-call
 
@@ -122,6 +124,8 @@ EVALUATION PROCESS:
 - Provide specific examples of compliance/non-compliance
 - Calculate weighted overall score
 - Generate actionable recommendations
+- Score each individual question and section on all 5 pillars (1-5 scale)
+- Provide confidence scores for AI-generated annotations (0.0-1.0)
 
 RESPOND WITH JSON:
 {{
@@ -181,12 +185,71 @@ RESPOND WITH JSON:
         "Standardize rating scales across all questions",
         "Include survey instructions and progress indicators"
     ],
+    "question_annotations": [
+        {{
+            "question_id": "q1",
+            "question_text": "What is your age group?",
+            "content_validity": 4,
+            "methodological_rigor": 5,
+            "respondent_experience": 4,
+            "analytical_value": 3,
+            "business_impact": 4,
+            "quality": 4,
+            "relevant": 5,
+            "ai_confidence": 0.85,
+            "comment": "Clear demographic question with good response options"
+        }},
+        {{
+            "question_id": "q2",
+            "question_text": "How satisfied are you with our product?",
+            "content_validity": 5,
+            "methodological_rigor": 4,
+            "respondent_experience": 4,
+            "analytical_value": 5,
+            "business_impact": 5,
+            "quality": 4,
+            "relevant": 5,
+            "ai_confidence": 0.90,
+            "comment": "Direct satisfaction question, well-structured"
+        }}
+    ],
+    "section_annotations": [
+        {{
+            "section_id": 1,
+            "section_title": "Demographics",
+            "content_validity": 4,
+            "methodological_rigor": 5,
+            "respondent_experience": 4,
+            "analytical_value": 4,
+            "business_impact": 4,
+            "quality": 4,
+            "relevant": 5,
+            "ai_confidence": 0.88,
+            "comment": "Essential demographic section with appropriate questions"
+        }},
+        {{
+            "section_id": 2,
+            "section_title": "Product Satisfaction",
+            "content_validity": 5,
+            "methodological_rigor": 4,
+            "respondent_experience": 4,
+            "analytical_value": 5,
+            "business_impact": 5,
+            "quality": 4,
+            "relevant": 5,
+            "ai_confidence": 0.92,
+            "comment": "Core satisfaction questions align well with research objectives"
+        }}
+    ],
     "evaluation_metadata": {{
         "evaluation_mode": "single_call",
         "timestamp": "{datetime.now().isoformat()}",
         "survey_id": "{survey_id}",
         "rfq_id": "{rfq_id}",
         "questions_analyzed": {len(questions)},
+        "sections_analyzed": {len(survey.get('sections', []))},
+        "ai_annotations_generated": true,
+        "total_annotations": {len(questions) + len(survey.get('sections', []))},
         "rfq_text_length": {len(rfq_text)}
     }}
 }}
@@ -268,6 +331,8 @@ RESPOND WITH JSON:
             detailed_analysis=result.get("detailed_analysis", {}),
             cross_pillar_insights=result.get("cross_pillar_insights", []),
             overall_recommendations=result.get("overall_recommendations", []),
+            question_annotations=result.get("question_annotations", []),
+            section_annotations=result.get("section_annotations", []),
             evaluation_metadata=result.get("evaluation_metadata", {}),
             cost_savings=cost_savings
         )
@@ -352,12 +417,17 @@ RESPOND WITH JSON:
             },
             cross_pillar_insights=["Basic evaluation used - limited cross-pillar analysis available"],
             overall_recommendations=["Use advanced evaluation mode for comprehensive analysis"],
+            question_annotations=[],  # No AI annotations in fallback mode
+            section_annotations=[],  # No AI annotations in fallback mode
             evaluation_metadata={
                 "evaluation_mode": "basic_fallback",
                 "timestamp": datetime.now().isoformat(),
                 "survey_id": survey_id,
                 "rfq_id": rfq_id,
-                "questions_analyzed": len(questions)
+                "questions_analyzed": len(questions),
+                "sections_analyzed": len(survey.get('sections', [])),
+                "ai_annotations_generated": False,
+                "total_annotations": 0
             },
             cost_savings={
                 "calls_saved": 0,

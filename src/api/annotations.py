@@ -4,14 +4,17 @@ API endpoints for survey annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 from datetime import datetime
+import logging
 
 from src.database.connection import get_db
 from src.database.models import QuestionAnnotation, SectionAnnotation, SurveyAnnotation
 from src.services.advanced_labeling_service import AdvancedLabelingService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -101,10 +104,23 @@ class QuestionAnnotationResponse(BaseModel):
     analytical_value: int
     business_impact: int
     comment: Optional[str]
-    labels: Optional[List[str]]
+    labels: Optional[Dict[str, Any]] = None
     annotator_id: str
     created_at: datetime
     updated_at: Optional[datetime]
+    
+    # AI annotation fields
+    ai_generated: Optional[bool] = None
+    ai_confidence: Optional[float] = None
+    human_verified: Optional[bool] = None
+    generation_timestamp: Optional[datetime] = None
+    
+    # Human override tracking fields
+    human_overridden: Optional[bool] = None
+    override_timestamp: Optional[datetime] = None
+    original_ai_quality: Optional[int] = None
+    original_ai_relevant: Optional[int] = None
+    original_ai_comment: Optional[str] = None
 
 class SectionAnnotationResponse(BaseModel):
     id: int
@@ -118,7 +134,7 @@ class SectionAnnotationResponse(BaseModel):
     analytical_value: int
     business_impact: int
     comment: Optional[str]
-    labels: Optional[List[str]]
+    labels: Optional[Dict[str, Any]] = None
     annotator_id: str
     created_at: datetime
     updated_at: Optional[datetime]
@@ -127,6 +143,19 @@ class SectionAnnotationResponse(BaseModel):
     section_classification: Optional[str] = None
     mandatory_elements: Optional[Dict[str, Any]] = None
     compliance_score: Optional[int] = None
+    
+    # AI annotation fields
+    ai_generated: Optional[bool] = None
+    ai_confidence: Optional[float] = None
+    human_verified: Optional[bool] = None
+    generation_timestamp: Optional[datetime] = None
+    
+    # Human override tracking fields
+    human_overridden: Optional[bool] = None
+    override_timestamp: Optional[datetime] = None
+    original_ai_quality: Optional[int] = None
+    original_ai_relevant: Optional[int] = None
+    original_ai_comment: Optional[str] = None
 
 class SurveyLevelAnnotationResponse(BaseModel):
     id: int
@@ -181,24 +210,42 @@ class SurveyAnnotationsResponse(BaseModel):
 def get_survey_annotations(
     survey_id: str,
     annotator_id: Optional[str] = "current-user",
+    include_ai_annotations: bool = True,
     db: Session = Depends(get_db)
 ):
-    """Get all annotations for a survey"""
+    """Get all annotations for a survey, optionally including AI annotations"""
+    
+    # Build query conditions
+    question_conditions = [QuestionAnnotation.survey_id == survey_id]
+    section_conditions = [SectionAnnotation.survey_id == survey_id]
+    
+    if include_ai_annotations:
+        # Include both user and AI annotations
+        question_conditions.append(
+            or_(
+                QuestionAnnotation.annotator_id == annotator_id,
+                QuestionAnnotation.annotator_id == "ai_system"
+            )
+        )
+        section_conditions.append(
+            or_(
+                SectionAnnotation.annotator_id == annotator_id,
+                SectionAnnotation.annotator_id == "ai_system"
+            )
+        )
+    else:
+        # Only include user annotations
+        question_conditions.append(QuestionAnnotation.annotator_id == annotator_id)
+        section_conditions.append(SectionAnnotation.annotator_id == annotator_id)
     
     # Get question annotations
     question_annotations = db.query(QuestionAnnotation).filter(
-        and_(
-            QuestionAnnotation.survey_id == survey_id,
-            QuestionAnnotation.annotator_id == annotator_id
-        )
+        and_(*question_conditions)
     ).all()
     
     # Get section annotations
     section_annotations = db.query(SectionAnnotation).filter(
-        and_(
-            SectionAnnotation.survey_id == survey_id,
-            SectionAnnotation.annotator_id == annotator_id
-        )
+        and_(*section_conditions)
     ).all()
     
     # Get survey-level annotation
@@ -249,7 +296,18 @@ def get_survey_annotations(
                 labels=qa.labels,
                 annotator_id=qa.annotator_id,
                 created_at=qa.created_at,
-                updated_at=qa.updated_at
+                updated_at=qa.updated_at,
+                # AI annotation fields
+                ai_generated=qa.ai_generated,
+                ai_confidence=float(qa.ai_confidence) if qa.ai_confidence else None,
+                human_verified=qa.human_verified,
+                generation_timestamp=qa.generation_timestamp,
+                # Human override tracking fields
+                human_overridden=getattr(qa, 'human_overridden', None),
+                override_timestamp=getattr(qa, 'override_timestamp', None),
+                original_ai_quality=getattr(qa, 'original_ai_quality', None),
+                original_ai_relevant=getattr(qa, 'original_ai_relevant', None),
+                original_ai_comment=getattr(qa, 'original_ai_comment', None)
             ) for qa in question_annotations
         ],
         section_annotations=[
@@ -269,10 +327,21 @@ def get_survey_annotations(
                 annotator_id=sa.annotator_id,
                 created_at=sa.created_at,
                 updated_at=sa.updated_at,
-                # Advanced labeling fields
-                section_classification=sa.section_classification,
-                mandatory_elements=sa.mandatory_elements,
-                compliance_score=sa.compliance_score
+                # Advanced labeling fields (only if they exist)
+                section_classification=getattr(sa, 'section_classification', None),
+                mandatory_elements=getattr(sa, 'mandatory_elements', None),
+                compliance_score=getattr(sa, 'compliance_score', None),
+                # AI annotation fields
+                ai_generated=sa.ai_generated,
+                ai_confidence=float(sa.ai_confidence) if sa.ai_confidence else None,
+                human_verified=sa.human_verified,
+                generation_timestamp=sa.generation_timestamp,
+                # Human override tracking fields
+                human_overridden=getattr(sa, 'human_overridden', None),
+                override_timestamp=getattr(sa, 'override_timestamp', None),
+                original_ai_quality=getattr(sa, 'original_ai_quality', None),
+                original_ai_relevant=getattr(sa, 'original_ai_relevant', None),
+                original_ai_comment=getattr(sa, 'original_ai_comment', None)
             ) for sa in section_annotations
         ],
         overall_comment=survey_annotation.overall_comment if survey_annotation else None,
@@ -293,9 +362,15 @@ def save_bulk_annotations(
 ):
     """Save multiple annotations for a survey in bulk"""
     
+    logger.info(f"🔍 [API] Starting bulk annotation save for survey_id={survey_id}")
+    logger.info(f"📊 [API] Processing {len(annotations.question_annotations)} question annotations and {len(annotations.section_annotations)} section annotations")
+    
     try:
         # Process question annotations
-        for qa_req in annotations.question_annotations:
+        logger.info("📝 [API] Processing question annotations...")
+        for i, qa_req in enumerate(annotations.question_annotations):
+            logger.debug(f"🔍 [API] Processing question annotation {i+1}/{len(annotations.question_annotations)}: question_id={qa_req.question_id}")
+            
             # Check if annotation already exists
             existing_qa = db.query(QuestionAnnotation).filter(
                 and_(
@@ -305,6 +380,25 @@ def save_bulk_annotations(
             ).first()
             
             if existing_qa:
+                logger.debug(f"🔄 [API] Updating existing question annotation for question_id={qa_req.question_id}")
+                
+                # Check if this is a human override of an AI annotation
+                is_human_override = (
+                    existing_qa.ai_generated and 
+                    existing_qa.annotator_id == "ai_system" and 
+                    qa_req.annotator_id == "current-user"
+                )
+                
+                if is_human_override:
+                    logger.info(f"👤 [API] Human overriding AI annotation for question_id={qa_req.question_id}")
+                    # Store original AI values before updating
+                    existing_qa.original_ai_quality = existing_qa.quality
+                    existing_qa.original_ai_relevant = existing_qa.relevant
+                    existing_qa.original_ai_comment = existing_qa.comment
+                    existing_qa.human_overridden = True
+                    existing_qa.override_timestamp = datetime.now()
+                    existing_qa.human_verified = True  # Mark as human-verified since they're overriding
+                
                 # Update existing annotation
                 existing_qa.required = qa_req.required
                 existing_qa.quality = qa_req.quality
@@ -318,6 +412,7 @@ def save_bulk_annotations(
                 existing_qa.labels = qa_req.labels
                 existing_qa.updated_at = datetime.now()
             else:
+                logger.debug(f"➕ [API] Creating new question annotation for question_id={qa_req.question_id}")
                 # Create new annotation
                 new_qa = QuestionAnnotation(
                     question_id=qa_req.question_id,
@@ -336,8 +431,13 @@ def save_bulk_annotations(
                 )
                 db.add(new_qa)
         
+        logger.info("✅ [API] Completed processing question annotations")
+        
         # Process section annotations
-        for sa_req in annotations.section_annotations:
+        logger.info("📝 [API] Processing section annotations...")
+        for i, sa_req in enumerate(annotations.section_annotations):
+            logger.debug(f"🔍 [API] Processing section annotation {i+1}/{len(annotations.section_annotations)}: section_id={sa_req.section_id}")
+            
             # Check if annotation already exists
             existing_sa = db.query(SectionAnnotation).filter(
                 and_(
@@ -347,6 +447,25 @@ def save_bulk_annotations(
             ).first()
             
             if existing_sa:
+                logger.debug(f"🔄 [API] Updating existing section annotation for section_id={sa_req.section_id}")
+                
+                # Check if this is a human override of an AI annotation
+                is_human_override = (
+                    existing_sa.ai_generated and 
+                    existing_sa.annotator_id == "ai_system" and 
+                    sa_req.annotator_id == "current-user"
+                )
+                
+                if is_human_override:
+                    logger.info(f"👤 [API] Human overriding AI annotation for section_id={sa_req.section_id}")
+                    # Store original AI values before updating
+                    existing_sa.original_ai_quality = existing_sa.quality
+                    existing_sa.original_ai_relevant = existing_sa.relevant
+                    existing_sa.original_ai_comment = existing_sa.comment
+                    existing_sa.human_overridden = True
+                    existing_sa.override_timestamp = datetime.now()
+                    existing_sa.human_verified = True  # Mark as human-verified since they're overriding
+                
                 # Update existing annotation
                 existing_sa.quality = sa_req.quality
                 existing_sa.relevant = sa_req.relevant
@@ -363,6 +482,7 @@ def save_bulk_annotations(
                 existing_sa.mandatory_elements = sa_req.mandatory_elements
                 existing_sa.compliance_score = sa_req.compliance_score
             else:
+                logger.debug(f"➕ [API] Creating new section annotation for section_id={sa_req.section_id}")
                 # Create new annotation
                 new_sa = SectionAnnotation(
                     section_id=sa_req.section_id,
@@ -384,8 +504,11 @@ def save_bulk_annotations(
                 )
                 db.add(new_sa)
         
+        logger.info("✅ [API] Completed processing section annotations")
+        
         # Process survey-level annotation
         if annotations.overall_comment or annotations.detected_labels or annotations.compliance_report or annotations.advanced_metadata:
+            logger.info("📝 [API] Processing survey-level annotation...")
             existing_survey_ann = db.query(SurveyAnnotation).filter(
                 and_(
                     SurveyAnnotation.survey_id == survey_id,
@@ -394,6 +517,7 @@ def save_bulk_annotations(
             ).first()
 
             if existing_survey_ann:
+                logger.debug(f"🔄 [API] Updating existing survey annotation for survey_id={survey_id}")
                 existing_survey_ann.overall_comment = annotations.overall_comment
                 existing_survey_ann.updated_at = datetime.now()
                 # Update advanced labeling fields
@@ -401,6 +525,7 @@ def save_bulk_annotations(
                 existing_survey_ann.compliance_report = annotations.compliance_report
                 existing_survey_ann.advanced_metadata = annotations.advanced_metadata
             else:
+                logger.debug(f"➕ [API] Creating new survey annotation for survey_id={survey_id}")
                 new_survey_ann = SurveyAnnotation(
                     survey_id=survey_id,
                     overall_comment=annotations.overall_comment,
@@ -411,14 +536,20 @@ def save_bulk_annotations(
                     advanced_metadata=annotations.advanced_metadata
                 )
                 db.add(new_survey_ann)
+            logger.info("✅ [API] Completed processing survey-level annotation")
         
         # Commit all changes
+        logger.info("💾 [API] Committing all changes to database...")
         db.commit()
+        logger.info("✅ [API] Successfully committed all changes")
         
+        logger.info(f"🎉 [API] Bulk annotation save completed successfully for survey_id={survey_id}")
         return {"message": "Annotations saved successfully", "survey_id": survey_id}
         
     except Exception as e:
+        logger.error(f"❌ [API] Failed to save bulk annotations for survey_id={survey_id}: {str(e)}", exc_info=True)
         db.rollback()
+        logger.error(f"🔄 [API] Database transaction rolled back due to error")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to save annotations: {str(e)}"

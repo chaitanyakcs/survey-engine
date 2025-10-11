@@ -153,7 +153,7 @@ class GenerationService:
                 prompt = system_prompt
             else:
                 logger.info("🔨 [GenerationService] Building default prompt...")
-                prompt = self.prompt_service.build_golden_enhanced_prompt(
+                prompt = await self.prompt_service.build_golden_enhanced_prompt(
                     context=context,
                     golden_examples=golden_examples,
                     methodology_blocks=methodology_blocks,
@@ -286,7 +286,7 @@ class GenerationService:
 
             # Build comprehensive prompt with rules and golden examples
             logger.info("🔨 [GenerationService] Building prompt...")
-            prompt = self.prompt_service.build_golden_enhanced_prompt(
+            prompt = await self.prompt_service.build_golden_enhanced_prompt(
                 context=context,
                 golden_examples=golden_examples,
                 methodology_blocks=methodology_blocks,

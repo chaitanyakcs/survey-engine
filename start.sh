@@ -98,39 +98,28 @@ run_migrations() {
         return 0
     fi
     
-    log_info "Running database migrations..."
-    log_info "Alembic command: $UV_CMD run alembic upgrade head"
+    log_info "Running database migrations using new migration system..."
     log_info "Current working directory: $(pwd)"
-    log_info "Alembic files: $(ls -la alembic/)"
     
-    # Check current migration status first
-    log_info "Checking current migration status..."
-    if $UV_CMD run alembic current 2>&1; then
-        log_success "Current migration status retrieved"
-    else
-        log_warning "Could not get current migration status, continuing..."
+    # Check if migration script exists
+    if [ ! -f "run_migrations.py" ]; then
+        log_error "Migration script run_migrations.py not found!"
+        return 1
     fi
     
-    # Try to run migrations with detailed error output
+    # Run migrations using the new system
     log_info "Executing migration command..."
-    if $UV_CMD run alembic upgrade head 2>&1; then
+    if $UV_CMD run python run_migrations.py 2>&1; then
         log_success "Database migrations completed successfully"
         return 0
     else
         local exit_code=$?
         log_error "Database migrations failed with exit code $exit_code"
         
-        # Check if it's a "no changes" scenario (which is actually OK)
-        if [ $exit_code -eq 0 ]; then
-            log_info "Migration completed with no changes needed"
-            return 0
-        fi
-        
-        # For Railway, we should be more lenient but still log the issue
-        log_warning "Migration failed, but continuing for Railway deployment..."
-        log_warning "This may cause database schema issues. Check Railway logs for details."
-        log_warning "You can fix this by running the admin endpoint: /api/v1/admin/fix-document-uploads-schema"
-        return 0
+        # Show detailed error information
+        log_error "Migration error details:"
+        $UV_CMD run python run_migrations.py 2>&1 | head -20
+        return $exit_code
     fi
 }
 
@@ -233,10 +222,8 @@ start_consolidated() {
 start_websocket() {
     local port=${PORT:-8000}
     log_info "Starting WebSocket server on port $port..."
-    if ! $UV_CMD run python3 websocket_server.py; then
-        log_error "Failed to start WebSocket server"
-        exit 1
-    fi
+    # WebSocket functionality is now integrated into the main FastAPI app (src/main.py)
+    log_info "WebSocket support is available through the main FastAPI server"
 }
 
 # Function to generate nginx config with dynamic port
@@ -362,22 +349,8 @@ start_both() {
         exit 1
     fi
     
-    # Start WebSocket server in background
-    log_info "Starting WebSocket server..."
-    local ws_port=8000
-    log_info "WebSocket command: $UV_CMD run python3 websocket_server.py"
-    
-    $UV_CMD run python3 websocket_server.py &
-    WEBSOCKET_PID=$!
-    log_success "WebSocket server started with PID $WEBSOCKET_PID"
-    
-    # Check if WebSocket started successfully
-    log_info "Checking if WebSocket process is running..."
-    sleep 2
-    if ! kill -0 $WEBSOCKET_PID 2>/dev/null; then
-        log_error "WebSocket server failed to start (PID $WEBSOCKET_PID not running)"
-        exit 1
-    fi
+    # WebSocket functionality is now integrated into the main FastAPI app
+    log_info "WebSocket support is available through the main FastAPI server at /ws/"
     
     # Wait for WebSocket to be ready (readiness check) - doesn't depend on ML models
     log_info "Waiting for WebSocket to be ready..."
@@ -467,9 +440,9 @@ main() {
     check_redis || true  # Redis is optional, don't exit if unavailable
     
     log_info "Step 3: Running migrations and seeding..."
-    # For Railway, use Alembic migrations directly
+    # For Railway, use new migration system directly
     if [ -n "$RAILWAY_ENVIRONMENT" ] || [ -n "$RAILWAY_PROJECT_ID" ]; then
-        log_info "Railway environment detected - using Alembic migrations..."
+        log_info "Railway environment detected - using new migration system..."
         run_migrations || exit 1
     elif [ -f "start-local.sh" ]; then
         log_info "Using comprehensive startup script for database operations..."

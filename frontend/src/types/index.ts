@@ -716,6 +716,19 @@ export interface QuestionAnnotation {
   labels?: string[];
   annotatorId?: string;
   timestamp?: string;
+  
+  // AI-generated annotation tracking
+  aiGenerated?: boolean;
+  aiConfidence?: number; // 0.0-1.0
+  humanVerified?: boolean;
+  generationTimestamp?: string;
+  
+  // Human override tracking
+  humanOverridden?: boolean;
+  overrideTimestamp?: string;
+  originalAiQuality?: number;
+  originalAiRelevant?: number;
+  originalAiComment?: string;
 }
 
 export interface SectionAnnotation {
@@ -738,6 +751,19 @@ export interface SectionAnnotation {
   section_classification?: string;
   mandatory_elements?: Record<string, any>;
   compliance_score?: number;
+  
+  // AI-generated annotation tracking
+  aiGenerated?: boolean;
+  aiConfidence?: number; // 0.0-1.0
+  humanVerified?: boolean;
+  generationTimestamp?: string;
+  
+  // Human override tracking
+  humanOverridden?: boolean;
+  overrideTimestamp?: string;
+  originalAiQuality?: number;
+  originalAiRelevant?: number;
+  originalAiComment?: string;
 }
 
 export interface SurveyLevelAnnotation {
@@ -1020,6 +1046,7 @@ export interface AppStore {
   // Annotation Actions
   saveAnnotations: (annotations: SurveyAnnotations) => Promise<void>;
   loadAnnotations: (surveyId: string) => Promise<void>;
+  verifyAIAnnotation: (surveyId: string, annotationId: number, annotationType: 'question' | 'section') => Promise<void>;
 
   // Advanced Labeling Actions
   applyAdvancedLabeling: (surveyId: string) => Promise<any>;

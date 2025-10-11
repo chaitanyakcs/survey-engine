@@ -10,6 +10,7 @@ set -e  # Exit on any error
 STRICT_TYPES=false
 STRICT_LINT=false
 CLEAN_BUILD=false
+AUTO_MIGRATE=false
 for arg in "$@"; do
     case $arg in
         --strict-types)
@@ -29,12 +30,17 @@ for arg in "$@"; do
             CLEAN_BUILD=true
             shift
             ;;
+        --auto-migrate)
+            AUTO_MIGRATE=true
+            shift
+            ;;
         --help|-h)
-            echo "Usage: $0 [--strict-types] [--strict-lint] [--strict] [--clean]"
+            echo "Usage: $0 [--strict-types] [--strict-lint] [--strict] [--clean] [--auto-migrate]"
             echo "  --strict-types    Enforce strict type checking (mypy errors block deployment)"
             echo "  --strict-lint     Enforce strict linting (flake8 errors block deployment)"
             echo "  --strict          Enable both strict type checking and linting"
             echo "  --clean           Perform a clean build (remove build artifacts and Docker cache)"
+            echo "  --auto-migrate    Automatically run database migrations after deployment"
             echo "  --help, -h        Show this help message"
             echo ""
             echo "Note: Development checks (formatting, imports, logger) are now in start-local.sh"
@@ -172,6 +178,57 @@ if [ $? -eq 0 ]; then
     echo "🔄 Triggering Railway redeploy..."
     if railway redeploy -y; then
         echo "✅ Railway redeploy triggered successfully."
+        
+        # Wait for deployment to complete if auto-migrate is enabled
+        if [ "$AUTO_MIGRATE" = true ]; then
+            echo "⏳ Waiting for deployment to complete and transformers to load..."
+            
+            # Wait for transformers to load by checking the health endpoint
+            HEALTH_URL="https://survey-engine-production.up.railway.app/api/v1/admin/health"
+            MAX_WAIT_ATTEMPTS=60  # 60 attempts * 10 seconds = 10 minutes max
+            WAIT_COUNT=0
+            
+            echo "   Checking if server is ready (transformers loading)..."
+            while [ $WAIT_COUNT -lt $MAX_WAIT_ATTEMPTS ]; do
+                echo "   Attempt $((WAIT_COUNT + 1))/$MAX_WAIT_ATTEMPTS - checking server health..."
+                if curl -s "$HEALTH_URL" | grep -q '"status":"healthy"'; then
+                    echo "✅ Server is ready! Transformers have loaded."
+                    break
+                else
+                    echo "   Server not ready yet, waiting 10 seconds..."
+                    sleep 10
+                    WAIT_COUNT=$((WAIT_COUNT + 1))
+                fi
+            done
+            
+            if [ $WAIT_COUNT -eq $MAX_WAIT_ATTEMPTS ]; then
+                echo "⚠️  Server health check timed out after 10 minutes."
+                echo "   Proceeding with migration attempts anyway..."
+            fi
+            
+            # Try to run migrations with retries
+            echo "🗄️  Running database migrations..."
+            MIGRATION_URL="https://survey-engine-production.up.railway.app/api/v1/admin/migrate-all"
+            MAX_RETRIES=5
+            RETRY_COUNT=0
+            
+            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+                echo "   Migration attempt $((RETRY_COUNT + 1))/$MAX_RETRIES..."
+                if curl -s -X POST "$MIGRATION_URL" | grep -q '"status":"success"'; then
+                    echo "✅ Database migrations completed successfully!"
+                    break
+                else
+                    echo "⚠️  Migration attempt failed, retrying in 10 seconds..."
+                    sleep 10
+                    RETRY_COUNT=$((RETRY_COUNT + 1))
+                fi
+            done
+            
+            if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+                echo "❌ Database migrations failed after $MAX_RETRIES attempts."
+                echo "   Please run manually: curl -X POST $MIGRATION_URL"
+            fi
+        fi
     else
         echo "❌ Railway redeploy failed."
         exit 1
@@ -182,6 +239,21 @@ if [ $? -eq 0 ]; then
     echo "📋 Next steps:"
     echo "   1. Railway is redeploying your service with the latest image"
     echo "   2. Your app will be available at: https://survey-engine-production.up.railway.app"
+    echo ""
+    if [ "$AUTO_MIGRATE" = true ]; then
+        echo "✅ Database migrations were automatically executed"
+        echo "   Verify migration status:"
+        echo "   curl https://survey-engine-production.up.railway.app/api/v1/admin/check-migration-status"
+    else
+        echo "🗄️  Database Migration:"
+        echo "   After deployment completes, run database migrations:"
+        echo "   curl -X POST https://survey-engine-production.up.railway.app/api/v1/admin/migrate-all"
+        echo ""
+        echo "   Verify migration status:"
+        echo "   curl https://survey-engine-production.up.railway.app/api/v1/admin/check-migration-status"
+        echo ""
+        echo "   💡 Tip: Use --auto-migrate flag to automatically run migrations"
+    fi
     echo ""
     echo "🔍 To check logs:"
     echo "   - Use Railway dashboard logs tab"

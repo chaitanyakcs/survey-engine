@@ -7,6 +7,7 @@ from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 import json
 import logging
+from src.services.annotation_insights_service import AnnotationInsightsService
 
 logger = logging.getLogger(__name__)
 
@@ -427,7 +428,7 @@ class PromptBuilder:
 
         return "\n".join(context_parts)
 
-    def build_survey_generation_prompt(
+    async def build_survey_generation_prompt(
         self,
         rfq_text: str,
         context: Dict[str, Any],
@@ -462,6 +463,11 @@ class PromptBuilder:
         if rag_context:
             self.section_manager.add_section("rag_context",
                 self.section_manager.build_rag_context_section(rag_context))
+
+        # Add annotation insights section if available
+        annotation_insights_section = await self._build_annotation_insights_section()
+        if annotation_insights_section:
+            self.section_manager.add_section("annotation_insights", annotation_insights_section)
 
         self.section_manager.add_section("current_task",
             self.section_manager.build_current_task_section(rfq_details))
@@ -688,3 +694,88 @@ class PromptBuilder:
         sections.append("**IMPORTANT**: These text introductions must appear as standalone content blocks before their related question sections, not as question text.")
         
         return "\n".join(sections)
+    
+    async def _build_annotation_insights_section(self) -> Optional[PromptSection]:
+        """Build annotation insights section with quality guidelines from expert feedback"""
+        try:
+            if not self.db_session:
+                return None
+            
+            # Get annotation insights
+            insights_service = AnnotationInsightsService(self.db_session)
+            guidelines = await insights_service.get_quality_guidelines()
+            
+            if not guidelines.get("high_quality_examples") and not guidelines.get("avoid_patterns"):
+                return None
+            
+            content = [
+                "# 📊 Quality Standards (Based on Expert Review)",
+                "",
+                "The following guidelines are derived from expert annotations of survey quality. Use these patterns to create high-quality surveys:",
+                ""
+            ]
+            
+            # Add high-quality examples
+            if guidelines.get("high_quality_examples"):
+                content.extend([
+                    "## ✅ HIGH-QUALITY PATTERNS (Score 4-5):",
+                    ""
+                ])
+                
+                for example in guidelines["high_quality_examples"][:3]:  # Top 3 examples
+                    content.extend([
+                        f"**{example['type'].replace('_', ' ').title()} Questions:**",
+                        f"- Example: \"{example['example']}\"",
+                        f"- Expert Score: {example['score']:.1f}/5",
+                        ""
+                    ])
+            
+            # Add patterns to avoid
+            if guidelines.get("avoid_patterns"):
+                content.extend([
+                    "## ❌ AVOID THESE PATTERNS (Score 1-2):",
+                    ""
+                ])
+                
+                for pattern in guidelines["avoid_patterns"][:3]:  # Top 3 patterns
+                    content.extend([
+                        f"**{pattern['pattern'].replace('_', ' ').title()}:**",
+                        f"- Examples: {', '.join(pattern['examples'][:2])}",
+                        ""
+                    ])
+            
+            # Add common issues
+            if guidelines.get("common_issues"):
+                content.extend([
+                    "## 🚨 COMMON ISSUES FROM EXPERT FEEDBACK:",
+                    ""
+                ])
+                
+                for issue in guidelines["common_issues"][:5]:  # Top 5 issues
+                    content.extend([
+                        f"**{issue['issue'].replace('_', ' ').title()}** (mentioned {issue['frequency']} times):",
+                        f"- Example: \"{issue['examples'][0] if issue['examples'] else 'No examples available'}\"",
+                        ""
+                    ])
+            
+            content.extend([
+                "## 🎯 IMPLEMENTATION GUIDELINES:",
+                "",
+                "1. **Follow High-Quality Patterns**: Use the examples above as templates for similar questions",
+                "2. **Avoid Problematic Patterns**: Steer clear of the patterns that consistently score low",
+                "3. **Address Common Issues**: Be mindful of the issues experts frequently flag",
+                "4. **Quality Over Speed**: Take time to craft clear, unbiased questions",
+                "5. **Test for Clarity**: Ensure questions are easy to understand and answer",
+                ""
+            ])
+            
+            return PromptSection(
+                title="Quality Standards from Expert Review",
+                content=content,
+                order=3,  # After methodology, before current task
+                required=True
+            )
+            
+        except Exception as e:
+            logger.warning(f"⚠️ [PromptBuilder] Failed to build annotation insights section: {e}")
+            return None

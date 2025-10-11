@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from src.database.models import GoldenRFQSurveyPair
+from src.database.models import GoldenRFQSurveyPair, QuestionAnnotation, SectionAnnotation, SurveyAnnotation
 from typing import List, Dict, Any, Optional
 import numpy as np
 import logging
@@ -20,11 +20,12 @@ class RetrievalService:
     ) -> List[Dict[str, Any]]:
         """
         Tier 1: Retrieve exact golden RFQ-survey pairs using semantic similarity
+        Enhanced with annotation score weighting
         """
         import logging
         logger = logging.getLogger(__name__)
         
-        logger.info(f"🔍 [RetrievalService] Starting golden pairs retrieval with embedding dimension: {len(embedding)}")
+        logger.info(f"🔍 [RetrievalService] Starting annotation-weighted golden pairs retrieval with embedding dimension: {len(embedding)}")
         logger.info(f"🔍 [RetrievalService] Methodology tags filter: {methodology_tags}")
         logger.info(f"🔍 [RetrievalService] Limit: {limit}")
         
@@ -49,14 +50,21 @@ class RetrievalService:
                 query = query.filter(GoldenRFQSurveyPair.methodology_tags.overlap(methodology_tags))
             
             # Order by similarity (cosine distance - smaller is more similar)
-            query = query.order_by('similarity').limit(limit)
+            query = query.order_by('similarity').limit(limit * 2)  # Get more candidates for annotation weighting
             
             rows = query.all()
             logger.info(f"🔍 [RetrievalService] Database query executed. Found {len(rows)} golden pairs")
             
             golden_examples = []
             for i, row in enumerate(rows):
-                logger.info(f"📋 [RetrievalService] Golden pair {i+1}: ID={row.id}, Similarity={row.similarity:.4f}, Quality={row.quality_score}")
+                # Calculate annotation score for this survey
+                annotation_score = await self._calculate_annotation_score(str(row.id))
+                
+                # Apply annotation-based weighting to similarity score
+                weighted_similarity = self._apply_annotation_weighting(row.similarity, annotation_score)
+                
+                logger.info(f"📋 [RetrievalService] Golden pair {i+1}: ID={row.id}, Similarity={row.similarity:.4f}, Annotation={annotation_score:.2f}, Weighted={weighted_similarity:.4f}")
+                
                 golden_examples.append({
                     "id": str(row.id),
                     "rfq_text": row.rfq_text,
@@ -65,12 +73,20 @@ class RetrievalService:
                     "industry_category": row.industry_category,
                     "research_goal": row.research_goal,
                     "quality_score": float(row.quality_score) if row.quality_score else None,
-                    "similarity": float(row.similarity)
+                    "similarity": float(row.similarity),
+                    "annotation_score": annotation_score,
+                    "weighted_similarity": weighted_similarity
                 })
             
+            # Sort by weighted similarity (lower is better for cosine distance)
+            golden_examples.sort(key=lambda x: x['weighted_similarity'])
+            
+            # Take top results
+            final_examples = golden_examples[:limit]
+            
             # Update usage count for retrieved golden pairs
-            logger.info(f"📊 [RetrievalService] Updating usage counts for {len(golden_examples)} golden examples")
-            for example in golden_examples:
+            logger.info(f"📊 [RetrievalService] Updating usage counts for {len(final_examples)} golden examples")
+            for example in final_examples:
                 # Convert string ID back to UUID for database update
                 from uuid import UUID
                 example_id = UUID(example["id"])
@@ -82,7 +98,7 @@ class RetrievalService:
                 logger.info(f"📊 [RetrievalService] Update result: {result.rowcount} rows affected")
             
             self.db.commit()
-            return golden_examples
+            return final_examples
             
         except Exception as e:
             raise Exception(f"Golden pair retrieval failed: {str(e)}")
@@ -685,3 +701,93 @@ class RetrievalService:
 
         # Default goals for unknown methodologies
         return ["general research", "data collection", "market insights"]
+    
+    async def _calculate_annotation_score(self, survey_id: str) -> float:
+        """
+        Calculate average annotation score for a survey from question and section annotations
+        Returns 3.0 (neutral) if no annotations exist
+        """
+        try:
+            # Get question-level annotations
+            question_annotations = self.db.query(QuestionAnnotation).filter(
+                QuestionAnnotation.survey_id == survey_id
+            ).all()
+            
+            # Get section-level annotations  
+            section_annotations = self.db.query(SectionAnnotation).filter(
+                SectionAnnotation.survey_id == survey_id
+            ).all()
+            
+            all_scores = []
+            
+            # Process question annotations
+            for qa in question_annotations:
+                # Calculate average of all pillar scores
+                pillar_scores = [
+                    qa.methodological_rigor,
+                    qa.content_validity, 
+                    qa.respondent_experience,
+                    qa.analytical_value,
+                    qa.business_impact
+                ]
+                avg_score = sum(pillar_scores) / len(pillar_scores)
+                all_scores.append(avg_score)
+            
+            # Process section annotations
+            for sa in section_annotations:
+                # Calculate average of all pillar scores
+                pillar_scores = [
+                    sa.methodological_rigor,
+                    sa.content_validity,
+                    sa.respondent_experience, 
+                    sa.analytical_value,
+                    sa.business_impact
+                ]
+                avg_score = sum(pillar_scores) / len(pillar_scores)
+                all_scores.append(avg_score)
+            
+            if all_scores:
+                return sum(all_scores) / len(all_scores)
+            else:
+                # No annotations found, return neutral score
+                return 3.0
+                
+        except Exception as e:
+            logger.warning(f"⚠️ [RetrievalService] Failed to calculate annotation score for {survey_id}: {e}")
+            return 3.0
+    
+    def _apply_annotation_weighting(self, similarity: float, annotation_score: float) -> float:
+        """
+        Apply annotation-based weighting to similarity score
+        
+        High annotation scores (≥4.0) boost similarity (reduce distance)
+        Low annotation scores (<3.0) penalize similarity (increase distance)
+        """
+        try:
+            # Convert similarity to 0-1 scale (cosine distance -> cosine similarity)
+            cosine_similarity = 1 - similarity
+            
+            if annotation_score >= 4.0:
+                # High quality: boost similarity by 30%
+                weighted_similarity = cosine_similarity * 1.3
+            elif annotation_score >= 3.5:
+                # Good quality: boost similarity by 15%
+                weighted_similarity = cosine_similarity * 1.15
+            elif annotation_score >= 3.0:
+                # Neutral quality: no change
+                weighted_similarity = cosine_similarity
+            elif annotation_score >= 2.5:
+                # Poor quality: reduce similarity by 20%
+                weighted_similarity = cosine_similarity * 0.8
+            else:
+                # Very poor quality: reduce similarity by 50%
+                weighted_similarity = cosine_similarity * 0.5
+            
+            # Convert back to cosine distance
+            weighted_distance = 1 - min(1.0, weighted_similarity)
+            
+            return weighted_distance
+            
+        except Exception as e:
+            logger.warning(f"⚠️ [RetrievalService] Failed to apply annotation weighting: {e}")
+            return similarity

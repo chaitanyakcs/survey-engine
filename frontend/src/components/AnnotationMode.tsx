@@ -407,6 +407,53 @@ const QuestionAnnotationForm: React.FC<{
         </div>
         <p className="text-sm text-gray-600 mb-4">{question.question_text || question.text || 'No question text available'}</p>
         
+        {/* AI Annotation Badges */}
+        {annotation?.aiGenerated && (
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                <span>AI Generated</span>
+              </div>
+              {annotation.aiConfidence && (
+                <div className="text-xs text-gray-600">
+                  Confidence: {(annotation.aiConfidence * 100).toFixed(0)}%
+                </div>
+              )}
+              {annotation.humanVerified && (
+                <div className="flex items-center space-x-1 px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                  <span>Verified</span>
+                </div>
+              )}
+              {annotation.humanOverridden && (
+                <div className="flex items-center space-x-1 px-2 py-1 bg-orange-100 text-orange-800 rounded-full text-xs font-medium">
+                  <span className="w-2 h-2 bg-orange-500 rounded-full"></span>
+                  <span>Overridden</span>
+                </div>
+              )}
+            </div>
+            {/* Mark as Verified Button for AI Annotations */}
+            {!annotation.humanVerified && (
+              <button
+                onClick={async () => {
+                  try {
+                    const { verifyAIAnnotation, currentSurvey } = useAppStore.getState();
+                    if (currentSurvey?.survey_id) {
+                      await verifyAIAnnotation(currentSurvey.survey_id, parseInt(question.question_id || question.id), 'question');
+                    }
+                  } catch (error) {
+                    console.error('Failed to verify annotation:', error);
+                  }
+                }}
+                className="px-3 py-1 bg-green-600 text-white rounded-md text-xs font-medium hover:bg-green-700 transition-colors border border-green-600 hover:border-green-700"
+              >
+                Mark as Verified
+              </button>
+            )}
+          </div>
+        )}
+        
         {/* Question Options */}
         {question.options && question.options.length > 0 && (
           <div className="mb-4 p-3 bg-gray-50 rounded-lg">
@@ -597,6 +644,53 @@ const SectionAnnotationForm: React.FC<{
           </div>
         </div>
         <p className="text-sm text-gray-600 mb-4">{section.title || section.section_title || 'No section title available'}</p>
+        
+        {/* AI Annotation Badges */}
+        {annotation?.aiGenerated && (
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                <span>AI Generated</span>
+              </div>
+              {annotation.aiConfidence && (
+                <div className="text-xs text-gray-600">
+                  Confidence: {(annotation.aiConfidence * 100).toFixed(0)}%
+                </div>
+              )}
+              {annotation.humanVerified && (
+                <div className="flex items-center space-x-1 px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                  <span>Verified</span>
+                </div>
+              )}
+              {annotation.humanOverridden && (
+                <div className="flex items-center space-x-1 px-2 py-1 bg-orange-100 text-orange-800 rounded-full text-xs font-medium">
+                  <span className="w-2 h-2 bg-orange-500 rounded-full"></span>
+                  <span>Overridden</span>
+                </div>
+              )}
+            </div>
+            {/* Mark as Verified Button for AI Annotations */}
+            {!annotation.humanVerified && (
+              <button
+                onClick={async () => {
+                  try {
+                    const { verifyAIAnnotation, currentSurvey } = useAppStore.getState();
+                    if (currentSurvey?.survey_id) {
+                      await verifyAIAnnotation(currentSurvey.survey_id, section.id, 'section');
+                    }
+                  } catch (error) {
+                    console.error('Failed to verify annotation:', error);
+                  }
+                }}
+                className="px-3 py-1 bg-green-600 text-white rounded-md text-xs font-medium hover:bg-green-700 transition-colors border border-green-600 hover:border-green-700"
+              >
+                Mark as Verified
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="space-y-4">

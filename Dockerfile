@@ -38,13 +38,11 @@ RUN python3 -c "from sentence_transformers import SentenceTransformer; print('Pr
 # Copy all application code
 COPY src/ ./src/
 COPY evaluations/ ./evaluations/
-COPY alembic/ ./alembic/
-COPY alembic.ini ./
-COPY websocket_server.py ./
 COPY start.sh ./
 COPY start-local.sh ./
 COPY preload_models.py ./
 COPY seed_rules.py ./
+COPY run_migrations.py ./
 COPY migrations/ ./migrations/
 
 # Copy pre-built frontend from local build
@@ -137,7 +135,6 @@ EOF
 # Make startup scripts executable
 RUN chmod +x /app/start.sh && \
     chmod +x /app/start-local.sh && \
-    chmod +x /app/websocket_server.py && \
     chmod +x /app/seed_rules.py
 
 # Install pg_isready and redis-cli for health checks

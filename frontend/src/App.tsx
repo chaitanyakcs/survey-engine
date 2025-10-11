@@ -6,7 +6,9 @@ import { SettingsPage } from './pages/SettingsPage';
 import { SurveysPage } from './pages/SurveysPage';
 import { GoldenExampleEditPage } from './pages/GoldenExampleEditPage';
 import { GoldenExampleCreatePage } from './pages/GoldenExampleCreatePage';
+import AnnotationPage from './pages/AnnotationPage';
 import { LLMAuditViewer } from './components/LLMAuditViewer';
+import { AnnotationInsightsDashboard } from './components/AnnotationInsightsDashboard';
 import { ToastContainer } from './components/Toast';
 import { SidebarProvider } from './contexts/SidebarContext';
 
@@ -42,6 +44,12 @@ function App() {
     }
     if (path.startsWith('/llm-audit/survey/')) {
       return 'llm-audit-survey';
+    }
+    if (path === '/annotation-insights') {
+      return 'annotation-insights';
+    }
+    if (path.startsWith('/annotations/')) {
+      return 'annotations';
     }
     return 'generator';
   };
@@ -109,6 +117,10 @@ function App() {
             showSummary={true}
             onClose={() => window.history.back()}
           />
+        ) : currentPage === 'annotation-insights' ? (
+          <AnnotationInsightsDashboard />
+        ) : currentPage === 'annotations' ? (
+          <AnnotationPage />
         ) : (
           <SurveyGeneratorPage />
         )}

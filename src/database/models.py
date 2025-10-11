@@ -158,6 +158,19 @@ class QuestionAnnotation(Base):
     # Labels field
     labels = Column(JSONB)
 
+    # AI-generated annotation tracking
+    ai_generated = Column(Boolean, nullable=False, default=False)
+    ai_confidence = Column(DECIMAL(3, 2))  # 0.00-1.00 confidence score
+    human_verified = Column(Boolean, nullable=False, default=False)
+    generation_timestamp = Column(DateTime(timezone=True))
+
+    # Human override tracking
+    human_overridden = Column(Boolean, nullable=False, default=False)
+    override_timestamp = Column(DateTime(timezone=True))
+    original_ai_quality = Column(Integer)
+    original_ai_relevant = Column(Integer)
+    original_ai_comment = Column(Text)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
@@ -170,8 +183,11 @@ class QuestionAnnotation(Base):
         CheckConstraint('respondent_experience >= 1 AND respondent_experience <= 5', name='check_respondent_experience_range'),
         CheckConstraint('analytical_value >= 1 AND analytical_value <= 5', name='check_analytical_value_range'),
         CheckConstraint('business_impact >= 1 AND business_impact <= 5', name='check_business_impact_range'),
+        CheckConstraint('ai_confidence >= 0.00 AND ai_confidence <= 1.00', name='check_ai_confidence_range'),
         Index('idx_question_annotations_survey_id', 'survey_id'),
         Index('idx_question_annotations_annotator_id', 'annotator_id'),
+        Index('idx_question_annotations_ai_generated', 'ai_generated'),
+        Index('idx_question_annotations_human_overridden', 'human_overridden'),
         Index('idx_question_annotations_unique', 'question_id', 'annotator_id', unique=True),
     )
 
@@ -197,6 +213,19 @@ class SectionAnnotation(Base):
     # Labels field
     labels = Column(JSONB)
 
+    # AI-generated annotation tracking
+    ai_generated = Column(Boolean, nullable=False, default=False)
+    ai_confidence = Column(DECIMAL(3, 2))  # 0.00-1.00 confidence score
+    human_verified = Column(Boolean, nullable=False, default=False)
+    generation_timestamp = Column(DateTime(timezone=True))
+
+    # Human override tracking
+    human_overridden = Column(Boolean, nullable=False, default=False)
+    override_timestamp = Column(DateTime(timezone=True))
+    original_ai_quality = Column(Integer)
+    original_ai_relevant = Column(Integer)
+    original_ai_comment = Column(Text)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
@@ -209,8 +238,11 @@ class SectionAnnotation(Base):
         CheckConstraint('respondent_experience >= 1 AND respondent_experience <= 5', name='check_respondent_experience_range'),
         CheckConstraint('analytical_value >= 1 AND analytical_value <= 5', name='check_analytical_value_range'),
         CheckConstraint('business_impact >= 1 AND business_impact <= 5', name='check_business_impact_range'),
+        CheckConstraint('ai_confidence >= 0.00 AND ai_confidence <= 1.00', name='check_ai_confidence_range'),
         Index('idx_section_annotations_survey_id', 'survey_id'),
         Index('idx_section_annotations_annotator_id', 'annotator_id'),
+        Index('idx_section_annotations_ai_generated', 'ai_generated'),
+        Index('idx_section_annotations_human_overridden', 'human_overridden'),
         Index('idx_section_annotations_unique', 'section_id', 'annotator_id', unique=True),
     )
 
@@ -226,6 +258,11 @@ class SurveyAnnotation(Base):
 
     # Labels field
     labels = Column(JSONB)
+
+    # Advanced labeling fields
+    detected_labels = Column(JSONB)
+    compliance_report = Column(JSONB)
+    advanced_metadata = Column(JSONB)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
