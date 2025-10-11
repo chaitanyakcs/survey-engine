@@ -939,45 +939,47 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
 
                       {/* Add completion section with quality results when workflow is completed */}
                       {workflowStatus === 'completed' && (
-                        <div className="mt-6 pt-6 border-t border-amber-200">
+                        <div className="mt-8 pt-8 border-t border-amber-200">
                           {/* Success Header */}
-                          <div className="text-center mb-6">
-                            <div className="mx-auto w-16 h-16 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full flex items-center justify-center mb-4">
-                              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          <div className="text-center mb-8">
+                            <div className="mx-auto w-20 h-20 bg-gradient-to-br from-emerald-400 via-green-500 to-teal-600 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-green-200">
+                              <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                               </svg>
                             </div>
-                            <h3 className="text-2xl font-bold text-green-900 mb-2">Survey Generated Successfully!</h3>
-                            <p className="text-green-700">Your AI-powered survey is ready for review and deployment.</p>
+                            <h3 className="text-3xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent mb-3">Survey Generated Successfully!</h3>
+                            <p className="text-slate-600 text-lg">Your AI-powered survey is ready for review and deployment.</p>
                           </div>
                           {/* Survey Summary */}
                           {currentSurvey && (
-                            <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6">
-                              <h4 className="text-md font-semibold text-gray-900 mb-3 flex items-center">
-                                <svg className="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                                </svg>
+                            <div className="bg-gradient-to-br from-slate-50 to-blue-50 border border-slate-200 rounded-2xl p-6 mb-8 shadow-sm">
+                              <h4 className="text-lg font-semibold text-slate-800 mb-4 flex items-center">
+                                <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center mr-3">
+                                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                                  </svg>
+                                </div>
                                 Survey Summary
                               </h4>
-                              <div className="grid grid-cols-2 gap-4 text-sm">
-                                <div>
-                                  <span className="text-gray-600">Title:</span>
-                                  <p className="font-medium text-gray-900">{currentSurvey.title || 'Generated Survey'}</p>
+                              <div className="grid grid-cols-2 gap-6 text-sm">
+                                <div className="space-y-1">
+                                  <span className="text-slate-500 font-medium">Title:</span>
+                                  <p className="font-semibold text-slate-800 text-base">{currentSurvey.title || 'Generated Survey'}</p>
                                 </div>
-                                <div>
-                                  <span className="text-gray-600">Questions:</span>
-                                  <p className="font-medium text-gray-900">
+                                <div className="space-y-1">
+                                  <span className="text-slate-500 font-medium">Questions:</span>
+                                  <p className="font-semibold text-slate-800 text-base">
                                     {currentSurvey.sections?.reduce((total, section) => total + (section.questions?.length || 0), 0) ||
                                      currentSurvey.questions?.length || 0} questions
                                   </p>
                                 </div>
-                                <div>
-                                  <span className="text-gray-600">Sections:</span>
-                                  <p className="font-medium text-gray-900">{currentSurvey.sections?.length || 1} sections</p>
+                                <div className="space-y-1">
+                                  <span className="text-slate-500 font-medium">Sections:</span>
+                                  <p className="font-semibold text-slate-800 text-base">{currentSurvey.sections?.length || 1} sections</p>
                                 </div>
-                                <div>
-                                  <span className="text-gray-600">Survey ID:</span>
-                                  <p className="font-medium text-gray-900 font-mono text-xs">{currentSurvey.survey_id}</p>
+                                <div className="space-y-1">
+                                  <span className="text-slate-500 font-medium">Survey ID:</span>
+                                  <p className="font-mono text-xs text-slate-600 bg-slate-100 px-2 py-1 rounded">{currentSurvey.survey_id}</p>
                                 </div>
                               </div>
                             </div>
@@ -1006,49 +1008,59 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
 
                           {/* Quality Assessment Results */}
                           {currentSurvey?.pillar_scores && !(currentSurvey.pillar_scores as any).evaluation_failed && (
-                            <div className="mb-6">
-                              <h4 className="text-md font-semibold text-amber-900 mb-3 flex items-center">
-                                <svg className="w-5 h-5 mr-2 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
+                            <div className="mb-8">
+                              <h4 className="text-lg font-semibold text-slate-800 mb-4 flex items-center">
+                                <div className="w-8 h-8 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center mr-3">
+                                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                </div>
                                 Quality Assessment
                               </h4>
                               
-                              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
-                                <div className="flex items-center justify-between mb-3">
-                                  <div className="flex items-center space-x-2">
-                                    <div className="text-2xl font-bold text-blue-800">
+                              <div className="bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 border border-emerald-200 rounded-2xl p-6 shadow-sm">
+                                <div className="flex items-center justify-between mb-6">
+                                  <div className="flex items-center space-x-3">
+                                    <div className="text-4xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
                                       {currentSurvey.pillar_scores.overall_grade || 'B'}
                                     </div>
-                                    <div className="text-sm text-blue-700">
+                                    <div className="text-lg text-slate-600 font-medium">
                                       ({Math.round((currentSurvey.pillar_scores.weighted_score || 0.8) * 100)}%)
                                     </div>
                                   </div>
-                                  <div className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                                  <div className="text-sm text-emerald-700 bg-emerald-100 px-3 py-1.5 rounded-full font-medium">
                                     AI Quality Score
                                   </div>
                                 </div>
 
                                 {/* Pillar Breakdown */}
                                 {currentSurvey.pillar_scores.pillar_breakdown && (
-                                  <div className="space-y-2">
+                                  <div className="space-y-3">
                                     {currentSurvey.pillar_scores.pillar_breakdown.map((pillar) => {
                                       const formattedPillar = pillar.display_name || pillar.pillar_name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
                                       const scoreValue = pillar.score || 0.8;
                                       const passed = scoreValue >= 0.75;
                                       return (
-                                        <div key={pillar.pillar_name} className="flex items-center justify-between text-xs">
-                                          <span className={passed ? 'text-blue-700' : 'text-orange-700'}>
+                                        <div key={pillar.pillar_name} className="flex items-center justify-between py-2 px-3 bg-white/60 rounded-lg">
+                                          <span className={`text-sm font-medium ${passed ? 'text-slate-700' : 'text-amber-700'}`}>
                                             {formattedPillar}
                                           </span>
-                                          <div className="flex items-center space-x-1">
-                                            <span className={passed ? 'text-blue-700' : 'text-orange-700'}>
+                                          <div className="flex items-center space-x-2">
+                                            <span className={`text-sm font-semibold ${passed ? 'text-emerald-600' : 'text-amber-600'}`}>
                                               {Math.round(scoreValue * 100)}%
                                             </span>
                                             {passed ? (
-                                              <div className="w-3 h-3 text-green-500">✓</div>
+                                              <div className="w-5 h-5 bg-emerald-100 rounded-full flex items-center justify-center">
+                                                <svg className="w-3 h-3 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                </svg>
+                                              </div>
                                             ) : (
-                                              <div className="w-3 h-3 text-orange-500">⚠</div>
+                                              <div className="w-5 h-5 bg-amber-100 rounded-full flex items-center justify-center">
+                                                <svg className="w-3 h-3 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                                                </svg>
+                                              </div>
                                             )}
                                           </div>
                                         </div>
@@ -1059,8 +1071,11 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
 
                                 {/* Quality Message */}
                                 {currentSurvey.pillar_scores.weighted_score && currentSurvey.pillar_scores.weighted_score < 0.75 && (
-                                  <div className="mt-3 text-xs text-orange-700 bg-orange-50 p-2 rounded border border-orange-200">
-                                    ⚠️ Some quality aspects could be improved, but the survey is ready to use.
+                                  <div className="mt-4 text-sm text-amber-700 bg-amber-50 p-3 rounded-lg border border-amber-200 flex items-center">
+                                    <svg className="w-4 h-4 mr-2 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                                    </svg>
+                                    Some quality aspects could be improved, but the survey is ready to use.
                                   </div>
                                 )}
                               </div>
@@ -1068,26 +1083,26 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                           )}
 
                           {/* Action Buttons */}
-                          <h4 className="text-md font-semibold text-amber-900 mb-4">What would you like to do next?</h4>
+                          <h4 className="text-xl font-semibold text-slate-800 mb-6">What would you like to do next?</h4>
 
                           {/* Primary Action - View/Edit Survey */}
-                          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4 mb-4">
-                            <div className="flex items-start space-x-3">
-                              <div className="flex-shrink-0 w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                                <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 border border-blue-200 rounded-2xl p-6 mb-6 shadow-sm hover:shadow-md transition-shadow duration-200">
+                            <div className="flex items-start space-x-4">
+                              <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-sm">
+                                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                                 </svg>
                               </div>
                               <div className="flex-1">
-                                <h5 className="font-semibold text-blue-900 mb-1">Review & Deploy Your Survey</h5>
-                                <p className="text-sm text-blue-700 mb-3">View the complete survey, make any final adjustments, and prepare for deployment.</p>
+                                <h5 className="text-lg font-semibold text-slate-800 mb-2">Review & Deploy Your Survey</h5>
+                                <p className="text-slate-600 mb-4">View the complete survey, make any final adjustments, and prepare for deployment.</p>
                                 <button
                                   onClick={() => {
                                     if (currentSurvey?.survey_id) {
                                       window.location.href = `/surveys?id=${currentSurvey.survey_id}`;
                                     }
                                   }}
-                                  className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-200 shadow-md hover:shadow-lg flex items-center text-sm"
+                                  className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 shadow-md hover:shadow-lg flex items-center text-sm"
                                 >
                                   <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -1099,17 +1114,45 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                             </div>
                           </div>
 
-                          {/* Secondary Action - Create New Survey */}
-                          <div className="bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 rounded-xl p-4 mb-4">
-                            <div className="flex items-start space-x-3">
-                              <div className="flex-shrink-0 w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
-                                <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          {/* Secondary Action - Annotation Mode */}
+                          <div className="bg-gradient-to-br from-purple-50 via-violet-50 to-fuchsia-50 border border-purple-200 rounded-2xl p-6 mb-6 shadow-sm hover:shadow-md transition-shadow duration-200">
+                            <div className="flex items-start space-x-4">
+                              <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-r from-purple-500 to-violet-600 rounded-xl flex items-center justify-center shadow-sm">
+                                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                                </svg>
+                              </div>
+                              <div className="flex-1">
+                                <h5 className="text-lg font-semibold text-slate-800 mb-2">Enter Annotation Mode</h5>
+                                <p className="text-slate-600 mb-4">Add detailed annotations, quality scores, and labels to improve survey quality and analysis.</p>
+                                <button
+                                  onClick={() => {
+                                    if (currentSurvey?.survey_id) {
+                                      window.location.href = `/annotations/${currentSurvey.survey_id}`;
+                                    }
+                                  }}
+                                  className="bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 shadow-md hover:shadow-lg flex items-center text-sm"
+                                >
+                                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                                  </svg>
+                                  Start Annotating
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Tertiary Action - Create New Survey */}
+                          <div className="bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 border border-amber-200 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow duration-200">
+                            <div className="flex items-start space-x-4">
+                              <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-r from-amber-500 to-orange-600 rounded-xl flex items-center justify-center shadow-sm">
+                                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                                 </svg>
                               </div>
                               <div className="flex-1">
-                                <h5 className="font-semibold text-yellow-900 mb-1">Create Another Survey</h5>
-                                <p className="text-sm text-yellow-700 mb-3">Start fresh with a new RFQ document or requirements. Your previous surveys are saved in the dashboard.</p>
+                                <h5 className="text-lg font-semibold text-slate-800 mb-2">Create Another Survey</h5>
+                                <p className="text-slate-600 mb-4">Start fresh with a new RFQ document or requirements. Your previous surveys are saved in the dashboard.</p>
                                 <button
                                   onClick={() => {
                                     console.log('🔄 [ProgressStepper] User requested new survey creation');
@@ -1117,49 +1160,12 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                                       onCancelGeneration();
                                     }
                                   }}
-                                  className="bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-600 hover:to-amber-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-200 shadow-md hover:shadow-lg flex items-center text-sm"
+                                  className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 shadow-md hover:shadow-lg flex items-center text-sm"
                                 >
                                   <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                                   </svg>
                                   Create New Survey
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Tertiary Action - Generate from Same Requirements */}
-                          <div className="bg-gradient-to-r from-gray-50 to-slate-50 border border-gray-200 rounded-xl p-4">
-                            <div className="flex items-start space-x-3">
-                              <div className="flex-shrink-0 w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
-                                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                </svg>
-                              </div>
-                              <div className="flex-1">
-                                <h5 className="font-semibold text-gray-900 mb-1">Try Different Variations</h5>
-                                <p className="text-sm text-gray-600 mb-3">Generate another version using the same requirements to explore alternative approaches or question styles.</p>
-                                <button
-                                  onClick={() => {
-                                    console.log('🔄 [ProgressStepper] User requested regeneration with same requirements');
-                                    // Store current survey info before regenerating
-                                    addToast({
-                                      type: 'info',
-                                      title: 'Generating Alternative Version',
-                                      message: 'Creating a new survey variation with your existing requirements.',
-                                      duration: 5000
-                                    });
-                                    // Reset workflow but keep the enhanced RFQ state
-                                    if (onCancelGeneration) {
-                                      onCancelGeneration();
-                                    }
-                                  }}
-                                  className="bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-700 px-6 py-2.5 rounded-lg font-medium transition-all duration-200 shadow-md hover:shadow-lg flex items-center text-sm border border-gray-300"
-                                >
-                                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                  </svg>
-                                  Generate Alternative
                                 </button>
                               </div>
                             </div>

@@ -91,7 +91,22 @@ async def migrate_all(db: Session = Depends(get_db)):
                 "message": f"Human override tracking migration failed: {str(e)}"
             })
         
-        # Step 4: Performance indexes
+        # Step 4: LLM audit system
+        try:
+            await _migrate_llm_audit_system(db)
+            migration_results.append({
+                "step": "llm_audit_system",
+                "status": "success",
+                "message": "LLM audit system migration completed"
+            })
+        except Exception as e:
+            migration_results.append({
+                "step": "llm_audit_system",
+                "status": "failed",
+                "message": f"LLM audit system migration failed: {str(e)}"
+            })
+        
+        # Step 5: Performance indexes
         try:
             await _migrate_performance_indexes(db)
             migration_results.append({
@@ -237,6 +252,17 @@ async def _migrate_ai_annotation_fields(db: Session):
         ADD COLUMN IF NOT EXISTS generation_timestamp TIMESTAMP WITH TIME ZONE
     """))
     
+    # Add advanced labeling fields to question_annotations
+    db.execute(text("""
+        ALTER TABLE question_annotations 
+        ADD COLUMN IF NOT EXISTS advanced_labels JSONB,
+        ADD COLUMN IF NOT EXISTS industry_classification VARCHAR(100),
+        ADD COLUMN IF NOT EXISTS respondent_type VARCHAR(100),
+        ADD COLUMN IF NOT EXISTS methodology_tags TEXT[],
+        ADD COLUMN IF NOT EXISTS is_mandatory BOOLEAN DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS compliance_status VARCHAR(50)
+    """))
+    
     # Add AI fields to section_annotations
     db.execute(text("""
         ALTER TABLE section_annotations 
@@ -244,6 +270,22 @@ async def _migrate_ai_annotation_fields(db: Session):
         ADD COLUMN IF NOT EXISTS ai_confidence DECIMAL(3,2) CHECK (ai_confidence >= 0.00 AND ai_confidence <= 1.00),
         ADD COLUMN IF NOT EXISTS human_verified BOOLEAN DEFAULT FALSE,
         ADD COLUMN IF NOT EXISTS generation_timestamp TIMESTAMP WITH TIME ZONE
+    """))
+    
+    # Add advanced labeling fields to section_annotations
+    db.execute(text("""
+        ALTER TABLE section_annotations 
+        ADD COLUMN IF NOT EXISTS section_classification VARCHAR(100),
+        ADD COLUMN IF NOT EXISTS mandatory_elements JSONB,
+        ADD COLUMN IF NOT EXISTS compliance_score INTEGER
+    """))
+    
+    # Add advanced labeling fields to survey_annotations
+    db.execute(text("""
+        ALTER TABLE survey_annotations 
+        ADD COLUMN IF NOT EXISTS detected_labels JSONB,
+        ADD COLUMN IF NOT EXISTS compliance_report JSONB,
+        ADD COLUMN IF NOT EXISTS advanced_metadata JSONB
     """))
     
     db.commit()
@@ -278,6 +320,180 @@ async def _migrate_human_override_tracking(db: Session):
     
     db.commit()
     logger.info("✅ Human override tracking fields added")
+
+
+async def _migrate_llm_audit_system(db: Session):
+    """
+    Migrate LLM audit system tables
+    """
+    logger.info("🤖 Migrating LLM audit system...")
+    
+    # Create llm_audit table if it doesn't exist
+    db.execute(text("""
+        CREATE TABLE IF NOT EXISTS llm_audit (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            
+            -- Core identification
+            interaction_id VARCHAR(255) NOT NULL,
+            parent_workflow_id VARCHAR(255),
+            parent_survey_id VARCHAR(255),
+            parent_rfq_id UUID,
+            
+            -- LLM Configuration
+            model_name VARCHAR(100) NOT NULL,
+            model_provider VARCHAR(50) NOT NULL,
+            model_version VARCHAR(50),
+            
+            -- Purpose and Context
+            purpose VARCHAR(100) NOT NULL,
+            sub_purpose VARCHAR(100),
+            context_type VARCHAR(50),
+            
+            -- Input/Output
+            input_prompt TEXT NOT NULL,
+            input_tokens INTEGER,
+            output_content TEXT,
+            output_tokens INTEGER,
+            
+            -- Hyperparameters (configurable)
+            temperature DECIMAL(3,2),
+            top_p DECIMAL(3,2),
+            max_tokens INTEGER,
+            frequency_penalty DECIMAL(3,2),
+            presence_penalty DECIMAL(3,2),
+            stop_sequences JSONB,
+            
+            -- Performance Metrics
+            response_time_ms INTEGER,
+            cost_usd DECIMAL(10,6),
+            success BOOLEAN NOT NULL DEFAULT true,
+            error_message TEXT,
+            
+            -- Metadata
+            interaction_metadata JSONB,
+            tags JSONB,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            
+            -- Field tracking
+            old_fields JSONB,
+            new_fields JSONB
+        )
+    """))
+    
+    # Create llm_hyperparameter_configs table if it doesn't exist
+    db.execute(text("""
+        CREATE TABLE IF NOT EXISTS llm_hyperparameter_configs (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            
+            -- Configuration identification
+            config_name VARCHAR(100) NOT NULL UNIQUE,
+            purpose VARCHAR(100) NOT NULL,
+            sub_purpose VARCHAR(100),
+            
+            -- Hyperparameters
+            temperature DECIMAL(3,2) DEFAULT 0.7,
+            top_p DECIMAL(3,2) DEFAULT 0.9,
+            max_tokens INTEGER DEFAULT 4000,
+            frequency_penalty DECIMAL(3,2) DEFAULT 0.0,
+            presence_penalty DECIMAL(3,2) DEFAULT 0.0,
+            stop_sequences JSONB DEFAULT '[]'::jsonb,
+            
+            -- Model preferences
+            preferred_models JSONB DEFAULT '[]'::jsonb,
+            fallback_models JSONB DEFAULT '[]'::jsonb,
+            
+            -- Configuration metadata
+            description TEXT,
+            is_active BOOLEAN DEFAULT true,
+            is_default BOOLEAN DEFAULT false,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        )
+    """))
+    
+    # Create llm_prompt_templates table if it doesn't exist
+    db.execute(text("""
+        CREATE TABLE IF NOT EXISTS llm_prompt_templates (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            
+            -- Template identification
+            template_name VARCHAR(100) NOT NULL UNIQUE,
+            purpose VARCHAR(100) NOT NULL,
+            sub_purpose VARCHAR(100),
+            
+            -- Template content
+            system_prompt_template TEXT NOT NULL,
+            user_prompt_template TEXT,
+            template_variables JSONB DEFAULT '{}'::jsonb,
+            
+            -- Template metadata
+            description TEXT,
+            version VARCHAR(20) DEFAULT '1.0',
+            is_active BOOLEAN DEFAULT true,
+            is_default BOOLEAN DEFAULT false,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        )
+    """))
+    
+    # Insert default hyperparameter configurations (with ON CONFLICT handling)
+    db.execute(text("""
+        INSERT INTO llm_hyperparameter_configs (config_name, purpose, sub_purpose, temperature, top_p, max_tokens, frequency_penalty, presence_penalty, description, is_default) VALUES
+        ('survey_generation_default', 'survey_generation', NULL, 0.7, 0.9, 4000, 0.0, 0.0, 'Default configuration for survey generation', true),
+        ('evaluation_comprehensive', 'evaluation', 'comprehensive', 0.3, 0.9, 4000, 0.0, 0.0, 'Configuration for comprehensive evaluation', true),
+        ('evaluation_content_validity', 'evaluation', 'content_validity', 0.2, 0.8, 2000, 0.0, 0.0, 'Configuration for content validity evaluation', false),
+        ('evaluation_methodological_rigor', 'evaluation', 'methodological_rigor', 0.2, 0.8, 2000, 0.0, 0.0, 'Configuration for methodological rigor evaluation', false),
+        ('field_extraction_default', 'field_extraction', NULL, 0.1, 0.9, 1000, 0.0, 0.0, 'Default configuration for field extraction', true),
+        ('document_parsing_default', 'document_parsing', NULL, 0.1, 0.9, 2000, 0.0, 0.0, 'Default configuration for document parsing', true)
+        ON CONFLICT (config_name) DO NOTHING
+    """))
+    
+    # Insert default prompt templates (with ON CONFLICT handling)
+    db.execute(text("""
+        INSERT INTO llm_prompt_templates (template_name, purpose, sub_purpose, system_prompt_template, description, is_default) VALUES
+        ('survey_generation_base', 'survey_generation', NULL, 'You are an expert survey researcher. Generate a comprehensive survey based on the provided RFQ and context.', 'Base template for survey generation', true),
+        ('evaluation_comprehensive', 'evaluation', 'comprehensive', 'You are an expert survey evaluator. Evaluate the survey across all quality pillars.', 'Template for comprehensive evaluation', true),
+        ('field_extraction_base', 'field_extraction', NULL, 'You are an expert at extracting structured data from documents. Extract the requested fields accurately.', 'Base template for field extraction', true),
+        ('document_parsing_base', 'document_parsing', NULL, 'You are an expert document parser. Analyze the document and extract relevant information for survey generation.', 'Base template for document parsing', true)
+        ON CONFLICT (template_name) DO NOTHING
+    """))
+    
+    # Create indexes for efficient querying
+    indexes_sql = [
+        "CREATE INDEX IF NOT EXISTS idx_llm_audit_interaction_id ON llm_audit(interaction_id)",
+        "CREATE INDEX IF NOT EXISTS idx_llm_audit_parent_workflow_id ON llm_audit(parent_workflow_id)",
+        "CREATE INDEX IF NOT EXISTS idx_llm_audit_parent_survey_id ON llm_audit(parent_survey_id)",
+        "CREATE INDEX IF NOT EXISTS idx_llm_audit_parent_rfq_id ON llm_audit(parent_rfq_id)",
+        "CREATE INDEX IF NOT EXISTS idx_llm_audit_model_name ON llm_audit(model_name)",
+        "CREATE INDEX IF NOT EXISTS idx_llm_audit_purpose ON llm_audit(purpose)",
+        "CREATE INDEX IF NOT EXISTS idx_llm_audit_context_type ON llm_audit(context_type)",
+        "CREATE INDEX IF NOT EXISTS idx_llm_audit_created_at ON llm_audit(created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_llm_audit_success ON llm_audit(success)",
+        "CREATE INDEX IF NOT EXISTS idx_llm_audit_cost_usd ON llm_audit(cost_usd)",
+        "CREATE INDEX IF NOT EXISTS idx_llm_audit_interaction_metadata ON llm_audit USING GIN(interaction_metadata)",
+        "CREATE INDEX IF NOT EXISTS idx_llm_audit_tags ON llm_audit USING GIN(tags)",
+        "CREATE INDEX IF NOT EXISTS idx_llm_audit_old_fields ON llm_audit USING GIN (old_fields)",
+        "CREATE INDEX IF NOT EXISTS idx_llm_audit_new_fields ON llm_audit USING GIN (new_fields)",
+        "CREATE INDEX IF NOT EXISTS idx_llm_audit_field_changes ON llm_audit (purpose, sub_purpose) WHERE old_fields IS NOT NULL AND new_fields IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_llm_hyperparameter_configs_purpose ON llm_hyperparameter_configs(purpose)",
+        "CREATE INDEX IF NOT EXISTS idx_llm_hyperparameter_configs_sub_purpose ON llm_hyperparameter_configs(sub_purpose)",
+        "CREATE INDEX IF NOT EXISTS idx_llm_hyperparameter_configs_is_active ON llm_hyperparameter_configs(is_active)",
+        "CREATE INDEX IF NOT EXISTS idx_llm_hyperparameter_configs_is_default ON llm_hyperparameter_configs(is_default)",
+        "CREATE INDEX IF NOT EXISTS idx_llm_prompt_templates_purpose ON llm_prompt_templates(purpose)",
+        "CREATE INDEX IF NOT EXISTS idx_llm_prompt_templates_sub_purpose ON llm_prompt_templates(sub_purpose)",
+        "CREATE INDEX IF NOT EXISTS idx_llm_prompt_templates_is_active ON llm_prompt_templates(is_active)",
+        "CREATE INDEX IF NOT EXISTS idx_llm_prompt_templates_is_default ON llm_prompt_templates(is_default)"
+    ]
+    
+    for sql in indexes_sql:
+        try:
+            db.execute(text(sql))
+        except Exception as e:
+            logger.warning(f"⚠️ LLM audit index creation warning: {e}")
+    
+    db.commit()
+    logger.info("✅ LLM audit system migration completed")
 
 
 async def _migrate_performance_indexes(db: Session):
@@ -330,7 +546,7 @@ async def check_migration_status(db: Session = Depends(get_db)):
         
         # Check if tables exist
         tables_check = {}
-        tables = ['question_annotations', 'section_annotations', 'survey_annotations']
+        tables = ['question_annotations', 'section_annotations', 'survey_annotations', 'llm_audit', 'llm_hyperparameter_configs', 'llm_prompt_templates']
         
         for table in tables:
             try:

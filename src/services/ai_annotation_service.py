@@ -39,6 +39,25 @@ class AIAnnotationService:
         try:
             logger.info(f"🤖 Creating AI annotations for survey {survey_id}")
             
+            # Clean up existing AI annotations for this survey to avoid constraint violations
+            logger.info(f"🧹 Cleaning up existing AI annotations for survey {survey_id}")
+            
+            # Delete existing question annotations
+            deleted_questions = self.db_session.query(QuestionAnnotation).filter(
+                QuestionAnnotation.survey_id == survey_id,
+                QuestionAnnotation.annotator_id == annotator_id
+            ).delete(synchronize_session=False)
+            
+            # Delete existing section annotations
+            deleted_sections = self.db_session.query(SectionAnnotation).filter(
+                SectionAnnotation.survey_id == survey_id,
+                SectionAnnotation.annotator_id == annotator_id
+            ).delete(synchronize_session=False)
+            
+            # Commit the cleanup
+            self.db_session.commit()
+            logger.info(f"✅ Cleaned up {deleted_questions} question and {deleted_sections} section annotations")
+            
             created_annotations = {
                 "question_annotations": [],
                 "section_annotations": [],
@@ -94,58 +113,34 @@ class AIAnnotationService:
     ) -> QuestionAnnotation:
         """Create a single question annotation from evaluation data"""
         
-        # Check if annotation already exists
-        existing = self.db_session.query(QuestionAnnotation).filter(
-            QuestionAnnotation.question_id == q_data.get("question_id"),
-            QuestionAnnotation.survey_id == survey_id,
-            QuestionAnnotation.annotator_id == annotator_id
-        ).first()
+        # Create new annotation (cleanup already handled)
+        # Make question_id unique across surveys by prefixing with survey_id
+        unique_question_id = f"{survey_id}_{q_data.get('question_id', '')}"
+        annotation = QuestionAnnotation(
+            question_id=unique_question_id,
+            survey_id=survey_id,
+            required=True,
+            quality=q_data.get("quality", 3),
+            relevant=q_data.get("relevant", 3),
+            methodological_rigor=q_data.get("methodological_rigor", 3),
+            content_validity=q_data.get("content_validity", 3),
+            respondent_experience=q_data.get("respondent_experience", 3),
+            analytical_value=q_data.get("analytical_value", 3),
+            business_impact=q_data.get("business_impact", 3),
+            comment=q_data.get("comment", ""),
+            annotator_id=annotator_id,
+            labels={},  # Empty labels for AI-generated annotations
+            ai_generated=True,
+            ai_confidence=q_data.get("ai_confidence", 0.8),
+            human_verified=False,
+            generation_timestamp=datetime.now()
+        )
         
-        if existing:
-            logger.info(f"🔄 Updating existing question annotation for {q_data.get('question_id')}")
-            # Update existing annotation
-            existing.content_validity = q_data.get("content_validity", 3)
-            existing.methodological_rigor = q_data.get("methodological_rigor", 3)
-            existing.respondent_experience = q_data.get("respondent_experience", 3)
-            existing.analytical_value = q_data.get("analytical_value", 3)
-            existing.business_impact = q_data.get("business_impact", 3)
-            existing.quality = q_data.get("quality", 3)
-            existing.relevant = q_data.get("relevant", 3)
-            existing.comment = q_data.get("comment", "")
-            existing.ai_generated = True
-            existing.ai_confidence = q_data.get("ai_confidence", 0.8)
-            existing.human_verified = False
-            existing.generation_timestamp = datetime.now()
-            existing.updated_at = datetime.now()
-            
-            return existing
-        else:
-            # Create new annotation
-            annotation = QuestionAnnotation(
-                question_id=q_data.get("question_id", ""),
-                survey_id=survey_id,
-                required=True,
-                quality=q_data.get("quality", 3),
-                relevant=q_data.get("relevant", 3),
-                methodological_rigor=q_data.get("methodological_rigor", 3),
-                content_validity=q_data.get("content_validity", 3),
-                respondent_experience=q_data.get("respondent_experience", 3),
-                analytical_value=q_data.get("analytical_value", 3),
-                business_impact=q_data.get("business_impact", 3),
-                comment=q_data.get("comment", ""),
-                annotator_id=annotator_id,
-                labels={},  # Empty labels for AI-generated annotations
-                ai_generated=True,
-                ai_confidence=q_data.get("ai_confidence", 0.8),
-                human_verified=False,
-                generation_timestamp=datetime.now()
-            )
-            
-            self.db_session.add(annotation)
-            self.db_session.flush()  # Get the ID
-            
-            logger.info(f"✅ Created new question annotation for {q_data.get('question_id')}")
-            return annotation
+        self.db_session.add(annotation)
+        self.db_session.flush()  # Get the ID
+        
+        logger.info(f"✅ Created new question annotation for {q_data.get('question_id')}")
+        return annotation
     
     async def _create_section_annotation(
         self, 
@@ -155,57 +150,36 @@ class AIAnnotationService:
     ) -> SectionAnnotation:
         """Create a single section annotation from evaluation data"""
         
-        # Check if annotation already exists
-        existing = self.db_session.query(SectionAnnotation).filter(
-            SectionAnnotation.section_id == s_data.get("section_id"),
-            SectionAnnotation.survey_id == survey_id,
-            SectionAnnotation.annotator_id == annotator_id
-        ).first()
+        # Create new annotation (cleanup already handled)
+        # Create unique section_id by using a smaller hash
+        import hashlib
+        section_id_str = str(s_data.get("section_id", 0))
+        hash_str = hashlib.md5(f"{survey_id}_{section_id_str}".encode()).hexdigest()[:6]
+        unique_section_id = int(hash_str, 16)  # Convert hex to int (smaller range)
+        annotation = SectionAnnotation(
+            section_id=unique_section_id,
+            survey_id=survey_id,
+            quality=s_data.get("quality", 3),
+            relevant=s_data.get("relevant", 3),
+            methodological_rigor=s_data.get("methodological_rigor", 3),
+            content_validity=s_data.get("content_validity", 3),
+            respondent_experience=s_data.get("respondent_experience", 3),
+            analytical_value=s_data.get("analytical_value", 3),
+            business_impact=s_data.get("business_impact", 3),
+            comment=s_data.get("comment", ""),
+            annotator_id=annotator_id,
+            labels={},  # Empty labels for AI-generated annotations
+            ai_generated=True,
+            ai_confidence=s_data.get("ai_confidence", 0.8),
+            human_verified=False,
+            generation_timestamp=datetime.now()
+        )
         
-        if existing:
-            logger.info(f"🔄 Updating existing section annotation for {s_data.get('section_id')}")
-            # Update existing annotation
-            existing.content_validity = s_data.get("content_validity", 3)
-            existing.methodological_rigor = s_data.get("methodological_rigor", 3)
-            existing.respondent_experience = s_data.get("respondent_experience", 3)
-            existing.analytical_value = s_data.get("analytical_value", 3)
-            existing.business_impact = s_data.get("business_impact", 3)
-            existing.quality = s_data.get("quality", 3)
-            existing.relevant = s_data.get("relevant", 3)
-            existing.comment = s_data.get("comment", "")
-            existing.ai_generated = True
-            existing.ai_confidence = s_data.get("ai_confidence", 0.8)
-            existing.human_verified = False
-            existing.generation_timestamp = datetime.now()
-            existing.updated_at = datetime.now()
-            
-            return existing
-        else:
-            # Create new annotation
-            annotation = SectionAnnotation(
-                section_id=s_data.get("section_id", 0),
-                survey_id=survey_id,
-                quality=s_data.get("quality", 3),
-                relevant=s_data.get("relevant", 3),
-                methodological_rigor=s_data.get("methodological_rigor", 3),
-                content_validity=s_data.get("content_validity", 3),
-                respondent_experience=s_data.get("respondent_experience", 3),
-                analytical_value=s_data.get("analytical_value", 3),
-                business_impact=s_data.get("business_impact", 3),
-                comment=s_data.get("comment", ""),
-                annotator_id=annotator_id,
-                labels={},  # Empty labels for AI-generated annotations
-                ai_generated=True,
-                ai_confidence=s_data.get("ai_confidence", 0.8),
-                human_verified=False,
-                generation_timestamp=datetime.now()
-            )
-            
-            self.db_session.add(annotation)
-            self.db_session.flush()  # Get the ID
-            
-            logger.info(f"✅ Created new section annotation for {s_data.get('section_id')}")
-            return annotation
+        self.db_session.add(annotation)
+        self.db_session.flush()  # Get the ID
+        
+        logger.info(f"✅ Created new section annotation for {s_data.get('section_id')}")
+        return annotation
     
     def get_ai_annotations_for_survey(self, survey_id: str) -> Dict[str, List[Dict[str, Any]]]:
         """Get all AI-generated annotations for a survey"""

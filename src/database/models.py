@@ -158,6 +158,14 @@ class QuestionAnnotation(Base):
     # Labels field
     labels = Column(JSONB)
 
+    # Advanced labeling fields
+    advanced_labels = Column(JSONB)
+    industry_classification = Column(String(100))
+    respondent_type = Column(String(100))
+    methodology_tags = Column(ARRAY(String))
+    is_mandatory = Column(Boolean, default=False)
+    compliance_status = Column(String(50))
+
     # AI-generated annotation tracking
     ai_generated = Column(Boolean, nullable=False, default=False)
     ai_confidence = Column(DECIMAL(3, 2))  # 0.00-1.00 confidence score
@@ -212,6 +220,11 @@ class SectionAnnotation(Base):
 
     # Labels field
     labels = Column(JSONB)
+
+    # Advanced labeling fields
+    section_classification = Column(String(100))
+    mandatory_elements = Column(JSONB)
+    compliance_score = Column(Integer)
 
     # AI-generated annotation tracking
     ai_generated = Column(Boolean, nullable=False, default=False)

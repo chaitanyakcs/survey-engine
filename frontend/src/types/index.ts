@@ -159,8 +159,8 @@ export interface EnhancedRFQRequest {
     // Enhanced fields
     stakeholder_requirements?: string;     // Key stakeholder needs and requirements
     decision_criteria?: string;            // What defines success for this research
-    budget_range?: 'under_10k' | '10k_50k' | '50k_100k' | '100k_plus';
-    timeline_constraints?: 'rush' | 'standard' | 'flexible';
+    budget_range?: 'under_10k' | '10k_25k' | '25k_50k' | '50k_100k' | 'over_100k';
+    timeline_constraints?: 'urgent_1_week' | 'fast_2_weeks' | 'standard_4_weeks' | 'extended_8_weeks' | 'flexible';
   };
 
   // ========== RESEARCH OBJECTIVES ==========
@@ -180,7 +180,7 @@ export interface EnhancedRFQRequest {
     stimuli_details?: string;             // Concept details, price ranges
     methodology_requirements?: string;     // Additional methodology notes
     // Enhanced fields
-    complexity_level?: 'simple' | 'standard' | 'advanced';
+    complexity_level?: 'simple' | 'intermediate' | 'complex' | 'expert_level';
     required_methodologies?: string[];     // Specific methodologies required
     sample_size_target?: string;          // Target number of respondents
   };
@@ -192,9 +192,9 @@ export interface EnhancedRFQRequest {
     must_have_questions: string[];        // Must-have Qs per respondent type
     screener_requirements?: string;       // Screener & respondent tagging rules
     // Enhanced fields
-    completion_time_target?: '5_10_min' | '10_15_min' | '15_25_min' | '25_plus_min';
-    device_compatibility?: 'mobile_first' | 'desktop_first' | 'both';
-    accessibility_requirements?: 'standard' | 'enhanced' | 'full_compliance';
+    completion_time_target?: 'under_5min' | '5_10min' | '10_15min' | '15_20min' | '20_30min' | 'over_30min';
+    device_compatibility?: 'mobile_only' | 'desktop_only' | 'mobile_first' | 'desktop_first' | 'all_devices';
+    accessibility_requirements?: 'basic' | 'wcag_aa' | 'wcag_aaa' | 'custom';
     data_quality_requirements?: 'basic' | 'standard' | 'premium';
   };
 

@@ -161,27 +161,29 @@ except Exception as e:
 
 # Function to run database migrations
 run_migrations() {
-    echo -e "${YELLOW}📊 Running database migrations...${NC}"
+    echo -e "${YELLOW}📊 Running database migrations using new admin API system...${NC}"
     
-    # Check if migrations directory exists
-    if [ ! -d "$DB_MIGRATIONS_DIR" ]; then
-        echo -e "${YELLOW}⚠️  No migrations directory found, skipping migrations${NC}"
-        return
+    # Check if migration script exists
+    if [ ! -f "run_migrations.py" ]; then
+        echo -e "${RED}❌ Migration script run_migrations.py not found!${NC}"
+        echo -e "${YELLOW}💡 Make sure you're in the project root directory${NC}"
+        return 1
     fi
     
-    # Run migrations in order
-    for migration in $(ls $DB_MIGRATIONS_DIR/*.sql | sort); do
-        echo -e "${BLUE}📝 Running migration: $(basename $migration)${NC}"
+    # Run migrations using the new admin API system
+    echo -e "${BLUE}📝 Executing migration command...${NC}"
+    if python3 run_migrations.py; then
+        echo -e "${GREEN}✅ Database migrations completed successfully${NC}"
+        return 0
+    else
+        local exit_code=$?
+        echo -e "${RED}❌ Database migrations failed with exit code $exit_code${NC}"
         
-        if PGPASSWORD=$(echo "$DATABASE_URL" | sed -n 's/.*:\([^@]*\)@.*/\1/p') psql "$DATABASE_URL" -f "$migration"; then
-            echo -e "${GREEN}✅ Migration $(basename $migration) completed${NC}"
-        else
-            echo -e "${RED}❌ Migration $(basename $migration) failed${NC}"
-            exit 1
-        fi
-    done
-    
-    echo -e "${GREEN}✅ All migrations completed${NC}"
+        # Show detailed error information
+        echo -e "${RED}Migration error details:${NC}"
+        python3 run_migrations.py 2>&1 | head -20
+        return $exit_code
+    fi
 }
 
 # Function to seed the database

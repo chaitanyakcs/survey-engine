@@ -197,13 +197,17 @@ class GenerationService:
 
                     # Extract metadata for audit context
                     response_time_ms = generation_result["generation_metadata"]["response_time_ms"]
-                    survey_data = generation_result["survey"]
-                    output_text = json.dumps(survey_data, indent=2)
                     raw_response = generation_result["generation_metadata"].get("raw_response", "")
 
-                    # Set raw response first
+                    # Set raw response FIRST, before attempting to parse JSON
+                    # This ensures raw response is captured even if JSON parsing fails
                     if raw_response:
                         audit_context.set_raw_response(raw_response)
+                        logger.info(f"🔍 [GenerationService] Raw response stored in audit context (length: {len(raw_response)})")
+                    
+                    # Now attempt to extract survey data
+                    survey_data = generation_result["survey"]
+                    output_text = json.dumps(survey_data, indent=2)
                     
                     audit_context.set_output(
                         output_content=output_text,
@@ -334,13 +338,17 @@ class GenerationService:
 
                     # Extract metadata for audit context
                     response_time_ms = generation_result["generation_metadata"]["response_time_ms"]
-                    survey_data = generation_result["survey"]
-                    output_content = json.dumps(survey_data, indent=2)
                     raw_response = generation_result["generation_metadata"].get("raw_response", "")
 
-                    # Set raw response first
+                    # Set raw response FIRST, before attempting to parse JSON
+                    # This ensures raw response is captured even if JSON parsing fails
                     if raw_response:
                         audit_context.set_raw_response(raw_response)
+                        logger.info(f"🔍 [GenerationService] Raw response stored in audit context (length: {len(raw_response)})")
+
+                    # Now attempt to extract survey data
+                    survey_data = generation_result["survey"]
+                    output_content = json.dumps(survey_data, indent=2)
 
                     # Set output and metrics in audit context
                     audit_context.set_output(

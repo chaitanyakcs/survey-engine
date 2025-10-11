@@ -126,27 +126,6 @@ async def _evaluate_with_advanced_system(survey_data: Dict[str, Any], rfq_text: 
             # Use single-call evaluator for cost efficiency
             evaluator = SingleCallEvaluator(llm_client=llm_client, db_session=db)
             result = await evaluator.evaluate_survey(survey_data, rfq_text, survey_id, rfq_id)
-            
-            # Generate AI annotations
-            try:
-                from src.services.ai_annotation_service import AIAnnotationService
-                ai_service = AIAnnotationService(db)
-                
-                # Create AI annotations from evaluation result
-                annotation_result = await ai_service.create_annotations_from_evaluation(
-                    result, survey_id, "ai_system"
-                )
-                
-                logger.info(f"🤖 Generated {annotation_result['total_created']} AI annotations for survey {survey_id}")
-                
-                # Add annotation info to evaluation metadata
-                if hasattr(result, 'evaluation_metadata'):
-                    result.evaluation_metadata['ai_annotations_created'] = annotation_result['total_created']
-                    result.evaluation_metadata['annotation_errors'] = len(annotation_result['errors'])
-                
-            except Exception as e:
-                logger.error(f"❌ Failed to generate AI annotations: {str(e)}")
-                # Don't fail the evaluation, just log the error
         elif evaluation_mode == "multiple_calls":
             # Use multiple-call evaluator for detailed analysis
             evaluator = PillarBasedEvaluator(llm_client=llm_client, db_session=db)
@@ -161,8 +140,18 @@ async def _evaluate_with_advanced_system(survey_data: Dict[str, Any], rfq_text: 
             evaluator = SingleCallEvaluator(llm_client=llm_client, db_session=db)
             result = await evaluator.evaluate_survey(survey_data, rfq_text, survey_id, rfq_id)
         
-        # Generate AI annotations if using single-call evaluator
+        # Generate AI annotations if using single-call evaluator and result has annotation data
+        logger.info(f"🔍 [Pillar Scores] Evaluation mode: {evaluation_mode}")
+        logger.info(f"🔍 [Pillar Scores] Result type: {type(result)}")
+        logger.info(f"🔍 [Pillar Scores] Has question_annotations: {hasattr(result, 'question_annotations')}")
+        logger.info(f"🔍 [Pillar Scores] Has section_annotations: {hasattr(result, 'section_annotations')}")
+        
         if evaluation_mode == "single_call" and hasattr(result, 'question_annotations') and hasattr(result, 'section_annotations'):
+            logger.info(f"🔍 [Pillar Scores] Question annotations count: {len(result.question_annotations)}")
+            logger.info(f"🔍 [Pillar Scores] Section annotations count: {len(result.section_annotations)}")
+            logger.info(f"🔍 [Pillar Scores] Question annotations sample: {result.question_annotations[:2] if result.question_annotations else 'None'}")
+            logger.info(f"🔍 [Pillar Scores] Section annotations sample: {result.section_annotations[:2] if result.section_annotations else 'None'}")
+            
             try:
                 from src.services.ai_annotation_service import AIAnnotationService
                 ai_service = AIAnnotationService(db)
@@ -182,6 +171,8 @@ async def _evaluate_with_advanced_system(survey_data: Dict[str, Any], rfq_text: 
             except Exception as e:
                 logger.error(f"❌ Failed to generate AI annotations: {str(e)}")
                 # Don't fail the evaluation, just log the error
+        else:
+            logger.warning(f"⚠️ [Pillar Scores] Skipping annotation generation - evaluation_mode: {evaluation_mode}, has_question_annotations: {hasattr(result, 'question_annotations')}, has_section_annotations: {hasattr(result, 'section_annotations')}")
         
         # Convert advanced results to API format
         pillar_breakdown = []

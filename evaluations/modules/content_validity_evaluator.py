@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
-from utils import extract_all_questions
+from evaluations.utils import extract_all_questions
 
 @dataclass
 class ContentValidityResult:

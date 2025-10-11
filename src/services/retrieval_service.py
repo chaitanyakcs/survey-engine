@@ -34,6 +34,13 @@ class RetrievalService:
             from pgvector.sqlalchemy import Vector
             
             # Base query with cosine distance (smaller is more similar)
+            # Use l2_distance as fallback if cosine_distance is not available
+            try:
+                similarity_expr = GoldenRFQSurveyPair.rfq_embedding.cosine_distance(embedding)
+            except Exception as e:
+                logger.warning(f"⚠️ [RetrievalService] cosine_distance not available, using l2_distance: {e}")
+                similarity_expr = GoldenRFQSurveyPair.rfq_embedding.l2_distance(embedding)
+            
             query = self.db.query(
                 GoldenRFQSurveyPair.id,
                 GoldenRFQSurveyPair.rfq_text,
@@ -42,7 +49,7 @@ class RetrievalService:
                 GoldenRFQSurveyPair.industry_category,
                 GoldenRFQSurveyPair.research_goal,
                 GoldenRFQSurveyPair.quality_score,
-                GoldenRFQSurveyPair.rfq_embedding.cosine_distance(embedding).label('similarity')
+                similarity_expr.label('similarity')
             ).filter(GoldenRFQSurveyPair.rfq_embedding.is_not(None))
             
             # Add methodology filter if provided

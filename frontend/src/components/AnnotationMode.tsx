@@ -387,54 +387,46 @@ const QuestionAnnotationForm: React.FC<{
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4">
-      <div className="mb-4">
-        <div className="flex justify-between items-center mb-2">
-          <h3 className="text-lg font-semibold text-gray-900">Question Annotation</h3>
-          <div className="flex space-x-2">
+      <div className="bg-gradient-to-r from-gray-50 to-blue-50 rounded-lg p-4 mb-4 border border-gray-200">
+        <div className="flex justify-between items-start">
+          {/* Left side - Title and AI Status */}
+          <div className="flex-1">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Question Annotation</h3>
+            
+            {/* AI Status Card */}
+            {annotation?.aiGenerated && (
+              <div className="inline-flex items-center bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg px-3 py-2">
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                  <span className="text-sm font-medium text-blue-800">AI Generated</span>
+                  {annotation.aiConfidence && (
+                    <div className="flex items-center space-x-1 ml-2">
+                      <div className="w-1 h-1 bg-blue-400 rounded-full"></div>
+                      <span className="text-xs text-blue-600 font-medium">
+                        {(annotation.aiConfidence * 100).toFixed(0)}% confidence
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Right side - Action Buttons */}
+          <div className="flex items-center gap-2 ml-4">
             <button
               onClick={onCancel}
-              className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+              className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg text-sm font-medium transition-all duration-200 border border-gray-300 hover:border-gray-400"
             >
               Cancel
             </button>
             <button
               onClick={handleSave}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="px-4 py-2 bg-orange-500 text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-all duration-200 shadow-sm hover:shadow-md"
             >
-              Save
+              Override
             </button>
-          </div>
-        </div>
-        <p className="text-sm text-gray-600 mb-4">{question.question_text || question.text || 'No question text available'}</p>
-        
-        {/* AI Annotation Badges */}
-        {annotation?.aiGenerated && (
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center space-x-2">
-              <div className="flex items-center space-x-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                <span>AI Generated</span>
-              </div>
-              {annotation.aiConfidence && (
-                <div className="text-xs text-gray-600">
-                  Confidence: {(annotation.aiConfidence * 100).toFixed(0)}%
-                </div>
-              )}
-              {annotation.humanVerified && (
-                <div className="flex items-center space-x-1 px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
-                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                  <span>Verified</span>
-                </div>
-              )}
-              {annotation.humanOverridden && (
-                <div className="flex items-center space-x-1 px-2 py-1 bg-orange-100 text-orange-800 rounded-full text-xs font-medium">
-                  <span className="w-2 h-2 bg-orange-500 rounded-full"></span>
-                  <span>Overridden</span>
-                </div>
-              )}
-            </div>
-            {/* Mark as Verified Button for AI Annotations */}
-            {!annotation.humanVerified && (
+            {annotation?.aiGenerated && !annotation.humanVerified && (
               <button
                 onClick={async () => {
                   try {
@@ -446,31 +438,32 @@ const QuestionAnnotationForm: React.FC<{
                     console.error('Failed to verify annotation:', error);
                   }
                 }}
-                className="px-3 py-1 bg-green-600 text-white rounded-md text-xs font-medium hover:bg-green-700 transition-colors border border-green-600 hover:border-green-700"
+                className="px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 transition-all duration-200 shadow-sm hover:shadow-md"
               >
                 Mark as Verified
               </button>
             )}
           </div>
-        )}
-        
-        {/* Question Options */}
-        {question.options && question.options.length > 0 && (
-          <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-            <h4 className="text-sm font-medium text-gray-700 mb-2">Options:</h4>
-            <ul className="text-sm text-gray-600 space-y-1">
-              {question.options.map((option: any, index: number) => (
-                <li key={index} className="flex items-center">
-                  <span className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-medium mr-2">
-                    {index + 1}
-                  </span>
-                  {option.text || option.label || option}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        </div>
       </div>
+      <p className="text-sm text-gray-600 mb-4">{question.question_text || question.text || 'No question text available'}</p>
+        
+      {/* Question Options */}
+      {question.options && question.options.length > 0 && (
+        <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+          <h4 className="text-sm font-medium text-gray-700 mb-2">Options:</h4>
+          <ul className="text-sm text-gray-600 space-y-1">
+            {question.options.map((option: any, index: number) => (
+              <li key={index} className="flex items-center">
+                <span className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-medium mr-2">
+                  {index + 1}
+                </span>
+                {option.text || option.label || option}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="space-y-4">
         {/* Required Toggle */}
@@ -625,54 +618,46 @@ const SectionAnnotationForm: React.FC<{
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4">
-      <div className="mb-4">
-        <div className="flex justify-between items-center mb-2">
-          <h3 className="text-lg font-semibold text-gray-900">Section Annotation</h3>
-          <div className="flex space-x-2">
+      <div className="bg-gradient-to-r from-gray-50 to-blue-50 rounded-lg p-4 mb-4 border border-gray-200">
+        <div className="flex justify-between items-start">
+          {/* Left side - Title and AI Status */}
+          <div className="flex-1">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Section Annotation</h3>
+            
+            {/* AI Status Card */}
+            {annotation?.aiGenerated && (
+              <div className="inline-flex items-center bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg px-3 py-2">
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                  <span className="text-sm font-medium text-blue-800">AI Generated</span>
+                  {annotation.aiConfidence && (
+                    <div className="flex items-center space-x-1 ml-2">
+                      <div className="w-1 h-1 bg-blue-400 rounded-full"></div>
+                      <span className="text-xs text-blue-600 font-medium">
+                        {(annotation.aiConfidence * 100).toFixed(0)}% confidence
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Right side - Action Buttons */}
+          <div className="flex items-center gap-2 ml-4">
             <button
               onClick={onCancel}
-              className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+              className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg text-sm font-medium transition-all duration-200 border border-gray-300 hover:border-gray-400"
             >
               Cancel
             </button>
             <button
               onClick={handleSave}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="px-4 py-2 bg-orange-500 text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-all duration-200 shadow-sm hover:shadow-md"
             >
-              Save
+              Override
             </button>
-          </div>
-        </div>
-        <p className="text-sm text-gray-600 mb-4">{section.title || section.section_title || 'No section title available'}</p>
-        
-        {/* AI Annotation Badges */}
-        {annotation?.aiGenerated && (
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center space-x-2">
-              <div className="flex items-center space-x-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                <span>AI Generated</span>
-              </div>
-              {annotation.aiConfidence && (
-                <div className="text-xs text-gray-600">
-                  Confidence: {(annotation.aiConfidence * 100).toFixed(0)}%
-                </div>
-              )}
-              {annotation.humanVerified && (
-                <div className="flex items-center space-x-1 px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
-                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                  <span>Verified</span>
-                </div>
-              )}
-              {annotation.humanOverridden && (
-                <div className="flex items-center space-x-1 px-2 py-1 bg-orange-100 text-orange-800 rounded-full text-xs font-medium">
-                  <span className="w-2 h-2 bg-orange-500 rounded-full"></span>
-                  <span>Overridden</span>
-                </div>
-              )}
-            </div>
-            {/* Mark as Verified Button for AI Annotations */}
-            {!annotation.humanVerified && (
+            {annotation?.aiGenerated && !annotation.humanVerified && (
               <button
                 onClick={async () => {
                   try {
@@ -684,14 +669,15 @@ const SectionAnnotationForm: React.FC<{
                     console.error('Failed to verify annotation:', error);
                   }
                 }}
-                className="px-3 py-1 bg-green-600 text-white rounded-md text-xs font-medium hover:bg-green-700 transition-colors border border-green-600 hover:border-green-700"
+                className="px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 transition-all duration-200 shadow-sm hover:shadow-md"
               >
                 Mark as Verified
               </button>
             )}
           </div>
-        )}
+        </div>
       </div>
+      <p className="text-sm text-gray-600 mb-4">{section.title || section.section_title || 'No section title available'}</p>
 
       <div className="space-y-4">
         {/* Quality & Relevance Scales */}

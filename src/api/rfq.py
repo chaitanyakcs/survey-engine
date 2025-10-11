@@ -931,7 +931,7 @@ async def preview_survey_generation_prompt(
         prompt_service = PromptService(db_session=db)
         
         # Use the same method that the workflow uses
-        prompt = prompt_service.create_survey_generation_prompt(
+        prompt = await prompt_service.create_survey_generation_prompt(
             rfq_text=request.description,
             context=context,
             golden_examples=golden_examples,

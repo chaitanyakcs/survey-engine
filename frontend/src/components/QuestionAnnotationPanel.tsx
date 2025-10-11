@@ -5,6 +5,7 @@ import {
 } from '../types';
 import LikertScale from './LikertScale';
 import LabelsInput from './LabelsInput';
+import { useAppStore } from '../store/useAppStore';
 
 interface QuestionAnnotationPanelProps {
   question: Question;
@@ -83,26 +84,68 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
   return (
     <div className="bg-gradient-to-br from-yellow-50 to-amber-50 border-2 border-yellow-200 rounded-xl p-6 mt-4 shadow-lg">
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <div className="flex items-center space-x-3">
-          <div className="w-3 h-3 bg-amber-500 rounded-full"></div>
-          <h4 className="text-lg font-semibold text-gray-800">
-            Annotating Question: {question.id}
-          </h4>
-        </div>
-        <div className="flex gap-3">
-          <button
-            onClick={handleSave}
-            className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-all duration-200 shadow-sm hover:shadow-md"
-          >
-            Save Annotation
-          </button>
-          <button
-            onClick={onCancel}
-            className="px-4 py-2 bg-gray-500 text-white text-sm font-medium rounded-lg hover:bg-gray-600 transition-all duration-200 shadow-sm hover:shadow-md"
-          >
-            Cancel
-          </button>
+      <div className="bg-white rounded-lg p-4 mb-6 shadow-sm border border-gray-200">
+        <div className="flex justify-between items-start">
+          {/* Left side - Title and AI Status */}
+          <div className="flex-1">
+            <div className="flex items-center space-x-3 mb-2">
+              <div className="w-3 h-3 bg-amber-500 rounded-full"></div>
+              <h4 className="text-lg font-semibold text-gray-800">
+                Question Annotation
+              </h4>
+            </div>
+            
+            {/* AI Status Card */}
+            {annotation?.aiGenerated && (
+              <div className="inline-flex items-center bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg px-3 py-2">
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                  <span className="text-sm font-medium text-blue-800">AI Generated</span>
+                  {annotation.aiConfidence && (
+                    <div className="flex items-center space-x-1 ml-2">
+                      <div className="w-1 h-1 bg-blue-400 rounded-full"></div>
+                      <span className="text-xs text-blue-600 font-medium">
+                        {(annotation.aiConfidence * 100).toFixed(0)}% confidence
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Right side - Action Buttons */}
+          <div className="flex items-center gap-2 ml-4">
+            <button
+              onClick={onCancel}
+              className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg text-sm font-medium transition-all duration-200 border border-gray-300 hover:border-gray-400"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              className="px-4 py-2 bg-orange-500 text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-all duration-200 shadow-sm hover:shadow-md"
+            >
+              Override
+            </button>
+            {annotation?.aiGenerated && !annotation.humanVerified && (
+              <button
+                onClick={async () => {
+                  try {
+                    const { verifyAIAnnotation, currentSurvey } = useAppStore.getState();
+                    if (currentSurvey?.survey_id) {
+                      await verifyAIAnnotation(currentSurvey.survey_id, parseInt(question.id), 'question');
+                    }
+                  } catch (error) {
+                    console.error('Failed to verify annotation:', error);
+                  }
+                }}
+                className="px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 transition-all duration-200 shadow-sm hover:shadow-md"
+              >
+                Mark as Verified
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -210,6 +253,26 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
             maxLabels={8}
           />
         </div>
+
+        {/* AI Annotation Summary */}
+        {annotation?.aiGenerated && (
+          <div className="bg-blue-50 rounded-lg p-6 shadow-sm border border-blue-200">
+            <div className="flex items-center space-x-2 mb-4">
+              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+              <h5 className="text-lg font-semibold text-blue-800">AI Analysis Summary</h5>
+            </div>
+            <div className="space-y-3">
+              <div className="bg-white rounded-lg p-4 border border-blue-100">
+                <div className="text-sm font-medium text-blue-700 mb-2">AI Comment:</div>
+                <div className="text-sm text-gray-700 leading-relaxed">{annotation.comment}</div>
+              </div>
+              <div className="flex items-center justify-between text-sm text-blue-600">
+                <span>Generated: {annotation.generationTimestamp ? new Date(annotation.generationTimestamp).toLocaleString() : 'Unknown'}</span>
+                <span>Confidence: {annotation.aiConfidence ? (annotation.aiConfidence * 100).toFixed(0) : 'N/A'}%</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Comment Section */}
         <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200">

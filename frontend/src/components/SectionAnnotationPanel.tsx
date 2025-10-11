@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import {
   SectionAnnotation,
   SurveySection,
-  SECTION_CLASSIFICATIONS,
-  SectionClassification
+  SECTION_CLASSIFICATIONS
 } from '../types';
 import LikertScale from './LikertScale';
 import LabelsInput from './LabelsInput';
+import { useAppStore } from '../store/useAppStore';
 
 interface SectionAnnotationPanelProps {
   section: SurveySection;
@@ -92,28 +92,70 @@ const SectionAnnotationPanel: React.FC<SectionAnnotationPanelProps> = ({
   const missingElements = mandatoryElements.missing || [];
 
   return (
-    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-4 mb-6 shadow-lg">
+    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-6 mt-4 shadow-lg">
       {/* Header */}
-      <div className="flex justify-between items-center mb-4">
-        <div className="flex items-center space-x-3">
-          <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-          <h4 className="text-lg font-semibold text-gray-800">
-            Annotating Section: {section.title}
-          </h4>
-        </div>
-        <div className="flex gap-3">
-          <button
-            onClick={handleSave}
-            className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-all duration-200 shadow-sm hover:shadow-md"
-          >
-            Save Annotation
-          </button>
-          <button
-            onClick={onCancel}
-            className="px-4 py-2 bg-gray-500 text-white text-sm font-medium rounded-lg hover:bg-gray-600 transition-all duration-200 shadow-sm hover:shadow-md"
-          >
-            Cancel
-          </button>
+      <div className="bg-white rounded-lg p-4 mb-6 shadow-sm border border-gray-200">
+        <div className="flex justify-between items-start">
+          {/* Left side - Title and AI Status */}
+          <div className="flex-1">
+            <div className="flex items-center space-x-3 mb-2">
+              <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+              <h4 className="text-lg font-semibold text-gray-800">
+                Section Annotation
+              </h4>
+            </div>
+            
+            {/* AI Status Card */}
+            {annotation?.aiGenerated && (
+              <div className="inline-flex items-center bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg px-3 py-2">
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                  <span className="text-sm font-medium text-blue-800">AI Generated</span>
+                  {annotation.aiConfidence && (
+                    <div className="flex items-center space-x-1 ml-2">
+                      <div className="w-1 h-1 bg-blue-400 rounded-full"></div>
+                      <span className="text-xs text-blue-600 font-medium">
+                        {(annotation.aiConfidence * 100).toFixed(0)}% confidence
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Right side - Action Buttons */}
+          <div className="flex items-center gap-2 ml-4">
+            <button
+              onClick={onCancel}
+              className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg text-sm font-medium transition-all duration-200 border border-gray-300 hover:border-gray-400"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              className="px-4 py-2 bg-orange-500 text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-all duration-200 shadow-sm hover:shadow-md"
+            >
+              Override
+            </button>
+            {annotation?.aiGenerated && !annotation.humanVerified && (
+              <button
+                onClick={async () => {
+                  try {
+                    const { verifyAIAnnotation, currentSurvey } = useAppStore.getState();
+                    if (currentSurvey?.survey_id) {
+                      await verifyAIAnnotation(currentSurvey.survey_id, section.id, 'section');
+                    }
+                  } catch (error) {
+                    console.error('Failed to verify annotation:', error);
+                  }
+                }}
+                className="px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 transition-all duration-200 shadow-sm hover:shadow-md"
+              >
+                Mark as Verified
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
