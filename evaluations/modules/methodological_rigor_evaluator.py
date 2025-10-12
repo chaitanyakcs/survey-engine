@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 # Add parent directory to path for utils import
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from utils import extract_all_questions
+from evaluations.utils import extract_all_questions
 
 @dataclass
 class MethodologicalRigorResult:

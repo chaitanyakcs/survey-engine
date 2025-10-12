@@ -134,18 +134,20 @@ COMMENT ON TABLE llm_audit IS 'Comprehensive audit table for all LLM interaction
 COMMENT ON TABLE llm_hyperparameter_configs IS 'Configuration table for LLM hyperparameters by purpose';
 COMMENT ON TABLE llm_prompt_templates IS 'Template table for LLM prompts by purpose';
 
--- Insert default hyperparameter configurations
+-- Insert default hyperparameter configurations (with conflict handling)
 INSERT INTO llm_hyperparameter_configs (config_name, purpose, sub_purpose, temperature, top_p, max_tokens, frequency_penalty, presence_penalty, description, is_default) VALUES
 ('survey_generation_default', 'survey_generation', NULL, 0.7, 0.9, 4000, 0.0, 0.0, 'Default configuration for survey generation', true),
 ('evaluation_comprehensive', 'evaluation', 'comprehensive', 0.3, 0.9, 4000, 0.0, 0.0, 'Configuration for comprehensive evaluation', true),
 ('evaluation_content_validity', 'evaluation', 'content_validity', 0.2, 0.8, 2000, 0.0, 0.0, 'Configuration for content validity evaluation', false),
 ('evaluation_methodological_rigor', 'evaluation', 'methodological_rigor', 0.2, 0.8, 2000, 0.0, 0.0, 'Configuration for methodological rigor evaluation', false),
 ('field_extraction_default', 'field_extraction', NULL, 0.1, 0.9, 1000, 0.0, 0.0, 'Default configuration for field extraction', true),
-('document_parsing_default', 'document_parsing', NULL, 0.1, 0.9, 2000, 0.0, 0.0, 'Default configuration for document parsing', true);
+('document_parsing_default', 'document_parsing', NULL, 0.1, 0.9, 2000, 0.0, 0.0, 'Default configuration for document parsing', true)
+ON CONFLICT (config_name) DO NOTHING;
 
--- Insert default prompt templates
+-- Insert default prompt templates (with conflict handling)
 INSERT INTO llm_prompt_templates (template_name, purpose, sub_purpose, system_prompt_template, description, is_default) VALUES
 ('survey_generation_base', 'survey_generation', NULL, 'You are an expert survey researcher. Generate a comprehensive survey based on the provided RFQ and context.', 'Base template for survey generation', true),
 ('evaluation_comprehensive', 'evaluation', 'comprehensive', 'You are an expert survey evaluator. Evaluate the survey across all quality pillars.', 'Template for comprehensive evaluation', true),
 ('field_extraction_base', 'field_extraction', NULL, 'You are an expert at extracting structured data from documents. Extract the requested fields accurately.', 'Base template for field extraction', true),
-('document_parsing_base', 'document_parsing', NULL, 'You are an expert document parser. Analyze the document and extract relevant information for survey generation.', 'Base template for document parsing', true);
+('document_parsing_base', 'document_parsing', NULL, 'You are an expert document parser. Analyze the document and extract relevant information for survey generation.', 'Base template for document parsing', true)
+ON CONFLICT (template_name) DO NOTHING;

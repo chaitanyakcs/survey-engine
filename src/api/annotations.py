@@ -413,6 +413,10 @@ def save_bulk_annotations(
                 existing_qa.updated_at = datetime.now()
             else:
                 logger.debug(f"➕ [API] Creating new question annotation for question_id={qa_req.question_id}")
+                
+                # Determine if this is an AI-generated annotation
+                is_ai_generated = qa_req.annotator_id == "ai_system"
+                
                 # Create new annotation
                 new_qa = QuestionAnnotation(
                     question_id=qa_req.question_id,
@@ -427,7 +431,12 @@ def save_bulk_annotations(
                     business_impact=qa_req.business_impact,
                     comment=qa_req.comment,
                     labels=qa_req.labels,
-                    annotator_id=qa_req.annotator_id
+                    annotator_id=qa_req.annotator_id,
+                    # Set AI-generated fields based on annotator_id
+                    ai_generated=is_ai_generated,
+                    ai_confidence=qa_req.ai_confidence if is_ai_generated else None,
+                    human_verified=False if is_ai_generated else True,
+                    generation_timestamp=datetime.now() if is_ai_generated else None
                 )
                 db.add(new_qa)
         
@@ -825,3 +834,55 @@ def delete_survey_annotation(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete survey annotation: {str(e)}"
         )
+
+
+@router.post("/annotations/migrate-ai-flags")
+def migrate_ai_flags(db: Session = Depends(get_db)):
+    """
+    Migration endpoint to fix annotations with annotator_id='ai_system' but ai_generated=False
+    """
+    try:
+        # Find all annotations with ai_system annotator but ai_generated=False
+        inconsistent_annotations = db.query(QuestionAnnotation).filter(
+            QuestionAnnotation.annotator_id == "ai_system",
+            QuestionAnnotation.ai_generated == False
+        ).all()
+        
+        logger.info(f"🔧 [Migration] Found {len(inconsistent_annotations)} inconsistent question annotations")
+        
+        # Update them to have ai_generated=True
+        for annotation in inconsistent_annotations:
+            annotation.ai_generated = True
+            annotation.human_verified = False
+            if not annotation.generation_timestamp:
+                annotation.generation_timestamp = datetime.now()
+        
+        # Also check section annotations
+        inconsistent_sections = db.query(SectionAnnotation).filter(
+            SectionAnnotation.annotator_id == "ai_system",
+            SectionAnnotation.ai_generated == False
+        ).all()
+        
+        logger.info(f"🔧 [Migration] Found {len(inconsistent_sections)} inconsistent section annotations")
+        
+        for annotation in inconsistent_sections:
+            annotation.ai_generated = True
+            annotation.human_verified = False
+            if not annotation.generation_timestamp:
+                annotation.generation_timestamp = datetime.now()
+        
+        db.commit()
+        
+        total_fixed = len(inconsistent_annotations) + len(inconsistent_sections)
+        logger.info(f"✅ [Migration] Fixed {total_fixed} inconsistent annotations")
+        
+        return {
+            "message": f"Successfully migrated {total_fixed} annotations",
+            "question_annotations_fixed": len(inconsistent_annotations),
+            "section_annotations_fixed": len(inconsistent_sections)
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ [Migration] Error during migration: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Migration failed: {str(e)}")

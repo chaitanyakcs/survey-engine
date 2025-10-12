@@ -153,6 +153,7 @@ async def list_evaluation_models():
     try:
         return [
             "openai/gpt-5",
+            "openai/gpt-5-structured",
             "openai/gpt-4o-mini",
             "openai/gpt-4o",
             "meta/meta-llama-3.1-405b-instruct",

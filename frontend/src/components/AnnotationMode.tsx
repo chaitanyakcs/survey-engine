@@ -1,14 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { ChevronDownIcon, ChevronRightIcon, TagIcon } from '@heroicons/react/24/outline';
-import LikertScale from './LikertScale';
 import {
   QuestionAnnotation,
   SectionAnnotation,
   SurveyLevelAnnotation
 } from '../types';
 import { useAppStore } from '../store/useAppStore';
-import { SurveyLevelAnnotationPanel } from './SurveyLevelAnnotationPanel';
-import LabelsInput from './LabelsInput';
+import AnnotationSidePane from './AnnotationSidePane';
 
 interface AnnotationModeProps {
   survey: any;
@@ -27,8 +25,13 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
   onSurveyLevelAnnotation,
   onExitAnnotationMode
 }) => {
-  const { selectedQuestionId, setSelectedQuestion } = useAppStore();
-  const [showSurveyLevelAnnotation, setShowSurveyLevelAnnotation] = useState(false);
+  const { selectedQuestionId } = useAppStore();
+  
+  // Annotation fixed pane state
+  const [annotationPane, setAnnotationPane] = useState({
+    type: null as 'question' | 'section' | 'survey' | null,
+    target: null as any
+  });
   
   // Debug: Log survey data structure
   console.log('🔍 [AnnotationMode] Survey data:', survey);
@@ -60,26 +63,31 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
   console.log('🔍 [AnnotationMode] Sections to use:', sectionsToUse);
   
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(sectionsToUse.map((s: any) => String(s.id || s.section_id))));
-  const [selectedSection, setSelectedSection] = useState<string | null>(null);
   
   // Use global state for selected question
   const selectedQuestion = selectedQuestionId;
 
-  // When a question is selected, keep sections expanded
+  // When a question is selected, open fixed pane
   const handleQuestionSelect = (questionId: string) => {
-    console.log('🔍 [AnnotationMode] Question selected:', questionId);
-    setSelectedQuestion(questionId);
-    setSelectedSection(null);
-    // Keep sections expanded since side panel shows entire question
+    const question = sectionsToUse.flatMap((s: any) => s.questions || []).find((q: any) => (q.question_id || q.id) === questionId);
+    if (question) {
+      setAnnotationPane({
+        type: 'question',
+        target: question
+      });
+    }
   };
 
-  // When a section is selected, minimize other sections
+  // When a section is selected, open fixed pane
   const handleSectionSelect = (sectionId: string) => {
     console.log('🔍 [AnnotationMode] Section selected:', sectionId);
-    setSelectedSection(sectionId);
-    setSelectedQuestion(undefined);
-    // Minimize all sections when a section is selected
-    setExpandedSections(new Set());
+    const section = sectionsToUse.find((s: any) => String(s.id || s.section_id) === sectionId);
+    if (section) {
+      setAnnotationPane({
+        type: 'section',
+        target: section
+      });
+    }
   };
 
   const toggleSection = (sectionId: string) => {
@@ -106,7 +114,6 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
     return currentAnnotations?.sectionAnnotations?.find((sa: SectionAnnotation) => sa.sectionId === sectionId);
   };
 
-
   const isAnnotated = (type: 'question' | 'section', id: string) => {
     if (type === 'question') {
       return getQuestionAnnotation(id) !== undefined;
@@ -116,25 +123,18 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="w-full h-screen flex flex-col bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="w-3 h-3 bg-yellow-400 rounded-full"></div>
-            <h2 className="text-lg font-semibold text-gray-900">Annotation Mode</h2>
+            <h2 className="heading-3">Annotation Mode</h2>
             <div className="text-sm text-gray-500">
-              {currentAnnotations?.questionAnnotations?.length || 0} questions • {currentAnnotations?.sectionAnnotations?.length || 0} sections
+              {sectionsToUse.reduce((total: number, section: any) => total + (section.questions?.length || 0), 0)} questions • {sectionsToUse.length} sections
             </div>
           </div>
           <div className="flex items-center space-x-3">
-            <button
-              onClick={() => setShowSurveyLevelAnnotation(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors"
-            >
-              <TagIcon className="w-4 h-4" />
-              Survey Annotation
-            </button>
             <button
               onClick={onExitAnnotationMode}
               className="px-4 py-2 bg-gray-600 text-white text-sm font-medium rounded-lg hover:bg-gray-700"
@@ -146,39 +146,40 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Panel - Survey Structure */}
-        <div className="w-1/2 bg-white border-r border-gray-200 overflow-y-auto">
+        {/* Left Panel - Survey Structure (45%) */}
+        <div className="w-[45%] bg-white overflow-y-auto">
           <div className="p-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Survey Structure</h3>
+            <h3 
+              className="heading-4 mb-4 cursor-pointer hover:text-primary-600 transition-colors flex items-center gap-2"
+              onClick={() => setAnnotationPane({ type: 'survey', target: survey })}
+            >
+              Survey Structure
+              <TagIcon className="w-4 h-4" />
+            </h3>
             <div className="space-y-2">
               {sectionsToUse.map((section: any) => {
                 const sectionId = String(section.id || section.section_id);
                 return (
                 <div key={sectionId} className={`border rounded-lg transition-all duration-200 ${
-                  selectedSection === sectionId 
-                    ? 'border-blue-500 bg-blue-50 shadow-md' 
-                    : 'border-gray-200 hover:border-gray-300'
+                  'border-gray-200 hover:border-gray-300'
                 }`}>
                   {/* Section Header */}
                   <div className={`flex items-center justify-between p-3 transition-colors ${
-                    selectedSection === sectionId 
-                      ? 'bg-blue-50' 
+                    annotationPane.type === 'section' && annotationPane.target?.id === sectionId
+                      ? 'bg-blue-50 border-l-4 border-blue-500 shadow-md ring-2 ring-blue-200'
                       : 'hover:bg-gray-50'
                   }`}>
                     <div 
                       className="flex items-center space-x-2 cursor-pointer flex-1"
                       onClick={() => handleSectionSelect(sectionId)}
                     >
-                      {selectedSection === sectionId && (
-                        <div className="w-1 h-6 bg-blue-500 rounded-full"></div>
-                      )}
                       <span className={`font-medium transition-colors ${
-                        selectedSection === sectionId 
-                          ? 'text-blue-900' 
+                        annotationPane.type === 'section' && annotationPane.target?.id === sectionId
+                          ? 'text-blue-900 font-semibold'
                           : 'text-gray-900'
                       }`}>{section.title}</span>
                       {isAnnotated('section', sectionId) && (
-                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        <div className="w-2 h-2 bg-success-500 rounded-full"></div>
                       )}
                     </div>
                     <button
@@ -187,9 +188,7 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
                         toggleSection(sectionId);
                       }}
                       className={`p-1 rounded transition-colors ${
-                        selectedSection === sectionId
-                          ? 'text-blue-600 hover:text-blue-700 hover:bg-blue-100'
-                          : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                        'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
                       }`}
                     >
                       {expandedSections.has(sectionId) ? (
@@ -211,18 +210,18 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
                               key={questionId}
                               className={`flex items-center justify-between p-3 cursor-pointer transition-all duration-200 ${
                                 selectedQuestion === questionId
-                                  ? 'bg-blue-100 border-l-4 border-blue-500 shadow-sm'
+                                  ? 'bg-blue-50 border-l-4 border-blue-500 shadow-md ring-2 ring-blue-200'
                                   : 'hover:bg-gray-100'
                               }`}
                               onClick={() => handleQuestionSelect(questionId)}
                             >
                               <div className="flex items-center space-x-2 flex-1 min-w-0">
                                 {selectedQuestion === questionId && (
-                                  <div className="w-1 h-4 bg-blue-500 rounded-full flex-shrink-0"></div>
+                                  <div className="w-1 h-6 bg-blue-500 rounded-full flex-shrink-0"></div>
                                 )}
                                 <span className={`text-sm transition-colors flex-1 min-w-0 ${
                                   selectedQuestion === questionId
-                                    ? 'text-blue-900 font-medium'
+                                    ? 'text-blue-900 font-semibold'
                                     : 'text-gray-700'
                                 }`}>
                                   {(() => {
@@ -252,546 +251,19 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
           </div>
         </div>
 
-        {/* Right Panel - Annotation Form */}
-        <div className="w-1/2 bg-gray-50 overflow-y-auto">
-          <div className="p-4">
-            {selectedQuestion ? (
-              <QuestionAnnotationForm
-                key={selectedQuestion}
-                question={sectionsToUse.flatMap((s: any) => s.questions || []).find((q: any) => (q.question_id || q.id) === selectedQuestion)}
-                annotation={getQuestionAnnotation(selectedQuestion)}
-                onSave={(annotation) => {
-                  onQuestionAnnotation(annotation);
-                  setSelectedQuestion(undefined);
-                }}
-                onCancel={() => setSelectedQuestion(undefined)}
-              />
-            ) : selectedSection ? (
-              <SectionAnnotationForm
-                section={sectionsToUse.find((s: any) => String(s.id || s.section_id) === selectedSection)}
-                annotation={getSectionAnnotation(selectedSection)}
-                onSave={(annotation) => {
-                  onSectionAnnotation(annotation);
-                  setSelectedSection(null);
-                }}
-                onCancel={() => setSelectedSection(null)}
-              />
-            ) : (
-              <div className="text-center py-12">
-                <TagIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Select an Item to Annotate</h3>
-                <p className="text-gray-500">Click on a question or section to start annotating</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Survey Level Annotation Modal */}
-      {showSurveyLevelAnnotation && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <SurveyLevelAnnotationPanel
-              surveyId={survey?.survey_id || survey?.id || 'unknown'}
-              annotation={currentAnnotations?.surveyLevelAnnotation}
-              onSave={(annotation) => {
-                if (onSurveyLevelAnnotation) {
-                  onSurveyLevelAnnotation(annotation);
-                }
-                setShowSurveyLevelAnnotation(false);
-              }}
-              onCancel={() => setShowSurveyLevelAnnotation(false)}
-            />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// Enhanced Question Annotation Form with Pillars and Options
-const QuestionAnnotationForm: React.FC<{
-  question: any;
-  annotation?: QuestionAnnotation;
-  onSave: (annotation: QuestionAnnotation) => void;
-  onCancel: () => void;
-}> = ({ question, annotation, onSave, onCancel }) => {
-  console.log('🔍 [QuestionAnnotationForm] Component rendered with:', {
-    questionId: question?.id || question?.question_id,
-    questionText: question?.text || question?.question_text,
-    annotation,
-    hasAnnotation: !!annotation
-  });
-
-  const [formData, setFormData] = useState({
-    required: annotation?.required || false,
-    quality: annotation?.quality || 3,
-    relevant: annotation?.relevant || 3,
-    pillars: annotation?.pillars || {
-      methodologicalRigor: 3,
-      contentValidity: 3,
-      respondentExperience: 3,
-      analyticalValue: 3,
-      businessImpact: 3
-    },
-    comment: annotation?.comment || '',
-    labels: annotation?.labels || []
-  });
-
-  // Update form data when annotation changes
-  useEffect(() => {
-    console.log('🔍 [QuestionAnnotationForm] useEffect triggered - annotation changed:', annotation);
-    setFormData({
-      required: annotation?.required || false,
-      quality: annotation?.quality || 3,
-      relevant: annotation?.relevant || 3,
-      pillars: annotation?.pillars || {
-        methodologicalRigor: 3,
-        contentValidity: 3,
-        respondentExperience: 3,
-        analyticalValue: 3,
-        businessImpact: 3
-      },
-      comment: annotation?.comment || '',
-      labels: annotation?.labels || []
-    });
-  }, [annotation]);
-
-  // Safety check for undefined question
-  if (!question) {
-    return (
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <div className="text-center text-gray-500">
-          <p>Question not found</p>
-          <button
-            onClick={onCancel}
-            className="mt-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-
-
-  const handleSave = () => {
-    const newAnnotation: QuestionAnnotation = {
-      questionId: question.question_id || question.id,
-      ...formData,
-      annotatorId: 'current-user'
-    };
-    onSave(newAnnotation);
-  };
-
-  return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4">
-      <div className="mb-4">
-        <div className="flex justify-between items-center mb-2">
-          <h3 className="text-lg font-semibold text-gray-900">Question Annotation</h3>
-          <div className="flex space-x-2">
-            <button
-              onClick={onCancel}
-              className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              Save
-            </button>
-          </div>
-        </div>
-        <p className="text-sm text-gray-600 mb-4">{question.question_text || question.text || 'No question text available'}</p>
-        
-        {/* AI Annotation Badges */}
-        {annotation?.aiGenerated && (
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center space-x-2">
-              <div className="flex items-center space-x-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                <span>AI Generated</span>
-              </div>
-              {annotation.aiConfidence && (
-                <div className="text-xs text-gray-600">
-                  Confidence: {(annotation.aiConfidence * 100).toFixed(0)}%
-                </div>
-              )}
-              {annotation.humanVerified && (
-                <div className="flex items-center space-x-1 px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
-                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                  <span>Verified</span>
-                </div>
-              )}
-              {annotation.humanOverridden && (
-                <div className="flex items-center space-x-1 px-2 py-1 bg-orange-100 text-orange-800 rounded-full text-xs font-medium">
-                  <span className="w-2 h-2 bg-orange-500 rounded-full"></span>
-                  <span>Overridden</span>
-                </div>
-              )}
-            </div>
-            {/* Mark as Verified Button for AI Annotations */}
-            {!annotation.humanVerified && (
-              <button
-                onClick={async () => {
-                  try {
-                    const { verifyAIAnnotation, currentSurvey } = useAppStore.getState();
-                    if (currentSurvey?.survey_id) {
-                      await verifyAIAnnotation(currentSurvey.survey_id, parseInt(question.question_id || question.id), 'question');
-                    }
-                  } catch (error) {
-                    console.error('Failed to verify annotation:', error);
-                  }
-                }}
-                className="px-3 py-1 bg-green-600 text-white rounded-md text-xs font-medium hover:bg-green-700 transition-colors border border-green-600 hover:border-green-700"
-              >
-                Mark as Verified
-              </button>
-            )}
-          </div>
-        )}
-        
-        {/* Question Options */}
-        {question.options && question.options.length > 0 && (
-          <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-            <h4 className="text-sm font-medium text-gray-700 mb-2">Options:</h4>
-            <ul className="text-sm text-gray-600 space-y-1">
-              {question.options.map((option: any, index: number) => (
-                <li key={index} className="flex items-center">
-                  <span className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-medium mr-2">
-                    {index + 1}
-                  </span>
-                  {option.text || option.label || option}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
-
-      <div className="space-y-4">
-        {/* Required Toggle */}
-        <div className="flex items-center justify-between">
-          <label className="text-sm font-medium text-gray-700">Required</label>
-          <button
-            onClick={() => setFormData({...formData, required: !formData.required})}
-            className={`w-12 h-6 rounded-full transition-colors ${
-              formData.required ? 'bg-blue-600' : 'bg-gray-300'
-            }`}
-          >
-            <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
-              formData.required ? 'translate-x-6' : 'translate-x-0.5'
-            }`} />
-          </button>
-        </div>
-
-        {/* Quality & Relevance Scales */}
-        <div className="space-y-3">
-          <LikertScale
-            label="Quality"
-            value={formData.quality}
-            onChange={(value) => setFormData({...formData, quality: value})}
-            lowLabel="Poor"
-            highLabel="Excellent"
-          />
-          <LikertScale
-            label="Relevance"
-            value={formData.relevant}
-            onChange={(value) => setFormData({...formData, relevant: value})}
-            lowLabel="Low"
-            highLabel="High"
-          />
-        </div>
-
-        {/* Five Pillars */}
-        <div className="space-y-3">
-          <h4 className="text-sm font-medium text-gray-700">Five Pillars Assessment</h4>
-          <div className="grid grid-cols-1 gap-3">
-            <LikertScale
-              label="Methodological Rigor"
-              value={formData.pillars.methodologicalRigor}
-              onChange={(value) => setFormData({
-                ...formData,
-                pillars: { ...formData.pillars, methodologicalRigor: value }
-              })}
-              lowLabel="Low"
-              highLabel="High"
-            />
-            <LikertScale
-              label="Content Validity"
-              value={formData.pillars.contentValidity}
-              onChange={(value) => setFormData({
-                ...formData,
-                pillars: { ...formData.pillars, contentValidity: value }
-              })}
-              lowLabel="Low"
-              highLabel="High"
-            />
-            <LikertScale
-              label="Respondent Experience"
-              value={formData.pillars.respondentExperience}
-              onChange={(value) => setFormData({
-                ...formData,
-                pillars: { ...formData.pillars, respondentExperience: value }
-              })}
-              lowLabel="Poor"
-              highLabel="Excellent"
-            />
-            <LikertScale
-              label="Analytical Value"
-              value={formData.pillars.analyticalValue}
-              onChange={(value) => setFormData({
-                ...formData,
-                pillars: { ...formData.pillars, analyticalValue: value }
-              })}
-              lowLabel="Low"
-              highLabel="High"
-            />
-            <LikertScale
-              label="Business Impact"
-              value={formData.pillars.businessImpact}
-              onChange={(value) => setFormData({
-                ...formData,
-                pillars: { ...formData.pillars, businessImpact: value }
-              })}
-              lowLabel="Low"
-              highLabel="High"
-            />
-          </div>
-        </div>
-
-        {/* Comment */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Comment</label>
-          <textarea
-            value={formData.comment}
-            onChange={(e) => setFormData({...formData, comment: e.target.value})}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none"
-            rows={3}
-            placeholder="Add your observations..."
-          />
-        </div>
-
-        {/* Labels */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Labels</label>
-          <LabelsInput
-            labels={formData.labels || []}
-            onLabelsChange={(labels) => setFormData({...formData, labels})}
-            placeholder="Add labels for this question..."
-            maxLabels={8}
-          />
-        </div>
-
-        {/* Advanced Classification */}
-
-      </div>
-    </div>
-  );
-};
-
-// Enhanced Section Annotation Form with Pillars
-const SectionAnnotationForm: React.FC<{
-  section: any;
-  annotation?: SectionAnnotation;
-  onSave: (annotation: SectionAnnotation) => void;
-  onCancel: () => void;
-}> = ({ section, annotation, onSave, onCancel }) => {
-  const [formData, setFormData] = useState({
-    quality: annotation?.quality || 3,
-    relevant: annotation?.relevant || 3,
-    pillars: annotation?.pillars || {
-      methodologicalRigor: 3,
-      contentValidity: 3,
-      respondentExperience: 3,
-      analyticalValue: 3,
-      businessImpact: 3
-    },
-    comment: annotation?.comment || '',
-    labels: annotation?.labels || []
-  });
-
-  const handleSave = () => {
-    const newAnnotation: SectionAnnotation = {
-      sectionId: String(section.id || section.section_id),
-      ...formData,
-      annotatorId: 'current-user'
-    };
-    onSave(newAnnotation);
-  };
-
-  return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4">
-      <div className="mb-4">
-        <div className="flex justify-between items-center mb-2">
-          <h3 className="text-lg font-semibold text-gray-900">Section Annotation</h3>
-          <div className="flex space-x-2">
-            <button
-              onClick={onCancel}
-              className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              Save
-            </button>
-          </div>
-        </div>
-        <p className="text-sm text-gray-600 mb-4">{section.title || section.section_title || 'No section title available'}</p>
-        
-        {/* AI Annotation Badges */}
-        {annotation?.aiGenerated && (
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center space-x-2">
-              <div className="flex items-center space-x-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                <span>AI Generated</span>
-              </div>
-              {annotation.aiConfidence && (
-                <div className="text-xs text-gray-600">
-                  Confidence: {(annotation.aiConfidence * 100).toFixed(0)}%
-                </div>
-              )}
-              {annotation.humanVerified && (
-                <div className="flex items-center space-x-1 px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
-                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                  <span>Verified</span>
-                </div>
-              )}
-              {annotation.humanOverridden && (
-                <div className="flex items-center space-x-1 px-2 py-1 bg-orange-100 text-orange-800 rounded-full text-xs font-medium">
-                  <span className="w-2 h-2 bg-orange-500 rounded-full"></span>
-                  <span>Overridden</span>
-                </div>
-              )}
-            </div>
-            {/* Mark as Verified Button for AI Annotations */}
-            {!annotation.humanVerified && (
-              <button
-                onClick={async () => {
-                  try {
-                    const { verifyAIAnnotation, currentSurvey } = useAppStore.getState();
-                    if (currentSurvey?.survey_id) {
-                      await verifyAIAnnotation(currentSurvey.survey_id, section.id, 'section');
-                    }
-                  } catch (error) {
-                    console.error('Failed to verify annotation:', error);
-                  }
-                }}
-                className="px-3 py-1 bg-green-600 text-white rounded-md text-xs font-medium hover:bg-green-700 transition-colors border border-green-600 hover:border-green-700"
-              >
-                Mark as Verified
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="space-y-4">
-        {/* Quality & Relevance Scales */}
-        <div className="space-y-3">
-          <LikertScale
-            label="Quality"
-            value={formData.quality}
-            onChange={(value) => setFormData({...formData, quality: value})}
-            lowLabel="Poor"
-            highLabel="Excellent"
-          />
-          <LikertScale
-            label="Relevance"
-            value={formData.relevant}
-            onChange={(value) => setFormData({...formData, relevant: value})}
-            lowLabel="Low"
-            highLabel="High"
-          />
-        </div>
-
-        {/* Five Pillars */}
-        <div className="space-y-3">
-          <h4 className="text-sm font-medium text-gray-700">Five Pillars Assessment</h4>
-          <div className="grid grid-cols-1 gap-3">
-            <LikertScale
-              label="Methodological Rigor"
-              value={formData.pillars.methodologicalRigor}
-              onChange={(value) => setFormData({
-                ...formData,
-                pillars: { ...formData.pillars, methodologicalRigor: value }
-              })}
-              lowLabel="Low"
-              highLabel="High"
-            />
-            <LikertScale
-              label="Content Validity"
-              value={formData.pillars.contentValidity}
-              onChange={(value) => setFormData({
-                ...formData,
-                pillars: { ...formData.pillars, contentValidity: value }
-              })}
-              lowLabel="Low"
-              highLabel="High"
-            />
-            <LikertScale
-              label="Respondent Experience"
-              value={formData.pillars.respondentExperience}
-              onChange={(value) => setFormData({
-                ...formData,
-                pillars: { ...formData.pillars, respondentExperience: value }
-              })}
-              lowLabel="Poor"
-              highLabel="Excellent"
-            />
-            <LikertScale
-              label="Analytical Value"
-              value={formData.pillars.analyticalValue}
-              onChange={(value) => setFormData({
-                ...formData,
-                pillars: { ...formData.pillars, analyticalValue: value }
-              })}
-              lowLabel="Low"
-              highLabel="High"
-            />
-            <LikertScale
-              label="Business Impact"
-              value={formData.pillars.businessImpact}
-              onChange={(value) => setFormData({
-                ...formData,
-                pillars: { ...formData.pillars, businessImpact: value }
-              })}
-              lowLabel="Low"
-              highLabel="High"
-            />
-          </div>
-        </div>
-
-        {/* Comment */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Comment</label>
-          <textarea
-            value={formData.comment}
-            onChange={(e) => setFormData({...formData, comment: e.target.value})}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none"
-            rows={3}
-            placeholder="Add your observations..."
-          />
-        </div>
-
-        {/* Labels */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Labels</label>
-          <LabelsInput
-            labels={formData.labels || []}
-            onLabelsChange={(labels) => setFormData({...formData, labels})}
-            placeholder="Add labels for this section..."
-            maxLabels={10}
+        {/* Right Panel - Annotation Pane (55%) */}
+        <div className="w-[55%]">
+          <AnnotationSidePane
+            annotationType={annotationPane.type}
+            annotationTarget={annotationPane.target}
+            currentAnnotations={currentAnnotations}
+            onQuestionAnnotation={onQuestionAnnotation}
+            onSectionAnnotation={onSectionAnnotation}
+            onSurveyLevelAnnotation={onSurveyLevelAnnotation}
           />
         </div>
       </div>
+
     </div>
   );
 };

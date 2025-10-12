@@ -371,8 +371,10 @@ Your response must be parseable by json.loads() without any modification."""
     def _replicate_extract(content: str) -> JSONParseResult:
         """Extract JSON from Replicate API response format"""
         try:
-            # Try to parse as Python dict string representation
-            # This handles cases like: "{'response_id': '...', 'text': '{\"json\": \"content\"}'}"
+            # Handle Python dictionary string representation from Replicate
+            # This handles cases like: "{'json_output': {'description': '...', 'sections': [...]}}"
+            
+            # First, try to parse as Python dict string representation
             import ast
             parsed_dict = ast.literal_eval(content)
             
@@ -399,9 +401,65 @@ Your response must be parseable by json.loads() without any modification."""
                     data = json.loads(sanitized_content)
                     return JSONParseResult(success=True, data=data)
             
+            # If the entire parsed_dict looks like survey data, return it directly
+            if isinstance(parsed_dict, dict):
+                # Check if it has survey-like structure
+                if any(key in parsed_dict for key in ['title', 'description', 'sections', 'questions', 'metadata']):
+                    return JSONParseResult(success=True, data=parsed_dict)
+            
             return JSONParseResult(success=False, error="No valid JSON found in Replicate response")
         except (ValueError, SyntaxError, TypeError, json.JSONDecodeError) as e:
-            return JSONParseResult(success=False, error=f"Replicate extract failed: {e}")
+            # If ast.literal_eval fails, try alternative approaches
+            try:
+                # Try to extract JSON from the string using regex patterns
+                # Look for patterns like: {'json_output': {...}}
+                import re
+                
+                # Pattern to match Python dict with json_output key
+                pattern = r"'json_output':\s*(\{.*?\})"
+                match = re.search(pattern, content, re.DOTALL)
+                if match:
+                    json_str = match.group(1)
+                    # Convert Python dict string to JSON string
+                    json_str = json_str.replace("'", '"')  # Replace single quotes with double quotes
+                    json_str = json_str.replace('True', 'true')  # Convert Python booleans
+                    json_str = json_str.replace('False', 'false')
+                    json_str = json_str.replace('None', 'null')
+                    
+                    # Try to parse the converted JSON
+                    data = json.loads(json_str)
+                    return JSONParseResult(success=True, data=data)
+                
+                # If no json_output pattern found, try to extract the main dict content
+                # Look for the main dictionary content between the outer braces
+                start = content.find('{')
+                if start != -1:
+                    # Find the matching closing brace
+                    brace_count = 0
+                    end = start
+                    for i in range(start, len(content)):
+                        if content[i] == '{':
+                            brace_count += 1
+                        elif content[i] == '}':
+                            brace_count -= 1
+                            if brace_count == 0:
+                                end = i + 1
+                                break
+                    
+                    if brace_count == 0:
+                        dict_content = content[start:end]
+                        # Try to convert Python dict string to JSON
+                        dict_content = dict_content.replace("'", '"')
+                        dict_content = dict_content.replace('True', 'true')
+                        dict_content = dict_content.replace('False', 'false')
+                        dict_content = dict_content.replace('None', 'null')
+                        
+                        data = json.loads(dict_content)
+                        return JSONParseResult(success=True, data=data)
+                
+                return JSONParseResult(success=False, error=f"Replicate extract failed: {e}")
+            except Exception as e2:
+                return JSONParseResult(success=False, error=f"Replicate extract failed: {e2}")
 
     @staticmethod
     def _force_rebuild(content: str) -> JSONParseResult:

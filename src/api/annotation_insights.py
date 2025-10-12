@@ -242,8 +242,9 @@ async def get_annotation_insights(db: Session = Depends(get_db)) -> Dict[str, An
         all_scores = all_qa_scores + all_sa_scores
         average_score = sum(all_scores) / len(all_scores) if all_scores else 3.0
         
-        # Calculate improvement trend (simplified - could be enhanced with time-based analysis)
-        improvement_trend = 0.0  # Will calculate this properly in Phase 1
+        # Calculate improvement trend using time-based analysis
+        improvement_trend_data = await insights_service.calculate_improvement_trend()
+        improvement_trend = improvement_trend_data.get("improvement_trend", 0.0)
         
         # If no annotations found, return empty state
         if total_annotations == 0:
@@ -254,7 +255,8 @@ async def get_annotation_insights(db: Session = Depends(get_db)) -> Dict[str, An
                     "high_quality_count": 0,
                     "low_quality_count": 0,
                     "average_score": 0.0,
-                    "improvement_trend": 0.0
+                    "improvement_trend": improvement_trend,
+                    "improvement_trend_metadata": improvement_trend_data
                 },
                 "human_vs_ai_stats": {
                     "total_ai_annotations": 0,
@@ -285,7 +287,8 @@ async def get_annotation_insights(db: Session = Depends(get_db)) -> Dict[str, An
                     "high_quality_count": high_quality_count,
                     "low_quality_count": low_quality_count,
                     "average_score": average_score,
-                    "improvement_trend": improvement_trend
+                    "improvement_trend": improvement_trend,
+                    "improvement_trend_metadata": improvement_trend_data
                 },
                 "human_vs_ai_stats": {
                     "total_ai_annotations": ai_qa_count + ai_sa_count,

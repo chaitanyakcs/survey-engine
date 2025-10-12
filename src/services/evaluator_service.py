@@ -231,6 +231,20 @@ class EvaluatorService:
             rfq_id = getattr(self, 'rfq_id', None)
             result = await evaluator.evaluate_survey(survey_data, rfq_text, survey_id=survey_id, rfq_id=rfq_id)
 
+            # Generate AI annotations if result has annotation data
+            if survey_id and hasattr(result, 'question_annotations') and hasattr(result, 'section_annotations'):
+                try:
+                    from src.services.ai_annotation_service import AIAnnotationService
+                    ai_service = AIAnnotationService(self.db_session)
+                    
+                    annotation_result = await ai_service.create_annotations_from_evaluation(
+                        result, survey_id, "ai_system"
+                    )
+                    
+                    logger.info(f"🤖 [EvaluatorService] Generated {annotation_result['total_created']} AI annotations")
+                except Exception as e:
+                    logger.error(f"❌ [EvaluatorService] Failed to generate AI annotations: {e}")
+
             # Convert to standard format
             return self._format_single_call_result(result)
 

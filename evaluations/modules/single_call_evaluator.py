@@ -73,15 +73,37 @@ class SingleCallEvaluator:
             if self.llm_client:
                 response = await self.llm_client.analyze(prompt, max_tokens=4000, parent_survey_id=survey_id, parent_rfq_id=rfq_id)
                 if response.success:
-                    # Use centralized JSON parsing utility
-                    result = parse_llm_json_response(response.content, service_name="SingleCallEvaluator")
-                    
-                    if result is not None:
-                        logger.info(f"✅ Successfully parsed JSON from response")
+                    # Try direct JSON parsing first
+                    try:
+                        import json
+                        result = json.loads(response.content.strip())
+                        logger.info(f"✅ Successfully parsed JSON directly from response")
+                        logger.info(f"🔍 [SingleCallEvaluator] Parsed result keys: {list(result.keys())}")
+                        logger.info(f"🔍 [SingleCallEvaluator] Has question_annotations: {'question_annotations' in result}")
+                        logger.info(f"🔍 [SingleCallEvaluator] Has section_annotations: {'section_annotations' in result}")
+                        if 'question_annotations' in result:
+                            logger.info(f"🔍 [SingleCallEvaluator] Question annotations count: {len(result['question_annotations'])}")
+                        if 'section_annotations' in result:
+                            logger.info(f"🔍 [SingleCallEvaluator] Section annotations count: {len(result['section_annotations'])}")
                         return self._parse_comprehensive_result(result, survey_id, rfq_id)
-                    else:
-                        logger.warning("⚠️ Failed to extract valid JSON, using fallback")
-                        logger.error(f"❌ Full response content: {response.content}")
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"⚠️ Direct JSON parsing failed: {e}")
+                        # Fall back to centralized utility
+                        result = parse_llm_json_response(response.content, service_name="SingleCallEvaluator")
+                        
+                        if result is not None:
+                            logger.info(f"✅ Successfully parsed JSON using centralized utility")
+                            logger.info(f"🔍 [SingleCallEvaluator] Parsed result keys: {list(result.keys())}")
+                            logger.info(f"🔍 [SingleCallEvaluator] Has question_annotations: {'question_annotations' in result}")
+                            logger.info(f"🔍 [SingleCallEvaluator] Has section_annotations: {'section_annotations' in result}")
+                            if 'question_annotations' in result:
+                                logger.info(f"🔍 [SingleCallEvaluator] Question annotations count: {len(result['question_annotations'])}")
+                            if 'section_annotations' in result:
+                                logger.info(f"🔍 [SingleCallEvaluator] Section annotations count: {len(result['section_annotations'])}")
+                            return self._parse_comprehensive_result(result, survey_id, rfq_id)
+                        else:
+                            logger.warning("⚠️ Failed to extract valid JSON, using fallback")
+                            logger.error(f"❌ Full response content: {response.content}")
                 else:
                     logger.warning(f"⚠️ LLM response failed: {response.error}")
             
@@ -340,7 +362,7 @@ RESPOND WITH JSON:
     async def _basic_evaluation_fallback(self, survey: Dict[str, Any], rfq_text: str, survey_id: str, rfq_id: str) -> SingleCallEvaluationResult:
         """Basic evaluation fallback when LLM fails"""
         
-        logger.info("🔄 Using basic evaluation fallback")
+        logger.warning("🔄 Using basic evaluation fallback - NO AI ANNOTATIONS WILL BE GENERATED")
         
         # Simple heuristic-based evaluation
         questions = extract_all_questions(survey)

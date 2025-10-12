@@ -41,26 +41,26 @@ const Toast: React.FC<ToastProps> = ({ toast, onRemove }) => {
   const getIcon = () => {
     switch (toast.type) {
       case 'success':
-        return <CheckCircleIcon className="w-5 h-5 text-green-600" />;
+        return <CheckCircleIcon className="w-5 h-5 text-success-600" />;
       case 'error':
-        return <XCircleIcon className="w-5 h-5 text-red-600" />;
+        return <XCircleIcon className="w-5 h-5 text-error-600" />;
       case 'info':
-        return <InformationCircleIcon className="w-5 h-5 text-gray-600" />;
+        return <InformationCircleIcon className="w-5 h-5 text-info-600" />;
       case 'warning':
-        return <XCircleIcon className="w-5 h-5 text-yellow-600" />;
+        return <XCircleIcon className="w-5 h-5 text-warning-600" />;
     }
   };
 
   const getBackgroundColor = () => {
     switch (toast.type) {
       case 'success':
-        return 'bg-white border-l-4 border-l-green-600';
+        return 'bg-white border-l-4 border-l-success-600';
       case 'error':
-        return 'bg-white border-l-4 border-l-red-600';
+        return 'bg-white border-l-4 border-l-error-600';
       case 'info':
-        return 'bg-white border-l-4 border-l-gray-600';
+        return 'bg-white border-l-4 border-l-info-600';
       case 'warning':
-        return 'bg-white border-l-4 border-l-yellow-600';
+        return 'bg-white border-l-4 border-l-warning-600';
     }
   };
 

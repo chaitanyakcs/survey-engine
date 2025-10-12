@@ -16,10 +16,20 @@ interface QuestionRendererProps {
 
 // Simple question renderer - in a full implementation, this would handle different question types
 const QuestionRenderer: React.FC<QuestionRendererProps> = ({ question, onResponse }) => {
+  const [selectedValues, setSelectedValues] = React.useState<string[]>([]);
+  
   const handleResponse = (value: any) => {
     if (onResponse) {
       onResponse(question.id, value);
     }
+  };
+
+  const handleCheckboxChange = (option: string, checked: boolean) => {
+    const newValues = checked 
+      ? [...selectedValues, option]
+      : selectedValues.filter((v: string) => v !== option);
+    setSelectedValues(newValues);
+    handleResponse(newValues);
   };
 
   return (
@@ -42,6 +52,24 @@ const QuestionRenderer: React.FC<QuestionRendererProps> = ({ question, onRespons
                 value={option}
                 onChange={(e) => handleResponse(e.target.value)}
                 className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+              />
+              <span className="text-gray-700">{option}</span>
+            </label>
+          ))}
+        </div>
+      )}
+
+      {question.type === 'multiple_select' && question.options && (
+        <div className="space-y-2">
+          {question.options.map((option, index) => (
+            <label key={index} className="flex items-center space-x-3">
+              <input
+                type="checkbox"
+                name={question.id}
+                value={option}
+                checked={selectedValues.includes(option)}
+                onChange={(e) => handleCheckboxChange(option, e.target.checked)}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
               />
               <span className="text-gray-700">{option}</span>
             </label>

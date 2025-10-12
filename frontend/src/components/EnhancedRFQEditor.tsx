@@ -5,11 +5,11 @@ import { DocumentUpload } from './DocumentUpload';
 // Animated sprinkle component
 const AnimatedSprinkle: React.FC<{ className?: string }> = ({ className = "" }) => (
   <span 
-    className={`inline-block text-yellow-500 text-lg font-bold animate-pulse hover:animate-bounce drop-shadow-sm ${className}`} 
+    className={`inline-block text-primary-500 text-lg font-bold animate-pulse hover:animate-bounce drop-shadow-sm ${className}`} 
     title="Auto-filled from document"
     style={{ 
-      filter: 'drop-shadow(0 0 3px rgba(251, 191, 36, 0.6))',
-      textShadow: '0 0 4px rgba(251, 191, 36, 0.8)'
+      filter: 'drop-shadow(0 0 3px rgba(234, 179, 8, 0.6))',
+      textShadow: '0 0 4px rgba(234, 179, 8, 0.8)'
     }}
   >
     ✨
@@ -28,22 +28,24 @@ const FormField: React.FC<{
   isEdited?: boolean;
   options?: { value: string; label: string; }[];
 }> = ({ label, value, onChange, placeholder = '', type = 'text', rows = 4, isAutoFilled = false, isEdited = false, options = [] }) => {
-  const inputClasses = `w-full px-4 py-4 bg-white border border-gray-200 rounded-2xl focus:ring-4 focus:ring-yellow-500/20 focus:border-yellow-500 transition-all duration-300 ${
-    isAutoFilled ? 'bg-yellow-50 border-yellow-200' : ''
-  } ${isEdited ? 'bg-blue-50 border-blue-200' : ''} ${type === 'textarea' ? 'resize-none' : ''}`;
+  const inputClasses = `${
+    isAutoFilled ? 'input-highlighted' : 
+    isEdited ? 'w-full px-4 py-4 bg-secondary-50 border border-secondary-200 rounded-2xl focus:ring-4 focus:ring-secondary-500/20 focus:border-secondary-500 transition-all duration-300' :
+    'input-default'
+  } ${type === 'textarea' ? 'resize-none' : ''}`;
 
   return (
     <div>
-      <label className="block text-sm font-semibold text-gray-800 mb-3 flex items-center space-x-2">
+      <label className="label-default mb-3 flex items-center space-x-2">
         <span>{label}</span>
         {isAutoFilled && <AnimatedSprinkle />}
         {isEdited && !isAutoFilled && (
           <span 
-            className="inline-block text-blue-500 text-lg font-bold animate-pulse hover:animate-bounce drop-shadow-sm" 
+            className="inline-block text-secondary-500 text-lg font-bold animate-pulse hover:animate-bounce drop-shadow-sm" 
             title="Manually edited"
             style={{ 
-              filter: 'drop-shadow(0 0 3px rgba(59, 130, 246, 0.6))',
-              textShadow: '0 0 4px rgba(59, 130, 246, 0.8)'
+              filter: 'drop-shadow(0 0 3px rgba(37, 99, 235, 0.6))',
+              textShadow: '0 0 4px rgba(37, 99, 235, 0.8)'
             }}
           >
             ✏️
@@ -211,13 +213,41 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                             enhancedRfq.survey_requirements?.sample_plan ||
                             (enhancedRfq.survey_requirements?.must_have_questions && enhancedRfq.survey_requirements.must_have_questions.length > 0);
 
+  // Track if field mappings have been applied to prevent loops
+  const fieldMappingsAppliedRef = React.useRef(false);
+
+  // Separate useEffect for field mappings to avoid infinite loops
+  React.useEffect(() => {
+    if (fieldMappings.length > 0 && !fieldMappingsAppliedRef.current) {
+      console.log('🎯 [EnhancedRFQEditor] Field mappings detected, applying to form:', fieldMappings.length);
+      fieldMappingsAppliedRef.current = true; // Prevent multiple applications
+      
+      // Apply field mappings immediately with error handling
+      try {
+        const { applyDocumentMappings } = useAppStore.getState();
+        applyDocumentMappings();
+        console.log('✅ [EnhancedRFQEditor] Field mappings applied successfully');
+      } catch (error) {
+        console.error('❌ [EnhancedRFQEditor] Failed to apply field mappings:', error);
+        addToast({
+          type: 'warning',
+          title: 'Field Mapping Warning',
+          message: 'Some fields could not be automatically applied. Please review the form manually.',
+          duration: 6000
+        });
+      }
+    }
+  }, [fieldMappings, addToast]);
+
   // Initialize the component once
   React.useEffect(() => {
+    // Skip initialization if already initialized or has user data
     if (hasInitialized.current || hasBeenInitialized || hasExistingUserData) {
       console.log('🔍 [EnhancedRFQEditor] Skipping initialization - already initialized or has user data',
         'hasInitialized:', hasInitialized.current,
         'hasBeenInitialized:', hasBeenInitialized,
-        'hasExistingUserData:', hasExistingUserData
+        'hasExistingUserData:', hasExistingUserData,
+        'fieldMappings:', fieldMappings.length
       );
       return;
     }
@@ -298,7 +328,8 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
         hasResearchObjectives: !!enhancedRfq.research_objectives?.research_audience
       });
     }
-  });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasBeenInitialized, hasExistingUserData, restoreEnhancedRfqState, addToast]);
 
   // Persist current section to localStorage whenever it changes (except initial mount)
   const isInitialMount = useRef(true);
@@ -370,17 +401,22 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                   if (results.field_mappings && results.field_mappings.length > 0) {
                     setFieldMappings(results.field_mappings);
                     console.log('🎯 [EnhancedRFQEditor] Applied field mappings:', results.field_mappings);
+                    
+                    // Reset the applied flag for new field mappings
+                    fieldMappingsAppliedRef.current = false;
                   }
 
                   // Mark as completed and navigate to business context
                   resetDocumentProcessingState();
                   setCurrentSectionWithPersistence('business_context');
                   
+                  // Show success message with field mapping count
+                  const mappingCount = results.field_mappings?.length || 0;
                   addToast({
                     type: 'success',
                     title: 'Document Analysis Complete',
-                    message: 'Document has been analyzed and form populated with extracted information.',
-                    duration: 5000
+                    message: `Document analyzed successfully. ${mappingCount > 0 ? `${mappingCount} fields extracted and applied to form.` : 'No fields could be extracted from the document.'}`,
+                    duration: 8000
                   });
                 } else {
                   console.error('❌ [EnhancedRFQEditor] Failed to fetch analysis results');
@@ -442,7 +478,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
         // Continue polling despite errors
       }
     }, 10000); // Poll every 10 seconds
-  }, [addToast, resetDocumentProcessingState, setCurrentSectionWithPersistence]);
+  }, [addToast, resetDocumentProcessingState, setCurrentSectionWithPersistence, clearEnhancedRfqState]);
   
   // Clean up polling on unmount
   useEffect(() => {
@@ -1106,15 +1142,16 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                             company_product_background: enhancedRfq.business_context?.company_product_background || '',
                             business_problem: enhancedRfq.business_context?.business_problem || '',
                             business_objective: enhancedRfq.business_context?.business_objective || '',
-                            budget_range: value as 'under_10k' | '10k_50k' | '50k_100k' | '100k_plus'
+                            budget_range: value as 'under_10k' | '10k_25k' | '25k_50k' | '50k_100k' | 'over_100k'
                           }
                         })}
                         type="select"
                         options={[
                           { value: 'under_10k', label: 'Under $10k' },
-                          { value: '10k_50k', label: '$10k - $50k' },
+                          { value: '10k_25k', label: '$10k - $25k' },
+                          { value: '25k_50k', label: '$25k - $50k' },
                           { value: '50k_100k', label: '$50k - $100k' },
-                          { value: '100k_plus', label: 'Over $100k' }
+                          { value: 'over_100k', label: 'Over $100k' }
                         ]}
                         isAutoFilled={isFieldAutoFilled('business_context.budget_range')}
                       />
@@ -1129,13 +1166,15 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                             company_product_background: enhancedRfq.business_context?.company_product_background || '',
                             business_problem: enhancedRfq.business_context?.business_problem || '',
                             business_objective: enhancedRfq.business_context?.business_objective || '',
-                            timeline_constraints: value as 'rush' | 'standard' | 'flexible'
+                            timeline_constraints: value as 'urgent_1_week' | 'fast_2_weeks' | 'standard_4_weeks' | 'extended_8_weeks' | 'flexible'
                           }
                         })}
                         type="select"
                         options={[
-                          { value: 'rush', label: 'Rush (Urgent)' },
-                          { value: 'standard', label: 'Standard' },
+                          { value: 'urgent_1_week', label: 'Urgent (1 week)' },
+                          { value: 'fast_2_weeks', label: 'Fast (2 weeks)' },
+                          { value: 'standard_4_weeks', label: 'Standard (4 weeks)' },
+                          { value: 'extended_8_weeks', label: 'Extended (8 weeks)' },
                           { value: 'flexible', label: 'Flexible' }
                         ]}
                         isAutoFilled={isFieldAutoFilled('business_context.timeline_constraints')}
@@ -1387,14 +1426,15 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                             primary_method: enhancedRfq.methodology?.primary_method || 'basic_survey',
                             stimuli_details: enhancedRfq.methodology?.stimuli_details || '',
                             methodology_requirements: enhancedRfq.methodology?.methodology_requirements || '',
-                            complexity_level: value as 'simple' | 'standard' | 'advanced'
+                            complexity_level: value as 'simple' | 'intermediate' | 'complex' | 'expert_level'
                           }
                         })}
                         type="select"
                         options={[
                           { value: 'simple', label: 'Simple' },
-                          { value: 'standard', label: 'Standard' },
-                          { value: 'advanced', label: 'Advanced' }
+                          { value: 'intermediate', label: 'Intermediate' },
+                          { value: 'complex', label: 'Complex' },
+                          { value: 'expert_level', label: 'Expert Level' }
                         ]}
                         isAutoFilled={isFieldAutoFilled('methodology.complexity_level')}
                       />
@@ -1505,36 +1545,40 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                             ...enhancedRfq.survey_requirements,
                             sample_plan: enhancedRfq.survey_requirements?.sample_plan || '',
                             must_have_questions: enhancedRfq.survey_requirements?.must_have_questions || [],
-                            completion_time_target: value as '5_10_min' | '10_15_min' | '15_25_min' | '25_plus_min'
+                            completion_time_target: value as 'under_5min' | '5_10min' | '10_15min' | '15_20min' | '20_30min' | 'over_30min'
                           }
                         })}
                         type="select"
                         options={[
-                          { value: '5_10_min', label: '5-10 minutes' },
-                          { value: '10_15_min', label: '10-15 minutes' },
-                          { value: '15_25_min', label: '15-25 minutes' },
-                          { value: '25_plus_min', label: '25+ minutes' }
+                          { value: 'under_5min', label: 'Under 5 minutes' },
+                          { value: '5_10min', label: '5-10 minutes' },
+                          { value: '10_15min', label: '10-15 minutes' },
+                          { value: '15_20min', label: '15-20 minutes' },
+                          { value: '20_30min', label: '20-30 minutes' },
+                          { value: 'over_30min', label: 'Over 30 minutes' }
                         ]}
                         isAutoFilled={isFieldAutoFilled('survey_requirements.completion_time_target')}
                       />
 
                       <FormField
                         label="Device Compatibility"
-                        value={enhancedRfq.survey_requirements?.device_compatibility || 'both'}
+                        value={enhancedRfq.survey_requirements?.device_compatibility || 'all_devices'}
                         onChange={(value) => setEnhancedRfq({
                           ...enhancedRfq,
                           survey_requirements: {
                             ...enhancedRfq.survey_requirements,
                             sample_plan: enhancedRfq.survey_requirements?.sample_plan || '',
                             must_have_questions: enhancedRfq.survey_requirements?.must_have_questions || [],
-                            device_compatibility: value as 'mobile_first' | 'desktop_first' | 'both'
+                            device_compatibility: value as 'mobile_only' | 'desktop_only' | 'mobile_first' | 'desktop_first' | 'all_devices'
                           }
                         })}
                         type="select"
                         options={[
+                          { value: 'mobile_only', label: 'Mobile Only' },
+                          { value: 'desktop_only', label: 'Desktop Only' },
                           { value: 'mobile_first', label: 'Mobile First' },
                           { value: 'desktop_first', label: 'Desktop First' },
-                          { value: 'both', label: 'Both (Responsive)' }
+                          { value: 'all_devices', label: 'All Devices' }
                         ]}
                         isAutoFilled={isFieldAutoFilled('survey_requirements.device_compatibility')}
                       />
@@ -1543,21 +1587,22 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                       <FormField
                         label="Accessibility Requirements"
-                        value={enhancedRfq.survey_requirements?.accessibility_requirements || 'standard'}
+                        value={enhancedRfq.survey_requirements?.accessibility_requirements || 'basic'}
                         onChange={(value) => setEnhancedRfq({
                           ...enhancedRfq,
                           survey_requirements: {
                             ...enhancedRfq.survey_requirements,
                             sample_plan: enhancedRfq.survey_requirements?.sample_plan || '',
                             must_have_questions: enhancedRfq.survey_requirements?.must_have_questions || [],
-                            accessibility_requirements: value as 'standard' | 'enhanced' | 'full_compliance'
+                            accessibility_requirements: value as 'basic' | 'wcag_aa' | 'wcag_aaa' | 'custom'
                           }
                         })}
                         type="select"
                         options={[
-                          { value: 'standard', label: 'Standard' },
-                          { value: 'enhanced', label: 'Enhanced' },
-                          { value: 'full_compliance', label: 'Full Compliance (ADA/WCAG)' }
+                          { value: 'basic', label: 'Basic' },
+                          { value: 'wcag_aa', label: 'WCAG AA' },
+                          { value: 'wcag_aaa', label: 'WCAG AAA' },
+                          { value: 'custom', label: 'Custom' }
                         ]}
                         isAutoFilled={isFieldAutoFilled('survey_requirements.accessibility_requirements')}
                       />

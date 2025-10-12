@@ -32,8 +32,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
       // Enhanced fields with defaults
       stakeholder_requirements: '',
       decision_criteria: '',
-      budget_range: '10k_50k',
-      timeline_constraints: 'standard'
+      budget_range: '25k_50k',
+      timeline_constraints: 'standard_4_weeks'
     },
     research_objectives: {
       research_audience: '',
@@ -49,7 +49,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       stimuli_details: '',
       methodology_requirements: '',
       // Enhanced fields with defaults
-      complexity_level: 'standard',
+      complexity_level: 'intermediate',
       required_methodologies: [],
       sample_size_target: '400-600 respondents'
     },
@@ -59,9 +59,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
       must_have_questions: [],
       screener_requirements: '',
       // Enhanced fields with defaults
-      completion_time_target: '15_25_min',
-      device_compatibility: 'both',
-      accessibility_requirements: 'standard',
+      completion_time_target: '15_20min',
+      device_compatibility: 'all_devices',
+      accessibility_requirements: 'basic',
       data_quality_requirements: 'standard'
     },
     advanced_classification: {
@@ -1091,67 +1091,83 @@ export const useAppStore = create<AppStore>((set, get) => ({
       
       const backendAnnotations = await response.json();
       console.log('🔍 [Store] Loaded annotations from backend:', backendAnnotations);
+      console.log('🔍 [Store] First question annotation:', backendAnnotations.question_annotations?.[0]);
+      console.log('🔍 [Store] AI generated field:', backendAnnotations.question_annotations?.[0]?.ai_generated);
       
       // Transform backend format to frontend format
       const frontendAnnotations: SurveyAnnotations = {
         surveyId: backendAnnotations.survey_id,
-        questionAnnotations: (backendAnnotations.question_annotations || []).map((qa: any) => ({
-          questionId: qa.question_id,
-          required: qa.required,
-          quality: qa.quality,
-          relevant: qa.relevant,
-          pillars: {
-            methodologicalRigor: qa.methodological_rigor,
-            contentValidity: qa.content_validity,
-            respondentExperience: qa.respondent_experience,
-            analyticalValue: qa.analytical_value,
-            businessImpact: qa.business_impact,
-          },
-          comment: qa.comment,
-          annotatorId: qa.annotator_id,
-          timestamp: qa.created_at,
-          // AI annotation fields
-          aiGenerated: qa.ai_generated,
-          aiConfidence: qa.ai_confidence,
-          humanVerified: qa.human_verified,
-          generationTimestamp: qa.generation_timestamp,
-          // Human override tracking fields
-          humanOverridden: qa.human_overridden,
-          overrideTimestamp: qa.override_timestamp,
-          originalAiQuality: qa.original_ai_quality,
-          originalAiRelevant: qa.original_ai_relevant,
-          originalAiComment: qa.original_ai_comment
-        })),
-        sectionAnnotations: (backendAnnotations.section_annotations || []).map((sa: any) => ({
-          sectionId: sa.section_id.toString(),
-          quality: sa.quality,
-          relevant: sa.relevant,
-          pillars: {
-            methodologicalRigor: sa.methodological_rigor,
-            contentValidity: sa.content_validity,
-            respondentExperience: sa.respondent_experience,
-            analyticalValue: sa.analytical_value,
-            businessImpact: sa.business_impact,
-          },
-          comment: sa.comment,
-          annotatorId: sa.annotator_id,
-          timestamp: sa.created_at,
-          // Advanced labeling fields
-          section_classification: sa.section_classification,
-          mandatory_elements: sa.mandatory_elements,
-          compliance_score: sa.compliance_score,
-          // AI annotation fields
-          aiGenerated: sa.ai_generated,
-          aiConfidence: sa.ai_confidence,
-          humanVerified: sa.human_verified,
-          generationTimestamp: sa.generation_timestamp,
-          // Human override tracking fields
-          humanOverridden: sa.human_overridden,
-          overrideTimestamp: sa.override_timestamp,
-          originalAiQuality: sa.original_ai_quality,
-          originalAiRelevant: sa.original_ai_relevant,
-          originalAiComment: sa.original_ai_comment
-        })),
+        questionAnnotations: (backendAnnotations.question_annotations || []).map((qa: any) => {
+          const originalQuestionId = qa.question_id;
+          const mappedQuestionId = qa.question_id?.replace(`${surveyId}_`, '') || qa.question_id;
+          console.log('🔍 [Store] Mapping question ID:', { originalQuestionId, mappedQuestionId, surveyId });
+          const transformedAnnotation = {
+            questionId: mappedQuestionId,
+            required: qa.required,
+            quality: qa.quality,
+            relevant: qa.relevant,
+            pillars: {
+              methodologicalRigor: qa.methodological_rigor,
+              contentValidity: qa.content_validity,
+              respondentExperience: qa.respondent_experience,
+              analyticalValue: qa.analytical_value,
+              businessImpact: qa.business_impact,
+            },
+            comment: qa.comment,
+            annotatorId: qa.annotator_id,
+            timestamp: qa.created_at,
+            // AI annotation fields
+            aiGenerated: qa.ai_generated,
+            aiConfidence: qa.ai_confidence,
+            humanVerified: qa.human_verified,
+            generationTimestamp: qa.generation_timestamp,
+            // Human override tracking fields
+            humanOverridden: qa.human_overridden,
+            overrideTimestamp: qa.override_timestamp,
+            originalAiQuality: qa.original_ai_quality,
+            originalAiRelevant: qa.original_ai_relevant,
+            originalAiComment: qa.original_ai_comment
+          };
+          console.log('🔍 [Store] Transformed annotation:', transformedAnnotation);
+          console.log('🔍 [Store] Transformed aiGenerated:', transformedAnnotation.aiGenerated);
+          return transformedAnnotation;
+        }),
+        sectionAnnotations: (backendAnnotations.section_annotations || []).map((sa: any, index: number) => {
+          // For now, map section annotations by index order
+          // This is a simple approach that works for most cases
+          const mappedSectionId = (index + 1).toString();
+          console.log('🔍 [Store] Mapping section ID by index:', { hashedSectionId: sa.section_id, mappedSectionId, index });
+          return {
+            sectionId: mappedSectionId,
+            quality: sa.quality,
+            relevant: sa.relevant,
+            pillars: {
+              methodologicalRigor: sa.methodological_rigor,
+              contentValidity: sa.content_validity,
+              respondentExperience: sa.respondent_experience,
+              analyticalValue: sa.analytical_value,
+              businessImpact: sa.business_impact,
+            },
+            comment: sa.comment,
+            annotatorId: sa.annotator_id,
+            timestamp: sa.created_at,
+            // Advanced labeling fields
+            section_classification: sa.section_classification,
+            mandatory_elements: sa.mandatory_elements,
+            compliance_score: sa.compliance_score,
+            // AI annotation fields
+            aiGenerated: sa.ai_generated,
+            aiConfidence: sa.ai_confidence,
+            humanVerified: sa.human_verified,
+            generationTimestamp: sa.generation_timestamp,
+            // Human override tracking fields
+            humanOverridden: sa.human_overridden,
+            overrideTimestamp: sa.override_timestamp,
+            originalAiQuality: sa.original_ai_quality,
+            originalAiRelevant: sa.original_ai_relevant,
+            originalAiComment: sa.original_ai_comment
+          };
+        }),
         overallComment: backendAnnotations.overall_comment || '',
         annotatorId: backendAnnotations.annotator_id,
         createdAt: backendAnnotations.created_at,
@@ -1729,8 +1745,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
         // Smart defaults
         stakeholder_requirements: 'Standard business stakeholders require actionable insights.',
         decision_criteria: 'Clear, actionable insights with statistical significance.',
-        budget_range: '10k_50k',
-        timeline_constraints: 'standard'
+        budget_range: '25k_50k',
+        timeline_constraints: 'standard_4_weeks'
       },
 
       research_objectives: {
@@ -1748,7 +1764,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         stimuli_details: 'To be determined based on research objectives.',
         methodology_requirements: 'Standard market research methodology.',
         // Smart defaults
-        complexity_level: 'standard',
+        complexity_level: 'intermediate',
         required_methodologies: [],
         sample_size_target: '400-600 respondents'
       },
@@ -1759,9 +1775,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
         must_have_questions: [],
         screener_requirements: 'Standard screener to ensure qualified respondents.',
         // Smart defaults
-        completion_time_target: '15_25_min',
-        device_compatibility: 'both',
-        accessibility_requirements: 'standard',
+        completion_time_target: '15_20min',
+        device_compatibility: 'all_devices',
+        accessibility_requirements: 'basic',
         data_quality_requirements: 'standard'
       },
 
@@ -2239,6 +2255,51 @@ export const useAppStore = create<AppStore>((set, get) => ({
   // Helper function to build RFQ updates from field mappings (simplified schema)
   buildRFQUpdatesFromMappings: (mappings: RFQFieldMapping[]): Partial<EnhancedRFQRequest> => {
     const rfqUpdates: Partial<EnhancedRFQRequest> = {};
+    const validationErrors: string[] = [];
+
+    // Helper function to validate and map enum values
+    const validateAndMapEnum = (value: any, fieldName: string, validValues: string[], defaultValue?: string): string => {
+      if (!value) return defaultValue || validValues[0];
+      
+      const stringValue = String(value).toLowerCase();
+      
+      // Try exact match first
+      if (validValues.includes(stringValue)) {
+        return stringValue;
+      }
+      
+      // Try partial matches for common variations
+      const partialMatches: Record<string, string> = {
+        'standard': 'intermediate',
+        '10k_50k': '25k_50k',
+        '15_25_min': '15_20min',
+        'both': 'all_devices',
+        'rush': 'urgent_1_week',
+        'flexible': 'flexible',
+        'simple': 'simple',
+        'advanced': 'complex',
+        'expert': 'expert_level'
+      };
+      
+      if (partialMatches[stringValue]) {
+        return partialMatches[stringValue];
+      }
+      
+      // Try to find closest match
+      const closestMatch = validValues.find(valid => 
+        valid.includes(stringValue) || stringValue.includes(valid)
+      );
+      
+      if (closestMatch) {
+        validationErrors.push(`Mapped '${value}' to '${closestMatch}' for ${fieldName}`);
+        return closestMatch;
+      }
+      
+      // Use default or first valid value
+      const fallback = defaultValue || validValues[0];
+      validationErrors.push(`Invalid value '${value}' for ${fieldName}, using fallback '${fallback}'`);
+      return fallback;
+    };
 
     mappings.forEach(mapping => {
       const value = mapping.value;
@@ -2329,31 +2390,21 @@ export const useAppStore = create<AppStore>((set, get) => ({
         case 'budget_range':
         case 'budget':
           if (!rfqUpdates.business_context) rfqUpdates.business_context = { company_product_background: '', business_problem: '', business_objective: '' };
-          // Map budget text to budget range options
-          const budgetMapping: Record<string, string> = {
-            'under 10k': 'under_10k',
-            'less than 10k': 'under_10k',
-            '10k to 50k': '10k_50k',
-            '10-50k': '10k_50k',
-            '50k to 100k': '50k_100k',
-            '50-100k': '50k_100k',
-            'over 100k': '100k_plus',
-            'more than 100k': '100k_plus'
-          };
-          const budgetText = (value || '').toString().toLowerCase();
-          rfqUpdates.business_context.budget_range = (budgetMapping[budgetText] || '10k_50k') as 'under_10k' | '10k_50k' | '50k_100k' | '100k_plus';
+          rfqUpdates.business_context.budget_range = validateAndMapEnum(
+            value, 
+            'budget_range', 
+            ['under_10k', '10k_25k', '25k_50k', '50k_100k', 'over_100k'],
+            '25k_50k'
+          ) as 'under_10k' | '10k_25k' | '25k_50k' | '50k_100k' | 'over_100k';
           break;
         case 'timeline_constraints':
           if (!rfqUpdates.business_context) rfqUpdates.business_context = { company_product_background: '', business_problem: '', business_objective: '' };
-          // Map timeline text to timeline options
-          const timelineText = (value || '').toString().toLowerCase();
-          if (timelineText.includes('urgent') || timelineText.includes('rush')) {
-            rfqUpdates.business_context.timeline_constraints = 'rush';
-          } else if (timelineText.includes('flexible')) {
-            rfqUpdates.business_context.timeline_constraints = 'flexible';
-          } else {
-            rfqUpdates.business_context.timeline_constraints = 'standard';
-          }
+          rfqUpdates.business_context.timeline_constraints = validateAndMapEnum(
+            value, 
+            'timeline_constraints', 
+            ['urgent_1_week', 'fast_2_weeks', 'standard_4_weeks', 'extended_8_weeks', 'flexible'],
+            'standard_4_weeks'
+          ) as 'urgent_1_week' | 'fast_2_weeks' | 'standard_4_weeks' | 'extended_8_weeks' | 'flexible';
           break;
 
         // Advanced Research Objectives fields
@@ -2383,15 +2434,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
         // Advanced Methodology fields
         case 'complexity_level':
           if (!rfqUpdates.methodology) rfqUpdates.methodology = { primary_method: 'basic_survey', stimuli_details: '', methodology_requirements: '' };
-          // Map complexity text to options
-          const complexityText = (value || '').toString().toLowerCase();
-          if (complexityText.includes('simple') || complexityText.includes('basic')) {
-            rfqUpdates.methodology.complexity_level = 'simple';
-          } else if (complexityText.includes('complex') || complexityText.includes('advanced') || complexityText.includes('sophisticated')) {
-            rfqUpdates.methodology.complexity_level = 'advanced';
-          } else {
-            rfqUpdates.methodology.complexity_level = 'standard';
-          }
+          rfqUpdates.methodology.complexity_level = validateAndMapEnum(
+            value, 
+            'complexity_level', 
+            ['simple', 'intermediate', 'complex', 'expert_level'],
+            'intermediate'
+          ) as 'simple' | 'intermediate' | 'complex' | 'expert_level';
           break;
         case 'required_methodologies':
           if (!rfqUpdates.methodology) rfqUpdates.methodology = { primary_method: 'basic_survey', stimuli_details: '', methodology_requirements: '' };
@@ -2407,48 +2455,30 @@ export const useAppStore = create<AppStore>((set, get) => ({
         // Advanced Survey Requirements fields
         case 'completion_time_target':
           if (!rfqUpdates.survey_requirements) rfqUpdates.survey_requirements = { sample_plan: '', must_have_questions: [] };
-          // Map completion time text to options (check specific patterns first)
-          const timeText = (value || '').toString().toLowerCase();
-          // Extract numbers from text to check ranges
-          const numbers = timeText.match(/\d+/g)?.map(Number) || [];
-          const hasPlus = timeText.includes('plus') || timeText.includes('+');
-          
-          // Check for specific range patterns first
-          if (timeText.includes('15') && timeText.includes('25')) {
-            rfqUpdates.survey_requirements.completion_time_target = '15_25_min';
-          } else if (timeText.includes('10') && timeText.includes('15')) {
-            rfqUpdates.survey_requirements.completion_time_target = '10_15_min';
-          } else if (timeText.includes('5') && timeText.includes('10')) {
-            rfqUpdates.survey_requirements.completion_time_target = '5_10_min';
-          } else if (hasPlus || (numbers.length > 0 && Math.max(...numbers) > 25)) {
-            rfqUpdates.survey_requirements.completion_time_target = '25_plus_min';
-          } else {
-            rfqUpdates.survey_requirements.completion_time_target = '15_25_min';
-          }
+          rfqUpdates.survey_requirements.completion_time_target = validateAndMapEnum(
+            value, 
+            'completion_time_target', 
+            ['under_5min', '5_10min', '10_15min', '15_20min', '20_30min', 'over_30min'],
+            '15_20min'
+          ) as 'under_5min' | '5_10min' | '10_15min' | '15_20min' | '20_30min' | 'over_30min';
           break;
         case 'device_compatibility':
           if (!rfqUpdates.survey_requirements) rfqUpdates.survey_requirements = { sample_plan: '', must_have_questions: [] };
-          // Map device compatibility text to options
-          const deviceText = (value || '').toString().toLowerCase();
-          if (deviceText.includes('mobile')) {
-            rfqUpdates.survey_requirements.device_compatibility = 'mobile_first';
-          } else if (deviceText.includes('desktop')) {
-            rfqUpdates.survey_requirements.device_compatibility = 'desktop_first';
-          } else {
-            rfqUpdates.survey_requirements.device_compatibility = 'both';
-          }
+          rfqUpdates.survey_requirements.device_compatibility = validateAndMapEnum(
+            value, 
+            'device_compatibility', 
+            ['mobile_only', 'desktop_only', 'mobile_first', 'desktop_first', 'all_devices'],
+            'all_devices'
+          ) as 'mobile_only' | 'desktop_only' | 'mobile_first' | 'desktop_first' | 'all_devices';
           break;
         case 'accessibility_requirements':
           if (!rfqUpdates.survey_requirements) rfqUpdates.survey_requirements = { sample_plan: '', must_have_questions: [] };
-          // Map accessibility text to options
-          const accessibilityText = (value || '').toString().toLowerCase();
-          if (accessibilityText.includes('enhanced')) {
-            rfqUpdates.survey_requirements.accessibility_requirements = 'enhanced';
-          } else if (accessibilityText.includes('full') || accessibilityText.includes('compliance')) {
-            rfqUpdates.survey_requirements.accessibility_requirements = 'full_compliance';
-          } else {
-            rfqUpdates.survey_requirements.accessibility_requirements = 'standard';
-          }
+          rfqUpdates.survey_requirements.accessibility_requirements = validateAndMapEnum(
+            value, 
+            'accessibility_requirements', 
+            ['basic', 'wcag_aa', 'wcag_aaa', 'custom'],
+            'basic'
+          ) as 'basic' | 'wcag_aa' | 'wcag_aaa' | 'custom';
           break;
         case 'data_quality_requirements':
           if (!rfqUpdates.survey_requirements) rfqUpdates.survey_requirements = { sample_plan: '', must_have_questions: [] };
@@ -2545,6 +2575,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
         filename: state.documentContent.filename,
         upload_id: state.documentContent.filename
       };
+    }
+
+    // Log validation errors for debugging
+    if (validationErrors.length > 0) {
+      console.warn('⚠️ [Field Mapping] Validation errors detected:', validationErrors);
     }
 
     return rfqUpdates;
@@ -3029,7 +3064,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       switch (label) {
         case 'Study_Intro':
           content = rfq ?
-            `Thank you for agreeing to participate in this ${rfq.methodology?.primary_method || 'research'} study. Your responses will help us understand ${rfq.business_context?.business_objective || 'market preferences'}. This survey should take approximately ${rfq.survey_requirements?.completion_time_target?.replace('_', ' ') || '10-15 minutes'} to complete.` :
+            `Thank you for agreeing to participate in this ${rfq.methodology?.primary_method || 'research'} study. Your responses will help us understand ${rfq.business_context?.business_objective || 'market preferences'}. This survey should take approximately ${rfq.survey_requirements?.completion_time_target?.replace('_', '-').replace('min', ' minutes') || '10-15 minutes'} to complete.` :
             'Thank you for agreeing to participate in this research study. Your responses are valuable and will help us understand important market insights.';
           break;
         case 'Concept_Intro':

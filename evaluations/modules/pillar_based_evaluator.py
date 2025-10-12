@@ -12,7 +12,7 @@ from datetime import datetime
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
-from utils import extract_all_questions
+from evaluations.utils import extract_all_questions
 
 # Import the pillar evaluators (prioritize advanced versions)
 try:
