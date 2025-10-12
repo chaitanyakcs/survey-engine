@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session
 from src.config import settings
 from src.services.logging_utils import log_service_configuration
 from src.services.llm_audit_service import LLMAuditService
-from src.services.pillar_scoring_service import PillarScoringService
 from src.services.progress_tracker import get_progress_tracker
 from src.services.prompt_service import PromptService
 from src.utils.error_messages import UserFriendlyError, get_api_configuration_error
@@ -76,11 +75,14 @@ class GenerationService:
         # Get model from database settings if available, otherwise fallback to config
         self.model = self._get_generation_model()
         self.prompt_service = PromptService(db_session=db_session)
-        self.pillar_scoring_service = PillarScoringService(db_session=db_session)
 
         logger.info(
             "GenerationService ready",
-            extra={"model": self.model, "workflow_id": workflow_id},
+            extra={
+                "model": self.model,
+                "workflow_id": workflow_id,
+                "has_ws_client": bool(self.ws_client),
+            },
         )
         logger.debug(
             "Replicate token configured",
