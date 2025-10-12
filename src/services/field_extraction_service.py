@@ -2,15 +2,21 @@
 
 import json
 import logging
-from typing import Dict, List, Any, Optional, Tuple
-import replicate
-import uuid
 import time
+import uuid
+from typing import Any, Dict, List, Optional
+
+import replicate
+
 from ..config.settings import settings
-from ..utils.error_messages import UserFriendlyError, get_api_configuration_error
-from ..utils.llm_audit_decorator import LLMAuditContext
+from ..services.logging_utils import log_service_configuration
 from ..services.llm_audit_service import LLMAuditService
-from ..utils.json_generation_utils import parse_llm_json_response, get_json_optimized_hyperparameters, create_json_system_prompt
+from ..utils.error_messages import UserFriendlyError, get_api_configuration_error
+from ..utils.json_generation_utils import (
+    get_json_optimized_hyperparameters,
+    parse_llm_json_response,
+)
+from ..utils.llm_audit_decorator import LLMAuditContext
 
 logger = logging.getLogger(__name__)
 
@@ -18,56 +24,84 @@ class FieldExtractionService:
     """Service for extracting and auto-populating golden example fields from RFQ and Survey content."""
     
     def __init__(self, db_session: Optional[Any] = None):
-        logger.info(f"🚀 [FieldExtractionService] Starting initialization...")
-        logger.info(f"🚀 [FieldExtractionService] Database session provided: {bool(db_session)}")
-        logger.info(f"🚀 [FieldExtractionService] Config generation_model: {settings.generation_model}")
-        
+        log_service_configuration(
+            logger,
+            "FieldExtractionService",
+            event="init",
+            details={
+                "has_db_session": bool(db_session),
+                "configured_model": settings.generation_model,
+                "replicate_token_configured": bool(settings.replicate_api_token),
+            },
+        )
+
         if not settings.replicate_api_token:
             error_info = get_api_configuration_error()
             raise UserFriendlyError(
                 message=error_info["message"],
                 technical_details="REPLICATE_API_TOKEN environment variable is not set",
-                action_required="Configure AI service provider (Replicate or OpenAI)"
+                action_required="Configure AI service provider (Replicate or OpenAI)",
             )
+
         self.replicate_client = replicate.Client(api_token=settings.replicate_api_token)
-        self.db_session = db_session  # Set db_session BEFORE calling _get_generation_model
+        self.db_session = db_session
         self.model = self._get_generation_model()
-        
-        logger.info(f"🔧 [FieldExtractionService] Model selected: {self.model}")
-        logger.info(f"🔧 [FieldExtractionService] Model type: {type(self.model)}")
-    
+
+        logger.info(
+            "FieldExtractionService ready",
+            extra={"model": self.model, "has_db_session": bool(db_session)},
+        )
+
+        log_service_configuration(
+            logger,
+            "FieldExtractionService",
+            event="ready",
+            details={"model": self.model},
+        )
+
     def _get_generation_model(self) -> str:
         """Get generation model from database settings or fallback to config"""
         try:
-            logger.info(f"🔍 [FieldExtractionService] Starting model selection process...")
-            logger.info(f"🔍 [FieldExtractionService] Database session available: {bool(self.db_session)}")
-            logger.info(f"🔍 [FieldExtractionService] Config default model: {settings.generation_model}")
-            
+            log_service_configuration(
+                logger,
+                "FieldExtractionService",
+                event="model_selection",
+                details={
+                    "has_db_session": bool(self.db_session),
+                    "default_model": settings.generation_model,
+                },
+            )
+
             if self.db_session:
                 from src.services.settings_service import SettingsService
+
                 settings_service = SettingsService(self.db_session)
                 evaluation_settings = settings_service.get_evaluation_settings()
-                
-                logger.info(f"🔍 [FieldExtractionService] Database evaluation settings: {evaluation_settings}")
-                
+
                 if evaluation_settings and 'generation_model' in evaluation_settings:
                     model = evaluation_settings['generation_model']
-                    logger.info(f"🔧 [FieldExtractionService] Using model from database settings: {model}")
-                    logger.info(f"🔧 [FieldExtractionService] Model source: DATABASE")
+                    logger.info(
+                        "FieldExtractionService model loaded from evaluation settings",
+                        extra={"model": model},
+                    )
                     return model
-                else:
-                    logger.info(f"🔧 [FieldExtractionService] No database settings found, using config default: {settings.generation_model}")
-                    logger.info(f"🔧 [FieldExtractionService] Model source: CONFIG_FALLBACK")
-                    return settings.generation_model
-            else:
-                logger.info(f"🔧 [FieldExtractionService] No database session, using config default: {settings.generation_model}")
-                logger.info(f"🔧 [FieldExtractionService] Model source: CONFIG_NO_DB")
+                logger.debug(
+                    "FieldExtractionService falling back to configured model",
+                    extra={"reason": "missing_db_setting"},
+                )
                 return settings.generation_model
-        except Exception as e:
-            logger.warning(f"⚠️ [FieldExtractionService] Failed to get model from database settings: {e}, using config default")
-            logger.info(f"🔧 [FieldExtractionService] Model source: CONFIG_EXCEPTION")
+
+            logger.debug(
+                "FieldExtractionService using configured model",
+                extra={"reason": "no_db_session"},
+            )
             return settings.generation_model
-    
+        except Exception as e:
+            logger.warning(
+                f"⚠️ [FieldExtractionService] Failed to get model from database settings: {e}, using config default"
+            )
+            return settings.generation_model
+
     def create_field_extraction_prompt(self, rfq_text: str, survey_json: Dict[str, Any]) -> str:
         """Create prompt for extracting golden example fields."""
         
@@ -193,20 +227,24 @@ Return ONLY a JSON object with this exact structure:
     
     async def extract_fields(self, rfq_text: str, survey_json: Dict[str, Any]) -> Dict[str, Any]:
         """Extract golden example fields from RFQ and Survey content."""
-        logger.info(f"🔍 [Field Extraction] Starting field extraction")
-        logger.info(f"📝 [Field Extraction] RFQ length: {len(rfq_text)} chars")
-        logger.info(f"📊 [Field Extraction] Survey keys: {list(survey_json.keys()) if isinstance(survey_json, dict) else 'Not a dict'}")
-        
+        logger.info(
+            "Starting field extraction",
+            extra={
+                "rfq_length": len(rfq_text),
+                "survey_keys": list(survey_json.keys()) if isinstance(survey_json, dict) else [],
+            },
+        )
+
         try:
-            # Create extraction prompt
-            logger.info(f"📝 [Field Extraction] Creating extraction prompt")
             prompt = self.create_field_extraction_prompt(rfq_text, survey_json)
-            logger.info(f"✅ [Field Extraction] Prompt created, length: {len(prompt)} chars")
-            
-            # Create audit context for this LLM interaction
+            logger.debug(
+                "Field extraction prompt prepared",
+                extra={"prompt_length": len(prompt)},
+            )
+
             interaction_id = f"field_extraction_{uuid.uuid4().hex[:8]}"
             audit_service = LLMAuditService(self.db_session) if self.db_session else None
-            
+
             if audit_service:
                 async with LLMAuditContext(
                     audit_service=audit_service,
@@ -219,16 +257,16 @@ Return ONLY a JSON object with this exact structure:
                     context_type="survey_data",
                     hyperparameters={
                         "temperature": 0.1,
-                        "max_tokens": 2000
+                        "max_tokens": 2000,
                     },
                     metadata={
                         "rfq_length": len(rfq_text),
                         "survey_keys": list(survey_json.keys()) if isinstance(survey_json, dict) else [],
-                        "prompt_length": len(prompt)
+                        "prompt_length": len(prompt),
                     },
-                    tags=["field_extraction", "golden_examples"]
+                    tags=["field_extraction", "golden_examples"],
                 ) as audit_context:
-                    logger.info(f"🤖 [Field Extraction] Calling LLM for field extraction with auditing")
+                    logger.debug("Calling LLM for field extraction", extra={"audited": True})
                     start_time = time.time()
                     output = await self.replicate_client.async_run(
                         self.model,
@@ -236,84 +274,77 @@ Return ONLY a JSON object with this exact structure:
                             "prompt": prompt,
                             "temperature": 0.1,
                             "max_tokens": 2000,
-                            "system_prompt": "You are a survey methodology expert. Extract the requested fields from the provided RFQ and Survey content. Return ONLY valid JSON in the exact format specified."
-                        }
+                            "system_prompt": "You are a survey methodology expert. Extract the requested fields from the provided RFQ and Survey content. Return ONLY valid JSON in the exact format specified.",
+                        },
                     )
-                    
-                    # Process the output and set audit context
+
                     response_time_ms = int((time.time() - start_time) * 1000)
-                    
-                    # Capture raw response immediately (unprocessed)
+
                     if hasattr(output, '__iter__') and not isinstance(output, str):
                         raw_response = "".join(str(chunk) for chunk in output)
                     else:
                         raw_response = str(output)
-                    
-                    # Process the output for further use
+
                     processed_output = raw_response.strip()
-                    
-                    # Set raw response (unprocessed) and processed output
+
                     audit_context.set_raw_response(raw_response)
                     audit_context.set_output(
                         output_content=processed_output,
-                        response_time_ms=response_time_ms
+                        response_time_ms=response_time_ms,
                     )
             else:
-                # Fallback without auditing
-                logger.info(f"🤖 [Field Extraction] Calling LLM for field extraction without auditing")
+                logger.debug("Calling LLM for field extraction", extra={"audited": False})
                 output = await self.replicate_client.async_run(
                     self.model,
                     input={
                         "prompt": prompt,
                         **get_json_optimized_hyperparameters("rfq_parsing"),
-                        "system_prompt": "You are a survey methodology expert. Extract the requested fields from the provided RFQ and Survey content. Return ONLY valid JSON in the exact format specified."
-                    }
+                        "system_prompt": "You are a survey methodology expert. Extract the requested fields from the provided RFQ and Survey content. Return ONLY valid JSON in the exact format specified.",
+                    },
                 )
-            
-            # Process LLM response
-            logger.info(f"📥 [Field Extraction] Processing LLM response")
+
+            logger.debug("Processing LLM response", extra={"streaming": hasattr(output, '__iter__') and not isinstance(output, str)})
             if hasattr(output, '__iter__') and not isinstance(output, str):
                 json_content = "".join(str(chunk) for chunk in output).strip()
             else:
                 json_content = str(output).strip()
-            
-            logger.info(f"✅ [Field Extraction] LLM response received, length: {len(json_content)} chars")
-            logger.info(f"📄 [Field Extraction] Response preview: {json_content[:300]}...")
-            
-            # Parse JSON response using centralized utility
-            logger.info(f"🔍 [Field Extraction] Parsing JSON response")
-            extracted_fields = parse_llm_json_response(json_content, service_name="FieldExtraction")
-            
+
+            logger.debug(
+                "Parsing JSON response",
+                extra={"response_length": len(json_content)},
+            )
+            extracted_fields = parse_llm_json_response(
+                json_content, service_name="FieldExtraction"
+            )
+
             if extracted_fields is None:
-                logger.error(f"❌ [Field Extraction] JSON parsing failed")
+                logger.error("❌ [Field Extraction] JSON parsing failed")
                 raise Exception("Failed to parse JSON response from LLM")
-            
-            logger.info(f"✅ [Field Extraction] JSON parsing successful")
-            logger.info(f"📊 [Field Extraction] Extracted fields: {extracted_fields}")
-            
-            # Validate and clean extracted fields
+
             cleaned_fields = self._clean_extracted_fields(extracted_fields)
-            logger.info(f"🧹 [Field Extraction] Cleaned fields: {cleaned_fields}")
-            
-            logger.info(f"🎉 [Field Extraction] Field extraction completed successfully")
+            logger.info(
+                "Field extraction completed",
+                extra={"fields": list(cleaned_fields.keys())},
+            )
+
             return cleaned_fields
-            
+
         except json.JSONDecodeError as e:
             logger.error(f"❌ [Field Extraction] JSON parsing failed: {str(e)}")
             logger.error(f"❌ [Field Extraction] Raw response: {json_content}")
             raise UserFriendlyError(
                 message="Failed to extract fields from survey content",
                 technical_details=f"LLM response was not valid JSON: {str(e)}",
-                action_required="Please try again or manually fill the fields"
+                action_required="Please try again or manually fill the fields",
             )
         except Exception as e:
             logger.error(f"❌ [Field Extraction] Field extraction failed: {str(e)}", exc_info=True)
             raise UserFriendlyError(
                 message="Failed to extract fields from survey content",
                 technical_details=str(e),
-                action_required="Please try again or manually fill the fields"
+                action_required="Please try again or manually fill the fields",
             )
-    
+
     def _clean_extracted_fields(self, fields: Dict[str, Any]) -> Dict[str, Any]:
         """Clean and validate extracted fields."""
         cleaned = {}

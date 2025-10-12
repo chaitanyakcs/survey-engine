@@ -1,25 +1,30 @@
-from typing import Dict, List, Any, Optional
-from src.config import settings
-from src.services.prompt_service import PromptService
-import logging
-
-logger = logging.getLogger(__name__)
-from src.utils.error_messages import UserFriendlyError, get_api_configuration_error
-from src.utils.survey_utils import get_questions_count
-from sqlalchemy.orm import Session
-import replicate
+import asyncio
 import json
 import logging
-import uuid
-import time
-import re
-import asyncio
 import os
+import re
+import time
+import uuid
+from typing import Any, Dict, List, Optional
 
-from src.utils.llm_audit_decorator import audit_llm_call, LLMAuditContext
+import replicate
+from sqlalchemy.orm import Session
+
+from src.config import settings
+from src.services.logging_utils import log_service_configuration
 from src.services.llm_audit_service import LLMAuditService
+from src.services.pillar_scoring_service import PillarScoringService
 from src.services.progress_tracker import get_progress_tracker
-from src.utils.json_generation_utils import parse_llm_json_response, get_json_optimized_hyperparameters, create_json_system_prompt, get_survey_generation_schema
+from src.services.prompt_service import PromptService
+from src.utils.error_messages import UserFriendlyError, get_api_configuration_error
+from src.utils.json_generation_utils import (
+    create_json_system_prompt,
+    get_json_optimized_hyperparameters,
+    get_survey_generation_schema,
+    parse_llm_json_response,
+)
+from src.utils.llm_audit_decorator import LLMAuditContext, audit_llm_call
+from src.utils.survey_utils import get_questions_count
 
 logger = logging.getLogger(__name__)
 
@@ -37,75 +42,111 @@ class SurveyGenerationError(UserFriendlyError):
 
 
 class GenerationService:
-    def __init__(self, db_session: Optional[Session] = None, workflow_id: Optional[str] = None, connection_manager=None) -> None:
-        logger.info(f"🚀 [GenerationService] Starting initialization...")
-        logger.info(f"🚀 [GenerationService] Database session provided: {bool(db_session)}")
-        logger.info(f"🚀 [GenerationService] Config generation_model: {settings.generation_model}")
+    def __init__(
+        self,
+        db_session: Optional[Session] = None,
+        workflow_id: Optional[str] = None,
+        connection_manager=None,
+    ) -> None:
+        log_service_configuration(
+            logger,
+            "GenerationService",
+            event="init",
+            details={
+                "has_db_session": bool(db_session),
+                "workflow_id": workflow_id,
+                "has_connection_manager": bool(connection_manager),
+                "configured_model": settings.generation_model,
+                "replicate_token_configured": bool(settings.replicate_api_token),
+            },
+        )
 
-        self.db_session = db_session  # Store the database session
+        self.db_session = db_session
         self.workflow_id = workflow_id
         self.connection_manager = connection_manager
 
         # Initialize WebSocket client for progress updates
         if connection_manager and workflow_id:
             from src.services.websocket_client import WebSocketNotificationService
+
             self.ws_client = WebSocketNotificationService(connection_manager)
         else:
             self.ws_client = None
+
         # Get model from database settings if available, otherwise fallback to config
         self.model = self._get_generation_model()
-
-        logger.info(f"🔧 [GenerationService] Model selected: {self.model}")
-        logger.info(f"🔧 [GenerationService] Model type: {type(self.model)}")
-
         self.prompt_service = PromptService(db_session=db_session)
+        self.pillar_scoring_service = PillarScoringService(db_session=db_session)
 
-        logger.info(f"🔧 [GenerationService] Initializing with model: {self.model}")
-        logger.info(f"🔧 [GenerationService] Replicate API token configured: {bool(settings.replicate_api_token)}")
-        logger.info(f"🔧 [GenerationService] Replicate API token length: {len(settings.replicate_api_token) if settings.replicate_api_token else 0}")
-        if settings.replicate_api_token:
-            logger.info(f"🔧 [GenerationService] Replicate API token preview: {settings.replicate_api_token[:8]}...")
+        logger.info(
+            "GenerationService ready",
+            extra={"model": self.model, "workflow_id": workflow_id},
+        )
+        logger.debug(
+            "Replicate token configured",
+            extra={"configured": bool(settings.replicate_api_token)},
+        )
 
         # Check if we have the required API token
         if not settings.replicate_api_token:
-            logger.warning("⚠️ [GenerationService] No Replicate API token configured. Survey generation will fail.")
-            logger.warning(f"⚠️ [GenerationService] Model '{self.model}' requires Replicate API token")
-        else:
-            logger.info("✅ [GenerationService] Replicate API token is configured")
+            logger.warning(
+                "⚠️ [GenerationService] No Replicate API token configured. Survey generation will fail."
+            )
+            logger.warning(
+                f"⚠️ [GenerationService] Model '{self.model}' requires Replicate API token"
+            )
 
         # Initialize Replicate client with proper authentication
-        self.replicate_client = replicate.Client(api_token=settings.replicate_api_token)
+        self.replicate_client = replicate.Client(
+            api_token=settings.replicate_api_token
+        )
+
+        log_service_configuration(
+            logger,
+            "GenerationService",
+            event="ready",
+            details={"model": self.model, "has_ws_client": bool(self.ws_client)},
+        )
 
     def _get_generation_model(self) -> str:
         """Get generation model from database settings or fallback to config"""
         try:
-            logger.info(f"🔍 [GenerationService] Starting model selection process...")
-            logger.info(f"🔍 [GenerationService] Database session available: {bool(self.db_session)}")
-            logger.info(f"🔍 [GenerationService] Config default model: {settings.generation_model}")
+            log_service_configuration(
+                logger,
+                "GenerationService",
+                event="model_selection",
+                details={
+                    "has_db_session": bool(self.db_session),
+                    "default_model": settings.generation_model,
+                },
+            )
 
             if self.db_session:
                 from src.services.settings_service import SettingsService
                 settings_service = SettingsService(self.db_session)
                 evaluation_settings = settings_service.get_evaluation_settings()
 
-                logger.info(f"🔍 [GenerationService] Database evaluation settings: {evaluation_settings}")
-
                 if evaluation_settings and 'generation_model' in evaluation_settings:
                     model = evaluation_settings['generation_model']
-                    logger.info(f"🔧 [GenerationService] Using model from database settings: {model}")
-                    logger.info(f"🔧 [GenerationService] Model source: DATABASE")
+                    logger.debug(
+                        "GenerationService model loaded from evaluation settings",
+                        extra={"model": model},
+                    )
                     return model
                 else:
-                    logger.info(f"🔧 [GenerationService] No database settings found, using config default: {settings.generation_model}")
-                    logger.info(f"🔧 [GenerationService] Model source: CONFIG_FALLBACK")
+                    logger.debug(
+                        "GenerationService falling back to configured model",
+                        extra={"reason": "missing_db_setting"},
+                    )
                     return settings.generation_model
             else:
-                logger.info(f"🔧 [GenerationService] No database session, using config default: {settings.generation_model}")
-                logger.info(f"🔧 [GenerationService] Model source: CONFIG_NO_DB")
+                logger.debug(
+                    "GenerationService using configured model",
+                    extra={"reason": "no_db_session"},
+                )
                 return settings.generation_model
         except Exception as e:
             logger.warning(f"⚠️ [GenerationService] Failed to get model from database settings: {e}, using config default")
-            logger.info(f"🔧 [GenerationService] Model source: CONFIG_EXCEPTION")
             return settings.generation_model
 
     async def generate_survey_with_custom_prompt(
@@ -120,21 +161,25 @@ class GenerationService:
         Generate survey using a custom system prompt (e.g., from human review edits)
         """
         try:
-            logger.info("🚀 [GenerationService] Starting survey generation with custom prompt...")
-            logger.info(f"📊 [GenerationService] Input context keys: {list(context.keys()) if context else 'None'}")
-            logger.info(f"📊 [GenerationService] Golden examples: {len(golden_examples) if golden_examples else 0}")
-            logger.info(f"📊 [GenerationService] Methodology blocks: {len(methodology_blocks) if methodology_blocks else 0}")
-            logger.info(f"📊 [GenerationService] Custom rules: {len(custom_rules.get('rules', [])) if custom_rules else 0}")
-            logger.info(f"📝 [GenerationService] Custom system prompt length: {len(system_prompt) if system_prompt else 0}")
+            logger.info(
+                "Starting survey generation with custom prompt",
+                extra={
+                    "workflow_id": context.get("workflow_id"),
+                    "golden_examples": len(golden_examples) if golden_examples else 0,
+                    "methodology_blocks": len(methodology_blocks) if methodology_blocks else 0,
+                    "custom_rule_sets": len(custom_rules.get("rules", [])) if custom_rules else 0,
+                    "custom_prompt": bool(system_prompt),
+                },
+            )
 
-            # Check if API token is configured
-            logger.info(f"🔑 [GenerationService] Checking API token configuration...")
-            logger.info(f"🔑 [GenerationService] Replicate API token present: {bool(settings.replicate_api_token)}")
-            logger.info(f"🔑 [GenerationService] Replicate API token length: {len(settings.replicate_api_token) if settings.replicate_api_token else 0}")
-            if settings.replicate_api_token:
-                logger.info(f"🔑 [GenerationService] Replicate API token preview: {settings.replicate_api_token[:8]}...")
+            logger.debug(
+                "GenerationService input details",
+                extra={
+                    "context_keys": list(context.keys()) if context else [],
+                    "system_prompt_length": len(system_prompt) if system_prompt else 0,
+                },
+            )
 
-            # Check if we have a valid API token for the configured model
             if not settings.replicate_api_token:
                 logger.error("❌ [GenerationService] No Replicate API token configured!")
                 logger.error(f"❌ [GenerationService] Model '{self.model}' requires Replicate API token")
@@ -142,33 +187,40 @@ class GenerationService:
                 raise UserFriendlyError(
                     message=error_info["message"],
                     technical_details="REPLICATE_API_TOKEN environment variable is not set",
-                    action_required="Configure AI service provider (Replicate or OpenAI)"
+                    action_required="Configure AI service provider (Replicate or OpenAI)",
                 )
 
-            logger.info("✅ [GenerationService] API token validation passed")
-
-            # Use the custom system prompt instead of generating a new one
             if system_prompt:
-                logger.info("📝 [GenerationService] Using custom system prompt from human review")
+                logger.debug(
+                    "Using custom system prompt from human review",
+                    extra={"prompt_length": len(system_prompt)},
+                )
                 prompt = system_prompt
             else:
-                logger.info("🔨 [GenerationService] Building default prompt...")
+                logger.debug("Building default prompt for custom generation")
                 prompt = await self.prompt_service.build_golden_enhanced_prompt(
                     context=context,
                     golden_examples=golden_examples,
                     methodology_blocks=methodology_blocks,
-                    custom_rules=custom_rules
+                    custom_rules=custom_rules,
                 )
 
-            logger.info(f"🤖 [GenerationService] Generating survey with model: {self.model}")
-            logger.info(f"📝 [GenerationService] Prompt length: {len(prompt)} characters")
+            logger.debug(
+                "Generating survey",
+                extra={"model": self.model, "custom_prompt": bool(system_prompt)},
+            )
+            logger.debug(
+                "Prompt statistics",
+                extra={"prompt_length": len(prompt)},
+            )
 
-            # Create audit context for this LLM interaction
             interaction_id = f"survey_generation_{uuid.uuid4().hex[:8]}"
             audit_service = LLMAuditService(self.db_session)
 
-            # Log basic context info
-            logger.info(f"🔍 [GenerationService] Context keys: {list(context.keys()) if context else 'None'}")
+            logger.debug(
+                "GenerationService context keys",
+                extra={"context_keys": list(context.keys()) if context else []},
+            )
 
             async with LLMAuditContext(
                 audit_service=audit_service,
@@ -187,34 +239,45 @@ class GenerationService:
                     'methodology_blocks_count': len(methodology_blocks) if methodology_blocks else 0,
                     'custom_rules_count': len(custom_rules.get('rules', [])) if custom_rules else 0,
                     'context_keys': list(context.keys()) if context else [],
-                    'custom_prompt_used': bool(system_prompt)
+                    'custom_prompt_used': bool(system_prompt),
                 },
-                tags=["survey", "generation", "replicate", "custom_prompt"]
+                tags=["survey", "generation", "replicate", "custom_prompt"],
             ) as audit_context:
                 try:
-                    # Use streaming generation with custom prompt
-                    generation_result = await self._generate_survey_with_streaming(prompt, system_prompt)
+                    generation_result = await self._generate_survey_with_streaming(
+                        prompt, system_prompt
+                    )
 
-                    # Extract metadata for audit context
-                    response_time_ms = generation_result["generation_metadata"]["response_time_ms"]
+                    response_time_ms = generation_result["generation_metadata"][
+                        "response_time_ms"
+                    ]
                     survey_data = generation_result["survey"]
                     output_text = json.dumps(survey_data, indent=2)
-                    raw_response = generation_result["generation_metadata"].get("raw_response", "")
+                    raw_response = generation_result["generation_metadata"].get(
+                        "raw_response", ""
+                    )
 
-                    # Set raw response first
                     if raw_response:
                         audit_context.set_raw_response(raw_response)
-                    
+
                     audit_context.set_output(
                         output_content=output_text,
                         input_tokens=len(prompt.split()) if prompt else 0,
-                        output_tokens=len(output_text.split()) if output_text else 0
+                        output_tokens=len(output_text.split()) if output_text else 0,
                     )
 
-                    logger.info(f"✅ [GenerationService] Survey generation completed in {response_time_ms}ms")
-                    logger.info(f"📊 [GenerationService] Output length: {len(output_text)} characters")
+                    logger.info(
+                        "Survey generation completed",
+                        extra={
+                            "duration_ms": response_time_ms,
+                            "custom_prompt": bool(system_prompt),
+                        },
+                    )
+                    logger.debug(
+                        "Generation output statistics",
+                        extra={"output_length": len(output_text)},
+                    )
 
-                    # Survey is already parsed in streaming method
                     return {
                         "survey": survey_data,
                         "generation_metadata": {
@@ -222,19 +285,21 @@ class GenerationService:
                             "response_time_ms": response_time_ms,
                             "custom_prompt_used": bool(system_prompt),
                             "prompt_length": len(prompt),
-                            "streaming_enabled": generation_result["generation_metadata"].get("streaming_enabled", False)
-                        }
+                            "streaming_enabled": generation_result["generation_metadata"].get(
+                                "streaming_enabled", False
+                            ),
+                        },
                     }
 
                 except Exception as api_error:
                     logger.error(f"❌ [GenerationService] API call failed: {str(api_error)}")
                     audit_context.set_output(
-                        output_content=""
+                        output_content="",
                     )
                     raise UserFriendlyError(
                         message="Survey generation failed due to AI service error",
                         technical_details=str(api_error),
-                        action_required="Please try again or contact support if the issue persists"
+                        action_required="Please try again or contact support if the issue persists",
                     )
 
         except UserFriendlyError:
@@ -244,9 +309,8 @@ class GenerationService:
             raise UserFriendlyError(
                 message="Survey generation failed due to an unexpected error",
                 technical_details=str(e),
-                action_required="Please try again or contact support if the issue persists"
+                action_required="Please try again or contact support if the issue persists",
             )
-
     async def generate_survey(
         self,
         context: Dict[str, Any],
@@ -258,20 +322,23 @@ class GenerationService:
         Generate survey using GPT with rules-based prompts and golden examples
         """
         try:
-            logger.info("🚀 [GenerationService] Starting survey generation...")
-            logger.info(f"📊 [GenerationService] Input context keys: {list(context.keys()) if context else 'None'}")
-            logger.info(f"📊 [GenerationService] Golden examples: {len(golden_examples) if golden_examples else 0}")
-            logger.info(f"📊 [GenerationService] Methodology blocks: {len(methodology_blocks) if methodology_blocks else 0}")
-            logger.info(f"📊 [GenerationService] Custom rules: {len(custom_rules.get('rules', [])) if custom_rules else 0}")
+            logger.info(
+                "Starting survey generation",
+                extra={
+                    "workflow_id": context.get("workflow_id"),
+                    "golden_examples": len(golden_examples) if golden_examples else 0,
+                    "methodology_blocks": len(methodology_blocks) if methodology_blocks else 0,
+                    "custom_rule_sets": len(custom_rules.get("rules", [])) if custom_rules else 0,
+                },
+            )
 
-            # Check if API token is configured
-            logger.info(f"🔑 [GenerationService] Checking API token configuration...")
-            logger.info(f"🔑 [GenerationService] Replicate API token present: {bool(settings.replicate_api_token)}")
-            logger.info(f"🔑 [GenerationService] Replicate API token length: {len(settings.replicate_api_token) if settings.replicate_api_token else 0}")
-            if settings.replicate_api_token:
-                logger.info(f"🔑 [GenerationService] Replicate API token preview: {settings.replicate_api_token[:8]}...")
+            logger.debug(
+                "GenerationService input details",
+                extra={
+                    "context_keys": list(context.keys()) if context else [],
+                },
+            )
 
-            # Check if we have a valid API token for the configured model
             if not settings.replicate_api_token:
                 logger.error("❌ [GenerationService] No Replicate API token configured!")
                 logger.error(f"❌ [GenerationService] Model '{self.model}' requires Replicate API token")
@@ -279,34 +346,34 @@ class GenerationService:
                 raise UserFriendlyError(
                     message=error_info["message"],
                     technical_details="REPLICATE_API_TOKEN environment variable is not set",
-                    action_required="Configure AI service provider (Replicate or OpenAI)"
+                    action_required="Configure AI service provider (Replicate or OpenAI)",
                 )
 
-            logger.info("✅ [GenerationService] API token validation passed")
-
-            # Build comprehensive prompt with rules and golden examples
-            logger.info("🔨 [GenerationService] Building prompt...")
+            logger.debug("Building prompt for survey generation")
             prompt = await self.prompt_service.build_golden_enhanced_prompt(
                 context=context,
                 golden_examples=golden_examples,
                 methodology_blocks=methodology_blocks,
-                custom_rules=custom_rules
+                custom_rules=custom_rules,
             )
 
-            logger.info(f"🤖 [GenerationService] Generating survey with model: {self.model}")
-            logger.info(f"📝 [GenerationService] Prompt length: {len(prompt)} characters")
+            logger.info("Generating survey", extra={"model": self.model})
+            logger.debug(
+                "Prompt statistics",
+                extra={"prompt_length": len(prompt)},
+            )
+            logger.debug(
+                "Replicate client available",
+                extra={"client_available": bool(self.replicate_client)},
+            )
 
-            # System prompt is now automatically logged via LLMAuditContext decorator
-
-            logger.info("🌐 [GenerationService] Making API call to Replicate...")
-            logger.info(f"🌐 [GenerationService] Model: {self.model}")
-            logger.info(f"🌐 [GenerationService] Replicate client available: {bool(self.replicate_client)}")
-
-            # Create audit context for this LLM interaction
             interaction_id = f"survey_generation_{uuid.uuid4().hex[:8]}"
             audit_service = LLMAuditService(self.db_session)
 
-            logger.info(f"🔍 [GenerationService] Context keys: {list(context.keys()) if context else 'None'}")
+            logger.debug(
+                "GenerationService context keys",
+                extra={"context_keys": list(context.keys()) if context else []},
+            )
 
             async with LLMAuditContext(
                 audit_service=audit_service,
@@ -324,75 +391,75 @@ class GenerationService:
                     'golden_examples_count': len(golden_examples) if golden_examples else 0,
                     'methodology_blocks_count': len(methodology_blocks) if methodology_blocks else 0,
                     'custom_rules_count': len(custom_rules.get('rules', [])) if custom_rules else 0,
-                    'context_keys': list(context.keys()) if context else []
+                    'context_keys': list(context.keys()) if context else [],
                 },
-                tags=["survey", "generation", "replicate"]
+                tags=["survey", "generation", "replicate"],
             ) as audit_context:
                 try:
-                    # Use streaming generation instead of sync call
                     generation_result = await self._generate_survey_with_streaming(prompt)
 
-                    # Extract metadata for audit context
-                    response_time_ms = generation_result["generation_metadata"]["response_time_ms"]
+                    response_time_ms = generation_result["generation_metadata"][
+                        "response_time_ms"
+                    ]
                     survey_data = generation_result["survey"]
                     output_content = json.dumps(survey_data, indent=2)
-                    raw_response = generation_result["generation_metadata"].get("raw_response", "")
+                    raw_response = generation_result["generation_metadata"].get(
+                        "raw_response", ""
+                    )
 
-                    # Set raw response first
                     if raw_response:
                         audit_context.set_raw_response(raw_response)
 
-                    # Set output and metrics in audit context
                     audit_context.set_output(
                         output_content=output_content,
-                        input_tokens=len(prompt.split()),  # Rough estimate
-                        output_tokens=len(output_content.split()),  # Rough estimate
-                        cost_usd=None  # Replicate doesn't provide cost info in response
+                        input_tokens=len(prompt.split()),
+                        output_tokens=len(output_content.split()),
+                        cost_usd=None,
+                    )
+
+                    logger.info(
+                        "Streaming generation completed",
+                        extra={"duration_ms": response_time_ms},
+                    )
+                    logger.debug(
+                        "Generation metadata",
+                        extra=generation_result["generation_metadata"],
                     )
 
                 except Exception as api_error:
                     logger.error(f"❌ [GenerationService] API call failed: {str(api_error)}")
                     logger.error(f"❌ [GenerationService] API error type: {type(api_error)}")
 
-                    # Check if it's an authentication error
                     if "authentication" in str(api_error).lower() or "unauthorized" in str(api_error).lower():
                         error_info = get_api_configuration_error()
                         raise UserFriendlyError(
                             message=error_info["message"],
                             technical_details=str(api_error),
-                            action_required="Configure AI service provider (Replicate or OpenAI)"
+                            action_required="Configure AI service provider (Replicate or OpenAI)",
                         )
                     else:
                         raise Exception(f"API call failed: {str(api_error)}")
 
-                logger.info(f"✅ [GenerationService] Streaming generation completed successfully")
-                logger.info(f"📊 [GenerationService] Generation metadata: {generation_result['generation_metadata']}")
-
-                # Return the already processed survey data
                 return {
                     "survey": survey_data
                 }
 
         except UserFriendlyError as e:
             logger.error(f"❌ [GenerationService] UserFriendlyError: {e.message}")
-            # Re-raise user-friendly errors as-is
             raise
         except Exception as e:
             logger.error(f"❌ [GenerationService] Survey generation failed: {str(e)}", exc_info=True)
-            # Check if it's an API token related error
             if "api" in str(e).lower() and "token" in str(e).lower():
                 logger.error("❌ [GenerationService] API token related error detected")
                 error_info = get_api_configuration_error()
                 raise UserFriendlyError(
                     message=error_info["message"],
                     technical_details=str(e),
-                    action_required="Configure AI service provider (Replicate or OpenAI)"
+                    action_required="Configure AI service provider (Replicate or OpenAI)",
                 )
             else:
                 logger.error(f"❌ [GenerationService] Generic error: {str(e)}")
                 raise Exception(f"Survey generation failed: {str(e)}")
-
-
     def _smart_normalize_whitespace(self, json_text: str) -> str:
         """
         Smart JSON whitespace normalization that preserves string content
@@ -460,8 +527,8 @@ class GenerationService:
         """
         import re
 
-        logger.info("🧹 [GenerationService] Starting Smart JSON sanitization...")
-        logger.info(f"🔍 [GenerationService] Input length: {len(response_text)}")
+        logger.debug("🧹 [GenerationService] Starting Smart JSON sanitization...")
+        logger.debug(f"🔍 [GenerationService] Input length: {len(response_text)}")
 
         # Performance optimization: Skip processing if response is too large
         if len(response_text) > 50000:
@@ -530,8 +597,8 @@ class GenerationService:
         sanitized = re.sub(r',\s*}', '}', sanitized)
         sanitized = re.sub(r',\s*]', ']', sanitized)
 
-        logger.info(f"🧹 [GenerationService] Smart sanitization complete. Length: {len(response_text)} -> {len(sanitized)}")
-        logger.info(f"🔍 [GenerationService] Sanitized text: {sanitized[:200]}...")
+        logger.debug(f"🧹 [GenerationService] Smart sanitization complete. Length: {len(response_text)} -> {len(sanitized)}")
+        logger.debug(f"🔍 [GenerationService] Sanitized text: {sanitized[:200]}...")
 
         return sanitized
 
@@ -541,13 +608,13 @@ class GenerationService:
         """
         import re
 
-        logger.info("🧹 [GenerationService] Starting gentle JSON sanitization...")
+        logger.debug("🧹 [GenerationService] Starting gentle JSON sanitization...")
 
         # CRITICAL FIX: Remove invalid control characters first
         # Remove all control characters except \n, \t, \r which are handled later
         control_chars_pattern = r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]'
         sanitized = re.sub(control_chars_pattern, '', raw_text)
-        logger.info(f"🧹 [GenerationService] Removed control characters. Length: {len(raw_text)} -> {len(sanitized)}")
+        logger.debug(f"🧹 [GenerationService] Removed control characters. Length: {len(raw_text)} -> {len(sanitized)}")
 
         # Only remove markdown code blocks if present
         sanitized = re.sub(r'^.*?```(?:json)?\s*', '', sanitized, flags=re.DOTALL)
@@ -581,20 +648,20 @@ class GenerationService:
         sanitized = re.sub(r',\s*}', '}', sanitized)
         sanitized = re.sub(r',\s*]', ']', sanitized)
 
-        logger.info(f"🧹 [GenerationService] Gentle sanitization complete. Length: {len(raw_text)} -> {len(sanitized)}")
+        logger.debug(f"🧹 [GenerationService] Gentle sanitization complete. Length: {len(raw_text)} -> {len(sanitized)}")
         return sanitized
 
     def _extract_survey_json(self, raw_text: str) -> Dict[str, Any]:
         """
         Extract survey JSON from raw LLM output using centralized JSON utilities.
         """
-        logger.info(f"🔍 [GenerationService] Starting JSON extraction from raw text (length: {len(raw_text)})")
+        logger.debug(f"🔍 [GenerationService] Starting JSON extraction from raw text (length: {len(raw_text)})")
         
         # Use the centralized JSON parsing utility
         result = parse_llm_json_response(raw_text, service_name="GenerationService")
         
         if result is not None:
-            logger.info(f"✅ [GenerationService] JSON parsing succeeded! Keys: {list(result.keys())}")
+            logger.debug(f"✅ [GenerationService] JSON parsing succeeded! Keys: {list(result.keys())}")
             self._validate_and_fix_survey_structure(result)
             return result
         else:
@@ -629,28 +696,28 @@ class GenerationService:
         Direct JSON parsing for pre-sanitized text.
         This should work for most cases since the text is already cleaned.
         """
-        logger.info(f"🔍 [GenerationService] Direct JSON: Attempting to parse {len(sanitized_text)} characters")
-        logger.info(f"🔍 [GenerationService] Direct JSON: First 200 chars: {sanitized_text[:200]}...")
-        logger.info(f"🔍 [GenerationService] Direct JSON: Last 200 chars: ...{sanitized_text[-200:]}")
+        logger.debug(f"🔍 [GenerationService] Direct JSON: Attempting to parse {len(sanitized_text)} characters")
+        logger.debug(f"🔍 [GenerationService] Direct JSON: First 200 chars: {sanitized_text[:200]}...")
+        logger.debug(f"🔍 [GenerationService] Direct JSON: Last 200 chars: ...{sanitized_text[-200:]}")
 
         try:
             # First try direct parsing
             result = json.loads(sanitized_text)
-            logger.info(f"✅ [GenerationService] Direct JSON parsing succeeded! Keys: {list(result.keys())}")
+            logger.debug(f"✅ [GenerationService] Direct JSON parsing succeeded! Keys: {list(result.keys())}")
 
             # Count questions for verification
             if 'sections' in result:
                 total_questions = sum(len(section.get('questions', [])) for section in result.get('sections', []))
-                logger.info(f"✅ [GenerationService] Direct JSON found {total_questions} total questions")
+                logger.debug(f"✅ [GenerationService] Direct JSON found {total_questions} total questions")
             elif 'questions' in result:
                 total_questions = len(result.get('questions', []))
-                logger.info(f"✅ [GenerationService] Direct JSON found {total_questions} total questions (flat format)")
+                logger.debug(f"✅ [GenerationService] Direct JSON found {total_questions} total questions (flat format)")
 
             return result
 
         except json.JSONDecodeError as e:
             logger.warning(f"⚠️ [GenerationService] Direct JSON parsing failed: {e}")
-            logger.info(f"🔍 [GenerationService] JSON error at position {e.pos}: {sanitized_text[max(0, e.pos-50):e.pos+50]}")
+            logger.debug(f"🔍 [GenerationService] JSON error at position {e.pos}: {sanitized_text[max(0, e.pos-50):e.pos+50]}")
 
             # Try to fix common JSON issues
             try:
@@ -662,14 +729,14 @@ class GenerationService:
                 # Remove any remaining newlines within quoted strings
                 fixed_text = re.sub(r'"([^"]*)\n([^"]*)"', r'"\1 \2"', fixed_text)
 
-                logger.info(f"🔧 [GenerationService] Attempting to parse fixed JSON...")
+                logger.debug(f"🔧 [GenerationService] Attempting to parse fixed JSON...")
                 fixed_result = json.loads(fixed_text)
-                logger.info(f"✅ [GenerationService] Fixed JSON parsing succeeded!")
+                logger.debug(f"✅ [GenerationService] Fixed JSON parsing succeeded!")
                 return fixed_result
 
             except json.JSONDecodeError as e2:
                 logger.warning(f"⚠️ [GenerationService] Fixed JSON parsing also failed: {e2}")
-                logger.info(f"🔍 [GenerationService] Fixed JSON error at position {e2.pos}: {fixed_text[max(0, e2.pos-50):e2.pos+50]}")
+                logger.debug(f"🔍 [GenerationService] Fixed JSON error at position {e2.pos}: {fixed_text[max(0, e2.pos-50):e2.pos+50]}")
                 return None
 
     def _log_question_extraction_metrics(self, response_text: str) -> None:
@@ -678,7 +745,7 @@ class GenerationService:
         """
         import re
 
-        logger.info("📊 [GenerationService] === QUESTION EXTRACTION METRICS ===")
+        logger.debug("📊 [GenerationService] === QUESTION EXTRACTION METRICS ===")
 
         # Count different question-like patterns
         patterns = {
@@ -692,61 +759,61 @@ class GenerationService:
 
         for pattern_name, pattern in patterns.items():
             matches = list(re.finditer(pattern, response_text, re.IGNORECASE))
-            logger.info(f"📊 [GenerationService] - {pattern_name}: {len(matches)} found")
+            logger.debug(f"📊 [GenerationService] - {pattern_name}: {len(matches)} found")
 
             # Show samples for debugging
             for i, match in enumerate(matches[:3]):  # Show first 3
                 sample = match.group(0)[:100]
-                logger.info(f"📊 [GenerationService]   Sample {i+1}: {sample}...")
+                logger.debug(f"📊 [GenerationService]   Sample {i+1}: {sample}...")
 
         # Count sections mentions
         sections_mentions = len(re.findall(r'"sections"', response_text))
         questions_mentions = len(re.findall(r'"questions"', response_text))
-        logger.info(f"📊 [GenerationService] - Sections mentions: {sections_mentions}")
-        logger.info(f"📊 [GenerationService] - Questions mentions: {questions_mentions}")
+        logger.debug(f"📊 [GenerationService] - Sections mentions: {sections_mentions}")
+        logger.debug(f"📊 [GenerationService] - Questions mentions: {questions_mentions}")
 
-        logger.info("📊 [GenerationService] ========================================")
+        logger.debug("📊 [GenerationService] ========================================")
 
     def _log_final_extraction_summary(self, survey_json: Dict[str, Any], original_text: str) -> None:
         """
         Log final summary of what was successfully extracted vs what was available
         """
-        logger.info("🎯 [GenerationService] === FINAL EXTRACTION SUMMARY ===")
+        logger.debug("🎯 [GenerationService] === FINAL EXTRACTION SUMMARY ===")
 
         # Count what we successfully extracted
         sections = survey_json.get("sections", [])
         total_questions = sum(len(section.get("questions", [])) for section in sections)
 
-        logger.info(f"🎯 [GenerationService] Successfully extracted:")
-        logger.info(f"🎯 [GenerationService] - {len(sections)} sections")
-        logger.info(f"🎯 [GenerationService] - {total_questions} total questions")
+        logger.debug(f"🎯 [GenerationService] Successfully extracted:")
+        logger.debug(f"🎯 [GenerationService] - {len(sections)} sections")
+        logger.debug(f"🎯 [GenerationService] - {total_questions} total questions")
 
         # Show section breakdown
         for section in sections:
             q_count = len(section.get("questions", []))
-            logger.info(f"🎯 [GenerationService] - Section '{section.get('title', 'Unknown')}': {q_count} questions")
+            logger.debug(f"🎯 [GenerationService] - Section '{section.get('title', 'Unknown')}': {q_count} questions")
 
         # Compare to original potential
         import re
         original_potential = len(re.findall(r'"text"\s*:\s*"[^"]{10,200}"', original_text))
         json_objects = len(re.findall(r'\{[^{}]*\}', original_text))
 
-        logger.info(f"🎯 [GenerationService] Original response contained:")
-        logger.info(f"🎯 [GenerationService] - ~{original_potential} potential question texts")
-        logger.info(f"🎯 [GenerationService] - ~{json_objects} JSON objects")
+        logger.debug(f"🎯 [GenerationService] Original response contained:")
+        logger.debug(f"🎯 [GenerationService] - ~{original_potential} potential question texts")
+        logger.debug(f"🎯 [GenerationService] - ~{json_objects} JSON objects")
 
         if original_potential > 0:
             extraction_rate = (total_questions / original_potential) * 100
-            logger.info(f"🎯 [GenerationService] Extraction success rate: {extraction_rate:.1f}%")
+            logger.debug(f"🎯 [GenerationService] Extraction success rate: {extraction_rate:.1f}%")
 
             if extraction_rate < 50:
                 logger.warning(f"⚠️ [GenerationService] Low extraction rate - many questions may have been dropped!")
             elif extraction_rate > 90:
-                logger.info(f"✅ [GenerationService] Excellent extraction rate!")
+                logger.debug(f"✅ [GenerationService] Excellent extraction rate!")
             else:
-                logger.info(f"✅ [GenerationService] Good extraction rate")
+                logger.debug(f"✅ [GenerationService] Good extraction rate")
 
-        logger.info("🎯 [GenerationService] =======================================")
+        logger.debug("🎯 [GenerationService] =======================================")
 
     # All the JSON extraction methods remain unchanged...
     def _extract_balanced_json_robust(self, response_text: str) -> Optional[Dict[str, Any]]:
@@ -908,7 +975,7 @@ class GenerationService:
                 try:
                     json_text = repair_func(json_text)
                     result = json.loads(json_text)
-                    logger.info(f"✅ Progressive repair succeeded at step {i+1}")
+                    logger.debug(f"✅ Progressive repair succeeded at step {i+1}")
                     return result
                 except json.JSONDecodeError:
                     continue
@@ -924,7 +991,7 @@ class GenerationService:
         try:
             import re
 
-            logger.info("🔧 [GenerationService] Force rebuilding survey from parts")
+            logger.debug("🔧 [GenerationService] Force rebuilding survey from parts")
 
             # Extract basic fields
             title_match = re.search(r'"title"\s*:\s*"([^"]*)"', sanitized_text)
@@ -938,11 +1005,11 @@ class GenerationService:
 
             # Check if content is markdown format (no JSON sections)
             # Since LLM returns markdown format, prioritize markdown extraction
-            logger.info("🔍 [GenerationService] LLM returns markdown format, extracting questions directly")
+            logger.debug("🔍 [GenerationService] LLM returns markdown format, extracting questions directly")
             try:
                 questions = self._extract_questions_by_force(sanitized_text)
                 if questions:
-                    logger.info(f"✅ [GenerationService] Successfully extracted {len(questions)} questions from markdown")
+                    logger.debug(f"✅ [GenerationService] Successfully extracted {len(questions)} questions from markdown")
                     # Group questions intelligently instead of one big section
                     grouped_sections = self._group_questions_into_sections(questions)
                     survey["sections"] = grouped_sections
@@ -955,7 +1022,7 @@ class GenerationService:
                 try:
                     questions = self._extract_questions_from_text_force(sanitized_text)
                     if questions:
-                        logger.info(f"✅ [GenerationService] Recovered {len(questions)} questions with direct extraction")
+                        logger.debug(f"✅ [GenerationService] Recovered {len(questions)} questions with direct extraction")
                         grouped_sections = self._group_questions_into_sections(questions)
                         survey["sections"] = grouped_sections
                     else:
@@ -972,7 +1039,7 @@ class GenerationService:
             survey["metadata"] = {"target_responses": 100, "methodology": ["survey"]}
 
             question_count = sum(len(section.get("questions", [])) for section in survey["sections"])
-            logger.info(f"🔧 Force rebuild extracted {question_count} questions")
+            logger.debug(f"🔧 Force rebuild extracted {question_count} questions")
 
             return survey if question_count > 0 else None
 
@@ -1012,11 +1079,11 @@ class GenerationService:
 
                 # Skip if we've already processed this section
                 if section_id in processed_sections:
-                    logger.info(f"🔍 [GenerationService] Skipping duplicate section {section_id}")
+                    logger.debug(f"🔍 [GenerationService] Skipping duplicate section {section_id}")
                     continue
 
                 processed_sections.add(section_id)
-                logger.info(f"🔍 [GenerationService] Processing section {section_id}: {section_title}")
+                logger.debug(f"🔍 [GenerationService] Processing section {section_id}: {section_title}")
 
                 questions = self._extract_questions_from_text_force(questions_text)
                 if questions:
@@ -1042,8 +1109,8 @@ class GenerationService:
         import re
         import time
 
-        logger.info("🔍 [GenerationService] === QUESTION EXTRACTION TRACKING ===")
-        logger.info(f"🔍 [GenerationService] Input text length: {len(text)} characters")
+        logger.debug("🔍 [GenerationService] === QUESTION EXTRACTION TRACKING ===")
+        logger.debug(f"🔍 [GenerationService] Input text length: {len(text)} characters")
 
         # Add timeout to prevent infinite loops
         start_time = time.time()
@@ -1098,7 +1165,7 @@ class GenerationService:
 
             try:
                 matches = list(re.finditer(pattern, text, re.DOTALL | flags))
-                logger.info(f"🔍 [GenerationService] Pattern '{pattern_name}': {len(matches)} matches found")
+                logger.debug(f"🔍 [GenerationService] Pattern '{pattern_name}': {len(matches)} matches found")
 
                 for match in matches:
                     # Check timeout in inner loop too
@@ -1108,7 +1175,7 @@ class GenerationService:
                     
                     # Handle different pattern types with proper error handling
                     try:
-                        logger.info(f"🔍 [GenerationService] Processing pattern {i} '{pattern_name}' with {len(match.groups())} groups: {match.groups()}")
+                        logger.debug(f"🔍 [GenerationService] Processing pattern {i} '{pattern_name}' with {len(match.groups())} groups: {match.groups()}")
                     
                         if i < 4:  # JSON patterns with ID+Text or Text+ID
                             q_id = match.group(1) if i < 2 else match.group(2)
@@ -1133,7 +1200,7 @@ class GenerationService:
                                 q_id = None
                                 q_text = match.group(1)
                         
-                        logger.info(f"🔍 [GenerationService] Extracted q_id='{q_id}', q_text='{q_text[:50]}...'")
+                        logger.debug(f"🔍 [GenerationService] Extracted q_id='{q_id}', q_text='{q_text[:50]}...'")
                         
                     except (IndexError, AttributeError) as e:
                         logger.warning(f"⚠️ [GenerationService] Error unpacking match groups for pattern '{pattern_name}': {e}")
@@ -1204,7 +1271,7 @@ class GenerationService:
                                 options = []
                             
                             if options:
-                                logger.info(f"🔍 [GenerationService] Extracted {len(options)} options for question '{q_id}': {options}")
+                                logger.debug(f"🔍 [GenerationService] Extracted {len(options)} options for question '{q_id}': {options}")
                             
                             try:
                                 # Determine question type based on content and options
@@ -1240,33 +1307,33 @@ class GenerationService:
                 logger.warning(f"⚠️ [GenerationService] Traceback: {traceback.format_exc()}")
                 continue
 
-        logger.info(f"🔍 [GenerationService] Total matches found: {len(all_matches)}")
-        logger.info(f"🔍 [GenerationService] Valid questions before dedup: {len(questions)}")
-        logger.info(f"🔍 [GenerationService] Questions dropped (validation): {len(dropped_questions)}")
+        logger.debug(f"🔍 [GenerationService] Total matches found: {len(all_matches)}")
+        logger.debug(f"🔍 [GenerationService] Valid questions before dedup: {len(questions)}")
+        logger.debug(f"🔍 [GenerationService] Questions dropped (validation): {len(dropped_questions)}")
         
         # Debug: Show the questions we extracted
         for i, q in enumerate(questions):
             question_text = q.get('text', 'N/A')
             text_preview = question_text[:50] if question_text is not None else '<null>'
-            logger.info(f"🔍 [GenerationService] Question {i+1}: id='{q.get('id', 'N/A')}', text='{text_preview}...', options={len(q.get('options', []))}")
+            logger.debug(f"🔍 [GenerationService] Question {i+1}: id='{q.get('id', 'N/A')}', text='{text_preview}...', options={len(q.get('options', []))}")
 
         # Remove duplicates based on text similarity
         unique_questions = []
         duplicate_count = 0
 
         try:
-            logger.info(f"🔍 [GenerationService] Starting deduplication with {len(questions)} questions")
+            logger.debug(f"🔍 [GenerationService] Starting deduplication with {len(questions)} questions")
             
             for i, q in enumerate(questions):
                 try:
-                    logger.info(f"🔍 [GenerationService] Processing question {i+1}: {q.get('id', 'N/A')}")
+                    logger.debug(f"🔍 [GenerationService] Processing question {i+1}: {q.get('id', 'N/A')}")
                     is_duplicate = False
                     for j, uq in enumerate(unique_questions):
                         try:
                             if self._texts_similar(q["text"], uq["text"]):
                                 is_duplicate = True
                                 duplicate_count += 1
-                                logger.info(f"🔍 [GenerationService] Duplicate found: '{q['id']}' similar to '{uq['id']}'")
+                                logger.debug(f"🔍 [GenerationService] Duplicate found: '{q['id']}' similar to '{uq['id']}'")
                                 break
                         except Exception as sim_error:
                             logger.warning(f"⚠️ [GenerationService] Error in similarity check: {sim_error}")
@@ -1283,16 +1350,16 @@ class GenerationService:
                     # Continue with next question instead of failing completely
                     continue
 
-            logger.info(f"🔍 [GenerationService] Questions dropped (duplicates): {duplicate_count}")
-            logger.info(f"✅ [GenerationService] Final unique questions: {len(unique_questions)}")
+            logger.debug(f"🔍 [GenerationService] Questions dropped (duplicates): {duplicate_count}")
+            logger.debug(f"✅ [GenerationService] Final unique questions: {len(unique_questions)}")
 
             # Log samples of dropped questions
             if dropped_questions:
-                logger.info("❌ [GenerationService] Sample dropped questions:")
+                logger.debug("❌ [GenerationService] Sample dropped questions:")
                 for dropped in dropped_questions[:5]:  # Show first 5
-                    logger.info(f"❌ [GenerationService] - '{dropped['id']}': {dropped['reason']} | Text: '{dropped['text']}'")
+                    logger.debug(f"❌ [GenerationService] - '{dropped['id']}': {dropped['reason']} | Text: '{dropped['text']}'")
 
-            logger.info("🔍 [GenerationService] =====================================")
+            logger.debug("🔍 [GenerationService] =====================================")
 
             return unique_questions
             
@@ -1302,7 +1369,7 @@ class GenerationService:
             logger.warning(f"⚠️ [GenerationService] Questions so far: {len(questions)}")
             logger.warning(f"⚠️ [GenerationService] All matches: {len(all_matches)}")
             # Return the questions we have so far instead of failing
-            logger.info(f"✅ [GenerationService] Returning {len(questions)} questions despite deduplication error")
+            logger.debug(f"✅ [GenerationService] Returning {len(questions)} questions despite deduplication error")
             return questions
 
     def _extract_options_from_question_text(self, question_text: str) -> List[str]:
@@ -1492,25 +1559,25 @@ class GenerationService:
         if not sections:
             return sections
 
-        logger.info(f"🔧 [GenerationService] Consolidating {len(sections)} sections")
+        logger.debug(f"🔧 [GenerationService] Consolidating {len(sections)} sections")
 
         # Count questions per section
         section_questions = [(i, len(section.get("questions", []))) for i, section in enumerate(sections)]
         total_questions = sum(count for _, count in section_questions)
 
-        logger.info(f"🔧 [GenerationService] Total questions: {total_questions}")
+        logger.debug(f"🔧 [GenerationService] Total questions: {total_questions}")
 
         # If we have many single-question sections, consolidate them
         single_question_sections = [i for i, count in section_questions if count == 1]
         multi_question_sections = [i for i, count in section_questions if count > 1]
 
-        logger.info(f"🔧 [GenerationService] Single-question sections: {len(single_question_sections)}")
-        logger.info(f"🔧 [GenerationService] Multi-question sections: {len(multi_question_sections)}")
+        logger.debug(f"🔧 [GenerationService] Single-question sections: {len(single_question_sections)}")
+        logger.debug(f"🔧 [GenerationService] Multi-question sections: {len(multi_question_sections)}")
 
         # If we have a well-structured survey with multiple sections that each have multiple questions,
         # don't consolidate them - just return as-is
         if len(multi_question_sections) >= 3 and len(single_question_sections) <= 2:
-            logger.info(f"🔧 [GenerationService] Well-structured survey detected, keeping {len(sections)} sections as-is")
+            logger.debug(f"🔧 [GenerationService] Well-structured survey detected, keeping {len(sections)} sections as-is")
             return sections
 
         # Strategy: If we have more than 2 single-question sections, consolidate them
@@ -1594,14 +1661,14 @@ class GenerationService:
                             "questions": mixed_questions[mid_point:]
                         })
 
-            logger.info(f"🔧 [GenerationService] Consolidated to {len(consolidated_sections)} sections")
+            logger.debug(f"🔧 [GenerationService] Consolidated to {len(consolidated_sections)} sections")
             return consolidated_sections
 
         else:
             # Not too many single sections, keep as-is but ensure proper numbering
             for i, section in enumerate(sections):
                 section["id"] = i + 1
-            logger.info(f"🔧 [GenerationService] Keeping {len(sections)} sections as-is")
+            logger.debug(f"🔧 [GenerationService] Keeping {len(sections)} sections as-is")
             return sections
 
     def _group_questions_into_sections(self, questions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -1658,12 +1725,12 @@ class GenerationService:
         section_id = 1
 
         # Debug: Log the topic_groups structure
-        logger.info(f"🔍 [GenerationService] Topic groups structure: {topic_groups}")
-        logger.info(f"🔍 [GenerationService] Topic groups type: {type(topic_groups)}")
-        logger.info(f"🔍 [GenerationService] Topic groups keys: {list(topic_groups.keys())}")
+        logger.debug(f"🔍 [GenerationService] Topic groups structure: {topic_groups}")
+        logger.debug(f"🔍 [GenerationService] Topic groups type: {type(topic_groups)}")
+        logger.debug(f"🔍 [GenerationService] Topic groups keys: {list(topic_groups.keys())}")
         
         for topic, group_questions in topic_groups.items():
-            logger.info(f"🔍 [GenerationService] Topic '{topic}': {type(group_questions)} with {len(group_questions) if isinstance(group_questions, list) else 'N/A'} items")
+            logger.debug(f"🔍 [GenerationService] Topic '{topic}': {type(group_questions)} with {len(group_questions) if isinstance(group_questions, list) else 'N/A'} items")
 
         title_map = {
             "demographics": "Demographics & Screening",
@@ -1701,11 +1768,11 @@ class GenerationService:
                 "questions": questions
             })
 
-        logger.info(f"🔧 [GenerationService] Grouped {len(questions)} questions into {len(sections)} logical sections")
+        logger.debug(f"🔧 [GenerationService] Grouped {len(questions)} questions into {len(sections)} logical sections")
 
         # Log section breakdown
         for section in sections:
-            logger.info(f"🔧 [GenerationService] - {section['title']}: {len(section['questions'])} questions")
+            logger.debug(f"🔧 [GenerationService] - {section['title']}: {len(section['questions'])} questions")
 
         return sections
 
@@ -1714,7 +1781,7 @@ class GenerationService:
         Special repair method for the corrupted format where every character is separated by newlines.
         This handles the specific case we're seeing in production.
         """
-        logger.info("🔧 [GenerationService] Starting corrupted format repair...")
+        logger.debug("🔧 [GenerationService] Starting corrupted format repair...")
         
         try:
             import re
@@ -1722,7 +1789,7 @@ class GenerationService:
             # Step 1: Handle extreme corruption where every character is on a new line
             # First, try to identify if this is the extreme case
             if raw_text.count('\n') > len(raw_text) * 0.1:  # More than 10% newlines
-                logger.info("🔧 [GenerationService] Detected extreme corruption - every character on new line")
+                logger.debug("🔧 [GenerationService] Detected extreme corruption - every character on new line")
                 # For extreme corruption, we need to extract content and reconstruct
                 return self._extract_content_from_corrupted_json(raw_text)
             else:
@@ -1745,7 +1812,7 @@ class GenerationService:
             
             # Step 5: Try to parse the cleaned JSON
             result = json.loads(cleaned)
-            logger.info(f"✅ [GenerationService] Corrupted format repair successful!")
+            logger.debug(f"✅ [GenerationService] Corrupted format repair successful!")
             return result
             
         except Exception as e:
@@ -1757,7 +1824,7 @@ class GenerationService:
         Extract content from severely corrupted JSON where every character is on a new line.
         This method reconstructs a valid survey by extracting key information.
         """
-        logger.info("🔧 [GenerationService] Extracting content from corrupted JSON...")
+        logger.debug("🔧 [GenerationService] Extracting content from corrupted JSON...")
         
         try:
             import re
@@ -1843,7 +1910,7 @@ class GenerationService:
                     "questions": []
                 }]
             
-            logger.info(f"✅ [GenerationService] Content extraction successful! Found {len(survey['sections'])} sections")
+            logger.debug(f"✅ [GenerationService] Content extraction successful! Found {len(survey['sections'])} sections")
             return survey
             
         except Exception as e:
@@ -1860,7 +1927,7 @@ class GenerationService:
         Generate survey using reliable sync mode (streaming disabled by default)
         """
         try:
-            logger.info(f"🚀 [GenerationService] Starting sync survey generation")
+            logger.debug(f"🚀 [GenerationService] Starting sync survey generation")
             start_time = time.time()
 
             # Check if streaming is explicitly enabled via environment variable
@@ -1868,7 +1935,7 @@ class GenerationService:
             enable_streaming = os.getenv('ENABLE_STREAMING_GENERATION', 'false').lower() == 'true'
             
             if enable_streaming:
-                logger.info(f"🔄 [GenerationService] Streaming mode enabled via environment variable")
+                logger.debug(f"🔄 [GenerationService] Streaming mode enabled via environment variable")
                 # Send initial progress update
                 if self.ws_client and self.workflow_id:
                     progress_tracker = get_progress_tracker(self.workflow_id)
@@ -1880,11 +1947,11 @@ class GenerationService:
                     return await self._stream_with_replicate(prompt, start_time)
                 except Exception as streaming_error:
                     logger.warning(f"⚠️ [GenerationService] Streaming failed: {streaming_error}")
-                    logger.info(f"🔄 [GenerationService] Falling back to sync mode")
+                    logger.debug(f"🔄 [GenerationService] Falling back to sync mode")
                     return await self._generate_with_sync_fallback(prompt)
             else:
                 # Use reliable sync mode by default
-                logger.info(f"🔄 [GenerationService] Using reliable sync mode (streaming disabled)")
+                logger.debug(f"🔄 [GenerationService] Using reliable sync mode (streaming disabled)")
                 return await self._generate_with_sync_fallback(prompt)
 
         except Exception as e:
@@ -1913,7 +1980,7 @@ class GenerationService:
             stream=True
         )
 
-        logger.info(f"📡 [GenerationService] Streaming prediction created: {prediction.id}")
+        logger.debug(f"📡 [GenerationService] Streaming prediction created: {prediction.id}")
 
         # Collect streamed content
         accumulated_content = ""
@@ -1957,7 +2024,7 @@ class GenerationService:
                     logger.error(f"❌ [GenerationService] Streaming error: {event_data}")
                     raise Exception(f"Streaming error: {event_data}")
                 elif event_type == 'done' or event_type == 'completed':
-                    logger.info(f"✅ [GenerationService] Streaming completed after {event_count} events, {output_events} output events")
+                    logger.debug(f"✅ [GenerationService] Streaming completed after {event_count} events, {output_events} output events")
                     break
                 else:
                     # Non-output events (e.g., logs) can be safely ignored or logged at debug level
@@ -1970,7 +2037,7 @@ class GenerationService:
                 
                 # If no content was collected, this is likely a streaming API issue
                 # Fall back to async polling method
-                logger.info(f"🔄 [GenerationService] Falling back to async polling due to empty content")
+                logger.debug(f"🔄 [GenerationService] Falling back to async polling due to empty content")
                 raise Exception("STREAMING_NO_CONTENT")
 
         except Exception as e:
@@ -2026,7 +2093,7 @@ class GenerationService:
             }
         )
 
-        logger.info(f"📡 [GenerationService] Async prediction created: {prediction.id}")
+        logger.debug(f"📡 [GenerationService] Async prediction created: {prediction.id}")
 
         # Poll with progress updates
         while prediction.status not in ["succeeded", "failed", "canceled"]:
@@ -2064,7 +2131,7 @@ class GenerationService:
 
     async def _generate_with_sync_fallback(self, prompt: str) -> Dict[str, Any]:
         """Reliable sync method for survey generation"""
-        logger.info("🔄 [GenerationService] Using reliable sync generation method")
+        logger.debug("🔄 [GenerationService] Using reliable sync generation method")
 
         # Send initial generating_questions progress
         if self.ws_client and self.workflow_id:
@@ -2166,7 +2233,7 @@ class GenerationService:
                     },
                     "message": f"Generated {len(questions)} questions across {len(sections)} sections"
                 })
-                logger.info(f"📊 [GenerationService] Streaming update sent: {len(questions)} questions, {len(sections)} sections")
+                logger.debug(f"📊 [GenerationService] Streaming update sent: {len(questions)} questions, {len(sections)} sections")
 
         except Exception as e:
             logger.warning(f"⚠️ [GenerationService] Failed to analyze streaming content: {str(e)}")
