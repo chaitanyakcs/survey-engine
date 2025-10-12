@@ -307,6 +307,85 @@ start_application() {
     fi
 }
 
+# Function to run quick smoke tests
+run_quick_tests() {
+    echo -e "${YELLOW}🧪 Running quick smoke tests...${NC}"
+    
+    # Check if we're in the right directory
+    if [ ! -f "pyproject.toml" ]; then
+        echo -e "${RED}❌ Error: pyproject.toml not found. Please run from project root.${NC}"
+        exit 1
+    fi
+    
+    # Install development dependencies if not already installed
+    echo -e "${BLUE}📦 Installing development dependencies...${NC}"
+    if ! uv sync --dev; then
+        echo -e "${RED}❌ Failed to install development dependencies${NC}"
+        exit 1
+    fi
+    
+    # Run critical tests only (fast subset)
+    if ./scripts/run_tests.sh critical --quiet; then
+        echo -e "${GREEN}✅ Smoke tests passed${NC}"
+    else
+        echo -e "${RED}❌ Smoke tests failed${NC}"
+        echo -e "${YELLOW}💡 Run full tests: ./scripts/run_tests.sh all${NC}"
+        exit 1
+    fi
+}
+
+# Function to run full test suite
+run_full_tests() {
+    echo -e "${YELLOW}🧪 Running full test suite...${NC}"
+    
+    # Check if we're in the right directory
+    if [ ! -f "pyproject.toml" ]; then
+        echo -e "${RED}❌ Error: pyproject.toml not found. Please run from project root.${NC}"
+        exit 1
+    fi
+    
+    # Install development dependencies if not already installed
+    echo -e "${BLUE}📦 Installing development dependencies...${NC}"
+    if ! uv sync --dev; then
+        echo -e "${RED}❌ Failed to install development dependencies${NC}"
+        exit 1
+    fi
+    
+    # Run all tests
+    if ./scripts/run_tests.sh all; then
+        echo -e "${GREEN}✅ All tests passed${NC}"
+    else
+        echo -e "${RED}❌ Some tests failed${NC}"
+        exit 1
+    fi
+}
+
+# Function to run tests with coverage
+run_tests_with_coverage() {
+    echo -e "${YELLOW}🧪 Running tests with coverage...${NC}"
+    
+    # Check if we're in the right directory
+    if [ ! -f "pyproject.toml" ]; then
+        echo -e "${RED}❌ Error: pyproject.toml not found. Please run from project root.${NC}"
+        exit 1
+    fi
+    
+    # Install development dependencies if not already installed
+    echo -e "${BLUE}📦 Installing development dependencies...${NC}"
+    if ! uv sync --dev; then
+        echo -e "${RED}❌ Failed to install development dependencies${NC}"
+        exit 1
+    fi
+    
+    # Run tests with coverage
+    if ./scripts/run_tests.sh all --coverage; then
+        echo -e "${GREEN}✅ Tests with coverage completed${NC}"
+    else
+        echo -e "${RED}❌ Some tests failed${NC}"
+        exit 1
+    fi
+}
+
 # Function to run development checks
 run_dev_checks() {
     echo -e "${YELLOW}🔍 Running development checks...${NC}"
@@ -319,34 +398,36 @@ run_dev_checks() {
     
     # Install development dependencies if not already installed
     echo -e "${BLUE}📦 Installing development dependencies...${NC}"
-    uv sync --dev > /dev/null 2>&1
+    if ! uv sync --dev; then
+        echo -e "${RED}❌ Failed to install development dependencies${NC}"
+        exit 1
+    fi
+    
+    # Run quick smoke tests first
+    echo -e "${BLUE}🧪 Running quick smoke tests...${NC}"
+    if ./scripts/run_tests.sh critical --quiet > /dev/null 2>&1; then
+        echo -e "${GREEN}✅ Smoke tests passed${NC}"
+    else
+        echo -e "${YELLOW}⚠️  Smoke tests failed, but continuing with other checks...${NC}"
+    fi
     
     # Run logger usage check
-    echo -e "${BLUE}🔍 Running logger usage check...${NC}"
-    if ! uv run python scripts/check_logger_usage.py; then
-        echo -e "${YELLOW}⚠️  Logger usage check found issues, but continuing...${NC}"
-        echo -e "${BLUE}💡 Fix logger issues for better debugging:${NC}"
-        echo -e "${CYAN}   uv run python scripts/check_logger_usage.py${NC}"
+    if ! uv run python scripts/check_logger_usage.py > /dev/null 2>&1; then
+        echo -e "${YELLOW}⚠️  Logger usage check found issues${NC}"
     else
         echo -e "${GREEN}✅ Logger usage check passed${NC}"
     fi
     
     # Run formatting check
-    echo -e "${BLUE}🔍 Checking code formatting...${NC}"
     if ! uv run black --check src/ > /dev/null 2>&1; then
         echo -e "${YELLOW}⚠️  Code formatting issues found${NC}"
-        echo -e "${BLUE}💡 Fix formatting with:${NC}"
-        echo -e "${CYAN}   uv run black src/${NC}"
     else
         echo -e "${GREEN}✅ Code formatting is correct${NC}"
     fi
     
     # Run import sorting check
-    echo -e "${BLUE}🔍 Checking import sorting...${NC}"
     if ! uv run isort --check-only src/ > /dev/null 2>&1; then
         echo -e "${YELLOW}⚠️  Import sorting issues found${NC}"
-        echo -e "${BLUE}💡 Fix import sorting with:${NC}"
-        echo -e "${CYAN}   uv run isort src/${NC}"
     else
         echo -e "${GREEN}✅ Import sorting is correct${NC}"
     fi
@@ -428,6 +509,11 @@ case "${1:-startup}" in
     "startup")
         main
         ;;
+    "startup-safe")
+        # Run tests first, only start if tests pass
+        run_quick_tests || exit 1
+        main
+        ;;
     "migrate")
         check_database
         run_migrations
@@ -441,6 +527,15 @@ case "${1:-startup}" in
         ;;
     "dev-checks")
         run_dev_checks
+        ;;
+    "test-quick")
+        run_quick_tests
+        ;;
+    "test-full")
+        run_full_tests
+        ;;
+    "test-coverage")
+        run_tests_with_coverage
         ;;
     "kill")
         kill_existing_processes
@@ -464,14 +559,18 @@ case "${1:-startup}" in
         echo "Usage: $0 [command]"
         echo ""
         echo "Commands:"
-        echo "  startup     - Full startup sequence (default)"
-        echo "  migrate     - Run database migrations only"
-        echo "  seed        - Seed database only"
-        echo "  preload     - Preload ML models only"
-        echo "  dev-checks  - Run development checks (formatting, imports, logger)"
-        echo "  kill        - Kill existing processes on ports 4321 and 8000"
-        echo "  setup-env   - Create .env file from .env.example template"
-        echo "  help        - Show this help message"
+        echo "  startup       - Full startup sequence (default)"
+        echo "  startup-safe  - Run tests first, then startup (safer)"
+        echo "  migrate       - Run database migrations only"
+        echo "  seed          - Seed database only"
+        echo "  preload       - Preload ML models only"
+        echo "  dev-checks    - Run development checks (tests, formatting, imports, logger)"
+        echo "  test-quick    - Run quick smoke tests (<30s)"
+        echo "  test-full     - Run full test suite"
+        echo "  test-coverage - Run tests with coverage report"
+        echo "  kill          - Kill existing processes on ports 4321 and 8000"
+        echo "  setup-env     - Create .env file from .env.example template"
+        echo "  help          - Show this help message"
         ;;
     *)
         echo -e "${RED}❌ Unknown command: $1${NC}"

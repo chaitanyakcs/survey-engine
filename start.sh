@@ -282,7 +282,7 @@ start_both() {
     log_info "Starting FastAPI with command: $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 600"
     
     # Manual deployment only - no auto-reload
-    $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 600 2>&1 | tee /tmp/fastapi.log &
+    $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 600 > /tmp/fastapi.log 2>&1 &
     FASTAPI_PID=$!
     log_success "FastAPI server started with PID $FASTAPI_PID"
     
@@ -323,8 +323,6 @@ start_both() {
             local curl_exit_code=$?
             log_warning "Health check failed with exit code $curl_exit_code"
             # Show what curl actually sees
-            log_info "Curl verbose output:"
-            curl -v http://localhost:8000/health 2>&1 || true
             log_info "FastAPI process status:"
             if kill -0 $FASTAPI_PID 2>/dev/null; then
                 log_info "FastAPI process $FASTAPI_PID is still running"
@@ -339,13 +337,16 @@ start_both() {
                 exit 1
             fi
         fi
-        sleep 3  # Increased sleep time
+        sleep 3
         ((attempt++))
     done
     
     if [ $attempt -gt $max_attempts ]; then
         log_error "FastAPI server failed to become ready after $max_attempts attempts"
-        log_error "This might be due to ML model loading taking too long"
+        if [ -f /tmp/fastapi.log ]; then
+            log_error "Last 20 lines of FastAPI log:"
+            tail -20 /tmp/fastapi.log
+        fi
         exit 1
     fi
     
@@ -408,27 +409,9 @@ main() {
     log_info "Service: ${SERVICE:-'both'}"
     log_info "Debug mode: ${DEBUG:-'false'}"
     
-    # Add debug information
-    log_info "Python version: $(python3 --version)"
-    log_info "UV version: $(uv --version)"
-    log_info "Working directory: $(pwd)"
-    log_info "Available files: $(ls -la)"
-    
-    # Test Python imports
-    log_info "Testing Python imports..."
-    if python3 -c "import sys; print('Python path:', sys.path)"; then
-        log_success "Python basic test passed"
-    else
-        log_error "Python basic test failed"
-        exit 1
-    fi
-    
-    # Test if we can import the main modules
-    log_info "Testing module imports..."
-    if python3 -c "import src.main; print('src.main imported successfully')"; then
-        log_success "src.main import test passed"
-    else
-        log_error "src.main import test failed"
+    # Test Python imports (only show errors)
+    if ! python3 -c "import src.main" > /dev/null 2>&1; then
+        log_error "Failed to import src.main - check Python environment"
         exit 1
     fi
     
