@@ -7,12 +7,13 @@ Extracts quality patterns from annotation data to improve survey generation
 import logging
 from typing import Dict, List, Any, Optional, Tuple
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, func
 from src.database.models import QuestionAnnotation, SectionAnnotation, SurveyAnnotation, GoldenRFQSurveyPair
 from src.utils.database_session_manager import DatabaseSessionManager
 import json
 import re
 from collections import Counter, defaultdict
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -493,3 +494,150 @@ class AnnotationInsightsService:
         guidelines["common_issues"] = patterns["common_issues"][:5]  # Top 5 issues
         
         return guidelines
+    
+    async def calculate_improvement_trend(self) -> Dict[str, Any]:
+        """
+        Calculate improvement trend by comparing recent annotations vs baseline period
+        
+        Strategy:
+        - Baseline Period: Days 2-8 ago (7-day baseline window)
+        - Recent Period: Yesterday (most recent 24 hours)
+        - Formula: ((recent_avg - baseline_avg) / baseline_avg) × 100
+        
+        Returns:
+            Dict with improvement_trend percentage and metadata
+        """
+        logger.info("🔍 [AnnotationInsights] Calculating improvement trend")
+        
+        try:
+            now = datetime.utcnow()
+            
+            # Define time periods
+            yesterday_start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+            yesterday_end = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            
+            baseline_start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=8)
+            baseline_end = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+            
+            # Get annotations for both periods
+            recent_annotations = DatabaseSessionManager.safe_query(
+                self.db,
+                lambda: self.db.query(QuestionAnnotation).filter(
+                    QuestionAnnotation.created_at >= yesterday_start,
+                    QuestionAnnotation.created_at < yesterday_end
+                ).all(),
+                fallback_value=[],
+                operation_name="recent annotations query"
+            )
+            
+            recent_section_annotations = DatabaseSessionManager.safe_query(
+                self.db,
+                lambda: self.db.query(SectionAnnotation).filter(
+                    SectionAnnotation.created_at >= yesterday_start,
+                    SectionAnnotation.created_at < yesterday_end
+                ).all(),
+                fallback_value=[],
+                operation_name="recent section annotations query"
+            )
+            
+            baseline_annotations = DatabaseSessionManager.safe_query(
+                self.db,
+                lambda: self.db.query(QuestionAnnotation).filter(
+                    QuestionAnnotation.created_at >= baseline_start,
+                    QuestionAnnotation.created_at < baseline_end
+                ).all(),
+                fallback_value=[],
+                operation_name="baseline annotations query"
+            )
+            
+            baseline_section_annotations = DatabaseSessionManager.safe_query(
+                self.db,
+                lambda: self.db.query(SectionAnnotation).filter(
+                    SectionAnnotation.created_at >= baseline_start,
+                    SectionAnnotation.created_at < baseline_end
+                ).all(),
+                fallback_value=[],
+                operation_name="baseline section annotations query"
+            )
+            
+            # Combine question and section annotations
+            all_recent_annotations = recent_annotations + recent_section_annotations
+            all_baseline_annotations = baseline_annotations + baseline_section_annotations
+            
+            logger.info(f"📊 [AnnotationInsights] Found {len(all_recent_annotations)} recent annotations, {len(all_baseline_annotations)} baseline annotations")
+            
+            # Check for sufficient data
+            if len(all_recent_annotations) == 0:
+                logger.info("⚠️ [AnnotationInsights] No recent annotations found")
+                return {
+                    "improvement_trend": 0.0,
+                    "status": "no_recent_data",
+                    "message": "No annotations in the last 24 hours",
+                    "baseline_period": f"{baseline_start.strftime('%Y-%m-%d')} to {baseline_end.strftime('%Y-%m-%d')}",
+                    "recent_period": f"{yesterday_start.strftime('%Y-%m-%d')} to {yesterday_end.strftime('%Y-%m-%d')}",
+                    "baseline_count": len(all_baseline_annotations),
+                    "recent_count": 0
+                }
+            
+            if len(all_baseline_annotations) == 0:
+                logger.info("⚠️ [AnnotationInsights] No baseline annotations found")
+                return {
+                    "improvement_trend": 0.0,
+                    "status": "establishing_baseline",
+                    "message": "Establishing baseline - need 7+ days of history",
+                    "baseline_period": f"{baseline_start.strftime('%Y-%m-%d')} to {baseline_end.strftime('%Y-%m-%d')}",
+                    "recent_period": f"{yesterday_start.strftime('%Y-%m-%d')} to {yesterday_end.strftime('%Y-%m-%d')}",
+                    "baseline_count": 0,
+                    "recent_count": len(all_recent_annotations)
+                }
+            
+            if len(all_recent_annotations) + len(all_baseline_annotations) < 10:
+                logger.info("⚠️ [AnnotationInsights] Insufficient total annotations")
+                return {
+                    "improvement_trend": 0.0,
+                    "status": "insufficient_data",
+                    "message": f"Need at least 10 annotations (have {len(all_recent_annotations) + len(all_baseline_annotations)})",
+                    "baseline_period": f"{baseline_start.strftime('%Y-%m-%d')} to {baseline_end.strftime('%Y-%m-%d')}",
+                    "recent_period": f"{yesterday_start.strftime('%Y-%m-%d')} to {yesterday_end.strftime('%Y-%m-%d')}",
+                    "baseline_count": len(all_baseline_annotations),
+                    "recent_count": len(all_recent_annotations)
+                }
+            
+            # Calculate average scores
+            recent_scores = [self._get_average_score(ann) for ann in all_recent_annotations]
+            baseline_scores = [self._get_average_score(ann) for ann in all_baseline_annotations]
+            
+            recent_avg = sum(recent_scores) / len(recent_scores) if recent_scores else 0.0
+            baseline_avg = sum(baseline_scores) / len(baseline_scores) if baseline_scores else 0.0
+            
+            # Calculate improvement trend
+            if baseline_avg > 0:
+                improvement_trend = ((recent_avg - baseline_avg) / baseline_avg) * 100
+            else:
+                improvement_trend = 0.0
+            
+            logger.info(f"✅ [AnnotationInsights] Improvement trend calculated: {improvement_trend:.1f}% (recent: {recent_avg:.2f}, baseline: {baseline_avg:.2f})")
+            
+            return {
+                "improvement_trend": round(improvement_trend, 1),
+                "status": "success",
+                "message": f"Quality {'improved' if improvement_trend > 0 else 'declined'} by {abs(improvement_trend):.1f}%",
+                "baseline_period": f"{baseline_start.strftime('%Y-%m-%d')} to {baseline_end.strftime('%Y-%m-%d')}",
+                "recent_period": f"{yesterday_start.strftime('%Y-%m-%d')} to {yesterday_end.strftime('%Y-%m-%d')}",
+                "baseline_count": len(all_baseline_annotations),
+                "recent_count": len(all_recent_annotations),
+                "baseline_avg": round(baseline_avg, 2),
+                "recent_avg": round(recent_avg, 2)
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ [AnnotationInsights] Failed to calculate improvement trend: {str(e)}", exc_info=True)
+            return {
+                "improvement_trend": 0.0,
+                "status": "error",
+                "message": f"Error calculating trend: {str(e)}",
+                "baseline_period": "N/A",
+                "recent_period": "N/A",
+                "baseline_count": 0,
+                "recent_count": 0
+            }

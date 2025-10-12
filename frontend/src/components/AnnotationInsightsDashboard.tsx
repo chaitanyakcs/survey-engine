@@ -17,6 +17,16 @@ interface AnnotationStats {
   low_quality_count: number;
   average_score: number;
   improvement_trend: number;
+  improvement_trend_metadata?: {
+    status: string;
+    message: string;
+    baseline_period: string;
+    recent_period: string;
+    baseline_count: number;
+    recent_count: number;
+    baseline_avg?: number;
+    recent_avg?: number;
+  };
 }
 
 interface HumanVsAIStats {
@@ -217,15 +227,49 @@ export function AnnotationInsightsDashboard() {
             <div className="bg-white rounded-lg border border-gray-200 p-6">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-medium text-gray-600">Improvement Trend</h3>
-                <ArrowTrendingUpIcon className="h-5 w-5 text-blue-600" />
+                <ArrowTrendingUpIcon className={`h-5 w-5 ${
+                  summary.improvement_trend > 0 ? 'text-green-600' : 
+                  summary.improvement_trend < 0 ? 'text-red-600' : 
+                  'text-gray-400'
+                }`} />
               </div>
               <div className="mt-2">
-                <div className="text-2xl font-bold text-blue-600">
-                  {summary.improvement_trend > 0 ? '+' : ''}{summary.improvement_trend.toFixed(1)}%
-                </div>
-                <p className="text-xs text-gray-500">
-                  vs baseline
-                </p>
+                {summary.improvement_trend_metadata?.status === 'success' ? (
+                  <>
+                    <div className={`text-2xl font-bold ${
+                      summary.improvement_trend > 0 ? 'text-green-600' : 
+                      summary.improvement_trend < 0 ? 'text-red-600' : 
+                      'text-gray-600'
+                    }`}>
+                      {summary.improvement_trend > 0 ? '+' : ''}{summary.improvement_trend.toFixed(1)}%
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      Yesterday vs {summary.improvement_trend_metadata.baseline_period}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {summary.improvement_trend_metadata.recent_count} recent, {summary.improvement_trend_metadata.baseline_count} baseline
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-2xl font-bold text-gray-400">
+                      {summary.improvement_trend.toFixed(1)}%
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      {summary.improvement_trend_metadata?.message || 'Calculating...'}
+                    </p>
+                    {summary.improvement_trend_metadata?.status === 'establishing_baseline' && (
+                      <p className="text-xs text-blue-500 mt-1">
+                        Need 7+ days of history
+                      </p>
+                    )}
+                    {summary.improvement_trend_metadata?.status === 'insufficient_data' && (
+                      <p className="text-xs text-orange-500 mt-1">
+                        Need at least 10 annotations
+                      </p>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           </div>
