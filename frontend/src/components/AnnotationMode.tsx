@@ -69,7 +69,6 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
 
   // When a question is selected, open fixed pane
   const handleQuestionSelect = (questionId: string) => {
-    console.log('🔍 [AnnotationMode] Question selected:', questionId);
     const question = sectionsToUse.flatMap((s: any) => s.questions || []).find((q: any) => (q.question_id || q.id) === questionId);
     if (question) {
       setAnnotationPane({
@@ -124,7 +123,7 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="w-full h-screen flex flex-col bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
@@ -132,7 +131,7 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
             <div className="w-3 h-3 bg-yellow-400 rounded-full"></div>
             <h2 className="heading-3">Annotation Mode</h2>
             <div className="text-sm text-gray-500">
-              {currentAnnotations?.questionAnnotations?.length || 0} questions • {currentAnnotations?.sectionAnnotations?.length || 0} sections
+              {sectionsToUse.reduce((total: number, section: any) => total + (section.questions?.length || 0), 0)} questions • {sectionsToUse.length} sections
             </div>
           </div>
           <div className="flex items-center space-x-3">
@@ -147,8 +146,8 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Panel - Survey Structure (75%) */}
-        <div className="w-[75%] bg-white overflow-y-auto">
+        {/* Left Panel - Survey Structure (45%) */}
+        <div className="w-[45%] bg-white overflow-y-auto">
           <div className="p-4">
             <h3 
               className="heading-4 mb-4 cursor-pointer hover:text-primary-600 transition-colors flex items-center gap-2"
@@ -166,14 +165,18 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
                 }`}>
                   {/* Section Header */}
                   <div className={`flex items-center justify-between p-3 transition-colors ${
-                    'hover:bg-gray-50'
+                    annotationPane.type === 'section' && annotationPane.target?.id === sectionId
+                      ? 'bg-blue-50 border-l-4 border-blue-500 shadow-md ring-2 ring-blue-200'
+                      : 'hover:bg-gray-50'
                   }`}>
                     <div 
                       className="flex items-center space-x-2 cursor-pointer flex-1"
                       onClick={() => handleSectionSelect(sectionId)}
                     >
                       <span className={`font-medium transition-colors ${
-                        'text-gray-900'
+                        annotationPane.type === 'section' && annotationPane.target?.id === sectionId
+                          ? 'text-blue-900 font-semibold'
+                          : 'text-gray-900'
                       }`}>{section.title}</span>
                       {isAnnotated('section', sectionId) && (
                         <div className="w-2 h-2 bg-success-500 rounded-full"></div>
@@ -207,18 +210,18 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
                               key={questionId}
                               className={`flex items-center justify-between p-3 cursor-pointer transition-all duration-200 ${
                                 selectedQuestion === questionId
-                                  ? 'bg-secondary-100 border-l-4 border-secondary-500 shadow-sm'
+                                  ? 'bg-blue-50 border-l-4 border-blue-500 shadow-md ring-2 ring-blue-200'
                                   : 'hover:bg-gray-100'
                               }`}
                               onClick={() => handleQuestionSelect(questionId)}
                             >
                               <div className="flex items-center space-x-2 flex-1 min-w-0">
                                 {selectedQuestion === questionId && (
-                                  <div className="w-1 h-4 bg-secondary-500 rounded-full flex-shrink-0"></div>
+                                  <div className="w-1 h-6 bg-blue-500 rounded-full flex-shrink-0"></div>
                                 )}
                                 <span className={`text-sm transition-colors flex-1 min-w-0 ${
                                   selectedQuestion === questionId
-                                    ? 'text-secondary-900 font-medium'
+                                    ? 'text-blue-900 font-semibold'
                                     : 'text-gray-700'
                                 }`}>
                                   {(() => {
@@ -248,8 +251,8 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
           </div>
         </div>
 
-        {/* Right Panel - Annotation Pane (25%) */}
-        <div className="w-[25%]">
+        {/* Right Panel - Annotation Pane (55%) */}
+        <div className="w-[55%]">
           <AnnotationSidePane
             annotationType={annotationPane.type}
             annotationTarget={annotationPane.target}

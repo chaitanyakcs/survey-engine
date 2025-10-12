@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { Question, Survey, SurveySection, QuestionAnnotation, SectionAnnotation, SurveyAnnotations, SurveyLevelAnnotation } from '../types';
 import AnnotationMode from './AnnotationMode';
@@ -45,14 +45,29 @@ const QuestionCard: React.FC<{
   const [isEditing, setIsEditing] = useState(false);
   const [editedQuestion, setEditedQuestion] = useState<Question>(question);
 
+  // Auto-enable edit mode when isEditingSurvey is true
+  useEffect(() => {
+    if (isEditingSurvey && !isEditing) {
+      setIsEditing(true);
+    } else if (!isEditingSurvey && isEditing) {
+      setIsEditing(false);
+    }
+  }, [isEditingSurvey, isEditing]);
+
   const handleSaveEdit = () => {
     onUpdate(editedQuestion);
-    setIsEditing(false);
+    // Only exit edit mode if not in survey edit mode
+    if (!isEditingSurvey) {
+      setIsEditing(false);
+    }
   };
 
   const handleCancelEdit = () => {
     setEditedQuestion(question);
-    setIsEditing(false);
+    // Only exit edit mode if not in survey edit mode
+    if (!isEditingSurvey) {
+      setIsEditing(false);
+    }
   };
 
   const updateQuestionField = (field: keyof Question, value: any) => {
@@ -173,6 +188,7 @@ const QuestionCard: React.FC<{
                 className="w-full px-3 py-2 border border-gray-300 rounded-md"
               >
                 <option value="multiple_choice">Multiple Choice</option>
+                <option value="multiple_select">Multiple Select</option>
                 <option value="single_choice">Single Choice</option>
                 <option value="text">Text</option>
                 <option value="scale">Scale</option>
@@ -190,6 +206,74 @@ const QuestionCard: React.FC<{
                 <option value="likert">Likert Scale</option>
               </select>
             </div>
+
+            {/* Options editing for question types that need them */}
+            {['multiple_choice', 'multiple_select', 'single_choice', 'ranking', 'matrix_likert', 'constant_sum', 'gabor_granger', 'likert'].includes(editedQuestion.type) && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Options</label>
+                <div className="space-y-2">
+                  {(editedQuestion.options || []).map((option, index) => (
+                    <div key={index} className="flex items-center space-x-2">
+                      <input
+                        type="text"
+                        value={option}
+                        onChange={(e) => {
+                          const newOptions = [...(editedQuestion.options || [])];
+                          newOptions[index] = e.target.value;
+                          updateQuestionField('options', newOptions);
+                        }}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                        placeholder={`Option ${index + 1}`}
+                      />
+                      <button
+                        onClick={() => {
+                          const newOptions = (editedQuestion.options || []).filter((_, i) => i !== index);
+                          updateQuestionField('options', newOptions);
+                        }}
+                        className="px-2 py-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                        type="button"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => {
+                      const newOptions = [...(editedQuestion.options || []), ''];
+                      updateQuestionField('options', newOptions);
+                    }}
+                    className="px-3 py-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded border border-blue-200"
+                    type="button"
+                  >
+                    + Add Option
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Scale labels editing for scale questions */}
+            {editedQuestion.type === 'scale' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Scale Labels</label>
+                <div className="space-y-2">
+                  {editedQuestion.scale_labels && Object.entries(editedQuestion.scale_labels).map(([key, label]) => (
+                    <div key={key} className="flex items-center space-x-2">
+                      <span className="w-16 text-sm text-gray-600">{key}:</span>
+                      <input
+                        type="text"
+                        value={label}
+                        onChange={(e) => {
+                          const newScaleLabels = { ...editedQuestion.scale_labels };
+                          newScaleLabels[key] = e.target.value;
+                          updateQuestionField('scale_labels', newScaleLabels);
+                        }}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="flex space-x-2">
               <button
                 onClick={handleSaveEdit}
@@ -211,7 +295,7 @@ const QuestionCard: React.FC<{
               {question.text}
             </h3>
             <p className="text-sm text-gray-600 mb-3">
-              Type: {question.type} • Category: {question.category}
+              Type: {question.type}{question.category && ` • Category: ${question.category}`}
             </p>
             
             {/* Specialized Question Type Components */}
@@ -251,8 +335,25 @@ const QuestionCard: React.FC<{
             )}
             
 
+            {/* Multiple Select Questions */}
+            {question.type === 'multiple_select' && question.options && question.options.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-gray-700">Options:</h4>
+                {question.options.map((option, idx) => (
+                  <div key={idx} className="flex items-center p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                    <input
+                      type="checkbox"
+                      disabled
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mr-3"
+                    />
+                    <span className="text-sm text-gray-700">{option}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Standard Question Types */}
-            {!['matrix_likert', 'constant_sum', 'gabor_granger', 'numeric_grid', 'numeric_open', 'likert'].includes(question.type) && (
+            {!['matrix_likert', 'constant_sum', 'gabor_granger', 'numeric_grid', 'numeric_open', 'likert', 'multiple_select'].includes(question.type) && (
               <>
                 {/* Question Options */}
                 {question.options && question.options.length > 0 && (
@@ -461,6 +562,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
   const { currentSurvey, isAnnotationMode, setAnnotationMode, currentAnnotations, saveAnnotations } = useAppStore();
   const survey = propSurvey || currentSurvey;
   const [editedSurvey, setEditedSurvey] = useState<Survey | null>(null);
+  const [isEditingMode, setIsEditingMode] = useState(false);
   
   // Annotation fixed pane state
   const [annotationPane, setAnnotationPane] = useState({
@@ -501,9 +603,149 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
   const handleExitAnnotationMode = async () => {
     try {
       setAnnotationMode(false);
+      // Clear annotation pane state when exiting annotation mode
+      setAnnotationPane({
+        type: null,
+        target: null
+      });
       console.log('Exited annotation mode');
     } catch (error) {
       console.error('Error exiting annotation mode:', error);
+    }
+  };
+
+  // New functionality handlers
+  const handleEditSurvey = () => {
+    if (surveyToDisplay) {
+      setEditedSurvey(surveyToDisplay);
+      setIsEditingMode(true);
+      console.log('Entered edit mode for survey:', surveyToDisplay.survey_id);
+    }
+  };
+
+  const handleSaveEdit = () => {
+    if (editedSurvey && onSurveyChange) {
+      onSurveyChange(editedSurvey);
+      setIsEditingMode(false);
+      console.log('Survey changes saved');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditedSurvey(null);
+    setIsEditingMode(false);
+    console.log('Edit mode cancelled');
+  };
+
+  const handleSaveAsReference = async () => {
+    if (!surveyToDisplay?.survey_id) {
+      console.error('No survey ID available for saving as reference');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/v1/golden-pairs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          rfq_text: surveyToDisplay.title || 'Generated Survey',
+          survey_json: surveyToDisplay,
+          title: surveyToDisplay.title,
+          methodology_tags: surveyToDisplay.methodologies || [],
+          industry_category: surveyToDisplay.metadata?.industry_category || '',
+          research_goal: surveyToDisplay.metadata?.research_goal || '',
+          quality_score: surveyToDisplay.confidence_score || 1.0
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save as reference');
+      }
+
+      const result = await response.json();
+      console.log('Survey saved as reference:', result);
+      alert('Survey saved as reference successfully!');
+    } catch (error) {
+      console.error('Error saving survey as reference:', error);
+      alert('Failed to save survey as reference');
+    }
+  };
+
+  const handleViewSystemPrompt = () => {
+    if (surveyToDisplay?.metadata?.system_prompt) {
+      // Open system prompt in a new window or modal
+      const promptWindow = window.open('', '_blank', 'width=800,height=600');
+      if (promptWindow) {
+        promptWindow.document.write(`
+          <html>
+            <head><title>System Prompt</title></head>
+            <body style="font-family: monospace; padding: 20px; white-space: pre-wrap;">
+              ${surveyToDisplay.metadata.system_prompt}
+            </body>
+          </html>
+        `);
+      }
+    } else {
+      alert('No system prompt available for this survey');
+    }
+  };
+
+  const handleExportJSON = () => {
+    if (surveyToDisplay) {
+      const dataStr = JSON.stringify(surveyToDisplay, null, 2);
+      const dataBlob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(dataBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `survey-${surveyToDisplay.survey_id}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  const handleExportPDF = () => {
+    alert('PDF export functionality is not yet implemented');
+  };
+
+  const handleExportDOCX = async () => {
+    if (!surveyToDisplay) {
+      console.error('No survey data available for export');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/v1/export/survey', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          survey_data: surveyToDisplay,
+          format: 'docx',
+          filename: `survey-${surveyToDisplay.survey_id}.docx`
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to export DOCX');
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `survey-${surveyToDisplay.survey_id}.docx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exporting DOCX:', error);
+      alert('Failed to export DOCX');
     }
   };
 
@@ -640,6 +882,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
 
   // Handle survey data structure
   const surveyToDisplay = editedSurvey || survey;
+  const isInEditMode = isEditable || isEditingMode;
 
   if (!survey) {
     console.log('❌ [SurveyPreview] No survey available');
@@ -704,7 +947,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
   return (
     <div className="w-full h-screen flex">
           {/* Left Panel - Survey Content */}
-          <div className="w-[75%] overflow-y-auto">
+          <div className={`${(isAnnotationMode || annotationPane.type) ? 'w-[45%]' : 'w-[75%]'} overflow-y-auto`}>
         <div className="p-6">
           <div className="space-y-8">
             {/* Survey Header */}
@@ -731,7 +974,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
 
               {/* Survey Title and Description */}
               <div className="mb-6">
-                {isEditable ? (
+                {isInEditMode ? (
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Survey Title</label>
@@ -750,6 +993,20 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
                         className="w-full px-3 py-2 border border-gray-300 rounded-md"
                         rows={3}
                       />
+                    </div>
+                    <div className="flex space-x-3">
+                      <button
+                        onClick={handleSaveEdit}
+                        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                      >
+                        Save Changes
+                      </button>
+                      <button
+                        onClick={handleCancelEdit}
+                        className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                      >
+                        Cancel
+                      </button>
                     </div>
                   </div>
                 ) : (
@@ -780,7 +1037,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
                   <SectionCard
                     key={section.id}
                     section={section}
-                    isEditingSurvey={isEditable}
+                    isEditingSurvey={isInEditMode}
                     isAnnotationMode={isAnnotationMode}
                     onQuestionUpdate={handleQuestionUpdate}
                     onQuestionDelete={handleQuestionDelete}
@@ -803,7 +1060,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
                       onMove={handleMoveQuestion}
                       canMoveUp={index > 0}
                       canMoveDown={index < (surveyToDisplay?.questions?.length || 0) - 1}
-                      isEditingSurvey={isEditable}
+                      isEditingSurvey={isInEditMode}
                       isAnnotationMode={isAnnotationMode}
                       onOpenAnnotation={openQuestionAnnotation}
                       annotation={currentAnnotations?.questionAnnotations?.find(a => a.questionId === question.id)}
@@ -827,27 +1084,24 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
           <h3 className="text-base font-semibold text-gray-900 mb-3">Actions</h3>
           <div className="space-y-2">
             <button
-              onClick={() => openAnnotationPane('survey', surveyToDisplay)}
-              className="w-full flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors text-sm"
+              onClick={() => {
+                setAnnotationMode(true);
+                openAnnotationPane('survey', surveyToDisplay);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors text-sm"
             >
               <PencilIcon className="w-4 h-4" />
               Annotate Survey
             </button>
             <button
-              onClick={() => {
-                // Edit survey functionality
-                console.log('Edit survey:', surveyToDisplay?.survey_id);
-              }}
+              onClick={handleEditSurvey}
               className="w-full flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
             >
               <PencilIcon className="w-4 h-4" />
               Edit Survey
             </button>
             <button
-              onClick={() => {
-                // Save as reference functionality
-                console.log('Save as reference:', surveyToDisplay?.survey_id);
-              }}
+              onClick={handleSaveAsReference}
               className="w-full flex items-center gap-2 px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors text-sm"
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -856,10 +1110,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
               Save as Reference
             </button>
             <button
-              onClick={() => {
-                // View system prompt functionality
-                console.log('View system prompt:', surveyToDisplay?.survey_id);
-              }}
+              onClick={handleViewSystemPrompt}
               className="w-full flex items-center gap-2 px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors text-sm"
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -875,28 +1126,19 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
           <h3 className="text-base font-semibold text-gray-900 mb-3">EXPORT</h3>
           <div className="space-y-2">
             <button
-              onClick={() => {
-                // JSON export functionality
-                console.log('Export JSON:', surveyToDisplay?.survey_id);
-              }}
+              onClick={handleExportJSON}
               className="w-full text-left text-blue-600 hover:text-blue-800 font-medium text-sm"
             >
               JSON Download JSON
             </button>
             <button
-              onClick={() => {
-                // PDF export functionality
-                console.log('Export PDF:', surveyToDisplay?.survey_id);
-              }}
+              onClick={handleExportPDF}
               className="w-full text-left text-red-600 hover:text-red-800 font-medium text-sm"
             >
               PDF Download PDF
             </button>
             <button
-              onClick={() => {
-                // DOCX export functionality
-                console.log('Export DOCX:', surveyToDisplay?.survey_id);
-              }}
+              onClick={handleExportDOCX}
               className="w-full text-left text-green-600 hover:text-green-800 font-medium text-sm"
             >
               DOCX Download DOCX
@@ -1017,9 +1259,9 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
           </div>
         )}
 
-        {/* Annotation Pane - Only show when annotation mode is active */}
-        {isAnnotationMode && (
-          <div className="flex-1">
+        {/* Annotation Pane - Show when annotation mode is active OR when there's an active annotation pane */}
+        {(isAnnotationMode || annotationPane.type) && (
+          <div className="w-[55%]">
             <AnnotationSidePane
               annotationType={annotationPane.type}
               annotationTarget={annotationPane.target}

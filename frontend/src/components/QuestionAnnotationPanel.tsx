@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   QuestionAnnotation,
   Question
 } from '../types';
 import LikertScale from './LikertScale';
 import LabelsInput from './LabelsInput';
+import TabGroup from './TabGroup';
+import ProgressIndicator from './ProgressIndicator';
+import PillarTooltip from './PillarTooltip';
 import { useAppStore } from '../store/useAppStore';
 
 interface QuestionAnnotationPanelProps {
@@ -20,12 +23,6 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
   onSave,
   onCancel
 }) => {
-  console.log('🔍 [QuestionAnnotationPanel] Component rendered with:', {
-    questionId: question?.id,
-    questionText: question?.text,
-    annotation,
-    hasAnnotation: !!annotation
-  });
 
   const [formData, setFormData] = useState<QuestionAnnotation>({
     questionId: question.id,
@@ -44,15 +41,10 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
     timestamp: new Date().toISOString()
   });
 
+  const [isPreviewExpanded, setIsPreviewExpanded] = useState(true);
+
   // Update form data when question or annotation changes
   useEffect(() => {
-    console.log('🔍 [QuestionAnnotationPanel] useEffect triggered - question or annotation changed:', {
-      questionId: question.id,
-      annotation,
-      hasAnnotation: !!annotation
-    });
-    
-    // Always reset form data when question changes
     setFormData({
       questionId: question.id,
       required: annotation?.required ?? true,
@@ -79,54 +71,87 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-
+  // Calculate completion progress
+  const completionProgress = useMemo(() => {
+    const essentialFields = [
+      formData.required !== undefined,
+      formData.quality !== undefined,
+      formData.relevant !== undefined
+    ];
+    
+    const pillarFields = [
+      formData.pillars.methodologicalRigor !== undefined,
+      formData.pillars.contentValidity !== undefined,
+      formData.pillars.respondentExperience !== undefined,
+      formData.pillars.analyticalValue !== undefined,
+      formData.pillars.businessImpact !== undefined
+    ];
+    
+    const additionalFields = [
+      (formData.comment || '').trim().length > 0,
+      (formData.labels || []).length > 0
+    ];
+    
+    const essentialCompleted = essentialFields.filter(Boolean).length;
+    const pillarCompleted = pillarFields.filter(Boolean).length;
+    const additionalCompleted = additionalFields.filter(Boolean).length;
+    
+    return {
+      essential: { completed: essentialCompleted, total: essentialFields.length },
+      pillars: { completed: pillarCompleted, total: pillarFields.length },
+      additional: { completed: additionalCompleted, total: additionalFields.length },
+      overall: { 
+        completed: essentialCompleted + pillarCompleted + additionalCompleted,
+        total: essentialFields.length + pillarFields.length + additionalFields.length
+      }
+    };
+  }, [formData]);
 
   return (
-    <div className="card-highlighted mt-4">
-      {/* Header */}
-      <div className="card-default-sm mb-6">
+    <div className="h-full flex flex-col">
+      {/* Sticky Header */}
+      <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 z-10">
         <div className="flex justify-between items-start">
-          {/* Left side - Title and AI Status */}
+          {/* Left side - AI Status & Progress */}
           <div className="flex-1">
-            <div className="flex items-center space-x-3 mb-2">
-              <div className="w-3 h-3 bg-primary-500 rounded-full"></div>
-              <h4 className="heading-4">
-                Question Annotation
-              </h4>
-            </div>
-            
-            {/* AI Status Card */}
-            {annotation?.aiGenerated && (
-              <div className="badge-secondary">
-                <div className="flex items-center space-x-2">
-                  <div className="w-2 h-2 bg-secondary-500 rounded-full animate-pulse"></div>
-                  <span className="text-sm font-medium text-secondary-800">AI Generated</span>
-                  {annotation.aiConfidence && (
-                    <div className="flex items-center space-x-1 ml-2">
-                      <div className="w-1 h-1 bg-secondary-400 rounded-full"></div>
-                      <span className="text-xs text-secondary-600 font-medium">
+            <div className="flex items-center space-x-4">
+              {/* AI Status Badge - Single consolidated version */}
+              {annotation?.aiGenerated && (
+                <div className="inline-flex items-center px-3 py-2 bg-blue-100 border border-blue-200 rounded-lg shadow-sm">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                    <span className="text-sm font-semibold text-blue-800">AI Generated</span>
+                    {annotation.aiConfidence && (
+                      <span className="text-xs text-blue-700 font-medium">
                         {(annotation.aiConfidence * 100).toFixed(0)}% confidence
                       </span>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+              
+              {/* Progress Indicator */}
+              <ProgressIndicator
+                completed={completionProgress.overall.completed}
+                total={completionProgress.overall.total}
+                label="Annotation Progress"
+              />
+            </div>
           </div>
 
           {/* Right side - Action Buttons */}
           <div className="flex items-center gap-2 ml-4">
             <button
               onClick={onCancel}
-              className="btn-secondary-sm"
+              className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg text-sm font-medium transition-all duration-200 border border-gray-300 hover:border-gray-400"
             >
               Cancel
             </button>
             <button
               onClick={handleSave}
-              className="btn-primary-sm"
+              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
             >
-              Override
+              Save Changes
             </button>
             {annotation?.aiGenerated && !annotation.humanVerified && (
               <button
@@ -140,159 +165,268 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
                     console.error('Failed to verify annotation:', error);
                   }
                 }}
-                className="btn-success-sm"
+                className="px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 transition-all duration-200 shadow-sm hover:shadow-md"
               >
-                Mark as Verified
+                Verify & Save
               </button>
             )}
           </div>
         </div>
       </div>
 
-      {/* Main Content Grid */}
-      <div className="space-y-8">
-        {/* Basic Ratings - Each in its own row */}
-        <div className="space-y-6">
-          {/* Required Toggle */}
-          <div className="card-default-sm">
-            <label className="label-default mb-3">
-              Required Question
-            </label>
-            <div className="flex items-center">
-              <label className="flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={formData.required}
-                  onChange={(e) => updateField('required', e.target.checked)}
-                  className="w-5 h-5 text-primary-600 bg-gray-100 border-gray-300 rounded focus:ring-primary-500 focus:ring-2"
-                />
-                <span className="ml-3 text-sm font-medium text-gray-700">
-                  {formData.required ? 'Yes, this question is required' : 'No, this question is optional'}
-                </span>
-              </label>
-            </div>
+      {/* Sticky Question Preview */}
+      <div className="sticky top-[73px] bg-white border-b border-gray-200 px-6 py-4 z-10">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="text-sm font-semibold text-gray-700">Question Context</div>
+            {/* Question type badge */}
+            <span className="px-2 py-1 bg-gray-200 text-gray-600 rounded-full text-xs font-medium">
+              {question.type || 'Unknown'}
+            </span>
+            {/* Required/Optional badge */}
+            {question.required !== undefined && (
+              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                question.required 
+                  ? 'bg-red-100 text-red-700' 
+                  : 'bg-gray-100 text-gray-600'
+              }`}>
+                {question.required ? 'Required' : 'Optional'}
+              </span>
+            )}
+            <span className="text-xs text-gray-500">
+              {question.options?.length || 0} options
+            </span>
           </div>
-
-          {/* Quality Rating */}
-          <div className="card-default-sm">
-            <LikertScale
-              label="Overall Quality"
-              value={formData.quality}
-              onChange={(value) => updateField('quality', value)}
-              lowLabel="Poor"
-              highLabel="Excellent"
-            />
-          </div>
-
-          {/* Relevance Rating */}
-          <div className="card-default-sm">
-            <LikertScale
-              label="Relevance"
-              value={formData.relevant}
-              onChange={(value) => updateField('relevant', value)}
-              lowLabel="Not Relevant"
-              highLabel="Very Relevant"
-            />
-          </div>
+          <button
+            onClick={() => setIsPreviewExpanded(!isPreviewExpanded)}
+            className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+          >
+            {isPreviewExpanded ? 'Hide Details' : 'Show Details'}
+          </button>
         </div>
-
-        {/* Five Pillars Section - Each pillar in its own row */}
-        <div className="card-default">
-          <h5 className="text-lg font-semibold text-gray-800 mb-6 flex items-center">
-            <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-            Five Pillars Assessment
-          </h5>
-          <div className="space-y-6">
-            <LikertScale
-              label="Methodological Rigor"
-              value={formData.pillars.methodologicalRigor}
-              onChange={(value) => updateField('pillars', { ...formData.pillars, methodologicalRigor: value })}
-              lowLabel="Weak"
-              highLabel="Strong"
-            />
-            <LikertScale
-              label="Content Validity"
-              value={formData.pillars.contentValidity}
-              onChange={(value) => updateField('pillars', { ...formData.pillars, contentValidity: value })}
-              lowLabel="Weak"
-              highLabel="Strong"
-            />
-            <LikertScale
-              label="Respondent Experience"
-              value={formData.pillars.respondentExperience}
-              onChange={(value) => updateField('pillars', { ...formData.pillars, respondentExperience: value })}
-              lowLabel="Poor"
-              highLabel="Excellent"
-            />
-            <LikertScale
-              label="Analytical Value"
-              value={formData.pillars.analyticalValue}
-              onChange={(value) => updateField('pillars', { ...formData.pillars, analyticalValue: value })}
-              lowLabel="Low"
-              highLabel="High"
-            />
-            <LikertScale
-              label="Business Impact"
-              value={formData.pillars.businessImpact}
-              onChange={(value) => updateField('pillars', { ...formData.pillars, businessImpact: value })}
-              lowLabel="Low"
-              highLabel="High"
-            />
-          </div>
-        </div>
-
-        {/* Labels Section */}
-        <div className="card-default">
-          <label className="block text-sm font-semibold text-gray-700 mb-3">
-            Labels
-          </label>
-          <LabelsInput
-            labels={formData.labels || []}
-            onLabelsChange={(labels) => updateField('labels', labels)}
-            placeholder="Add labels for this question..."
-            maxLabels={8}
-          />
-        </div>
-
-        {/* AI Annotation Summary */}
-        {annotation?.aiGenerated && (
-          <div className="bg-blue-50 rounded-lg p-6 shadow-sm border border-blue-200">
-            <div className="flex items-center space-x-2 mb-4">
-              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-              <h5 className="text-lg font-semibold text-blue-800">AI Analysis Summary</h5>
-            </div>
-            <div className="space-y-3">
-              <div className="bg-white rounded-lg p-4 border border-blue-100">
-                <div className="text-sm font-medium text-blue-700 mb-2">AI Comment:</div>
-                <div className="text-sm text-gray-700 leading-relaxed">{annotation.comment}</div>
+        
+        {isPreviewExpanded && (
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <div className="text-sm text-gray-600 leading-relaxed mb-4">{question.text}</div>
+            
+            {/* Question Options Display */}
+            {question.options && question.options.length > 0 && (
+              <div className="mt-4">
+                <div className="text-sm font-semibold text-gray-700 mb-3">Answer Options:</div>
+                <div className="space-y-2">
+                  {question.options.map((option: any, idx: number) => (
+                    <div key={idx} className="flex items-center p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                      <div className="flex items-center justify-center w-6 h-6 bg-blue-100 text-blue-600 rounded-full text-sm font-medium mr-3 flex-shrink-0">
+                        {idx + 1}
+                      </div>
+                      <span className="text-sm text-gray-700 flex-1">
+                        {typeof option === 'string' ? option : 
+                         typeof option === 'object' && option !== null ? 
+                           (option as any)?.text || (option as any)?.label || (option as any)?.value || 'Option' : 
+                           String(option)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="flex items-center justify-between text-sm text-blue-600">
-                <span>Generated: {annotation.generationTimestamp ? new Date(annotation.generationTimestamp).toLocaleString() : 'Unknown'}</span>
-                <span>Confidence: {annotation.aiConfidence ? (annotation.aiConfidence * 100).toFixed(0) : 'N/A'}%</span>
-              </div>
-            </div>
+            )}
           </div>
         )}
+      </div>
 
-        {/* Comment Section */}
-        <div className="card-default">
-          <label className="block text-sm font-semibold text-gray-700 mb-3">
-            Additional Comments & Observations
-          </label>
-          <textarea
-            value={formData.comment}
-            onChange={(e) => updateField('comment', e.target.value)}
-            placeholder="Share your thoughts on this question's design, wording, placement, or any other observations that would help improve the survey..."
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-none"
-            rows={4}
-          />
-        </div>
+      {/* Tabbed Content */}
+      <div className="flex-1 overflow-y-auto px-6 py-4">
+        <TabGroup
+          tabs={[
+            {
+              id: 'essential',
+              label: 'Essential',
+              badge: `${completionProgress.essential.completed}/${completionProgress.essential.total}`,
+              content: (
+                <div className="space-y-6">
+                  {/* Required Toggle */}
+                  <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
+                    <label className="block text-sm font-semibold text-gray-700 mb-3">
+                      Required Question
+                    </label>
+                    <div className="flex items-center">
+                      <label className="flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.required}
+                          onChange={(e) => updateField('required', e.target.checked)}
+                          className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                        />
+                        <span className="ml-3 text-sm font-medium text-gray-700">
+                          {formData.required ? 'Yes, this question is required' : 'No, this question is optional'}
+                        </span>
+                      </label>
+                    </div>
+                  </div>
 
-        {/* Question Preview */}
-        <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-          <div className="text-sm font-semibold text-gray-700 mb-2">Question Preview:</div>
-          <div className="text-sm text-gray-600 leading-relaxed">{question.text}</div>
-        </div>
+                  {/* Quality Rating */}
+                  <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
+                    <LikertScale
+                      label="Overall Quality"
+                      value={formData.quality}
+                      onChange={(value) => updateField('quality', value)}
+                      lowLabel="Poor"
+                      highLabel="Excellent"
+                    />
+                  </div>
+
+                  {/* Relevance Rating */}
+                  <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
+                    <LikertScale
+                      label="Relevance"
+                      value={formData.relevant}
+                      onChange={(value) => updateField('relevant', value)}
+                      lowLabel="Not Relevant"
+                      highLabel="Very Relevant"
+                    />
+                  </div>
+                </div>
+              )
+            },
+            {
+              id: 'pillars',
+              label: 'Five Pillars',
+              badge: `${completionProgress.pillars.completed}/${completionProgress.pillars.total}`,
+              content: (
+                <div className="space-y-6">
+                  <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
+                    <h5 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                      <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                      Five Pillars Assessment
+                    </h5>
+                    <div className="space-y-6">
+                      <div className="flex items-center space-x-2">
+                        <LikertScale
+                          label="Methodological Rigor"
+                          value={formData.pillars.methodologicalRigor}
+                          onChange={(value) => updateField('pillars', { ...formData.pillars, methodologicalRigor: value })}
+                          lowLabel="Weak"
+                          highLabel="Strong"
+                        />
+                        <PillarTooltip
+                          pillarName="Methodological Rigor"
+                          description="Measures the scientific rigor and methodological soundness of the question design."
+                          examples={{
+                            high: "Clear question wording, appropriate response options, follows survey best practices",
+                            low: "Ambiguous wording, leading questions, inappropriate response scales"
+                          }}
+                        />
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <LikertScale
+                          label="Content Validity"
+                          value={formData.pillars.contentValidity}
+                          onChange={(value) => updateField('pillars', { ...formData.pillars, contentValidity: value })}
+                          lowLabel="Weak"
+                          highLabel="Strong"
+                        />
+                        <PillarTooltip
+                          pillarName="Content Validity"
+                          description="Assesses whether the question accurately measures what it intends to measure."
+                          examples={{
+                            high: "Question directly measures the intended construct without bias",
+                            low: "Question measures something different than intended or has systematic bias"
+                          }}
+                        />
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <LikertScale
+                          label="Respondent Experience"
+                          value={formData.pillars.respondentExperience}
+                          onChange={(value) => updateField('pillars', { ...formData.pillars, respondentExperience: value })}
+                          lowLabel="Poor"
+                          highLabel="Excellent"
+                        />
+                        <PillarTooltip
+                          pillarName="Respondent Experience"
+                          description="Evaluates how easy and engaging the question is for survey respondents."
+                          examples={{
+                            high: "Clear, engaging, easy to understand and answer",
+                            low: "Confusing, boring, difficult to understand or answer"
+                          }}
+                        />
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <LikertScale
+                          label="Analytical Value"
+                          value={formData.pillars.analyticalValue}
+                          onChange={(value) => updateField('pillars', { ...formData.pillars, analyticalValue: value })}
+                          lowLabel="Low"
+                          highLabel="High"
+                        />
+                        <PillarTooltip
+                          pillarName="Analytical Value"
+                          description="Measures the usefulness of responses for data analysis and insights."
+                          examples={{
+                            high: "Provides rich, actionable data for analysis and decision-making",
+                            low: "Limited analytical value, difficult to interpret or act upon"
+                          }}
+                        />
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <LikertScale
+                          label="Business Impact"
+                          value={formData.pillars.businessImpact}
+                          onChange={(value) => updateField('pillars', { ...formData.pillars, businessImpact: value })}
+                          lowLabel="Low"
+                          highLabel="High"
+                        />
+                        <PillarTooltip
+                          pillarName="Business Impact"
+                          description="Evaluates the potential business value and strategic importance of this question."
+                          examples={{
+                            high: "Directly supports key business decisions and strategic objectives",
+                            low: "Limited business relevance or unclear connection to objectives"
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            },
+            {
+              id: 'additional',
+              label: 'Additional',
+              badge: `${completionProgress.additional.completed}/${completionProgress.additional.total}`,
+              content: (
+                <div className="space-y-6">
+                  {/* Labels Section */}
+                  <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
+                    <label className="block text-sm font-semibold text-gray-700 mb-3">
+                      Labels
+                    </label>
+                    <LabelsInput
+                      labels={formData.labels || []}
+                      onLabelsChange={(labels) => updateField('labels', labels)}
+                      placeholder="Add labels for this question..."
+                      maxLabels={8}
+                    />
+                  </div>
+
+                  {/* Comment Section */}
+                  <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
+                    <label className="block text-sm font-semibold text-gray-700 mb-3">
+                      Additional Comments & Observations
+                    </label>
+                    <textarea
+                      value={formData.comment}
+                      onChange={(e) => updateField('comment', e.target.value)}
+                      placeholder="Share your thoughts on this question's design, wording, placement, or any other observations that would help improve the survey..."
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-none"
+                      rows={4}
+                    />
+                  </div>
+                </div>
+              )
+            }
+          ]}
+        />
       </div>
     </div>
   );

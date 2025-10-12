@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { TagIcon } from '@heroicons/react/24/outline';
 import { QuestionAnnotation, SectionAnnotation, SurveyLevelAnnotation } from '../types';
 import QuestionAnnotationPanel from './QuestionAnnotationPanel';

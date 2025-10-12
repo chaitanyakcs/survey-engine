@@ -1091,6 +1091,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
       
       const backendAnnotations = await response.json();
       console.log('🔍 [Store] Loaded annotations from backend:', backendAnnotations);
+      console.log('🔍 [Store] First question annotation:', backendAnnotations.question_annotations?.[0]);
+      console.log('🔍 [Store] AI generated field:', backendAnnotations.question_annotations?.[0]?.ai_generated);
       
       // Transform backend format to frontend format
       const frontendAnnotations: SurveyAnnotations = {
@@ -1099,7 +1101,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           const originalQuestionId = qa.question_id;
           const mappedQuestionId = qa.question_id?.replace(`${surveyId}_`, '') || qa.question_id;
           console.log('🔍 [Store] Mapping question ID:', { originalQuestionId, mappedQuestionId, surveyId });
-          return {
+          const transformedAnnotation = {
             questionId: mappedQuestionId,
             required: qa.required,
             quality: qa.quality,
@@ -1126,6 +1128,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
             originalAiRelevant: qa.original_ai_relevant,
             originalAiComment: qa.original_ai_comment
           };
+          console.log('🔍 [Store] Transformed annotation:', transformedAnnotation);
+          console.log('🔍 [Store] Transformed aiGenerated:', transformedAnnotation.aiGenerated);
+          return transformedAnnotation;
         }),
         sectionAnnotations: (backendAnnotations.section_annotations || []).map((sa: any, index: number) => {
           // For now, map section annotations by index order

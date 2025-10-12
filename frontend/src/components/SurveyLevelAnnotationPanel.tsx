@@ -138,7 +138,7 @@ const SurveyLevelAnnotationPanel: React.FC<SurveyLevelAnnotationPanelProps> = ({
               <TagIcon className="w-6 h-6 text-blue-600" />
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">Survey-Level Annotation</h2>
+              <h2 className="text-xl font-semibold text-gray-900">Survey Annotation</h2>
               <p className="text-sm text-gray-500">Add comprehensive annotations for the entire survey</p>
             </div>
           </div>

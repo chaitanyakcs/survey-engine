@@ -96,25 +96,18 @@ const SectionAnnotationPanel: React.FC<SectionAnnotationPanelProps> = ({
       {/* Header */}
       <div className="card-default-sm mb-6">
         <div className="flex justify-between items-start">
-          {/* Left side - Title and AI Status */}
+          {/* Left side - AI Status */}
           <div className="flex-1">
-            <div className="flex items-center space-x-3 mb-2">
-              <div className="w-3 h-3 bg-secondary-500 rounded-full"></div>
-              <h4 className="heading-4">
-                Section Annotation
-              </h4>
-            </div>
-            
             {/* AI Status Card */}
             {annotation?.aiGenerated && (
-              <div className="badge-secondary">
+              <div className="inline-flex items-center px-3 py-2 bg-blue-100 border border-blue-200 rounded-lg shadow-sm">
                 <div className="flex items-center space-x-2">
-                  <div className="w-2 h-2 bg-secondary-500 rounded-full animate-pulse"></div>
-                  <span className="text-sm font-medium text-secondary-800">AI Generated</span>
+                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                  <span className="text-sm font-semibold text-blue-800">AI Generated</span>
                   {annotation.aiConfidence && (
-                    <div className="flex items-center space-x-1 ml-2">
-                      <div className="w-1 h-1 bg-secondary-400 rounded-full"></div>
-                      <span className="text-xs text-secondary-600 font-medium">
+                    <div className="flex items-center space-x-1 ml-2 px-2 py-1 bg-blue-50 rounded-full">
+                      <div className="w-1 h-1 bg-blue-400 rounded-full"></div>
+                      <span className="text-xs text-blue-700 font-medium">
                         {(annotation.aiConfidence * 100).toFixed(0)}% confidence
                       </span>
                     </div>
