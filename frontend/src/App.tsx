@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useAppStore } from './store/useAppStore';
-import { SurveyGeneratorPage, SurveyPreviewPage, GoldenExamplesPage } from './pages';
+import { SurveyGeneratorPage, SurveyPreviewPage, GoldenExamplesPage, SurveyEditPage, SurveyViewPage } from './pages';
 import { RulesPage } from './pages/RulesPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { SurveysPage } from './pages/SurveysPage';
@@ -18,6 +18,8 @@ function App() {
   // Simple routing based on URL path
   const getCurrentPage = () => {
     const path = window.location.pathname;
+    console.log('🔍 [App] Current path:', path);
+    
     if (path === '/preview') {
       return 'preview';
     }
@@ -29,6 +31,14 @@ function App() {
     }
     if (path === '/surveys') {
       return 'surveys';
+    }
+    if (path.startsWith('/surveys/') && path.includes('/edit')) {
+      console.log('✅ [App] Detected survey-edit route');
+      return 'survey-edit';
+    }
+    if (path.startsWith('/surveys/') && !path.includes('/edit')) {
+      console.log('✅ [App] Detected survey-view route');
+      return 'survey-view';
     }
     if (path === '/golden-examples') {
       return 'golden-examples';
@@ -55,7 +65,7 @@ function App() {
   };
 
   const currentPage = getCurrentPage();
-
+  console.log('🎯 [App] Current page:', currentPage);
 
   // Initialize app and recover any pending workflows/reviews and document state
   useEffect(() => {
@@ -99,6 +109,10 @@ function App() {
           <SettingsPage />
         ) : currentPage === 'surveys' ? (
           <SurveysPage />
+        ) : currentPage === 'survey-edit' ? (
+          <SurveyEditPage />
+        ) : currentPage === 'survey-view' ? (
+          <SurveyViewPage />
         ) : currentPage === 'golden-examples' ? (
           <GoldenExamplesPage />
         ) : currentPage === 'golden-edit' ? (

@@ -25,7 +25,7 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
   onSurveyLevelAnnotation,
   onExitAnnotationMode
 }) => {
-  const { selectedQuestionId } = useAppStore();
+  const { selectedQuestionId, setSelectedQuestion } = useAppStore();
   
   // Annotation fixed pane state
   const [annotationPane, setAnnotationPane] = useState({
@@ -38,6 +38,9 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
   console.log('🔍 [AnnotationMode] Survey sections:', survey?.sections);
   console.log('🔍 [AnnotationMode] Survey questions:', survey?.questions);
   console.log('🔍 [AnnotationMode] Survey final_output:', survey?.final_output);
+  console.log('🔍 [AnnotationMode] Current annotations:', currentAnnotations);
+  console.log('🔍 [AnnotationMode] Question annotations count:', currentAnnotations?.questionAnnotations?.length);
+  console.log('🔍 [AnnotationMode] Section annotations count:', currentAnnotations?.sectionAnnotations?.length);
   
   // Handle nested survey data structure
   const actualSurvey = survey?.final_output || survey;
@@ -66,11 +69,16 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
   
   // Use global state for selected question
   const selectedQuestion = selectedQuestionId;
+  console.log('🔍 [AnnotationMode] Current selectedQuestion:', selectedQuestion);
+  console.log('🔍 [AnnotationMode] Current annotationPane:', annotationPane);
 
   // When a question is selected, open fixed pane
   const handleQuestionSelect = (questionId: string) => {
+    console.log('🔍 [AnnotationMode] Question selected:', questionId);
     const question = sectionsToUse.flatMap((s: any) => s.questions || []).find((q: any) => (q.question_id || q.id) === questionId);
     if (question) {
+      // Update global selected question state
+      setSelectedQuestion(questionId);
       setAnnotationPane({
         type: 'question',
         target: question
@@ -82,11 +90,16 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
   const handleSectionSelect = (sectionId: string) => {
     console.log('🔍 [AnnotationMode] Section selected:', sectionId);
     const section = sectionsToUse.find((s: any) => String(s.id || s.section_id) === sectionId);
+    console.log('🔍 [AnnotationMode] Found section:', section);
+    console.log('🔍 [AnnotationMode] Section ID structure:', section?.id, section?.section_id);
     if (section) {
+      // Clear any selected question when selecting a section
+      setSelectedQuestion(undefined);
       setAnnotationPane({
         type: 'section',
         target: section
       });
+      console.log('🔍 [AnnotationMode] Set annotationPane to section:', section);
     }
   };
 
@@ -105,8 +118,32 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
     console.log('🔍 [AnnotationMode] Current annotations:', currentAnnotations);
     console.log('🔍 [AnnotationMode] Question annotations:', currentAnnotations?.questionAnnotations);
     
-    const annotation = currentAnnotations?.questionAnnotations?.find((qa: QuestionAnnotation) => qa.questionId === questionId);
-    console.log('🔍 [AnnotationMode] Found annotation:', annotation);
+    if (!currentAnnotations?.questionAnnotations) {
+      console.log('🔍 [AnnotationMode] No question annotations available');
+      return undefined;
+    }
+    
+    // Handle both simple and prefixed question IDs
+    const annotation = currentAnnotations.questionAnnotations.find((qa: QuestionAnnotation) => {
+      // Direct match
+      if (qa.questionId === questionId) {
+        console.log('🔍 [AnnotationMode] Direct match found:', qa.questionId, 'AI:', qa.aiGenerated);
+        return true;
+      }
+      // Match with survey ID prefix (if we have survey ID)
+      if (survey?.survey_id && qa.questionId === `${survey.survey_id}_${questionId}`) {
+        console.log('🔍 [AnnotationMode] Prefixed match found:', qa.questionId, 'AI:', qa.aiGenerated);
+        return true;
+      }
+      // Match after removing survey ID prefix
+      if (qa.questionId?.endsWith(`_${questionId}`)) {
+        console.log('🔍 [AnnotationMode] Suffix match found:', qa.questionId, 'AI:', qa.aiGenerated);
+        return true;
+      }
+      return false;
+    });
+    
+    console.log('🔍 [AnnotationMode] Final annotation result:', annotation);
     return annotation;
   };
 
@@ -114,13 +151,6 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
     return currentAnnotations?.sectionAnnotations?.find((sa: SectionAnnotation) => sa.sectionId === sectionId);
   };
 
-  const isAnnotated = (type: 'question' | 'section', id: string) => {
-    if (type === 'question') {
-      return getQuestionAnnotation(id) !== undefined;
-    } else {
-      return getSectionAnnotation(id) !== undefined;
-    }
-  };
 
   return (
     <div className="w-full h-screen flex flex-col bg-gray-50">
@@ -137,9 +167,9 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
           <div className="flex items-center space-x-3">
             <button
               onClick={onExitAnnotationMode}
-              className="px-4 py-2 bg-gray-600 text-white text-sm font-medium rounded-lg hover:bg-gray-700"
+              className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700"
             >
-              Exit Annotation Mode
+              Save and Exit
             </button>
           </div>
         </div>
@@ -165,8 +195,20 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
                 }`}>
                   {/* Section Header */}
                   <div className={`flex items-center justify-between p-3 transition-colors ${
-                    annotationPane.type === 'section' && annotationPane.target?.id === sectionId
-                      ? 'bg-blue-50 border-l-4 border-blue-500 shadow-md ring-2 ring-blue-200'
+                    (() => {
+                      const targetSectionId = String(annotationPane.target?.id || annotationPane.target?.section_id);
+                      const isSelected = annotationPane.type === 'section' && targetSectionId === sectionId;
+                      console.log('🔍 [AnnotationMode] Section highlighting check:', {
+                        sectionId,
+                        annotationPaneType: annotationPane.type,
+                        annotationPaneTargetId: annotationPane.target?.id,
+                        annotationPaneTargetSectionId: annotationPane.target?.section_id,
+                        targetSectionId,
+                        isSelected
+                      });
+                      return isSelected;
+                    })()
+                      ? 'bg-amber-50 border-l-2 border-amber-300 shadow-sm ring-1 ring-amber-200'
                       : 'hover:bg-gray-50'
                   }`}>
                     <div 
@@ -174,13 +216,38 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
                       onClick={() => handleSectionSelect(sectionId)}
                     >
                       <span className={`font-medium transition-colors ${
-                        annotationPane.type === 'section' && annotationPane.target?.id === sectionId
-                          ? 'text-blue-900 font-semibold'
+                        (() => {
+                          const targetSectionId = String(annotationPane.target?.id || annotationPane.target?.section_id);
+                          const isSelected = annotationPane.type === 'section' && targetSectionId === sectionId;
+                          return isSelected;
+                        })()
+                          ? 'text-amber-800 font-semibold'
                           : 'text-gray-900'
                       }`}>{section.title}</span>
-                      {isAnnotated('section', sectionId) && (
-                        <div className="w-2 h-2 bg-success-500 rounded-full"></div>
-                      )}
+                      {(() => {
+                        const annotation = getSectionAnnotation(sectionId);
+                        if (annotation) {
+                          if (annotation.aiGenerated) {
+                            return (
+                              <div className="flex items-center space-x-1 flex-shrink-0 ml-2">
+                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                  🤖 AI
+                                </span>
+                                {annotation.aiConfidence && (
+                                  <span className="text-xs text-blue-600">
+                                    {Math.round(annotation.aiConfidence * 100)}%
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          } else {
+                            return (
+                              <div className="w-2 h-2 bg-success-500 rounded-full"></div>
+                            );
+                          }
+                        }
+                        return null;
+                      })()}
                     </div>
                     <button
                       onClick={(e) => {
@@ -210,18 +277,18 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
                               key={questionId}
                               className={`flex items-center justify-between p-3 cursor-pointer transition-all duration-200 ${
                                 selectedQuestion === questionId
-                                  ? 'bg-blue-50 border-l-4 border-blue-500 shadow-md ring-2 ring-blue-200'
+                                  ? 'bg-amber-50 border-l-2 border-amber-300 shadow-sm ring-1 ring-amber-200'
                                   : 'hover:bg-gray-100'
                               }`}
                               onClick={() => handleQuestionSelect(questionId)}
                             >
                               <div className="flex items-center space-x-2 flex-1 min-w-0">
                                 {selectedQuestion === questionId && (
-                                  <div className="w-1 h-6 bg-blue-500 rounded-full flex-shrink-0"></div>
+                                  <div className="w-1 h-6 bg-amber-400 rounded-full flex-shrink-0"></div>
                                 )}
                                 <span className={`text-sm transition-colors flex-1 min-w-0 ${
                                   selectedQuestion === questionId
-                                    ? 'text-blue-900 font-semibold'
+                                    ? 'text-amber-800 font-semibold'
                                     : 'text-gray-700'
                                 }`}>
                                   {(() => {
@@ -230,9 +297,30 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
                                     return words.length > 30 ? words.slice(0, 30).join(' ') + '...' : fullText;
                                   })()}
                                 </span>
-                                {isAnnotated('question', questionId) && (
-                                  <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0 ml-2"></div>
-                                )}
+                                {(() => {
+                                  const annotation = getQuestionAnnotation(questionId);
+                                  if (annotation) {
+                                    if (annotation.aiGenerated) {
+                                      return (
+                                        <div className="flex items-center space-x-1 flex-shrink-0 ml-2">
+                                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                            🤖 AI
+                                          </span>
+                                          {annotation.aiConfidence && (
+                                            <span className="text-xs text-blue-600">
+                                              {Math.round(annotation.aiConfidence * 100)}%
+                                            </span>
+                                          )}
+                                        </div>
+                                      );
+                                    } else {
+                                      return (
+                                        <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0 ml-2"></div>
+                                      );
+                                    }
+                                  }
+                                  return null;
+                                })()}
                               </div>
                             </div>
                           );

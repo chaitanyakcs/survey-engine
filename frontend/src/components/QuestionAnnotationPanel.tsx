@@ -23,6 +23,8 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
   onSave,
   onCancel
 }) => {
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isVerified, setIsVerified] = useState(annotation?.humanVerified || false);
 
   const [formData, setFormData] = useState<QuestionAnnotation>({
     questionId: question.id,
@@ -61,11 +63,8 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
       labels: annotation?.labels ?? [],
       timestamp: new Date().toISOString()
     });
+    setIsVerified(annotation?.humanVerified || false);
   }, [question.id, annotation]);
-
-  const handleSave = () => {
-    onSave(formData);
-  };
 
   const updateField = (field: keyof QuestionAnnotation, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -141,34 +140,35 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
 
           {/* Right side - Action Buttons */}
           <div className="flex items-center gap-2 ml-4">
-            <button
-              onClick={onCancel}
-              className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg text-sm font-medium transition-all duration-200 border border-gray-300 hover:border-gray-400"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
-            >
-              Save Changes
-            </button>
-            {annotation?.aiGenerated && !annotation.humanVerified && (
+            {annotation?.aiGenerated && !isVerified && (
               <button
                 onClick={async () => {
                   try {
+                    setIsVerifying(true);
                     const { verifyAIAnnotation, currentSurvey } = useAppStore.getState();
-                    if (currentSurvey?.survey_id) {
-                      await verifyAIAnnotation(currentSurvey.survey_id, parseInt(question.id), 'question');
+                    if (currentSurvey?.survey_id && annotation?.id) {
+                      console.log('🔍 [QuestionAnnotationPanel] Verifying annotation:', { surveyId: currentSurvey.survey_id, annotationId: annotation.id });
+                      await verifyAIAnnotation(currentSurvey.survey_id, annotation.id, 'question');
+                      setIsVerified(true);
+                    } else {
+                      console.error('🔍 [QuestionAnnotationPanel] Missing survey ID or annotation ID:', { surveyId: currentSurvey?.survey_id, annotationId: annotation?.id });
                     }
                   } catch (error) {
                     console.error('Failed to verify annotation:', error);
+                  } finally {
+                    setIsVerifying(false);
                   }
                 }}
-                className="px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 transition-all duration-200 shadow-sm hover:shadow-md"
+                disabled={isVerifying}
+                className="px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Verify & Save
+                {isVerifying ? 'Verifying...' : 'Mark as Reviewed'}
               </button>
+            )}
+            {annotation?.aiGenerated && isVerified && (
+              <div className="px-4 py-2 bg-green-100 text-green-800 text-sm font-medium rounded-lg border border-green-200">
+                ✓ Human Verified
+              </div>
             )}
           </div>
         </div>

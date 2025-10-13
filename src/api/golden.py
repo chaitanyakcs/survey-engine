@@ -222,6 +222,9 @@ class DocumentParseResponse(BaseModel):
     survey_json: Dict[Any, Any]
     confidence_score: Optional[float]
     extracted_text: str
+    product_category: Optional[str] = None
+    research_goal: Optional[str] = None
+    methodologies: Optional[List[str]] = None
 
 
 @router.post("/parse-document", response_model=DocumentParseResponse)

@@ -950,40 +950,6 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                             <h3 className="text-3xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent mb-3">Survey Generated Successfully!</h3>
                             <p className="text-slate-600 text-lg">Your AI-powered survey is ready for review and deployment.</p>
                           </div>
-                          {/* Survey Summary */}
-                          {currentSurvey && (
-                            <div className="bg-gradient-to-br from-slate-50 to-blue-50 border border-slate-200 rounded-2xl p-6 mb-8 shadow-sm">
-                              <h4 className="text-lg font-semibold text-slate-800 mb-4 flex items-center">
-                                <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center mr-3">
-                                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                                  </svg>
-                                </div>
-                                Survey Summary
-                              </h4>
-                              <div className="grid grid-cols-2 gap-6 text-sm">
-                                <div className="space-y-1">
-                                  <span className="text-slate-500 font-medium">Title:</span>
-                                  <p className="font-semibold text-slate-800 text-base">{currentSurvey.title || 'Generated Survey'}</p>
-                                </div>
-                                <div className="space-y-1">
-                                  <span className="text-slate-500 font-medium">Questions:</span>
-                                  <p className="font-semibold text-slate-800 text-base">
-                                    {currentSurvey.sections?.reduce((total, section) => total + (section.questions?.length || 0), 0) ||
-                                     currentSurvey.questions?.length || 0} questions
-                                  </p>
-                                </div>
-                                <div className="space-y-1">
-                                  <span className="text-slate-500 font-medium">Sections:</span>
-                                  <p className="font-semibold text-slate-800 text-base">{currentSurvey.sections?.length || 1} sections</p>
-                                </div>
-                                <div className="space-y-1">
-                                  <span className="text-slate-500 font-medium">Survey ID:</span>
-                                  <p className="font-mono text-xs text-slate-600 bg-slate-100 px-2 py-1 rounded">{currentSurvey.survey_id}</p>
-                                </div>
-                              </div>
-                            </div>
-                          )}
 
                           {/* Evaluation Failure Message */}
                           {currentSurvey?.pillar_scores && (currentSurvey.pillar_scores as any).evaluation_failed && (

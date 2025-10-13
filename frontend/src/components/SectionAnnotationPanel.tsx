@@ -22,6 +22,9 @@ const SectionAnnotationPanel: React.FC<SectionAnnotationPanelProps> = ({
   onCancel
 }) => {
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isVerified, setIsVerified] = useState(annotation?.humanVerified || false);
+
   const [formData, setFormData] = useState<SectionAnnotation>({
     sectionId: String(section.id),
     quality: annotation?.quality ?? 3,
@@ -63,11 +66,8 @@ const SectionAnnotationPanel: React.FC<SectionAnnotationPanelProps> = ({
       mandatory_elements: annotation?.mandatory_elements ?? {},
       compliance_score: annotation?.compliance_score ?? 0
     });
+    setIsVerified(annotation?.humanVerified || false);
   }, [section.id, annotation]);
-
-  const handleSave = () => {
-    onSave(formData);
-  };
 
   const updateField = (field: keyof SectionAnnotation, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -119,34 +119,35 @@ const SectionAnnotationPanel: React.FC<SectionAnnotationPanelProps> = ({
 
           {/* Right side - Action Buttons */}
           <div className="flex items-center gap-2 ml-4">
-            <button
-              onClick={onCancel}
-              className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg text-sm font-medium transition-all duration-200 border border-gray-300 hover:border-gray-400"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              className="px-4 py-2 bg-orange-500 text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-all duration-200 shadow-sm hover:shadow-md"
-            >
-              Override
-            </button>
-            {annotation?.aiGenerated && !annotation.humanVerified && (
+            {annotation?.aiGenerated && !isVerified && (
               <button
                 onClick={async () => {
                   try {
+                    setIsVerifying(true);
                     const { verifyAIAnnotation, currentSurvey } = useAppStore.getState();
-                    if (currentSurvey?.survey_id) {
-                      await verifyAIAnnotation(currentSurvey.survey_id, section.id, 'section');
+                    if (currentSurvey?.survey_id && annotation?.id) {
+                      console.log('🔍 [SectionAnnotationPanel] Verifying annotation:', { surveyId: currentSurvey.survey_id, annotationId: annotation.id });
+                      await verifyAIAnnotation(currentSurvey.survey_id, annotation.id, 'section');
+                      setIsVerified(true);
+                    } else {
+                      console.error('🔍 [SectionAnnotationPanel] Missing survey ID or annotation ID:', { surveyId: currentSurvey?.survey_id, annotationId: annotation?.id });
                     }
                   } catch (error) {
                     console.error('Failed to verify annotation:', error);
+                  } finally {
+                    setIsVerifying(false);
                   }
                 }}
-                className="px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 transition-all duration-200 shadow-sm hover:shadow-md"
+                disabled={isVerifying}
+                className="px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Mark as Verified
+                {isVerifying ? 'Verifying...' : 'Mark as Reviewed'}
               </button>
+            )}
+            {annotation?.aiGenerated && isVerified && (
+              <div className="px-4 py-2 bg-green-100 text-green-800 text-sm font-medium rounded-lg border border-green-200">
+                ✓ Human Verified
+              </div>
             )}
           </div>
         </div>

@@ -37,7 +37,9 @@ const AnnotationPage: React.FC = () => {
         hasLoaded.current = true;
         
         // Load annotations for this survey
+        console.log('🔍 [AnnotationPage] Loading annotations for survey:', surveyId);
         await loadAnnotations(surveyId);
+        console.log('🔍 [AnnotationPage] Annotations loaded, current annotations:', useAppStore.getState().currentAnnotations);
         
         // If no current survey is loaded, load it from the API
         if (!currentSurvey || currentSurvey.survey_id !== surveyId) {

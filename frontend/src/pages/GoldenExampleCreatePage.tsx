@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { GoldenExampleRequest } from '../types';
+import { GoldenExampleRequest, DocumentParseResponse } from '../types';
 import { Sidebar } from '../components/Sidebar';
 import { IntelligentFieldExtractor } from '../components/IntelligentFieldExtractor';
 import { useSidebarLayout } from '../hooks/useSidebarLayout';
@@ -371,14 +371,17 @@ export const GoldenExampleCreatePage: React.FC = () => {
         throw new Error(errorData.detail || 'Failed to parse document');
       }
       
-      const result = await response.json();
+      const result: DocumentParseResponse = await response.json();
       console.log('✅ [Document Parse] API response received:', {
         has_survey_json: !!result.survey_json,
         survey_json_type: typeof result.survey_json,
         survey_json_keys: result.survey_json ? Object.keys(result.survey_json) : 'No survey_json',
         has_extracted_text: !!result.extracted_text,
         extracted_text_length: result.extracted_text?.length || 0,
-        confidence_score: result.confidence_score
+        confidence_score: result.confidence_score,
+        product_category: result.product_category,
+        research_goal: result.research_goal,
+        methodologies: result.methodologies
       });
       
       setExtractedText(result.extracted_text);
@@ -407,9 +410,60 @@ export const GoldenExampleCreatePage: React.FC = () => {
           questions_count: surveyJson.questions?.length || 0,
           methodologies: surveyJson.methodologies
         });
-        
-        setFormData(prev => ({ ...prev, survey_json: surveyJson }));
-        console.log('💾 [Document Parse] Survey JSON saved to form data');
+
+        // Mapping functions for metadata fields
+        const mapProductCategoryToIndustry = (productCategory: string): string => {
+          const mapping: Record<string, string> = {
+            'electronics': 'technology',
+            'appliances': 'technology',
+            'healthcare_technology': 'healthcare',
+            'enterprise_software': 'technology',
+            'automotive': 'automotive',
+            'financial_services': 'finance',
+            'hospitality': 'hospitality',
+            'retail': 'retail',
+            'education': 'education',
+            'manufacturing': 'manufacturing',
+            'other': 'other'
+          };
+          return mapping[productCategory?.toLowerCase()] || '';
+        };
+
+        const mapMethodologiesToTags = (methodologies: string[]): string[] => {
+          if (!Array.isArray(methodologies)) return [];
+          return methodologies.map(m => m.toLowerCase().replace(/_/g, ' '));
+        };
+
+        // Extract and map metadata fields
+        const industryCategory = mapProductCategoryToIndustry(result.product_category || '');
+        const researchGoal = result.research_goal || '';
+        const methodologyTags = mapMethodologiesToTags(result.methodologies || []);
+
+        console.log('🔧 [Document Parse] Metadata mapping:', {
+          product_category: result.product_category,
+          mapped_industry_category: industryCategory,
+          research_goal: researchGoal,
+          methodologies: result.methodologies,
+          mapped_methodology_tags: methodologyTags
+        });
+
+        setFormData(prev => ({
+          ...prev,
+          survey_json: surveyJson,
+          industry_category: industryCategory,
+          research_goal: researchGoal,
+          methodology_tags: methodologyTags
+        }));
+        console.log('💾 [Document Parse] Survey JSON and metadata saved to form data');
+
+        // Show success toast if metadata was auto-populated
+        if (industryCategory || researchGoal || methodologyTags.length > 0) {
+          addToast({
+            type: 'success',
+            title: 'Document Parsed Successfully',
+            message: 'Metadata fields auto-populated!'
+          });
+        }
         
         // Trigger automatic field extraction after document parsing
         console.log('🤖 [Document Parse] Triggering automatic field extraction...');

@@ -29,7 +29,7 @@ export const GoldenExampleEditPage: React.FC = () => {
   };
   
   const [id] = useState<string | null>(getGoldenExampleId());
-  const { fetchGoldenExamples, updateGoldenExample } = useAppStore();
+  const { fetchGoldenExamples, updateGoldenExample, loadAnnotations } = useAppStore();
   const { mainContentClasses } = useSidebarLayout();
   
   const [example, setExample] = useState<GoldenExample | null>(null);
@@ -128,6 +128,20 @@ export const GoldenExampleEditPage: React.FC = () => {
           research_goal: foundExample.research_goal || '',
           quality_score: foundExample.quality_score
         });
+
+        // Load annotations for this survey if it has a survey_id
+        if (actualSurvey?.survey_id) {
+          try {
+            console.log('🔍 [GoldenExampleEdit] Loading annotations for survey:', actualSurvey.survey_id);
+            await loadAnnotations(actualSurvey.survey_id);
+            console.log('✅ [GoldenExampleEdit] Annotations loaded successfully');
+          } catch (error) {
+            console.warn('⚠️ [GoldenExampleEdit] Failed to load annotations:', error);
+            // Continue without annotations - they'll be created when needed
+          }
+        } else {
+          console.log('⚠️ [GoldenExampleEdit] No survey_id found, skipping annotation loading');
+        }
       } else {
         console.log('❌ [GoldenExampleEdit] Golden example not found with ID:', id);
       }
@@ -136,7 +150,7 @@ export const GoldenExampleEditPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [id, fetchGoldenExamples]);
+  }, [id, fetchGoldenExamples, loadAnnotations]);
 
   useEffect(() => {
     loadGoldenExample();
@@ -200,8 +214,8 @@ export const GoldenExampleEditPage: React.FC = () => {
         <Sidebar currentView="golden-examples" onViewChange={handleViewChange} />
         <div className={`flex-1 ${mainContentClasses} transition-all duration-300 ease-in-out flex items-center justify-center`}>
           <div className="text-center">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Golden Example Not Found</h2>
-            <p className="text-gray-600 mb-4">The golden example you're looking for doesn't exist.</p>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Reference Example Not Found</h2>
+            <p className="text-gray-600 mb-4">The reference example you're looking for doesn't exist.</p>
             <button
               onClick={() => window.location.href = '/golden-examples'}
               className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
@@ -237,10 +251,10 @@ export const GoldenExampleEditPage: React.FC = () => {
                 </div>
                 <div>
                   <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
-                    {isEditing ? 'Edit Golden Example' : (example.survey_json?.title || 'Golden Example')}
+                    {isEditing ? 'Edit Reference Example' : 'Reference Example'}
                   </h1>
                   <p className="text-gray-600 mt-1">
-                    {isEditing ? 'Modify the golden example details' : 'View and edit survey example'}
+                    {isEditing ? 'Modify the reference example details' : 'View and edit reference example'}
                   </p>
                 </div>
               </div>
@@ -420,7 +434,7 @@ export const GoldenExampleEditPage: React.FC = () => {
                     {/* Survey Sub-tab Content */}
                     <div>
                       {activeSurveyTab === 'preview' && (
-                        <div className="max-w-4xl">
+                        <div className="w-full">
                           {(() => {
                             console.log('🔍 [GoldenExampleEdit] ===== RENDERING SURVEY PREVIEW =====');
                             console.log('🔍 [GoldenExampleEdit] activeSurveyTab:', activeSurveyTab);

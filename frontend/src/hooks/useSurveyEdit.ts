@@ -125,6 +125,8 @@ export const useSurveyEdit = ({ surveyId, onSuccess, onError }: UseSurveyEditOpt
   const reorderSections = async (sectionOrder: number[]) => {
     setIsSaving(true);
     try {
+      console.log('📤 Sending section order to backend:', sectionOrder);
+      
       const response = await fetch(`/api/v1/survey/${surveyId}/sections/reorder`, {
         method: 'PUT',
         headers: {
@@ -135,14 +137,86 @@ export const useSurveyEdit = ({ surveyId, onSuccess, onError }: UseSurveyEditOpt
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to reorder sections');
+        console.error('❌ Backend error response:', errorData);
+        
+        // Ensure we have a proper error message string
+        let errorMessage = 'Failed to reorder sections';
+        if (errorData && typeof errorData === 'object') {
+          if (typeof errorData.detail === 'string') {
+            errorMessage = errorData.detail;
+          } else if (typeof errorData.message === 'string') {
+            errorMessage = errorData.message;
+          } else if (typeof errorData.error === 'string') {
+            errorMessage = errorData.error;
+          } else {
+            // Fallback: try to stringify the error data
+            errorMessage = JSON.stringify(errorData);
+          }
+        } else if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        }
+        
+        throw new Error(errorMessage);
       }
 
       const result = await response.json();
+      console.log('✅ Backend success response:', result);
       onSuccess?.(result.message || 'Sections reordered successfully');
       return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to reorder sections';
+      console.error('❌ Frontend error:', errorMessage);
+      onError?.(errorMessage);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const reorderQuestions = async (questionOrder: string[]) => {
+    setIsSaving(true);
+    try {
+      console.log('📤 Sending question order to backend:', questionOrder);
+      
+      const response = await fetch(`/api/v1/survey/${surveyId}/questions/reorder`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(questionOrder)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('❌ Backend error response:', errorData);
+        
+        // Ensure we have a proper error message string
+        let errorMessage = 'Failed to reorder questions';
+        if (errorData && typeof errorData === 'object') {
+          if (typeof errorData.detail === 'string') {
+            errorMessage = errorData.detail;
+          } else if (typeof errorData.message === 'string') {
+            errorMessage = errorData.message;
+          } else if (typeof errorData.error === 'string') {
+            errorMessage = errorData.error;
+          } else {
+            // Fallback: try to stringify the error data
+            errorMessage = JSON.stringify(errorData);
+          }
+        } else if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        }
+        
+        throw new Error(errorMessage);
+      }
+
+      const result = await response.json();
+      console.log('✅ Backend success response:', result);
+      onSuccess?.(result.message || 'Questions reordered successfully');
+      return result;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to reorder questions';
+      console.error('❌ Frontend error:', errorMessage);
       onError?.(errorMessage);
       throw error;
     } finally {
@@ -179,6 +253,7 @@ export const useSurveyEdit = ({ surveyId, onSuccess, onError }: UseSurveyEditOpt
     createSection,
     deleteSection,
     reorderSections,
+    reorderQuestions,
     fetchSurvey
   };
 };

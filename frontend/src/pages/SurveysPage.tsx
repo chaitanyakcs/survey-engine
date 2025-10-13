@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from '../components/Sidebar';
 import { SurveyGenerationIndicator } from '../components/SurveyGenerationIndicator';
-import { SurveyPreview } from '../components/SurveyPreview';
 import { useAppStore } from '../store/useAppStore';
-import { SurveyListItem } from '../types';
+import { SurveyListItem, Survey } from '../types';
 import { useSidebarLayout } from '../hooks/useSidebarLayout';
 import { ToastContainer } from '../components/Toast';
 import { 
@@ -15,8 +14,26 @@ import {
   CheckIcon
 } from '@heroicons/react/24/outline';
 
+// Helper function to get sections count from survey
+const getSectionsCount = (survey: Survey | null | undefined): number => {
+  if (!survey) return 1;
+  
+  // Check if survey has sections
+  if (survey.sections && survey.sections.length > 0) {
+    return survey.sections.length;
+  }
+  
+  // If no sections but has questions, treat as 1 section
+  if (survey.questions && survey.questions.length > 0) {
+    return 1;
+  }
+  
+  // Default fallback
+  return 1;
+};
+
 export const SurveysPage: React.FC = () => {
-  const { setSurvey, setRFQInput, toasts, removeToast, addToast, workflow } = useAppStore();
+  const { setSurvey, setRFQInput, toasts, removeToast, addToast, workflow, currentSurvey } = useAppStore();
   const [surveys, setSurveys] = useState<SurveyListItem[]>([]);
   const [selectedSurvey, setSelectedSurvey] = useState<SurveyListItem | null>(null);
   const [loading, setLoading] = useState(true);
@@ -113,21 +130,29 @@ export const SurveysPage: React.FC = () => {
 
       if (surveyData.final_output?.sections && surveyData.final_output.sections.length > 0) {
         // New sections format
-        sections = surveyData.final_output.sections;
+        sections = surveyData.final_output.sections.map((section: any, index: number) => ({
+          ...section,
+          order: section.order || index + 1,
+          questions: (section.questions || []).sort((a: any, b: any) => (a.order || 0) - (b.order || 0))
+        })).sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
         extractedQuestions = sections.flatMap((section: any) => section.questions || []);
         console.log('📋 [Survey View] Using sections format - sections:', sections.length, 'questions:', extractedQuestions.length);
       } else if (surveyData.final_output?.questions && surveyData.final_output.questions.length > 0) {
         // Legacy questions format
-        extractedQuestions = surveyData.final_output.questions;
+        extractedQuestions = (surveyData.final_output.questions || []).sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
         console.log('📋 [Survey View] Using legacy questions format - questions:', extractedQuestions.length);
       } else if (surveyData.raw_output?.sections && surveyData.raw_output.sections.length > 0) {
         // Fallback to raw_output sections
-        sections = surveyData.raw_output.sections;
+        sections = surveyData.raw_output.sections.map((section: any, index: number) => ({
+          ...section,
+          order: section.order || index + 1,
+          questions: (section.questions || []).sort((a: any, b: any) => (a.order || 0) - (b.order || 0))
+        })).sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
         extractedQuestions = sections.flatMap((section: any) => section.questions || []);
         console.log('📋 [Survey View] Using raw_output sections format - sections:', sections.length, 'questions:', extractedQuestions.length);
       } else if (surveyData.raw_output?.questions && surveyData.raw_output.questions.length > 0) {
         // Fallback to raw_output questions
-        extractedQuestions = surveyData.raw_output.questions;
+        extractedQuestions = (surveyData.raw_output.questions || []).sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
         console.log('📋 [Survey View] Using raw_output questions format - questions:', extractedQuestions.length);
       }
 
@@ -188,7 +213,80 @@ export const SurveysPage: React.FC = () => {
 
   // Load surveys from URL parameter
   useEffect(() => {
+    console.log('🔍 [Survey List] Component mounted/updated, fetching surveys');
     fetchSurveys();
+  }, [fetchSurveys]);
+
+  // Force refresh when component becomes visible (more reliable than popstate)
+  useEffect(() => {
+    let lastRefreshTime = 0;
+    const REFRESH_COOLDOWN = 2000; // 2 seconds cooldown to prevent excessive refreshes
+    
+    const handlePageShow = () => {
+      const now = Date.now();
+      if (now - lastRefreshTime > REFRESH_COOLDOWN) {
+        console.log('🔄 [Survey List] Page show event, refreshing surveys');
+        lastRefreshTime = now;
+        fetchSurveys();
+      }
+    };
+
+    // Listen for page show event (when user navigates back to this page)
+    window.addEventListener('pageshow', handlePageShow);
+    
+    // Also refresh immediately if we're on surveys page
+    if (window.location.pathname === '/surveys') {
+      console.log('🔄 [Survey List] On surveys page, refreshing to ensure latest data');
+      fetchSurveys();
+    }
+    
+    return () => {
+      window.removeEventListener('pageshow', handlePageShow);
+    };
+  }, [fetchSurveys]);
+
+  // Refresh surveys when returning from individual survey view
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      console.log('🔍 [Survey List] Visibility changed:', { hidden: document.hidden, pathname: window.location.pathname });
+      if (!document.hidden && window.location.pathname === '/surveys') {
+        console.log('🔄 [Survey List] Page became visible, refreshing survey list');
+        fetchSurveys();
+      }
+    };
+
+    const handleFocus = () => {
+      console.log('🔍 [Survey List] Window focused:', { pathname: window.location.pathname });
+      if (window.location.pathname === '/surveys') {
+        console.log('🔄 [Survey List] Window focused, refreshing survey list');
+        fetchSurveys();
+      }
+    };
+
+    const handlePopState = () => {
+      console.log('🔍 [Survey List] Popstate event:', { pathname: window.location.pathname });
+      setCurrentUrl(window.location.search); // Update URL state
+      if (window.location.pathname === '/surveys') {
+        console.log('🔄 [Survey List] Navigated back to surveys page, refreshing survey list');
+        fetchSurveys();
+      }
+    };
+
+    // Listen for page visibility changes (when user navigates back)
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    // Listen for window focus (when user switches back to tab)
+    window.addEventListener('focus', handleFocus);
+    
+    // Listen for browser back/forward navigation
+    window.addEventListener('popstate', handlePopState);
+    
+    // Cleanup
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('popstate', handlePopState);
+    };
   }, [fetchSurveys]);
 
   // Handle URL parameter after surveys are loaded
@@ -212,20 +310,6 @@ export const SurveysPage: React.FC = () => {
     }
   }, [surveys, currentUrl, handleViewSurvey]);
 
-  // Listen for URL changes
-  useEffect(() => {
-    const handleUrlChange = () => {
-      setCurrentUrl(window.location.search);
-    };
-
-    // Listen for URL changes (back/forward navigation)
-    window.addEventListener('popstate', handleUrlChange);
-    
-    // Cleanup
-    return () => {
-      window.removeEventListener('popstate', handleUrlChange);
-    };
-  }, []);
 
   // Update URL when survey is selected
   useEffect(() => {
@@ -272,10 +356,9 @@ export const SurveysPage: React.FC = () => {
         return newSet;
       });
     } else {
-      const survey = surveys.find(s => s.id === surveyId);
-      if (survey) {
-        setSelectedSurvey(survey);
-      }
+      // Navigate to read-only view instead of edit mode
+      console.log('🖱️ [Click] Survey clicked, navigating to read-only view:', surveyId);
+      window.location.href = `/surveys/${surveyId}`;
     }
   };
 
@@ -393,27 +476,30 @@ export const SurveysPage: React.FC = () => {
       <div className={`flex-1 ${mainContentClasses} transition-all duration-300 ease-in-out`}>
         {selectedSurvey ? (
           <div className="h-full flex flex-col">
-            {/* Header with back button */}
-            <div className="bg-white/80 backdrop-blur-sm border-b border-gray-200/50 p-6 shadow-sm">
+            {/* Survey Header with Title and Metadata */}
+            <div className="bg-white/80 backdrop-blur-sm border-b border-gray-200/50 px-6 py-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-4">
                   <button
                     onClick={handleBack}
-                    className="p-3 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-xl transition-all duration-200 group"
+                    className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all duration-200 group"
                   >
-                    <svg className="h-6 w-6 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="h-5 w-5 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                     </svg>
                   </button>
-                  <div className="flex items-center space-x-3">
-                    <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-amber-600 rounded-xl flex items-center justify-center shadow-lg">
-                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">{selectedSurvey.title}</h1>
-                      <p className="text-gray-600">{selectedSurvey.description}</p>
+                  
+                  <div className="flex-1">
+                    <h1 className="text-xl font-bold text-gray-900 mb-1">
+                      {selectedSurvey.title}
+                    </h1>
+                    <p className="text-sm text-gray-600 mb-2">
+                      {selectedSurvey.description}
+                    </p>
+                    <div className="flex items-center space-x-4 text-xs text-gray-500">
+                      <span>⏱️ ~{selectedSurvey.estimated_time || 18} minutes</span>
+                      <span>📊 {selectedSurvey.question_count || 0} questions</span>
+                      <span>📋 {getSectionsCount(currentSurvey)} sections</span>
                     </div>
                   </div>
                 </div>
@@ -446,10 +532,7 @@ export const SurveysPage: React.FC = () => {
               </div>
             </div>
             
-            {/* Survey Preview */}
-            <div className="flex-1 overflow-y-auto bg-white">
-              <SurveyPreview />
-            </div>
+            {/* Survey Preview - Removed, now using separate edit route */}
           </div>
         ) : (
           <div className="h-full flex flex-col">
@@ -734,7 +817,7 @@ export const SurveysPage: React.FC = () => {
                                       e.stopPropagation();
                                       console.log('🖱️ [Click] View button clicked for survey:', survey);
                                       console.log('🖱️ [Click] Survey ID:', survey?.id);
-                                      handleViewSurvey(survey);
+                                      window.location.href = `/surveys/${survey.id}`;
                                     }}
                                     className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                                     title="View Survey"
@@ -742,6 +825,20 @@ export const SurveysPage: React.FC = () => {
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    </svg>
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      console.log('🖱️ [Click] Edit button clicked for survey:', survey);
+                                      console.log('🖱️ [Click] Survey ID:', survey?.id);
+                                      window.location.href = `/surveys/${survey.id}/edit`;
+                                    }}
+                                    className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                    title="Edit Survey"
+                                  >
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                     </svg>
                                   </button>
                                   <button

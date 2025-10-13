@@ -34,11 +34,15 @@ class Question(BaseModel):
     text: str = Field(..., description="Question text")
     type: QuestionType = Field(..., description="Type of question")
     options: Optional[List[str]] = Field(default_factory=list, description="Available options for choice questions")
+    scale_labels: Optional[Dict[str, str]] = Field(None, description="Scale labels for scale questions")
     required: bool = Field(True, description="Whether the question is required")
     order: Optional[int] = Field(None, description="Order of the question in the survey")
+    category: Optional[str] = Field(None, description="Question category")
+    methodology: Optional[str] = Field(None, description="Survey methodology")
+    ai_rationale: Optional[str] = Field(None, description="AI rationale for the question")
+    label: Optional[str] = Field(None, description="Programming notes and labels")
     description: Optional[str] = Field(None, description="Additional description or help text")
     validation: Optional[str] = Field(None, description="Validation rules as string")
-    methodology: Optional[str] = Field(None, description="Survey methodology")
     routing: Optional[Dict[str, Any]] = Field(None, description="Question routing logic")
     conditional_logic: Optional[Dict[str, Any]] = Field(None, description="Conditional display logic")
 
@@ -78,6 +82,52 @@ class SurveyResponse(BaseModel):
     answers: Dict[str, Any] = Field(..., description="User answers")
     submitted_at: Optional[str] = Field(None, description="Submission timestamp")
     user_id: Optional[str] = Field(None, description="User identifier")
+    
+    class Config:
+        """Pydantic configuration."""
+        validate_assignment = True
+
+
+class QuestionUpdate(BaseModel):
+    """Pydantic model for updating individual questions."""
+    text: Optional[str] = Field(None, description="Question text")
+    type: Optional[QuestionType] = Field(None, description="Type of question")
+    options: Optional[List[str]] = Field(None, description="Available options for choice questions")
+    scale_labels: Optional[Dict[str, str]] = Field(None, description="Scale labels for scale questions")
+    required: Optional[bool] = Field(None, description="Whether the question is required")
+    category: Optional[str] = Field(None, description="Question category")
+    methodology: Optional[str] = Field(None, description="Survey methodology")
+    description: Optional[str] = Field(None, description="Additional description or help text")
+    label: Optional[str] = Field(None, description="Programming notes and labels")
+    validation: Optional[str] = Field(None, description="Validation rules as string")
+    routing: Optional[Dict[str, Any]] = Field(None, description="Question routing logic")
+    conditional_logic: Optional[Dict[str, Any]] = Field(None, description="Conditional display logic")
+    
+    class Config:
+        """Pydantic configuration."""
+        use_enum_values = True
+        validate_assignment = True
+
+
+class SurveySection(BaseModel):
+    """Pydantic model for survey sections."""
+    id: int = Field(..., description="Unique identifier for the section")
+    title: str = Field(..., description="Section title")
+    description: str = Field(..., description="Section description")
+    questions: List[Question] = Field(..., description="Questions in this section")
+    order: Optional[int] = Field(None, description="Order of the section in the survey")
+    
+    class Config:
+        """Pydantic configuration."""
+        validate_assignment = True
+
+
+class SectionUpdate(BaseModel):
+    """Pydantic model for updating survey sections."""
+    title: Optional[str] = Field(None, description="Section title")
+    description: Optional[str] = Field(None, description="Section description")
+    questions: Optional[List[Question]] = Field(None, description="Questions in this section")
+    order: Optional[int] = Field(None, description="Order of the section in the survey")
     
     class Config:
         """Pydantic configuration."""

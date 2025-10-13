@@ -1097,47 +1097,62 @@ export const useAppStore = create<AppStore>((set, get) => ({
       // Transform backend format to frontend format
       const frontendAnnotations: SurveyAnnotations = {
         surveyId: backendAnnotations.survey_id,
-        questionAnnotations: (backendAnnotations.question_annotations || []).map((qa: any) => {
-          const originalQuestionId = qa.question_id;
-          const mappedQuestionId = qa.question_id?.replace(`${surveyId}_`, '') || qa.question_id;
-          console.log('🔍 [Store] Mapping question ID:', { originalQuestionId, mappedQuestionId, surveyId });
-          const transformedAnnotation = {
-            questionId: mappedQuestionId,
-            required: qa.required,
-            quality: qa.quality,
-            relevant: qa.relevant,
-            pillars: {
-              methodologicalRigor: qa.methodological_rigor,
-              contentValidity: qa.content_validity,
-              respondentExperience: qa.respondent_experience,
-              analyticalValue: qa.analytical_value,
-              businessImpact: qa.business_impact,
-            },
-            comment: qa.comment,
-            annotatorId: qa.annotator_id,
-            timestamp: qa.created_at,
-            // AI annotation fields
-            aiGenerated: qa.ai_generated,
-            aiConfidence: qa.ai_confidence,
-            humanVerified: qa.human_verified,
-            generationTimestamp: qa.generation_timestamp,
-            // Human override tracking fields
-            humanOverridden: qa.human_overridden,
-            overrideTimestamp: qa.override_timestamp,
-            originalAiQuality: qa.original_ai_quality,
-            originalAiRelevant: qa.original_ai_relevant,
-            originalAiComment: qa.original_ai_comment
-          };
-          console.log('🔍 [Store] Transformed annotation:', transformedAnnotation);
-          console.log('🔍 [Store] Transformed aiGenerated:', transformedAnnotation.aiGenerated);
-          return transformedAnnotation;
-        }),
+        questionAnnotations: (() => {
+          // Create a map to handle duplicate question IDs (prefer AI-generated annotations)
+          const annotationMap = new Map();
+          
+          (backendAnnotations.question_annotations || []).forEach((qa: any) => {
+            const originalQuestionId = qa.question_id;
+            const mappedQuestionId = qa.question_id?.replace(`${surveyId}_`, '') || qa.question_id;
+            console.log('🔍 [Store] Mapping question ID:', { originalQuestionId, mappedQuestionId, surveyId });
+            
+            const transformedAnnotation = {
+              id: qa.id, // Database ID for API operations
+              questionId: mappedQuestionId,
+              required: qa.required,
+              quality: qa.quality,
+              relevant: qa.relevant,
+              pillars: {
+                methodologicalRigor: qa.methodological_rigor,
+                contentValidity: qa.content_validity,
+                respondentExperience: qa.respondent_experience,
+                analyticalValue: qa.analytical_value,
+                businessImpact: qa.business_impact,
+              },
+              comment: qa.comment,
+              annotatorId: qa.annotator_id,
+              timestamp: qa.created_at,
+              // AI annotation fields
+              aiGenerated: qa.ai_generated,
+              aiConfidence: qa.ai_confidence,
+              humanVerified: qa.human_verified,
+              generationTimestamp: qa.generation_timestamp,
+              // Human override tracking fields
+              humanOverridden: qa.human_overridden,
+              overrideTimestamp: qa.override_timestamp,
+              originalAiQuality: qa.original_ai_quality,
+              originalAiRelevant: qa.original_ai_relevant,
+              originalAiComment: qa.original_ai_comment
+            };
+            
+            // If we already have an annotation for this question ID, prefer AI-generated ones
+            if (!annotationMap.has(mappedQuestionId) || qa.ai_generated) {
+              annotationMap.set(mappedQuestionId, transformedAnnotation);
+              console.log('🔍 [Store] Stored annotation for:', mappedQuestionId, 'AI generated:', qa.ai_generated);
+            }
+          });
+          
+          const annotations = Array.from(annotationMap.values());
+          console.log('🔍 [Store] Final annotations count:', annotations.length);
+          return annotations;
+        })(),
         sectionAnnotations: (backendAnnotations.section_annotations || []).map((sa: any, index: number) => {
           // For now, map section annotations by index order
           // This is a simple approach that works for most cases
           const mappedSectionId = (index + 1).toString();
           console.log('🔍 [Store] Mapping section ID by index:', { hashedSectionId: sa.section_id, mappedSectionId, index });
           return {
+            id: sa.id, // Database ID for API operations
             sectionId: mappedSectionId,
             quality: sa.quality,
             relevant: sa.relevant,
@@ -1220,7 +1235,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           const updatedAnnotations = {
             ...currentAnnotations,
             questionAnnotations: currentAnnotations.questionAnnotations.map(qa => 
-              qa.questionId === annotationId.toString() 
+              qa.id === annotationId 
                 ? { ...qa, humanVerified: true }
                 : qa
             )
@@ -1230,7 +1245,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           const updatedAnnotations = {
             ...currentAnnotations,
             sectionAnnotations: currentAnnotations.sectionAnnotations.map(sa => 
-              sa.sectionId === annotationId.toString() 
+              sa.id === annotationId 
                 ? { ...sa, humanVerified: true }
                 : sa
             )
@@ -2781,14 +2796,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     // Apply updates to Enhanced RFQ
     get().setEnhancedRfq(rfqUpdates);
-
-    // Show success toast
-    get().addToast({
-      type: 'success',
-      title: 'Document Data Applied',
-      message: `Applied ${acceptedMappings.length} field mappings to your RFQ.`,
-      duration: 5000
-    });
 
     console.log('Applied document mappings:', rfqUpdates);
   },

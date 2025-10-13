@@ -489,6 +489,15 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                 survey = SurveyCreate(**final_output)
                 validated_data = survey.model_dump()
                 
+                # Preserve metadata fields that are not part of SurveyCreate model
+                metadata_fields = {}
+                for field in ['product_category', 'research_goal', 'methodologies', 'target_segment', 'estimated_time', 'confidence_score']:
+                    if field in final_output:
+                        metadata_fields[field] = final_output[field]
+                
+                # Add metadata fields to validated_data
+                validated_data.update(metadata_fields)
+                
                 # Return the full structure with validated final_output
                 return {
                     "raw_output": survey_data.get("raw_output", {}),
@@ -498,7 +507,18 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                 # Fallback for legacy format
                 logger.warning(f"⚠️ [Document Parser] Using legacy format validation")
                 survey = SurveyCreate(**survey_data)
-                return survey.model_dump()
+                validated_data = survey.model_dump()
+                
+                # Preserve metadata fields that are not part of SurveyCreate model
+                metadata_fields = {}
+                for field in ['product_category', 'research_goal', 'methodologies', 'target_segment', 'estimated_time', 'confidence_score']:
+                    if field in survey_data:
+                        metadata_fields[field] = survey_data[field]
+                
+                # Add metadata fields to validated_data
+                validated_data.update(metadata_fields)
+                
+                return validated_data
                 
         except ValidationError as e:
             logger.error(f"Survey validation failed: {str(e)}")

@@ -16,6 +16,15 @@ class APIService {
 
     const backendResponse = await surveyResponse.json();
     console.log('🔍 [API] Backend survey response:', backendResponse);
+    console.log('🔍 [API] Final output keys:', Object.keys(backendResponse.final_output || {}));
+    console.log('🔍 [API] Raw output keys:', Object.keys(backendResponse.raw_output || {}));
+    console.log('🔍 [API] Final output sections:', backendResponse.final_output?.sections);
+    console.log('🔍 [API] Raw output sections:', backendResponse.raw_output?.sections);
+    
+    // Debug: Check if sections have order field
+    if (backendResponse.final_output?.sections) {
+      console.log('🔍 [API] Section order fields:', backendResponse.final_output.sections.map((s: any) => ({ id: s.id, order: s.order })));
+    }
     
     // Map backend response to frontend format
     const survey: Survey = {
@@ -26,8 +35,12 @@ class APIService {
       confidence_score: backendResponse.golden_similarity_score || 0.8,
       methodologies: backendResponse.final_output?.methodologies || [],
       golden_examples: backendResponse.final_output?.golden_examples || [],
-      questions: backendResponse.final_output?.questions || [],
-      sections: backendResponse.final_output?.sections || [], // Include sections
+      questions: (backendResponse.final_output?.questions || []).sort((a: any, b: any) => (a.order || 0) - (b.order || 0)),
+      sections: (backendResponse.final_output?.sections || []).map((section: any, index: number) => ({
+        ...section,
+        order: section.order || index + 1, // Ensure each section has an order field
+        questions: (section.questions || []).sort((a: any, b: any) => (a.order || 0) - (b.order || 0)) // Sort questions by order
+      })).sort((a: any, b: any) => (a.order || 0) - (b.order || 0)), // Include sections, sorted by order
       pillar_scores: backendResponse.pillar_scores || null, // Use cached pillar scores if available
       metadata: {
         target_responses: backendResponse.final_output?.target_responses || 100,

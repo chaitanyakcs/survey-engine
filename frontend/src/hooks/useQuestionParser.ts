@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import { Question } from '../types';
 import { 
   extractAttributesFromText, 
@@ -74,7 +74,7 @@ export const useQuestionParser = (question: Question) => {
     return result;
   };
 
-  const validateParsedData = (): string[] => {
+  const validateParsedData = useCallback((): string[] => {
     const errors: string[] = [];
 
     // Validate attributes for matrix types
@@ -99,7 +99,7 @@ export const useQuestionParser = (question: Question) => {
     }
 
     return errors;
-  };
+  }, [question.type, parsedData]);
 
   const getDefaultDataForType = (type: string): Partial<ParsedQuestionData> => {
     switch (type) {

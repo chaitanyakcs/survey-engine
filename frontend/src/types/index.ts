@@ -370,6 +370,7 @@ export interface Question {
   ai_rationale?: string;
   description?: string; // For additional context, especially useful for instructions
   label?: string; // For programming notes and other labels
+  order?: number; // Order within section or survey
 }
 
 // Removed duplicate interface - using the full definition below
@@ -711,6 +712,7 @@ export type SurveyLogicType = typeof SURVEY_LOGIC_TYPES[number];
 export type MandatoryQNRSection = typeof MANDATORY_QNR_SECTIONS[number];
 
 export interface QuestionAnnotation {
+  id?: number; // Database ID for API operations
   questionId: string;
   required: boolean;
   quality: LikertScale;
@@ -742,6 +744,7 @@ export interface QuestionAnnotation {
 }
 
 export interface SectionAnnotation {
+  id?: number; // Database ID for API operations
   sectionId: string;
   quality: LikertScale;
   relevant: LikertScale;
@@ -932,6 +935,15 @@ export interface RFQFieldMapping {
   suggestions?: string[];
   user_action?: 'accepted' | 'rejected' | 'edited';
   original_value?: any;
+}
+
+export interface DocumentParseResponse {
+  survey_json: Survey;
+  confidence_score?: number;
+  extracted_text: string;
+  product_category?: string;
+  research_goal?: string;
+  methodologies?: string[];
 }
 
 export interface DocumentAnalysisResponse {

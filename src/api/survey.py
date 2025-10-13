@@ -3,8 +3,9 @@ from sqlalchemy.orm import Session
 from src.database import get_db, Survey
 from src.services.survey_service import SurveyService
 from src.utils.survey_utils import get_questions_count
+from src.models.survey import QuestionUpdate, SectionUpdate, SurveySection
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from uuid import UUID
 from datetime import datetime
 import json
@@ -49,6 +50,10 @@ class SurveyListItem(BaseModel):
 class ValidationRequest(BaseModel):
     methodology_strict_mode: Optional[bool] = None
     golden_similarity_threshold: Optional[float] = None
+
+
+class QuestionReorderRequest(BaseModel):
+    question_order: List[str]
 
 
 @router.get("/list", response_model=list[SurveyListItem])
@@ -379,3 +384,518 @@ async def cleanup_workflow(
     except Exception as e:
         logger.error(f"❌ [Survey API] Failed to cleanup workflow {workflow_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to cleanup workflow: {str(e)}")
+
+
+@router.put("/{survey_id}/questions/{question_id}")
+async def update_question(
+    survey_id: UUID,
+    question_id: str,
+    question_update: QuestionUpdate,
+    db: Session = Depends(get_db)
+):
+    """Update a specific question in a survey."""
+    logger.info(f"📝 [Survey API] Updating question {question_id} in survey {survey_id}")
+    
+    try:
+        # Get the survey
+        survey = db.query(Survey).filter(Survey.id == survey_id).first()
+        if not survey:
+            raise HTTPException(status_code=404, detail="Survey not found")
+        
+        # Get survey data
+        survey_data = survey.final_output or survey.raw_output or {}
+        if not survey_data:
+            raise HTTPException(status_code=400, detail="Survey has no data to update")
+        
+        # Find and update the question
+        question_found = False
+        
+        # Check if survey uses sections format
+        if 'sections' in survey_data and survey_data['sections']:
+            for section in survey_data['sections']:
+                if 'questions' in section:
+                    for i, question in enumerate(section['questions']):
+                        if question.get('id') == question_id:
+                            # Update the question with provided fields
+                            for field, value in question_update.dict(exclude_unset=True).items():
+                                question[field] = value
+                            question_found = True
+                            logger.info(f"✅ [Survey API] Updated question in section {section.get('id', 'unknown')}")
+                            break
+                    if question_found:
+                        break
+        else:
+            # Check flat questions format
+            if 'questions' in survey_data and survey_data['questions']:
+                for i, question in enumerate(survey_data['questions']):
+                    if question.get('id') == question_id:
+                        # Update the question with provided fields
+                        for field, value in question_update.dict(exclude_unset=True).items():
+                            question[field] = value
+                        question_found = True
+                        logger.info(f"✅ [Survey API] Updated question in flat format")
+                        break
+        
+        if not question_found:
+            raise HTTPException(status_code=404, detail="Question not found")
+        
+        # Save the updated survey data
+        survey.final_output = survey_data
+        survey.updated_at = datetime.now()
+        db.commit()
+        
+        logger.info(f"💾 [Survey API] Successfully saved updated question {question_id}")
+        return {"status": "success", "message": "Question updated successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ [Survey API] Failed to update question {question_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update question: {str(e)}")
+
+
+@router.put("/{survey_id}/sections/reorder")
+async def reorder_sections(
+    survey_id: UUID,
+    section_order: List[int],
+    db: Session = Depends(get_db)
+):
+    """Reorder sections in a survey."""
+    logger.info(f"📝 [Survey API] Reordering sections in survey {survey_id}")
+    logger.info(f"📤 [Survey API] Received section order: {section_order}")
+    
+    try:
+        # Get the survey
+        survey = db.query(Survey).filter(Survey.id == survey_id).first()
+        if not survey:
+            raise HTTPException(status_code=404, detail="Survey not found")
+        
+        # Get survey data
+        survey_data = survey.final_output or survey.raw_output or {}
+        if not survey_data:
+            raise HTTPException(status_code=400, detail="Survey has no data to update")
+        
+        logger.info(f"📊 [Survey API] Survey data keys: {list(survey_data.keys())}")
+        logger.info(f"📊 [Survey API] Has sections key: {'sections' in survey_data}")
+        logger.info(f"📊 [Survey API] Sections count: {len(survey_data.get('sections', []))}")
+        logger.info(f"📊 [Survey API] Current sections before reorder: {[s.get('id') for s in survey_data.get('sections', [])]}")
+        logger.info(f"📊 [Survey API] Current section orders: {[s.get('order') for s in survey_data.get('sections', [])]}")
+        
+        # Check if we have sections to reorder
+        if 'sections' not in survey_data or not survey_data['sections']:
+            logger.warning(f"⚠️ [Survey API] No sections found in survey data!")
+            logger.warning(f"⚠️ [Survey API] Survey data structure: {survey_data}")
+            return {"status": "success", "message": "No sections to reorder"}
+        
+        # Reorder sections
+        if 'sections' in survey_data and survey_data['sections']:
+            logger.info(f"📊 [Survey API] Found {len(survey_data['sections'])} sections to reorder")
+            
+            # Create a mapping of section IDs to sections
+            section_map = {section.get('id'): section for section in survey_data['sections']}
+            logger.info(f"📊 [Survey API] Section map IDs: {list(section_map.keys())}")
+            
+            # Reorder based on the provided order
+            reordered_sections = []
+            for section_id in section_order:
+                if section_id in section_map:
+                    reordered_sections.append(section_map[section_id])
+                    logger.info(f"📊 [Survey API] Added section {section_id} to reordered list")
+                else:
+                    logger.warning(f"⚠️ [Survey API] Section ID {section_id} not found in section map!")
+            
+            logger.info(f"📊 [Survey API] Reordered sections count: {len(reordered_sections)}")
+            
+            # Update the order property for each section to reflect the new position
+            for index, section in enumerate(reordered_sections):
+                section['order'] = index + 1
+                logger.info(f"📊 [Survey API] Set section {section.get('id')} order to {index + 1}")
+            
+            survey_data['sections'] = reordered_sections
+            logger.info(f"📊 [Survey API] Sections after reorder: {[s.get('id') for s in reordered_sections]}")
+            logger.info(f"📊 [Survey API] Section orders: {[s.get('order') for s in reordered_sections]}")
+        else:
+            logger.warning(f"⚠️ [Survey API] No sections found to reorder!")
+        
+        # Create a completely new dictionary to force SQLAlchemy to detect the change
+        new_final_output = dict(survey_data)
+        new_final_output['sections'] = [dict(section) for section in survey_data['sections']]
+        
+        # Save the updated survey data
+        survey.final_output = new_final_output
+        survey.updated_at = datetime.now()
+        
+        # Explicitly tell SQLAlchemy that the JSONB field has changed
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(survey, 'final_output')
+        
+        # Force the database to recognize the change
+        db.flush()  # Flush changes to database without committing
+        db.commit()
+        
+        # Verify the changes were saved
+        db.refresh(survey)
+        logger.info(f"📊 [Survey API] After commit - sections count: {len(survey.final_output.get('sections', []))}")
+        logger.info(f"📊 [Survey API] After commit - section IDs: {[s.get('id') for s in survey.final_output.get('sections', [])]}")
+        logger.info(f"📊 [Survey API] After commit - section orders: {[s.get('order') for s in survey.final_output.get('sections', [])]}")
+        
+        logger.info(f"💾 [Survey API] Successfully reordered sections")
+        return {"status": "success", "message": "Sections reordered successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ [Survey API] Failed to reorder sections: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to reorder sections: {str(e)}")
+
+
+@router.put("/{survey_id}/questions/reorder")
+async def reorder_questions(
+    survey_id: UUID,
+    request: QuestionReorderRequest,
+    db: Session = Depends(get_db)
+):
+    """Reorder questions in a survey."""
+    logger.info(f"📝 [Survey API] Reordering questions in survey {survey_id}")
+    logger.info(f"📤 [Survey API] Received question order: {request.question_order}")
+    
+    try:
+        # Get the survey
+        survey = db.query(Survey).filter(Survey.id == survey_id).first()
+        if not survey:
+            raise HTTPException(status_code=404, detail="Survey not found")
+        
+        # Get survey data
+        survey_data = survey.final_output or survey.raw_output or {}
+        if not survey_data:
+            raise HTTPException(status_code=400, detail="Survey has no data to update")
+        
+        logger.info(f"📊 [Survey API] Survey data keys: {list(survey_data.keys())}")
+        logger.info(f"📊 [Survey API] Has questions key: {'questions' in survey_data}")
+        logger.info(f"📊 [Survey API] Has sections key: {'sections' in survey_data}")
+        logger.info(f"📊 [Survey API] Questions count: {len(survey_data.get('questions', []))}")
+        logger.info(f"📊 [Survey API] Sections count: {len(survey_data.get('sections', []))}")
+        
+        # Debug: Log the actual survey data structure
+        if 'sections' in survey_data and survey_data['sections']:
+            logger.info(f"📊 [Survey API] First section: {survey_data['sections'][0]}")
+            if 'questions' in survey_data['sections'][0]:
+                logger.info(f"📊 [Survey API] First section questions: {survey_data['sections'][0]['questions']}")
+        
+        # Handle questions within sections (new format)
+        if 'sections' in survey_data and survey_data['sections']:
+            logger.info(f"📊 [Survey API] Processing questions within sections")
+            
+            # Create a mapping of question IDs to their current section and question data
+            question_map = {}
+            for section in survey_data['sections']:
+                if 'questions' in section and section['questions']:
+                    for question in section['questions']:
+                        question_map[question.get('id')] = {
+                            'question': question,
+                            'section': section
+                        }
+            
+            logger.info(f"📊 [Survey API] Question map IDs: {list(question_map.keys())}")
+            logger.info(f"📊 [Survey API] Request question order: {request.question_order}")
+            
+            # Debug: Check if any questions from the request are in the map
+            found_questions = []
+            missing_questions = []
+            for question_id in request.question_order:
+                if question_id in question_map:
+                    found_questions.append(question_id)
+                else:
+                    missing_questions.append(question_id)
+            
+            logger.info(f"📊 [Survey API] Found questions: {found_questions}")
+            logger.info(f"📊 [Survey API] Missing questions: {missing_questions}")
+            
+            if not found_questions:
+                logger.error(f"❌ [Survey API] No questions from request found in question map!")
+                raise HTTPException(status_code=404, detail="Question not found")
+            
+            # Group questions by section based on the new order
+            section_question_groups = {}
+            for question_id in request.question_order:
+                if question_id in question_map:
+                    section_id = question_map[question_id]['section'].get('id')
+                    if section_id not in section_question_groups:
+                        section_question_groups[section_id] = []
+                    section_question_groups[section_id].append(question_map[question_id]['question'])
+                    logger.info(f"📊 [Survey API] Added question {question_id} to section {section_id}")
+                else:
+                    logger.warning(f"⚠️ [Survey API] Question ID {question_id} not found in question map!")
+            
+            # Update each section with its reordered questions
+            for section in survey_data['sections']:
+                section_id = section.get('id')
+                if section_id in section_question_groups:
+                    # Update order property for each question in this section
+                    for index, question in enumerate(section_question_groups[section_id]):
+                        question['order'] = index + 1
+                        logger.info(f"📊 [Survey API] Set question {question.get('id')} order to {index + 1} in section {section_id}")
+                    
+                    section['questions'] = section_question_groups[section_id]
+                    logger.info(f"📊 [Survey API] Updated section {section_id} with {len(section['questions'])} questions")
+                else:
+                    # If no questions for this section in the new order, keep original questions
+                    logger.info(f"📊 [Survey API] No questions in new order for section {section_id}, keeping original")
+            
+            logger.info(f"📊 [Survey API] Successfully reordered questions within sections")
+            
+        # Handle legacy flat questions format
+        elif 'questions' in survey_data and survey_data['questions']:
+            logger.info(f"📊 [Survey API] Processing legacy flat questions format")
+            logger.info(f"📊 [Survey API] Current questions before reorder: {[q.get('id') for q in survey_data.get('questions', [])]}")
+            logger.info(f"📊 [Survey API] Current question orders: {[q.get('order') for q in survey_data.get('questions', [])]}")
+            
+            # Create a mapping of question IDs to questions
+            question_map = {question.get('id'): question for question in survey_data['questions']}
+            logger.info(f"📊 [Survey API] Question map IDs: {list(question_map.keys())}")
+            
+            # Reorder based on the provided order
+            reordered_questions = []
+            for question_id in request.question_order:
+                if question_id in question_map:
+                    reordered_questions.append(question_map[question_id])
+                    logger.info(f"📊 [Survey API] Added question {question_id} to reordered list")
+                else:
+                    logger.warning(f"⚠️ [Survey API] Question ID {question_id} not found in question map!")
+            
+            logger.info(f"📊 [Survey API] Reordered questions count: {len(reordered_questions)}")
+            
+            # Update the order property for each question to reflect the new position
+            for index, question in enumerate(reordered_questions):
+                question['order'] = index + 1
+                logger.info(f"📊 [Survey API] Set question {question.get('id')} order to {index + 1}")
+            
+            survey_data['questions'] = reordered_questions
+            logger.info(f"📊 [Survey API] Questions after reorder: {[q.get('id') for q in reordered_questions]}")
+            logger.info(f"📊 [Survey API] Question orders: {[q.get('order') for q in reordered_questions]}")
+            
+        else:
+            logger.warning(f"⚠️ [Survey API] No questions found in survey data!")
+            logger.warning(f"⚠️ [Survey API] Survey data structure: {survey_data}")
+            return {"status": "success", "message": "No questions to reorder"}
+        
+        # Create a completely new dictionary to force SQLAlchemy to detect the change
+        new_final_output = dict(survey_data)
+        
+        # Deep copy sections if they exist
+        if 'sections' in survey_data:
+            new_final_output['sections'] = []
+            for section in survey_data['sections']:
+                new_section = dict(section)
+                if 'questions' in section:
+                    new_section['questions'] = [dict(question) for question in section['questions']]
+                new_final_output['sections'].append(new_section)
+        
+        # Deep copy questions if they exist (legacy format)
+        if 'questions' in survey_data:
+            new_final_output['questions'] = [dict(question) for question in survey_data['questions']]
+        
+        # Save the updated survey data
+        survey.final_output = new_final_output
+        survey.updated_at = datetime.now()
+        
+        # Explicitly tell SQLAlchemy that the JSONB field has changed
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(survey, 'final_output')
+        
+        # Force the database to recognize the change
+        db.flush()  # Flush changes to database without committing
+        db.commit()
+        
+        # Verify the changes were saved
+        db.refresh(survey)
+        if 'sections' in survey.final_output:
+            logger.info(f"📊 [Survey API] After commit - sections count: {len(survey.final_output.get('sections', []))}")
+            for i, section in enumerate(survey.final_output.get('sections', [])):
+                logger.info(f"📊 [Survey API] Section {i+1} - questions count: {len(section.get('questions', []))}")
+                logger.info(f"📊 [Survey API] Section {i+1} - question IDs: {[q.get('id') for q in section.get('questions', [])]}")
+                logger.info(f"📊 [Survey API] Section {i+1} - question orders: {[q.get('order') for q in section.get('questions', [])]}")
+        else:
+            logger.info(f"📊 [Survey API] After commit - questions count: {len(survey.final_output.get('questions', []))}")
+            logger.info(f"📊 [Survey API] After commit - question IDs: {[q.get('id') for q in survey.final_output.get('questions', [])]}")
+            logger.info(f"📊 [Survey API] After commit - question orders: {[q.get('order') for q in survey.final_output.get('questions', [])]}")
+        
+        logger.info(f"💾 [Survey API] Successfully reordered questions")
+        return {"status": "success", "message": "Questions reordered successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ [Survey API] Failed to reorder questions: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to reorder questions: {str(e)}")
+
+
+@router.put("/{survey_id}/sections/{section_id}")
+async def update_section(
+    survey_id: UUID,
+    section_id: int,
+    section_update: SectionUpdate,
+    db: Session = Depends(get_db)
+):
+    """Update a specific section in a survey."""
+    logger.info(f"📝 [Survey API] Updating section {section_id} in survey {survey_id}")
+    
+    try:
+        # Get the survey
+        survey = db.query(Survey).filter(Survey.id == survey_id).first()
+        if not survey:
+            raise HTTPException(status_code=404, detail="Survey not found")
+        
+        # Get survey data
+        survey_data = survey.final_output or survey.raw_output or {}
+        if not survey_data:
+            raise HTTPException(status_code=400, detail="Survey has no data to update")
+        
+        # Find and update the section
+        section_found = False
+        
+        if 'sections' in survey_data and survey_data['sections']:
+            for i, section in enumerate(survey_data['sections']):
+                if section.get('id') == section_id:
+                    # Update the section with provided fields
+                    for field, value in section_update.dict(exclude_unset=True).items():
+                        section[field] = value
+                    section_found = True
+                    logger.info(f"✅ [Survey API] Updated section {section_id}")
+                    break
+        
+        if not section_found:
+            raise HTTPException(status_code=404, detail="Section not found")
+        
+        # Create a completely new dictionary to force SQLAlchemy to detect the change
+        new_final_output = dict(survey_data)
+        
+        # Deep copy sections if they exist
+        if 'sections' in survey_data:
+            new_final_output['sections'] = []
+            for section in survey_data['sections']:
+                new_section = dict(section)
+                if 'questions' in section:
+                    new_section['questions'] = [dict(question) for question in section['questions']]
+                new_final_output['sections'].append(new_section)
+        
+        # Deep copy questions if they exist (legacy format)
+        if 'questions' in survey_data:
+            new_final_output['questions'] = [dict(question) for question in survey_data['questions']]
+        
+        # Save the updated survey data
+        survey.final_output = new_final_output
+        survey.updated_at = datetime.now()
+        
+        # Explicitly tell SQLAlchemy that the JSONB field has changed
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(survey, 'final_output')
+        
+        # Force the database to recognize the change
+        db.flush()  # Flush changes to database without committing
+        db.commit()
+        
+        logger.info(f"💾 [Survey API] Successfully saved updated section {section_id}")
+        return {"status": "success", "message": "Section updated successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ [Survey API] Failed to update section {section_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update section: {str(e)}")
+
+
+@router.post("/{survey_id}/sections")
+async def create_section(
+    survey_id: UUID,
+    section: SurveySection,
+    db: Session = Depends(get_db)
+):
+    """Create a new section in a survey."""
+    logger.info(f"📝 [Survey API] Creating new section in survey {survey_id}")
+    
+    try:
+        # Get the survey
+        survey = db.query(Survey).filter(Survey.id == survey_id).first()
+        if not survey:
+            raise HTTPException(status_code=404, detail="Survey not found")
+        
+        # Get survey data
+        survey_data = survey.final_output or survey.raw_output or {}
+        if not survey_data:
+            raise HTTPException(status_code=400, detail="Survey has no data to update")
+        
+        # Initialize sections if they don't exist
+        if 'sections' not in survey_data:
+            survey_data['sections'] = []
+        
+        # Add the new section
+        survey_data['sections'].append(section.dict())
+        
+        # Save the updated survey data
+        survey.final_output = survey_data
+        survey.updated_at = datetime.now()
+        db.commit()
+        
+        logger.info(f"💾 [Survey API] Successfully created new section")
+        return {"status": "success", "message": "Section created successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ [Survey API] Failed to create section: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create section: {str(e)}")
+
+
+@router.delete("/{survey_id}/sections/{section_id}")
+async def delete_section(
+    survey_id: UUID,
+    section_id: int,
+    db: Session = Depends(get_db)
+):
+    """Delete a section from a survey."""
+    logger.info(f"📝 [Survey API] Deleting section {section_id} from survey {survey_id}")
+    
+    try:
+        # Get the survey
+        survey = db.query(Survey).filter(Survey.id == survey_id).first()
+        if not survey:
+            raise HTTPException(status_code=404, detail="Survey not found")
+        
+        # Get survey data
+        survey_data = survey.final_output or survey.raw_output or {}
+        if not survey_data:
+            raise HTTPException(status_code=400, detail="Survey has no data to update")
+        
+        # Find and remove the section
+        section_found = False
+        
+        if 'sections' in survey_data and survey_data['sections']:
+            for i, section in enumerate(survey_data['sections']):
+                if section.get('id') == section_id:
+                    survey_data['sections'].pop(i)
+                    section_found = True
+                    logger.info(f"✅ [Survey API] Deleted section {section_id}")
+                    break
+        
+        if not section_found:
+            raise HTTPException(status_code=404, detail="Section not found")
+        
+        # Save the updated survey data
+        survey.final_output = survey_data
+        survey.updated_at = datetime.now()
+        db.commit()
+        
+        logger.info(f"💾 [Survey API] Successfully deleted section {section_id}")
+        return {"status": "success", "message": "Section deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ [Survey API] Failed to delete section {section_id}: {str(e)}")
