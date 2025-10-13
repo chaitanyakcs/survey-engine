@@ -277,14 +277,22 @@ async def parse_document(
         logger.info(f"✅ [Document Parse] Text extraction completed, length: {len(extracted_text)} chars")
         logger.info(f"📝 [Document Parse] Extracted text preview: {extracted_text[:200]}...")
         
+        # Extract metadata from the correct structure
+        # The parsed data has final_output containing the actual survey data
+        final_output = survey_data.get('final_output', {}) if isinstance(survey_data, dict) else {}
+        
         response = DocumentParseResponse(
             survey_json=survey_data,
-            confidence_score=survey_data.get('confidence_score') if isinstance(survey_data, dict) else None,
-            extracted_text=extracted_text[:1000] + "..." if len(extracted_text) > 1000 else extracted_text
+            confidence_score=final_output.get('confidence_score') if isinstance(final_output, dict) else None,
+            extracted_text=extracted_text[:1000] + "..." if len(extracted_text) > 1000 else extracted_text,
+            product_category=final_output.get('product_category') if isinstance(final_output, dict) else None,
+            research_goal=final_output.get('research_goal') if isinstance(final_output, dict) else None,
+            methodologies=final_output.get('methodologies') if isinstance(final_output, dict) else None
         )
         
         logger.info(f"🎉 [Document Parse] Successfully parsed document: {file.filename}")
         logger.info(f"📤 [Document Parse] Response prepared - survey_json_keys: {list(response.survey_json.keys()) if isinstance(response.survey_json, dict) else 'Not a dict'}")
+        logger.info(f"📊 [Document Parse] Metadata fields - product_category: {response.product_category}, research_goal: {response.research_goal}, methodologies: {response.methodologies}")
         return response
         
     except UserFriendlyError as e:

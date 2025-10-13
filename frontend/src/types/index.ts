@@ -289,6 +289,7 @@ export interface SurveySection {
   title: string;
   description: string;
   questions: Question[];
+  order: number;
 
   // NEW: Optional text content before and after questions
   introText?: SurveyTextContent;

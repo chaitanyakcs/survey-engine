@@ -2050,8 +2050,8 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
 
     def extract_comments_from_docx(self, docx_content: bytes) -> List[Dict[str, Any]]:
         """
-        Extract comments from a DOCX file using direct ZIP file access.
-        Returns a list of comment dictionaries with author, date, and text.
+        Extract comments from a DOCX file with positional context.
+        Returns a list of comment dictionaries with author, date, text, and context.
         """
         import zipfile
         import xml.etree.ElementTree as ET
@@ -2090,36 +2090,202 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
                         'text': comment_text.strip()
                     })
             
-            logger.info(f"✅ [Comment Extraction] Found {len(comments)} comments")
-            return comments
+            # Now extract positional context by parsing the main document
+            comments_with_context = self._add_positional_context_to_comments(docx_content, comments)
+            
+            logger.info(f"✅ [Comment Extraction] Found {len(comments_with_context)} comments with context")
+            return comments_with_context
             
         except Exception as e:
             logger.error(f"❌ [Comment Extraction] Error extracting comments: {str(e)}")
             return []
 
+    def _add_positional_context_to_comments(self, docx_content: bytes, comments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Add positional context to comments by parsing the main document structure.
+        This helps match comments to the actual content they're commenting on.
+        """
+        import zipfile
+        import xml.etree.ElementTree as ET
+        
+        try:
+            comments_with_context = []
+            
+            with zipfile.ZipFile(BytesIO(docx_content), 'r') as docx_zip:
+                # Read document.xml to get the main content structure
+                if 'word/document.xml' not in docx_zip.namelist():
+                    logger.warning(f"⚠️ [Comment Context] No document.xml found")
+                    return comments
+                
+                document_xml = docx_zip.read('word/document.xml')
+                doc_root = ET.fromstring(document_xml)
+                
+                # Extract all paragraphs with their content
+                paragraphs = []
+                for p_elem in doc_root.findall('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p'):
+                    paragraph_text = ""
+                    for t in p_elem.findall('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t'):
+                        if t.text:
+                            paragraph_text += t.text
+                    
+                    if paragraph_text.strip():
+                        paragraphs.append(paragraph_text.strip())
+                
+                # For each comment, try to find the closest paragraph content
+                for comment in comments:
+                    comment_text = comment.get('text', '').lower()
+                    comment_with_context = comment.copy()
+                    
+                    # Find the best matching paragraph based on content similarity
+                    best_match_score = 0
+                    best_match_context = ""
+                    best_match_position = 0
+                    
+                    for i, paragraph in enumerate(paragraphs):
+                        paragraph_lower = paragraph.lower()
+                        
+                        # Calculate similarity score based on common words
+                        comment_words = set(comment_text.split())
+                        paragraph_words = set(paragraph_lower.split())
+                        
+                        if comment_words and paragraph_words:
+                            common_words = comment_words.intersection(paragraph_words)
+                            similarity_score = len(common_words) / len(comment_words)
+                            
+                            if similarity_score > best_match_score:
+                                best_match_score = similarity_score
+                                best_match_context = paragraph
+                                best_match_position = i
+                    
+                    # Add context information to the comment
+                    comment_with_context.update({
+                        'context': best_match_context,
+                        'context_position': best_match_position,
+                        'context_similarity': best_match_score,
+                        'surrounding_paragraphs': paragraphs[max(0, best_match_position-1):best_match_position+2] if paragraphs else []
+                    })
+                    
+                    comments_with_context.append(comment_with_context)
+                    
+                    logger.debug(f"🔍 [Comment Context] Comment '{comment_text[:30]}...' matched to paragraph {best_match_position} with score {best_match_score:.2f}")
+            
+            return comments_with_context
+            
+        except Exception as e:
+            logger.error(f"❌ [Comment Context] Error adding positional context: {str(e)}")
+            return comments
+
     def find_best_comment_match(self, question: Dict[str, Any], comments: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """
-        Find the best matching comment for a question using simple text similarity.
-        For now, we'll use a simple approach - match comments to questions by order.
+        Find the best matching comment for a question using contextual analysis.
+        Uses positional context, content similarity, and semantic matching.
         """
         if not comments:
             return None
         
-        # Simple approach: match by question order
-        # This could be enhanced with more sophisticated matching later
         question_text = question.get('text', '').lower()
+        question_id = question.get('id', '')
         
-        # Look for comments that might match question content
+        best_match = None
+        best_score = 0
+        
         for comment in comments:
             comment_text = comment.get('text', '').lower()
+            context = comment.get('context', '').lower()
+            context_similarity = comment.get('context_similarity', 0)
             
-            # Simple keyword matching
-            if any(keyword in question_text for keyword in ['study', 'intro', 'demographic', 'usage', 'product', 'concept']):
-                if any(keyword in comment_text for keyword in ['study', 'intro', 'demographic', 'usage', 'product', 'concept']):
-                    return comment
+            # Calculate multiple matching scores
+            scores = []
+            
+            # 1. Direct text similarity between question and comment
+            if question_text and comment_text:
+                question_words = set(question_text.split())
+                comment_words = set(comment_text.split())
+                if question_words and comment_words:
+                    direct_similarity = len(question_words.intersection(comment_words)) / len(question_words)
+                    scores.append(('direct', direct_similarity))
+            
+            # 2. Context similarity (how well comment matches its surrounding content)
+            scores.append(('context', context_similarity))
+            
+            # 3. Semantic keyword matching
+            semantic_score = self._calculate_semantic_similarity(question_text, comment_text)
+            scores.append(('semantic', semantic_score))
+            
+            # 4. Question ID pattern matching (e.g., SQ01, AQ01, BQ01)
+            pattern_score = self._calculate_pattern_similarity(question_id, comment_text)
+            scores.append(('pattern', pattern_score))
+            
+            # Calculate weighted overall score
+            weights = {'direct': 0.4, 'context': 0.3, 'semantic': 0.2, 'pattern': 0.1}
+            overall_score = sum(score * weights.get(score_type, 0) for score_type, score in scores)
+            
+            logger.debug(f"🔍 [Comment Matching] Question '{question_id}' vs Comment '{comment_text[:30]}...': {dict(scores)} = {overall_score:.3f}")
+            
+            if overall_score > best_score:
+                best_score = overall_score
+                best_match = comment
         
-        # Fallback: return first comment if no specific match
-        return comments[0] if comments else None
+        # Only return a match if the score is above a threshold
+        if best_score > 0.1:  # Minimum threshold for matching
+            logger.info(f"✅ [Comment Matching] Best match for question '{question_id}': '{best_match['text'][:50]}...' (score: {best_score:.3f})")
+            return best_match
+        else:
+            logger.debug(f"⚠️ [Comment Matching] No suitable match found for question '{question_id}' (best score: {best_score:.3f})")
+            return None
+
+    def _calculate_semantic_similarity(self, question_text: str, comment_text: str) -> float:
+        """Calculate semantic similarity based on research methodology keywords."""
+        methodology_keywords = {
+            'screening': ['screen', 'qualify', 'eligibility', 'criteria'],
+            'demographic': ['age', 'gender', 'income', 'education', 'demographic'],
+            'usage': ['use', 'usage', 'behavior', 'frequency', 'experience'],
+            'product': ['product', 'brand', 'awareness', 'satisfaction', 'preference'],
+            'concept': ['concept', 'impression', 'likelihood', 'purchase', 'intent'],
+            'pricing': ['price', 'cost', 'value', 'willingness', 'pay'],
+            'conjoint': ['choice', 'scenario', 'attribute', 'preference'],
+            'maxdiff': ['important', 'least', 'most', 'feature', 'benefit']
+        }
+        
+        question_lower = question_text.lower()
+        comment_lower = comment_text.lower()
+        
+        max_category_score = 0
+        for category, keywords in methodology_keywords.items():
+            question_matches = sum(1 for keyword in keywords if keyword in question_lower)
+            comment_matches = sum(1 for keyword in keywords if keyword in comment_lower)
+            
+            if question_matches > 0 and comment_matches > 0:
+                category_score = min(question_matches, comment_matches) / max(question_matches, comment_matches)
+                max_category_score = max(max_category_score, category_score)
+        
+        return max_category_score
+
+    def _calculate_pattern_similarity(self, question_id: str, comment_text: str) -> float:
+        """Calculate similarity based on question ID patterns and comment content."""
+        if not question_id or not comment_text:
+            return 0
+        
+        comment_lower = comment_text.lower()
+        
+        # Extract question prefix (SQ, AQ, BQ, etc.)
+        question_prefix = ''.join([c for c in question_id if c.isalpha()])
+        
+        # Map question prefixes to likely comment categories
+        prefix_mapping = {
+            'SQ': ['screen', 'qualify', 'eligibility', 'intro'],
+            'AQ': ['awareness', 'usage', 'behavior', 'current'],
+            'BQ': ['brand', 'product', 'concept', 'impression'],
+            'CQ': ['choice', 'conjoint', 'scenario'],
+            'DQ': ['demographic', 'profile', 'background']
+        }
+        
+        expected_keywords = prefix_mapping.get(question_prefix, [])
+        if expected_keywords:
+            matches = sum(1 for keyword in expected_keywords if keyword in comment_lower)
+            return matches / len(expected_keywords)
+        
+        return 0
 
     def create_question_annotations_from_comments(
         self, 
