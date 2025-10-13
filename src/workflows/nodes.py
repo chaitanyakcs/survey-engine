@@ -8,6 +8,7 @@ from src.services.validation_service import ValidationService
 from src.services.evaluator_service import EvaluatorService
 from src.utils.error_messages import UserFriendlyError
 from src.utils.survey_utils import get_questions_count
+from src.database import get_db
 import logging
 
 logger = logging.getLogger(__name__)
@@ -77,7 +78,6 @@ class GoldenRetrieverNode:
         """
         try:
             # Get a fresh database session to avoid transaction issues
-            from src.database import get_db
             fresh_db = next(get_db())
             fresh_retrieval_service = RetrievalService(fresh_db)
             
@@ -205,7 +205,6 @@ class GeneratorAgent:
             self.logger.info(f"📊 [GeneratorAgent] Methodology blocks count: {len(state.methodology_blocks) if state.methodology_blocks else 0}")
             
             # Get a fresh database session to avoid transaction issues
-            from src.database import get_db
             fresh_db = next(get_db())
             
             try:
@@ -413,7 +412,6 @@ class HumanPromptReviewNode:
                 try:
                     # Get settings from database
                     from src.services.settings_service import SettingsService
-                    from src.database import get_db
                     
                     # Get a fresh database connection
                     fresh_db = next(get_db())
@@ -664,7 +662,6 @@ class ValidatorAgent:
                 }
 
             # Get a fresh database session to avoid transaction issues
-            from src.database import get_db
             fresh_db = next(get_db())
 
             try:

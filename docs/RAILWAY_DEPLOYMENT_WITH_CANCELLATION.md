@@ -17,19 +17,16 @@ The RFQ cancellation feature requires a database constraint update to allow the 
 
 The following migration files handle the constraint update:
 
-1. **`alembic/versions/f658efb72a1f_add_cancelled_status_to_document_.py`** - Initial migration
-2. **`alembic/versions/ed69aaa0dabc_fix_document_uploads_processing_status_.py`** - Fixed migration
+1. **`migrations/012_add_document_uploads.sql`** - Initial migration
+2. **`migrations/016_fix_duplicate_rules_with_fk_handling.sql`** - Fixed migration
 
 ### Migration Process
 
-The migration is automatically applied during Railway deployment via the `start.sh` script:
+The migration is automatically applied during Railway deployment via the admin API system:
 
 ```bash
-# In start.sh, the run_migrations() function handles this:
-if [ -n "$RAILWAY_ENVIRONMENT" ] || [ -n "$RAILWAY_PROJECT_ID" ]; then
-    log_info "Railway environment detected - using Alembic migrations..."
-    run_migrations || exit 1
-fi
+# In deploy.sh, the migration is handled via admin endpoints:
+curl -X POST https://your-app.railway.app/api/v1/admin/migrate-all
 ```
 
 ### Manual Migration (if needed)
@@ -37,14 +34,11 @@ fi
 If automatic migration fails, you can run it manually:
 
 ```bash
-# Connect to Railway database
-railway connect
+# Run migration via admin API
+curl -X POST https://your-app.railway.app/api/v1/admin/migrate-all
 
-# Run migration
-alembic upgrade head
-
-# Verify migration
-alembic current
+# Verify migration status
+curl https://your-app.railway.app/api/v1/admin/check-migration-status
 ```
 
 ## Verification Script
@@ -129,11 +123,11 @@ curl https://your-railway-app.railway.app/api/v1/rfq/status/test-session-id
 
 **Solution:**
 ```bash
-# Check current migration status
-alembic current
+# Check migration status via admin API
+curl https://your-app.railway.app/api/v1/admin/check-migration-status
 
-# If migration is not at head, run:
-alembic upgrade head
+# If migration is needed, run:
+curl -X POST https://your-app.railway.app/api/v1/admin/migrate-all
 
 # Verify constraint manually
 psql $DATABASE_URL -c "SELECT constraint_name, check_clause FROM information_schema.check_constraints WHERE constraint_name = 'check_processing_status';"
@@ -170,11 +164,11 @@ psql $DATABASE_URL -c "SELECT constraint_name, check_clause FROM information_sch
 # Check database constraint
 psql $DATABASE_URL -c "SELECT constraint_name, check_clause FROM information_schema.check_constraints WHERE constraint_name = 'check_processing_status';"
 
-# Check migration status
-alembic current
+# Check migration status via admin API
+curl https://your-app.railway.app/api/v1/admin/check-migration-status
 
-# Check recent migrations
-alembic history
+# Run migrations if needed
+curl -X POST https://your-app.railway.app/api/v1/admin/migrate-all
 
 # Test constraint manually
 psql $DATABASE_URL -c "INSERT INTO document_uploads (session_id, filename, file_size, processing_status, created_at) VALUES ('test', 'test.docx', 1024, 'cancelled', NOW()) ON CONFLICT (session_id) DO NOTHING;"
@@ -212,15 +206,15 @@ Monitor database for:
 If issues arise, you can rollback the migration:
 
 ```bash
-# Rollback to previous migration
-alembic downgrade -1
+# Check migration status
+curl https://your-app.railway.app/api/v1/admin/check-migration-status
 
-# Verify rollback
-alembic current
+# Note: SQL migrations are idempotent and can be run multiple times safely
+# If you need to rollback specific changes, you would need to create a new migration
 
-# Test that 'cancelled' status is rejected
+# Test that 'cancelled' status is rejected (if rollback was needed)
 psql $DATABASE_URL -c "INSERT INTO document_uploads (session_id, filename, file_size, processing_status, created_at) VALUES ('test', 'test.docx', 1024, 'cancelled', NOW());"
-# This should fail with constraint violation
+# This should fail with constraint violation if rollback was successful
 ```
 
 ## Success Criteria

@@ -98,11 +98,11 @@ python src/main.py
 
 ### Database Migrations
 ```bash
-# Create new migration
-alembic revision --autogenerate -m "description"
+# Run all migrations using admin API
+python3 run_migrations.py
 
-# Apply migrations
-alembic upgrade head
+# Or via HTTP endpoint (for production)
+curl -X POST http://localhost:8000/api/v1/admin/migrate-all
 ```
 
 ### Testing

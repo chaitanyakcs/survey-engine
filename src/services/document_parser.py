@@ -78,8 +78,8 @@ class DocumentParser:
             logger.info(f"🔧 [DocumentParser] Model source: VALID_DEFAULT_ERROR")
             return VALID_DEFAULT_MODEL
 
-    async def _send_progress(self, session_id: str, stage: str, progress: int, message: str, details: Optional[str] = None):
-        """Send progress update via WebSocket if manager is available."""
+    async def _send_progress(self, session_id: str, stage: str, progress: int, message: str, details: Optional[str] = None, estimated_time: Optional[int] = None, content_preview: Optional[str] = None):
+        """Send enhanced progress update via WebSocket if manager is available."""
         if self.rfq_parsing_manager and session_id:
             progress_data = {
                 "type": "progress",
@@ -87,30 +87,56 @@ class DocumentParser:
                 "progress": progress,
                 "message": message,
                 "details": details,
+                "estimated_time": estimated_time,
+                "content_preview": content_preview,
                 "timestamp": time.time()
             }
             try:
                 await self.rfq_parsing_manager.send_progress(session_id, progress_data)
-                logger.debug(f"📤 [DocumentParser] Sent progress: {stage} ({progress}%)")
+                logger.debug(f"📤 [DocumentParser] Sent enhanced progress: {stage} ({progress}%) - {message}")
             except Exception as e:
                 logger.warning(f"⚠️ [DocumentParser] Failed to send progress update: {str(e)}")
     
-    def extract_text_from_docx(self, docx_content: bytes) -> str:
-        """Extract text content from DOCX file."""
+    async def extract_text_from_docx(self, docx_content: bytes, session_id: str = None) -> str:
+        """Extract text content from DOCX file with detailed progress updates."""
         logger.info(f"📄 [Document Parser] Starting text extraction from DOCX, size: {len(docx_content)} bytes")
         try:
             doc = Document(BytesIO(docx_content))
             text_content = []
             
+            # Send initial progress
+            if session_id:
+                await self._send_progress(session_id, "extracting", 5, 
+                    "Opening document...", 
+                    "Reading DOCX file structure", 
+                    estimated_time=30)
+            
             logger.info(f"📝 [Document Parser] Processing {len(doc.paragraphs)} paragraphs")
+            paragraph_count = 0
             for i, paragraph in enumerate(doc.paragraphs):
                 if paragraph.text.strip():
                     text_content.append(paragraph.text.strip())
+                    paragraph_count += 1
                     if i < 5:  # Log first 5 paragraphs for debugging
                         logger.debug(f"📝 [Document Parser] Paragraph {i}: {paragraph.text.strip()[:100]}...")
+                
+                # Send progress updates every 10 paragraphs
+                if session_id and i % 10 == 0 and i > 0:
+                    progress = min(5 + (i / len(doc.paragraphs)) * 15, 20)
+                    await self._send_progress(session_id, "extracting", int(progress),
+                        f"Processing paragraphs... ({i}/{len(doc.paragraphs)})",
+                        f"Found {paragraph_count} non-empty paragraphs",
+                        estimated_time=25)
             
             logger.info(f"📊 [Document Parser] Processing {len(doc.tables)} tables")
+            if session_id:
+                await self._send_progress(session_id, "extracting", 20,
+                    "Processing tables...",
+                    f"Found {len(doc.tables)} tables to process",
+                    estimated_time=20)
+            
             # Also extract text from tables
+            table_count = 0
             for table_idx, table in enumerate(doc.tables):
                 logger.debug(f"📊 [Document Parser] Processing table {table_idx} with {len(table.rows)} rows")
                 for row in table.rows:
@@ -120,19 +146,43 @@ class DocumentParser:
                             row_text.append(cell.text.strip())
                     if row_text:
                         text_content.append(" | ".join(row_text))
+                        table_count += 1
+                
+                # Send progress updates for tables
+                if session_id and table_idx % 2 == 0:
+                    progress = min(20 + (table_idx / len(doc.tables)) * 5, 25)
+                    await self._send_progress(session_id, "extracting", int(progress),
+                        f"Processing tables... ({table_idx + 1}/{len(doc.tables)})",
+                        f"Extracted {table_count} table rows",
+                        estimated_time=15)
             
             extracted_text = "\n".join(text_content)
             logger.info(f"✅ [Document Parser] Text extraction completed, total length: {len(extracted_text)} chars")
+            
+            # Send completion progress
+            if session_id:
+                word_count = len(extracted_text.split())
+                await self._send_progress(session_id, "extracting", 25,
+                    "Text extraction completed!",
+                    f"Extracted {word_count} words from {paragraph_count} paragraphs and {table_count} table rows",
+                    content_preview=extracted_text[:200] + "..." if len(extracted_text) > 200 else extracted_text,
+                    estimated_time=10)
+            
             return extracted_text
             
         except Exception as e:
             logger.error(f"❌ [Document Parser] Failed to extract text from DOCX: {str(e)}", exc_info=True)
+            if session_id:
+                await self._send_progress(session_id, "error", 0,
+                    "Text extraction failed",
+                    f"Error: {str(e)}",
+                    estimated_time=0)
             raise DocumentParsingError(f"Failed to extract text from document: {str(e)}")
     
     def create_conversion_prompt(self, document_text: str) -> str:
         """Create the system prompt for LLM conversion."""
         
-        # Define the expected JSON schema
+        # Define the expected JSON schema with explicit question types
         json_schema = {
             "title": "string (required)",
             "description": "string (required)", 
@@ -146,7 +196,7 @@ class DocumentParser:
                 {
                     "id": "string (required)",
                     "text": "string (required)",
-                    "type": "string (multiple_choice|single_choice|scale|text|ranking|matrix|van_westendorp|gabor_granger)",
+                    "type": "string (REQUIRED: must be one of: multiple_choice|single_choice|text|scale|rating|yes_no|dropdown|matrix|ranking|numeric|date|boolean|file_upload|van_westendorp|gabor_granger|conjoint|maxdiff|unknown)",
                     "options": "array of strings (for choice questions)",
                     "scale_min": "number (for scale questions)",
                     "scale_max": "number (for scale questions)",
@@ -164,7 +214,7 @@ DOCUMENT TEXT:
 
 INSTRUCTIONS:
 1. Extract the survey structure and convert to the exact JSON schema provided below
-2. Identify question types: multiple_choice, single_choice, scale, text, ranking, matrix, van_westendorp, gabor_granger
+2. CRITICAL: Question types MUST be one of: multiple_choice, single_choice, text, scale, rating, yes_no, dropdown, matrix, ranking, numeric, date, boolean, file_upload, van_westendorp, gabor_granger, conjoint, maxdiff, unknown
 3. Detect methodologies: van_westendorp, gabor_granger, conjoint, maxdiff, brand_tracking, nps
 4. Preserve question order and logic flow
 5. If unsure about any field, use null rather than guessing
@@ -185,13 +235,26 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
 """
         return prompt
     
-    async def convert_to_json(self, document_text: str) -> Dict[str, Any]:
-        """Convert document text to JSON using LLM."""
+    async def convert_to_json(self, document_text: str, session_id: str = None) -> Dict[str, Any]:
+        """Convert document text to JSON using LLM with detailed progress updates."""
         logger.info(f"🤖 [Document Parser] Starting LLM conversion with model: {self.model}")
         try:
+            # Send initial progress
+            if session_id:
+                await self._send_progress(session_id, "llm_processing", 30,
+                    "Preparing AI analysis...",
+                    "Building conversion prompt and initializing AI model",
+                    estimated_time=45)
+            
             logger.info(f"📝 [Document Parser] Creating conversion prompt")
             prompt = self.create_conversion_prompt(document_text)
             logger.info(f"✅ [Document Parser] Conversion prompt created, length: {len(prompt)} chars")
+            
+            if session_id:
+                await self._send_progress(session_id, "llm_processing", 35,
+                    "Sending to AI model...",
+                    f"Using {self.model} to analyze document structure",
+                    estimated_time=40)
             
             # Create audit context for this LLM interaction
             interaction_id = f"document_parsing_{uuid.uuid4().hex[:8]}"
@@ -222,14 +285,21 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                         logger.info(f"🚀 [Document Parser] Calling Replicate API with auditing")
                         logger.info(f"🎯 [Document Parser] Using model: {self.model}")
                         logger.info(f"🎯 [Document Parser] Model source: DocumentParser._parse_document_with_llm (audited)")
+                        
+                        if session_id:
+                            await self._send_progress(session_id, "llm_processing", 40,
+                                "AI processing document...",
+                                "Analyzing survey structure and extracting questions",
+                                estimated_time=35)
+                        
                         start_time = time.time()
                         output = await self.replicate_client.async_run(
                             self.model,
                             input={
                                 "prompt": prompt,
                                 "temperature": 0.1,
-                                "max_tokens": 4000,
-                                "system_prompt": "You are a document parser. Parse the provided document into the exact JSON structure below. Be literal and strict: your output MUST be valid JSON, no prose, no backticks, no explanations, nothing else.\n\nCRITICAL: Your response must be valid JSON that can be parsed by json.loads().\n\nTop-level JSON shape required:\n{\n  \"raw_output\": { ...full extracted content and minimal normalization... },\n  \"final_output\": { ...cleaned, normalized, validated survey schema... }\n}\n\nMANDATORY STRUCTURE:\n1. \"raw_output\" must contain:\n   - \"document_text\": the full original text (unchanged)\n   - \"extraction_timestamp\": ISO 8601 timestamp\n   - \"source_file\": filename if provided, null otherwise\n   - \"error\": null (unless there was a blocking issue)\n\n2. \"final_output\" must contain:\n   - \"title\": string (required, cannot be null)\n   - \"description\": string or null\n   - \"metadata\": object with quality_score, estimated_time, methodology_tags, target_responses, source_file\n   - \"questions\": array (required, cannot be null, can be empty)\n   - \"parsing_issues\": array of strings\n\n3. Each question in \"questions\" must have:\n   - \"id\": string (q1, q2, q3...)\n   - \"text\": string (required)\n   - \"type\": string (one of: multiple_choice, scale, text, ranking, matrix, date, numeric, file_upload, boolean, unknown)\n   - \"options\": array of strings (empty for free text)\n   - \"required\": boolean\n   - \"validation\": string or null\n   - \"methodology\": string or null\n   - \"routing\": object or null\n\nRULES:\n1. ALWAYS return valid JSON - if you cannot parse something, include it as \"unknown\" type question\n2. Assign sequential IDs: q1, q2, q3...\n3. For multiple choice: put options in \"options\" array\n4. For scales: use \"type\":\"scale\" and put scale labels in \"options\"\n5. For matrices: use \"type\":\"matrix\" with validation \"matrix_per_brand:BrandA|BrandB\"\n6. For Van Westendorp: use \"methodology\":\"van_westendorp\"\n7. For MaxDiff: use \"type\":\"ranking\" with \"methodology\":\"maxdiff\"\n8. For Conjoint: use \"methodology\":\"conjoint\"\n9. Set \"required\": true for most questions, false for optional\n10. Use validation tokens: single_select, multi_select_min_1_max_3, currency_usd_min_1_max_1000, etc.\n\nEXAMPLE OUTPUT:\n{\n  \"raw_output\": {\n    \"document_text\": \"[full document text here]\",\n    \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n    \"source_file\": null,\n    \"error\": null\n  },\n  \"final_output\": {\n    \"title\": \"Customer Satisfaction Survey\",\n    \"description\": \"Survey to measure customer satisfaction\",\n    \"metadata\": {\n      \"quality_score\": 0.9,\n      \"estimated_time\": 10,\n      \"methodology_tags\": [\"satisfaction\", \"nps\"],\n      \"target_responses\": 100,\n      \"source_file\": null\n    },\n    \"questions\": [\n      {\n        \"id\": \"q1\",\n        \"text\": \"How satisfied are you with our service?\",\n        \"type\": \"scale\",\n        \"options\": [\"Very Dissatisfied\", \"Dissatisfied\", \"Neutral\", \"Satisfied\", \"Very Satisfied\"],\n        \"required\": true,\n        \"validation\": \"single_select\",\n        \"methodology\": \"satisfaction\",\n        \"routing\": null\n      }\n    ],\n    \"parsing_issues\": []\n  }\n}\n\nNow parse the document and return ONLY the JSON structure above."
+                                "max_tokens": 2000,  # Reduced from 4000
+                                "system_prompt": "Parse document to JSON. Return ONLY valid JSON with this structure:\n\n{\n  \"raw_output\": {\n    \"document_text\": \"[original text]\",\n    \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n    \"source_file\": null,\n    \"error\": null\n  },\n  \"final_output\": {\n    \"title\": \"[survey title]\",\n    \"description\": \"[description or null]\",\n    \"metadata\": {\n      \"quality_score\": 0.9,\n      \"estimated_time\": 10,\n      \"methodology_tags\": [\"tag1\", \"tag2\"],\n      \"target_responses\": 100,\n      \"source_file\": null\n    },\n    \"questions\": [\n      {\n        \"id\": \"q1\",\n        \"text\": \"[question text]\",\n        \"type\": \"multiple_choice|single_choice|text|scale|ranking|matrix|numeric|date|boolean|file_upload|unknown\",\n        \"options\": [\"option1\", \"option2\"],\n        \"required\": true,\n        \"validation\": \"single_select\",\n        \"methodology\": \"van_westendorp|gabor_granger|conjoint|maxdiff|null\",\n        \"routing\": null\n      }\n    ],\n    \"parsing_issues\": []\n  }\n}\n\nRules:\n- Use sequential IDs: q1, q2, q3...\n- For choice questions: put options in \"options\" array\n- For scales: use \"type\":\"scale\" with scale labels in \"options\"\n- For matrices: use \"type\":\"matrix\"\n- Set \"required\": true for most questions\n- Use \"unknown\" type if unsure\n- Return ONLY JSON, no explanations\n\nMethodology Detection:\n- Van Westendorp: \"too cheap\", \"too expensive\" price questions\n- Gabor-Granger: Sequential price acceptance\n- Conjoint: Choice scenarios with attributes\n- MaxDiff: \"Most/Least important\" selections\n- NPS: \"How likely to recommend\" questions"
                             }
                         )
                         
@@ -259,8 +329,9 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                         self.model,
                         input={
                         "prompt": prompt,
-                        **get_json_optimized_hyperparameters("rfq_parsing"),
-                        "system_prompt": "You are a document parser. Parse the provided document into the exact JSON structure below. Be literal and strict: your output MUST be valid JSON, no prose, no backticks, no explanations, nothing else.\n\nCRITICAL: Your response must be valid JSON that can be parsed by json.loads().\n\nTop-level JSON shape required:\n{\n  \"raw_output\": { ...full extracted content and minimal normalization... },\n  \"final_output\": { ...cleaned, normalized, validated survey schema... }\n}\n\nMANDATORY STRUCTURE:\n1. \"raw_output\" must contain:\n   - \"document_text\": the full original text (unchanged)\n   - \"extraction_timestamp\": ISO 8601 timestamp\n   - \"source_file\": filename if provided, null otherwise\n   - \"error\": null (unless there was a blocking issue)\n\n2. \"final_output\" must contain:\n   - \"title\": string (required, cannot be null)\n   - \"description\": string or null\n   - \"metadata\": object with quality_score, estimated_time, methodology_tags, target_responses, source_file\n   - \"questions\": array (required, cannot be null, can be empty)\n   - \"parsing_issues\": array of strings\n\n3. Each question in \"questions\" must have:\n   - \"id\": string (q1, q2, q3...)\n   - \"text\": string (required)\n   - \"type\": string (one of: multiple_choice, scale, text, ranking, matrix, date, numeric, file_upload, boolean, unknown)\n   - \"options\": array of strings (empty for free text)\n   - \"required\": boolean\n   - \"validation\": string or null\n   - \"methodology\": string or null\n   - \"routing\": object or null\n\nRULES:\n1. ALWAYS return valid JSON - if you cannot parse something, include it as \"unknown\" type question\n2. Assign sequential IDs: q1, q2, q3...\n3. For multiple choice: put options in \"options\" array\n4. For scales: use \"type\":\"scale\" and put scale labels in \"options\"\n5. For matrices: use \"type\":\"matrix\" with validation \"matrix_per_brand:BrandA|BrandB\"\n6. For Van Westendorp: use \"methodology\":\"van_westendorp\"\n7. For MaxDiff: use \"type\":\"ranking\" with \"methodology\":\"maxdiff\"\n8. For Conjoint: use \"methodology\":\"conjoint\"\n9. Set \"required\": true for most questions, false for optional\n10. Use validation tokens: single_select, multi_select_min_1_max_3, currency_usd_min_1_max_1000, etc.\n\nEXAMPLE OUTPUT:\n{\n  \"raw_output\": {\n    \"document_text\": \"[full document text here]\",\n    \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n    \"source_file\": null,\n    \"error\": null\n  },\n  \"final_output\": {\n    \"title\": \"Customer Satisfaction Survey\",\n    \"description\": \"Survey to measure customer satisfaction\",\n    \"metadata\": {\n      \"quality_score\": 0.9,\n      \"estimated_time\": 10,\n      \"methodology_tags\": [\"satisfaction\", \"nps\"],\n      \"target_responses\": 100,\n      \"source_file\": null\n    },\n    \"questions\": [\n      {\n        \"id\": \"q1\",\n        \"text\": \"How satisfied are you with our service?\",\n        \"type\": \"scale\",\n        \"options\": [\"Very Dissatisfied\", \"Dissatisfied\", \"Neutral\", \"Satisfied\", \"Very Satisfied\"],\n        \"required\": true,\n        \"validation\": \"single_select\",\n        \"methodology\": \"satisfaction\",\n        \"routing\": null\n      }\n    ],\n    \"parsing_issues\": []\n  }\n}\n\nNow parse the document and return ONLY the JSON structure above."
+                        "temperature": 0.1,
+                        "max_tokens": 2000,  # Reduced from 4000
+                        "system_prompt": "Parse document to JSON. Return ONLY valid JSON with this structure:\n\n{\n  \"raw_output\": {\n    \"document_text\": \"[original text]\",\n    \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n    \"source_file\": null,\n    \"error\": null\n  },\n  \"final_output\": {\n    \"title\": \"[survey title]\",\n    \"description\": \"[description or null]\",\n    \"metadata\": {\n      \"quality_score\": 0.9,\n      \"estimated_time\": 10,\n      \"methodology_tags\": [\"tag1\", \"tag2\"],\n      \"target_responses\": 100,\n      \"source_file\": null\n    },\n    \"questions\": [\n      {\n        \"id\": \"q1\",\n        \"text\": \"[question text]\",\n        \"type\": \"multiple_choice|single_choice|text|scale|ranking|matrix|numeric|date|boolean|file_upload|unknown\",\n        \"options\": [\"option1\", \"option2\"],\n        \"required\": true,\n        \"validation\": \"single_select\",\n        \"methodology\": \"van_westendorp|gabor_granger|conjoint|maxdiff|null\",\n        \"routing\": null\n      }\n    ],\n    \"parsing_issues\": []\n  }\n}\n\nRules:\n- Use sequential IDs: q1, q2, q3...\n- For choice questions: put options in \"options\" array\n- For scales: use \"type\":\"scale\" with scale labels in \"options\"\n- For matrices: use \"type\":\"matrix\"\n- Set \"required\": true for most questions\n- Use \"unknown\" type if unsure\n- Return ONLY JSON, no explanations\n\nMethodology Detection:\n- Van Westendorp: \"too cheap\", \"too expensive\" price questions\n- Gabor-Granger: Sequential price acceptance\n- Conjoint: Choice scenarios with attributes\n- MaxDiff: \"Most/Least important\" selections\n- NPS: \"How likely to recommend\" questions"
                     }
                 )
             except Exception as audit_error:
@@ -271,8 +342,9 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                     self.model,
                     input={
                         "prompt": prompt,
-                        **get_json_optimized_hyperparameters("rfq_parsing"),
-                        "system_prompt": "You are a document parser. Parse the provided document into the exact JSON structure below. Be literal and strict: your output MUST be valid JSON, no prose, no backticks, no explanations, nothing else.\n\nCRITICAL: Your response must be valid JSON that can be parsed by json.loads().\n\nTop-level JSON shape required:\n{\n  \"raw_output\": { ...full extracted content and minimal normalization... },\n  \"final_output\": { ...cleaned, normalized, validated survey schema... }\n}\n\nMANDATORY STRUCTURE:\n1. \"raw_output\" must contain:\n   - \"document_text\": the full original text (unchanged)\n   - \"extraction_timestamp\": ISO 8601 timestamp\n   - \"source_file\": filename if provided, null otherwise\n   - \"error\": null (unless there was a blocking issue)\n\n2. \"final_output\" must contain:\n   - \"title\": string (required, cannot be null)\n   - \"description\": string or null\n   - \"metadata\": object with quality_score, estimated_time, methodology_tags, target_responses, source_file\n   - \"questions\": array (required, cannot be null, can be empty)\n   - \"parsing_issues\": array of strings\n\n3. Each question in \"questions\" must have:\n   - \"id\": string (q1, q2, q3...)\n   - \"text\": string (required)\n   - \"type\": string (one of: multiple_choice, scale, text, ranking, matrix, date, numeric, file_upload, boolean, unknown)\n   - \"options\": array of strings (empty for free text)\n   - \"required\": boolean\n   - \"validation\": string or null\n   - \"methodology\": string or null\n   - \"routing\": object or null\n\nRULES:\n1. ALWAYS return valid JSON - if you cannot parse something, include it as \"unknown\" type question\n2. Assign sequential IDs: q1, q2, q3...\n3. For multiple choice: put options in \"options\" array\n4. For scales: use \"type\":\"scale\" and put scale labels in \"options\"\n5. For matrices: use \"type\":\"matrix\" with validation \"matrix_per_brand:BrandA|BrandB\"\n6. For Van Westendorp: use \"methodology\":\"van_westendorp\"\n7. For MaxDiff: use \"type\":\"ranking\" with \"methodology\":\"maxdiff\"\n8. For Conjoint: use \"methodology\":\"conjoint\"\n9. Set \"required\": true for most questions, false for optional\n10. Use validation tokens: single_select, multi_select_min_1_max_3, currency_usd_min_1_max_1000, etc.\n\nEXAMPLE OUTPUT:\n{\n  \"raw_output\": {\n    \"document_text\": \"[full document text here]\",\n    \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n    \"source_file\": null,\n    \"error\": null\n  },\n  \"final_output\": {\n    \"title\": \"Customer Satisfaction Survey\",\n    \"description\": \"Survey to measure customer satisfaction\",\n    \"metadata\": {\n      \"quality_score\": 0.9,\n      \"estimated_time\": 10,\n      \"methodology_tags\": [\"satisfaction\", \"nps\"],\n      \"target_responses\": 100,\n      \"source_file\": null\n    },\n    \"questions\": [\n      {\n        \"id\": \"q1\",\n        \"text\": \"How satisfied are you with our service?\",\n        \"type\": \"scale\",\n        \"options\": [\"Very Dissatisfied\", \"Dissatisfied\", \"Neutral\", \"Satisfied\", \"Very Satisfied\"],\n        \"required\": true,\n        \"validation\": \"single_select\",\n        \"methodology\": \"satisfaction\",\n        \"routing\": null\n      }\n    ],\n    \"parsing_issues\": []\n  }\n}\n\nNow parse the document and return ONLY the JSON structure above."
+                        "temperature": 0.1,
+                        "max_tokens": 2000,  # Reduced from 4000
+                        "system_prompt": "Parse document to JSON. Return ONLY valid JSON with this structure:\n\n{\n  \"raw_output\": {\n    \"document_text\": \"[original text]\",\n    \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n    \"source_file\": null,\n    \"error\": null\n  },\n  \"final_output\": {\n    \"title\": \"[survey title]\",\n    \"description\": \"[description or null]\",\n    \"metadata\": {\n      \"quality_score\": 0.9,\n      \"estimated_time\": 10,\n      \"methodology_tags\": [\"tag1\", \"tag2\"],\n      \"target_responses\": 100,\n      \"source_file\": null\n    },\n    \"questions\": [\n      {\n        \"id\": \"q1\",\n        \"text\": \"[question text]\",\n        \"type\": \"multiple_choice|single_choice|text|scale|ranking|matrix|numeric|date|boolean|file_upload|unknown\",\n        \"options\": [\"option1\", \"option2\"],\n        \"required\": true,\n        \"validation\": \"single_select\",\n        \"methodology\": \"van_westendorp|gabor_granger|conjoint|maxdiff|null\",\n        \"routing\": null\n      }\n    ],\n    \"parsing_issues\": []\n  }\n}\n\nRules:\n- Use sequential IDs: q1, q2, q3...\n- For choice questions: put options in \"options\" array\n- For scales: use \"type\":\"scale\" with scale labels in \"options\"\n- For matrices: use \"type\":\"matrix\"\n- Set \"required\": true for most questions\n- Use \"unknown\" type if unsure\n- Return ONLY JSON, no explanations\n\nMethodology Detection:\n- Van Westendorp: \"too cheap\", \"too expensive\" price questions\n- Gabor-Granger: Sequential price acceptance\n- Conjoint: Choice scenarios with attributes\n- MaxDiff: \"Most/Least important\" selections\n- NPS: \"How likely to recommend\" questions"
                     }
                 )
             
@@ -434,6 +506,46 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
             if "final_output" in survey_data:
                 logger.error(f"Final output structure: {list(survey_data['final_output'].keys()) if isinstance(survey_data.get('final_output'), dict) else 'Not a dict'}")
             
+            # Try to fix invalid question types first
+            try:
+                logger.warning(f"⚠️ [Document Parser] Attempting to fix invalid question types")
+                fixed_data = self._fix_invalid_question_types(survey_data)
+                
+                if "final_output" in fixed_data:
+                    survey = SurveyCreate(**fixed_data["final_output"])
+                    validated_data = survey.model_dump()
+                    logger.info(f"✅ [Document Parser] Survey validation successful after fixing question types")
+                    return {
+                        "raw_output": fixed_data.get("raw_output", {}),
+                        "final_output": validated_data
+                    }
+                else:
+                    survey = SurveyCreate(**fixed_data)
+                    logger.info(f"✅ [Document Parser] Survey validation successful after fixing question types")
+                    return survey.model_dump()
+            except Exception as fix_error:
+                logger.warning(f"⚠️ [Document Parser] Question type fixing failed: {str(fix_error)}")
+            
+            # Try to fix routing fields
+            try:
+                logger.warning(f"⚠️ [Document Parser] Attempting to fix routing fields")
+                fixed_data = self._fix_routing_fields(survey_data)
+                
+                if "final_output" in fixed_data:
+                    survey = SurveyCreate(**fixed_data["final_output"])
+                    validated_data = survey.model_dump()
+                    logger.info(f"✅ [Document Parser] Survey validation successful after fixing routing fields")
+                    return {
+                        "raw_output": fixed_data.get("raw_output", {}),
+                        "final_output": validated_data
+                    }
+                else:
+                    survey = SurveyCreate(**fixed_data)
+                    logger.info(f"✅ [Document Parser] Survey validation successful after fixing routing fields")
+                    return survey.model_dump()
+            except Exception as fix_error:
+                logger.warning(f"⚠️ [Document Parser] Routing field fixing failed: {str(fix_error)}")
+            
             # Try to create a minimal valid response
             try:
                 logger.warning(f"⚠️ [Document Parser] Attempting to create minimal valid response")
@@ -463,6 +575,131 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
             except Exception as e2:
                 logger.error(f"❌ [Document Parser] Minimal response creation also failed: {str(e2)}")
                 raise DocumentParsingError(f"Generated JSON validation failed: {str(e)}")
+    
+    def _fix_invalid_question_types(self, survey_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Fix invalid question types by mapping them to valid ones."""
+        logger.info(f"🔧 [Document Parser] Attempting to fix invalid question types")
+        
+        # Mapping of invalid types to valid ones
+        type_mapping = {
+            'numeric': 'text',
+            'number': 'text', 
+            'integer': 'text',
+            'float': 'text',
+            'decimal': 'text',
+            'currency': 'text',
+            'email': 'text',
+            'phone': 'text',
+            'date': 'text',
+            'time': 'text',
+            'datetime': 'text',
+            'url': 'text',
+            'website': 'text',
+            'address': 'text',
+            'name': 'text',
+            'age': 'text',
+            'gender': 'single_choice',
+            'yes_no': 'yes_no',
+            'boolean': 'yes_no',
+            'true_false': 'yes_no',
+            'agree_disagree': 'scale',
+            'likert': 'scale',
+            'rating': 'scale',
+            'stars': 'scale',
+            'slider': 'scale',
+            'range': 'scale',
+            'dropdown': 'single_choice',
+            'select': 'single_choice',
+            'radio': 'single_choice',
+            'checkbox': 'multiple_choice',
+            'multi_select': 'multiple_choice',
+            'checkboxes': 'multiple_choice',
+            'ranking': 'ranking',
+            'rank': 'ranking',
+            'order': 'ranking',
+            'priority': 'ranking',
+            'matrix': 'matrix',
+            'grid': 'matrix',
+            'table': 'matrix',
+            'open_text': 'text',
+            'open_ended': 'text',
+            'comment': 'text',
+            'feedback': 'text',
+            'suggestion': 'text',
+            'other': 'text',
+            'custom': 'text',
+            'unknown': 'unknown'
+        }
+        
+        fixed_data = survey_data.copy()
+        
+        # Handle both new format (with final_output) and legacy format
+        if "final_output" in fixed_data:
+            final_output = fixed_data["final_output"].copy()
+            if 'questions' in final_output:
+                fixed_questions = []
+                for question in final_output['questions']:
+                    fixed_question = question.copy()
+                    if 'type' in fixed_question:
+                        original_type = fixed_question['type']
+                        if original_type not in [t.value for t in QuestionType]:
+                            mapped_type = type_mapping.get(original_type.lower(), 'unknown')
+                            logger.info(f"🔧 [Document Parser] Mapped question type '{original_type}' to '{mapped_type}'")
+                            fixed_question['type'] = mapped_type
+                    fixed_questions.append(fixed_question)
+                final_output['questions'] = fixed_questions
+            fixed_data["final_output"] = final_output
+        else:
+            # Legacy format
+            if 'questions' in fixed_data:
+                fixed_questions = []
+                for question in fixed_data['questions']:
+                    fixed_question = question.copy()
+                    if 'type' in fixed_question:
+                        original_type = fixed_question['type']
+                        if original_type not in [t.value for t in QuestionType]:
+                            mapped_type = type_mapping.get(original_type.lower(), 'unknown')
+                            logger.info(f"🔧 [Document Parser] Mapped question type '{original_type}' to '{mapped_type}'")
+                            fixed_question['type'] = mapped_type
+                    fixed_questions.append(fixed_question)
+                fixed_data['questions'] = fixed_questions
+        
+        return fixed_data
+    
+    def _fix_routing_fields(self, survey_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Fix routing fields by converting strings to proper dict structure or setting to null."""
+        logger.info(f"🔧 [Document Parser] Attempting to fix routing fields")
+        
+        fixed_data = survey_data.copy()
+        
+        # Handle both new format (with final_output) and legacy format
+        if "final_output" in fixed_data:
+            final_output = fixed_data["final_output"].copy()
+            if 'questions' in final_output:
+                fixed_questions = []
+                for question in final_output['questions']:
+                    fixed_question = question.copy()
+                    if 'routing' in fixed_question and isinstance(fixed_question['routing'], str):
+                        # Convert string routing to null (we're being less strict)
+                        logger.info(f"🔧 [Document Parser] Converting string routing to null for question {fixed_question.get('id', 'unknown')}")
+                        fixed_question['routing'] = None
+                    fixed_questions.append(fixed_question)
+                final_output['questions'] = fixed_questions
+            fixed_data["final_output"] = final_output
+        else:
+            # Legacy format
+            if 'questions' in fixed_data:
+                fixed_questions = []
+                for question in fixed_data['questions']:
+                    fixed_question = question.copy()
+                    if 'routing' in fixed_question and isinstance(fixed_question['routing'], str):
+                        # Convert string routing to null (we're being less strict)
+                        logger.info(f"🔧 [Document Parser] Converting string routing to null for question {fixed_question.get('id', 'unknown')}")
+                        fixed_question['routing'] = None
+                    fixed_questions.append(fixed_question)
+                fixed_data['questions'] = fixed_questions
+        
+        return fixed_data
     
     def create_rfq_extraction_prompt(self, document_text: str) -> str:
         """Create the system prompt for RFQ-specific data extraction."""
@@ -1687,7 +1924,7 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
 
             # Extract text from DOCX
             logger.info(f"📄 [Document Parser] Extracting text from DOCX")
-            document_text = self.extract_text_from_docx(docx_content)
+            document_text = await self.extract_text_from_docx(docx_content, session_id)
 
             if not document_text.strip():
                 logger.error(f"❌ [Document Parser] No text content found in document")
@@ -1749,7 +1986,7 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
         try:
             # Extract text from DOCX
             logger.info(f"📄 [Document Parser] Extracting text from DOCX")
-            document_text = self.extract_text_from_docx(docx_content)
+            document_text = await self.extract_text_from_docx(docx_content)
 
             if not document_text.strip():
                 logger.error(f"❌ [Document Parser] No text content found in document")

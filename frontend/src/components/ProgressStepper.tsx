@@ -26,7 +26,7 @@ const MAIN_WORKFLOW_STEPS: MainWorkflowStep[] = [
   {
     key: 'building_context',
     label: 'Building Context',
-    description: 'Analyzing requirements and gathering templates',
+    description: 'Analyzing requirements and gathering templates (5-10 minutes)',
     icon: '🔗',
     color: 'gold',
     percentRange: [10, 25],
@@ -42,7 +42,7 @@ const MAIN_WORKFLOW_STEPS: MainWorkflowStep[] = [
         key: 'parsing_rfq',
         label: 'Parsing RFQ requirements',
         backendStep: 'parsing_rfq',
-        message: 'Analyzing and understanding your requirements'
+        message: 'Analyzing and understanding your requirements (5-10 minutes)'
       },
       {
         key: 'generating_embeddings',

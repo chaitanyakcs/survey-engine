@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from sqlalchemy.orm import Session
 from src.database import get_db
 from src.services.golden_service import GoldenService
+from src.services.golden_state_service import GoldenStateService
 from src.services.document_parser import document_parser, DocumentParsingError
 from src.utils.error_messages import UserFriendlyError, create_error_response
 from pydantic import BaseModel
@@ -33,7 +34,8 @@ class CreateGoldenPairRequest(BaseModel):
     methodology_tags: Optional[List[str]] = None
     industry_category: Optional[str] = None
     research_goal: Optional[str] = None
-    quality_score: float
+    quality_score: Optional[float] = None  # Made optional to match frontend
+    auto_generate_rfq: Optional[bool] = False  # Flag to indicate if RFQ should be auto-generated
 
 
 class ValidationRequest(BaseModel):
@@ -92,7 +94,12 @@ async def create_golden_pair(
         # Handle missing RFQ text
         rfq_text = request.rfq_text
         if not rfq_text or not rfq_text.strip():
-            logger.info(f"🤖 [Golden Pair API] RFQ text is empty, will auto-generate from survey")
+            if request.auto_generate_rfq:
+                logger.info(f"🤖 [Golden Pair API] RFQ text is empty and auto_generate_rfq is True, will auto-generate from survey")
+            else:
+                logger.info(f"📝 [Golden Pair API] RFQ text is empty and auto_generate_rfq is False - will create golden example without RFQ")
+        else:
+            logger.info(f"📝 [Golden Pair API] Using provided RFQ text (length: {len(rfq_text)})")
 
         logger.info(f"💾 [Golden Pair API] Calling golden_service.create_golden_pair")
         golden_pair = await golden_service.create_golden_pair(
@@ -102,7 +109,8 @@ async def create_golden_pair(
             methodology_tags=request.methodology_tags,
             industry_category=request.industry_category,
             research_goal=request.research_goal,
-            quality_score=request.quality_score
+            quality_score=request.quality_score,
+            auto_generate_rfq=request.auto_generate_rfq
         )
         
         logger.info(f"✅ [Golden Pair API] Golden pair created successfully with ID: {golden_pair.id}")
@@ -265,7 +273,7 @@ async def parse_document(
         
         logger.info(f"📝 [Document Parse] Extracting text preview for: {file.filename}")
         # Extract text for preview
-        extracted_text = document_parser.extract_text_from_docx(file_content)
+        extracted_text = await document_parser.extract_text_from_docx(file_content)
         logger.info(f"✅ [Document Parse] Text extraction completed, length: {len(extracted_text)} chars")
         logger.info(f"📝 [Document Parse] Extracted text preview: {extracted_text[:200]}...")
         
@@ -291,3 +299,75 @@ async def parse_document(
         logger.error(f"❌ [Document Parse] Unexpected error parsing {file.filename}: {str(e)}", exc_info=True)
         error_response = create_error_response(e, f"document parsing for {file.filename}")
         raise HTTPException(status_code=500, detail=error_response)
+
+
+# State Management Endpoints
+
+class SaveStateRequest(BaseModel):
+    session_id: str
+    state_data: Dict[str, Any]
+
+
+@router.post("/state/save")
+async def save_golden_example_state(
+    request: SaveStateRequest,
+    db: Session = Depends(get_db)
+):
+    """Save golden example creation state"""
+    try:
+        service = GoldenStateService(db)
+        success = service.save_state(request.session_id, request.state_data)
+        
+        if success:
+            logger.info(f"💾 [Golden State] Saved state for session: {request.session_id}")
+            return {"status": "success", "session_id": request.session_id}
+        else:
+            logger.error(f"❌ [Golden State] Failed to save state for session: {request.session_id}")
+            raise HTTPException(status_code=500, detail="Failed to save state")
+    except Exception as e:
+        logger.error(f"❌ [Golden State] Error saving state: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error saving state: {str(e)}")
+
+
+@router.get("/state/{session_id}")
+async def load_golden_example_state(
+    session_id: str,
+    db: Session = Depends(get_db)
+):
+    """Load golden example creation state"""
+    try:
+        service = GoldenStateService(db)
+        state_data = service.load_state(session_id)
+        
+        if state_data:
+            logger.info(f"📂 [Golden State] Loaded state for session: {session_id}")
+            return {"status": "success", "state_data": state_data}
+        else:
+            logger.warning(f"⚠️ [Golden State] No state found for session: {session_id}")
+            raise HTTPException(status_code=404, detail="State not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [Golden State] Error loading state: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error loading state: {str(e)}")
+
+
+@router.delete("/state/{session_id}")
+async def delete_golden_example_state(
+    session_id: str,
+    db: Session = Depends(get_db)
+):
+    """Delete golden example state after successful creation"""
+    try:
+        service = GoldenStateService(db)
+        success = service.delete_state(session_id)
+        
+        if success:
+            logger.info(f"🗑️ [Golden State] Deleted state for session: {session_id}")
+            return {"status": "success", "message": "State deleted successfully"}
+        else:
+            logger.warning(f"⚠️ [Golden State] No state found to delete for session: {session_id}")
+            return {"status": "success", "message": "No state found to delete"}
+    except Exception as e:
+        logger.error(f"❌ [Golden State] Error deleting state: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error deleting state: {str(e)}")

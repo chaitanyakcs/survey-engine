@@ -1,0 +1,482 @@
+# Cursor Rules for Survey Engine Project
+
+## Project Overview
+This is a full-stack AI-powered survey generation engine that transforms RFQs into researcher-ready surveys using:
+- **Backend**: Python 3.11+ FastAPI with SQLAlchemy
+- **Frontend**: React/TypeScript with Tailwind CSS and Zustand
+- **Database**: PostgreSQL with pgvector extension
+- **AI/ML**: Replicate API (meta/llama-3.3-70b-instruct), sentence-transformers
+- **Workflow**: LangGraph StateGraph for orchestration
+- **Real-Time**: WebSocket for live progress updates
+- **Containerization**: Docker with docker-compose
+- **Deployment**: Railway for production, local via start-local.sh
+- **Evaluation**: 5-Pillar quality assessment system
+
+## Python Version Requirement
+- **Python 3.11-3.12 only** (`>=3.11,<3.13`)
+- This is a hard constraint - do not use Python 3.13+ features
+
+## Code Style & Standards
+
+### Python Backend
+- Follow PEP 8 style guidelines
+- Use type hints for all function parameters and return values
+- Use async/await for database operations and external API calls
+- Follow FastAPI best practices for API endpoints
+- Use SQLAlchemy ORM patterns consistently
+- Place business logic in service classes, not in route handlers
+- Use proper error handling with custom exceptions (UserFriendlyError)
+- Follow the existing project structure in `src/` directory
+- **Formatting**: Use `black` (line-length: 88)
+- **Import Sorting**: Use `isort` (profile: "black")
+- **Linting**: Use `flake8` for code quality
+- **Type Checking**: Use `mypy` (strict mode with documented exemptions)
+
+### Frontend (React/TypeScript)
+- Use TypeScript strict mode
+- Follow React functional component patterns with hooks
+- Use Tailwind CSS for styling (no inline styles)
+- Implement proper error boundaries
+- **State Management**: Use Zustand store (not Redux or Context API)
+- Follow the existing component structure in `frontend/src/`
+- Handle WebSocket connections for real-time updates
+- Use ErrorClassifier for user-friendly error messages
+
+### Database
+- Use SQL migrations in `migrations/` directory for database schema changes
+- Execute migrations via admin API endpoints in `admin.py`
+- Follow naming conventions: snake_case for tables and columns
+- Use proper foreign key relationships
+- Include proper indexes for performance
+- Migrations are idempotent and can be run multiple times safely
+- Use pgvector for vector similarity search in production
+
+## AI/ML Integration Patterns
+
+### Replicate AI Service
+- **Primary AI Provider**: Replicate API (meta/llama-3.3-70b-instruct)
+- Use `replicate.Client` with proper API token configuration
+- Check for `REPLICATE_API_TOKEN` environment variable
+- Implement error handling for Replicate API failures
+- Use JSON-optimized hyperparameters for structured output
+- Implement LLM audit tracking for all AI calls using `@audit_llm_call` decorator
+- Note: OpenAI references in error messages are generic fallback text only
+
+### Embeddings & Vector Search
+- Use sentence-transformers (all-MiniLM-L6-v2) for vector embeddings
+- Generate embeddings for RFQ text and golden examples
+- Store embeddings in PostgreSQL with pgvector extension
+- Use pgvector for similarity search in production (not FAISS)
+- Implement similarity thresholds (default: 0.75)
+- Follow tiered retrieval strategy: Golden pairs → Methodology blocks → Templates
+
+### LLM Audit Pattern
+- Use `@audit_llm_call` decorator for all AI service calls
+- Track model, provider, tokens, latency, cost estimates
+- Store audit records in `llm_audit` table
+- Include raw responses for debugging
+- Log errors and retries
+
+## WebSocket & Real-Time Patterns
+
+### ConnectionManager
+- Manage WebSocket connections per workflow_id in `src/main.py`
+- Handle connection lifecycle: connect, disconnect, send_progress
+- Support multiple connections per workflow_id
+- Implement proper error handling for failed sends
+- Use structured progress messages with type, stage, substage, percentage
+
+### Progress Tracking
+- Use `ProgressTracker` from `src/services/progress_tracker.py` for workflow progress state
+- Send progress updates at each workflow stage
+- Include stage, substage, percentage, and message in updates
+- Integrate with `WebSocketNotificationService` for broadcasting
+- Track progress in workflow node wrappers
+
+### Frontend Integration
+- Use Zustand store for state management and WebSocket handling
+- Connect WebSocket on workflow start (`/ws/survey/{workflow_id}`)
+- Handle connection lifecycle and reconnection logic
+- Update UI in real-time based on progress messages
+- Display progress with ProgressStepper component
+
+## LangGraph Workflow Patterns
+
+### StateGraph Architecture
+- Use LangGraph's `StateGraph` with `SurveyGenerationState`
+- Define workflow nodes: parse_rfq → retrieve_golden → build_context → generate → validate → review
+- Implement progress tracking in each node wrapper function
+- Use async/await for all node functions
+- Pass connection_manager to nodes that need WebSocket updates
+
+### Workflow State Management
+- `SurveyGenerationState` contains all workflow data
+- Include workflow_id for tracking and WebSocket updates
+- Pass state between nodes immutably
+- Handle validation failures with retry logic
+- Store workflow state in database via `workflow_state_service`
+
+### Workflow Node Pattern
+```python
+async def node_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
+    progress_tracker = get_progress_tracker(state.workflow_id)
+    
+    # Send progress update
+    progress_data = progress_tracker.get_progress_data("stage", "substage")
+    await ws_client.send_progress_update(state.workflow_id, progress_data)
+    
+    # Execute node logic
+    result = await actual_node(state)
+    
+    # Send completion update
+    completion_data = progress_tracker.get_completion_data("stage", "completed")
+    await ws_client.send_progress_update(state.workflow_id, completion_data)
+    
+    return result
+```
+
+## 5-Pillar Evaluation System
+
+### Pillar Structure
+- **content_validity**: Research objective coverage and alignment
+- **methodological_rigor**: Survey design and methodology compliance
+- **respondent_experience**: Question clarity and survey flow
+- **analytical_value**: Data quality and actionability
+- **business_impact**: Decision-making value and ROI
+
+### Evaluation Modules
+- Use chain-of-thought LLM-based analysis
+- Implement evaluators in `evaluations/modules/`
+- Return structured results with scores (0.0-1.0) and recommendations
+- Integrate with `ConsolidatedRulesService` for pillar rules
+- Store evaluation results in database
+- Use evaluation results for quality gates
+
+### Evaluation Pattern
+```python
+class PillarEvaluator:
+    def __init__(self, llm_client, db_session):
+        self.llm_client = llm_client
+        self.db_session = db_session
+        self.pillar_rules_service = ConsolidatedRulesService(db_session)
+    
+    async def evaluate(self, survey, rfq_text) -> PillarResult:
+        # Chain-of-thought analysis
+        # Return structured result with score and recommendations
+```
+
+## Service Layer Patterns
+
+### Service Initialization
+- Accept optional `db_session`, `workflow_id`, `connection_manager` parameters
+- Use graceful fallback for unavailable dependencies (Redis, WebSocket, etc.)
+- Log service configuration on initialization using `log_service_configuration`
+- Check for required API tokens and warn if missing
+- Initialize WebSocket client if connection_manager is available
+
+### Service Pattern
+```python
+class MyService:
+    def __init__(self, db_session: Optional[Session] = None, 
+                 workflow_id: Optional[str] = None,
+                 connection_manager = None):
+        log_service_configuration(logger, "MyService", event="init", 
+                                 details={"has_db": bool(db_session)})
+        
+        self.db_session = db_session
+        self.workflow_id = workflow_id
+        
+        # WebSocket client for progress updates
+        if connection_manager and workflow_id:
+            from src.services.websocket_client import WebSocketNotificationService
+            self.ws_client = WebSocketNotificationService(connection_manager)
+        else:
+            self.ws_client = None
+```
+
+### Error Handling
+- Use `UserFriendlyError` for user-facing errors
+- Include `technical_details` and `action_required` fields
+- Implement proper error classification with `ErrorClassifier`
+- Log errors with structured logging
+- Provide helpful error messages for API configuration issues
+
+### Error Pattern
+```python
+from src.utils.error_messages import UserFriendlyError
+
+raise UserFriendlyError(
+    message="Failed to generate survey",
+    technical_details="Replicate API returned 500",
+    action_required="Check your REPLICATE_API_TOKEN configuration"
+)
+```
+
+## API Router Patterns
+
+### Router Organization
+- 16 API routers in `src/api/` directory
+- Router naming convention: `{domain}_router` (e.g., `rfq_router`, `survey_router`)
+- All routers use `/api/v1` prefix
+- Use FastAPI's `APIRouter` for modular organization
+- Include routers in `src/main.py` with proper prefix
+
+### Router Pattern
+```python
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from src.database.connection import get_db
+
+router = APIRouter(prefix="/api/v1/{domain}", tags=["{domain}"])
+
+@router.post("/")
+async def create_resource(data: ResourceRequest, db: Session = Depends(get_db)):
+    # Implementation in service class
+    service = ResourceService(db)
+    return await service.create(data)
+```
+
+## Document Processing Patterns
+
+### .docx Parsing
+- Advanced .docx parsing with field extraction in `src/services/document_parser.py`
+- RFQ field mapping and analysis with `DocumentAnalysisResponse`
+- Document upload and processing workflow
+- Cancellation support for document processing
+- Handle structured content extraction
+
+### Document Processing Flow
+1. Upload document via `/api/v1/rfq/upload-document`
+2. Parse with `DocumentParser.parse_document()`
+3. Extract fields with `FieldExtractionService`
+4. Map to RFQ structure
+5. Support cancellation via session_id
+
+## Export System Patterns
+
+### Export Architecture
+- Structured export in `src/services/export/`
+- Base exporter class with renderer pattern
+- DOCX export with proper formatting via `docx_renderer.py`
+- Survey preview before export
+- Include all survey metadata and structure
+
+### Export Pattern
+```python
+from src.services.export.base import BaseExporter
+from src.services.export.docx_renderer import DocxRenderer
+
+exporter = BaseExporter(renderer=DocxRenderer())
+file_path = await exporter.export(survey_data, output_path)
+```
+
+## Admin & Operations Patterns
+
+### Admin API
+- Admin endpoints in `src/api/admin.py`
+- Database migration endpoints: `/api/v1/admin/migrate-all`
+- Health check endpoints: `/api/v1/admin/health`
+- Migration status: `/api/v1/admin/check-migration-status`
+- Settings management via API in `src/api/settings.py`
+
+### LLM Audit System
+- Track all AI calls in `llm_audit` table
+- Monitor token usage, latency, costs
+- Store raw responses for debugging
+- Accessible via `/api/v1/llm-audit` endpoints
+
+## File Organization
+- **Backend code**: `src/` directory
+  - `src/api/` - FastAPI routers
+  - `src/services/` - Business logic (24 service classes)
+  - `src/workflows/` - LangGraph workflow nodes
+  - `src/database/` - Models and connection
+  - `src/config/` - Settings and configuration
+  - `src/utils/` - Utility functions
+- **Frontend code**: `frontend/src/` directory
+- **Tests**: `tests/` directory (unit, integration, evaluation)
+- **Documentation**: `docs/` directory
+- **Database migrations**: `migrations/` directory (SQL files)
+- **Evaluation framework**: `evaluations/` directory
+
+## Testing
+
+### Test Organization
+- **Unit tests**: `tests/unit/` - Test individual service classes
+- **Integration tests**: `tests/integration/` - Test API endpoints and workflows
+- **Evaluation tests**: `tests/evaluation/` - Test evaluation framework
+- Use pytest for Python testing
+- Use Jest for frontend testing
+- Maintain test coverage above 80%
+
+### Regression Testing
+- **Critical**: When encountering regressions or bugs, immediately augment the test suite
+- Add specific test cases that reproduce the regression
+- Include edge cases and boundary conditions
+- Add integration tests for API endpoints that failed
+- Update existing tests if they were insufficient
+- Document the regression scenario in test comments
+- Use `scripts/run_tests.sh` for comprehensive test execution
+- Run tests before any deployment to catch regressions early
+
+### Test Execution
+```bash
+# Run critical tests (must pass for deployment)
+./scripts/run_tests.sh critical --quiet
+
+# Run integration tests
+./scripts/run_tests.sh integration
+
+# Run all tests
+./scripts/run_tests.sh all
+```
+
+## Docker & Deployment
+
+### Docker Patterns
+- Use multi-stage Docker builds for optimization
+- Follow docker-compose patterns for local development
+- Use environment variables for configuration
+- CORS is wide-open for development (`allow_origins=["*"]`) - tighten for production
+
+### Deployment Scripts
+- **Production**: Use `deploy.sh` for Railway deployment
+- **Local Development**: Use `start-local.sh` for local environment setup
+- Always run tests before production deployment
+- Verify environment variables are properly configured
+
+### Railway Deployment
+- Follow the patterns in `deploy.sh`
+- Use migration endpoints in `admin.py` for database migrations
+- Monitor deployment logs for any issues
+- Use Railway's environment variable management
+- Auto-migration available with `--auto-migrate` flag
+
+### Local Development
+- Use `start-local.sh` for consistent local setup
+- Use migration endpoints in `admin.py` for database migrations
+- Ensure Docker containers are properly configured
+- Use local environment files for development-specific settings
+- Ports: Backend 8000, Frontend 3000
+
+## Golden Standards & RAG
+
+### Golden Standards
+- Store in `golden_rfq_survey_pairs` table
+- Track quality_score and usage_count
+- Use for RAG retrieval with similarity search
+- Implement tiered retrieval strategy
+- Update usage_count when golden example is used
+
+### Retrieval Strategy
+1. **Tier 1**: Exact golden RFQ-survey pairs (semantic similarity + methodology match)
+2. **Tier 2**: Methodology blocks extracted from golden surveys
+3. **Tier 3**: Individual template questions (fallback)
+
+## Code Review Guidelines
+- All code changes must include tests
+- Follow the existing error handling patterns
+- Use proper logging with structured logging format
+- Ensure database migrations are backward compatible
+- Follow security best practices for API endpoints
+- Update documentation when adding features
+- Run linting and type checking before committing
+
+## Dependencies Management
+- Use `pyproject.toml` for Python dependencies
+- Use `package.json` for frontend dependencies
+- Keep dependencies up to date and secure
+- Use `uv` for Python package management (fast and reliable)
+- Run `uv sync` to install dependencies
+- Run `uv lock` after dependency changes
+
+## Documentation
+- Update relevant documentation when making changes
+- Follow the existing documentation patterns in `docs/`
+- Include docstrings for all public functions and classes
+- Update README files when adding new features
+- Document API endpoints with FastAPI's built-in docs
+
+## Performance Optimization
+- Optimize database queries (use indexes, avoid N+1)
+- Use proper caching strategies with Redis (graceful fallback if unavailable)
+- Use pgvector indexes for vector similarity search
+- Follow the existing optimization patterns
+- Monitor and profile performance-critical code
+- Preload ML models at startup (not per-request)
+
+## Security Best Practices
+- Validate all input data with Pydantic models
+- Use proper authentication and authorization (implement as needed)
+- Follow OWASP security guidelines
+- Keep dependencies updated for security patches
+- Never log sensitive data (API tokens, passwords)
+- Use environment variables for all secrets
+- Implement rate limiting for public endpoints
+
+## Key Success Metrics
+- **Generation Time**: <30 seconds end-to-end
+- **Golden Similarity**: >0.75 similarity score
+- **Cleanup Time**: <30 minutes (vs 3-4 hours baseline)
+- **Methodology Compliance**: 80%+ validation pass rate
+- **Test Coverage**: >80% code coverage
+
+## Common Patterns to Follow
+
+### Service Method Pattern
+```python
+async def process_item(self, item_id: str) -> Dict[str, Any]:
+    """Process an item with progress tracking"""
+    logger.info(f"Processing item: {item_id}")
+    
+    # Send progress update if WebSocket available
+    if self.ws_client and self.workflow_id:
+        await self.ws_client.send_progress_update(
+            self.workflow_id, 
+            {"type": "progress", "message": "Processing..."}
+        )
+    
+    # Business logic
+    result = await self._do_processing(item_id)
+    
+    logger.info(f"Completed processing: {item_id}")
+    return result
+```
+
+### Database Query Pattern
+```python
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+async def get_items(db: Session, filters: Dict[str, Any]) -> List[Model]:
+    """Query with proper async pattern"""
+    stmt = select(Model).where(Model.status == filters.get("status"))
+    result = await db.execute(stmt)
+    return result.scalars().all()
+```
+
+### API Endpoint Pattern
+```python
+@router.post("/items", response_model=ItemResponse)
+async def create_item(
+    request: ItemRequest,
+    db: Session = Depends(get_db)
+) -> ItemResponse:
+    """Create a new item with proper error handling"""
+    try:
+        service = ItemService(db)
+        result = await service.create_item(request)
+        return ItemResponse(**result)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to create item: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+```
+
+## Notes
+- FAISS is available in dependencies for local dev/testing, but pgvector is used in production
+- Redis is optional with graceful fallback to in-memory cache
+- WebSocket connections are optional - services should work without them
+- All services should handle missing dependencies gracefully
+- The codebase uses structured logging - follow the existing format

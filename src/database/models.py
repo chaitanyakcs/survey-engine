@@ -347,6 +347,22 @@ class WorkflowState(Base):
     )
 
 
+class GoldenExampleState(Base):
+    """Model for storing golden example creation state"""
+    __tablename__ = "golden_example_states"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String(255), nullable=False, unique=True)
+    state_data = Column(JSONB, nullable=False)  # Store form data, extracted fields, etc.
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    __table_args__ = (
+        Index('idx_golden_example_states_session_id', 'session_id'),
+        Index('idx_golden_example_states_created_at', 'created_at'),
+    )
+
+
 class Settings(Base):
     """Settings table for storing application configuration"""
     __tablename__ = "settings"

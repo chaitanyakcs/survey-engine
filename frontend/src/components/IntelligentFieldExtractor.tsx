@@ -40,8 +40,70 @@ export const IntelligentFieldExtractor: React.FC<IntelligentFieldExtractorProps>
   const [progress, setProgress] = useState<ProgressUpdate | null>(null);
   const [extractedFields, setExtractedFields] = useState<FieldExtractionData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [ws, setWs] = useState<WebSocket | null>(null);
+  const [, setWs] = useState<WebSocket | null>(null);
   const [sessionId] = useState(() => Math.random().toString(36).substr(2, 9));
+
+  const extractFields = useCallback(async () => {
+    // Allow extraction if we have survey JSON and either RFQ text or auto-generate is enabled
+    if (!surveyJson || Object.keys(surveyJson).length === 0) {
+      setError('Please provide Survey JSON for field extraction');
+      return;
+    }
+
+    // If no RFQ text, we'll use a placeholder for field extraction
+    const rfqTextForExtraction = rfqText.trim() || "Auto-generated RFQ will be created from survey content";
+
+    console.log('🔍 [Field Extractor] Starting intelligent field extraction');
+    console.log('📝 [Field Extractor] RFQ length:', rfqTextForExtraction.length);
+    console.log('📊 [Field Extractor] Survey keys:', Object.keys(surveyJson));
+
+    setIsExtracting(true);
+    setError(null);
+    setProgress(null);
+    setExtractedFields(null);
+
+    try {
+      const response = await fetch('/api/v1/field-extraction/extract', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          rfq_text: rfqTextForExtraction,
+          survey_json: surveyJson,
+          session_id: sessionId
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to extract fields');
+      }
+
+      const result = await response.json();
+      console.log('✅ [Field Extractor] Field extraction completed:', result);
+      
+      setExtractedFields(result);
+      onFieldsExtracted(result);
+      
+    } catch (err) {
+      console.error('❌ [Field Extractor] Field extraction failed:', err);
+      setError(err instanceof Error ? err.message : 'Failed to extract fields');
+    } finally {
+      setIsExtracting(false);
+    }
+  }, [rfqText, surveyJson, sessionId, onFieldsExtracted]);
+
+  // Auto-extract fields when component becomes visible and has required data
+  useEffect(() => {
+    const hasSurvey = Boolean(surveyJson && Object.keys(surveyJson).length > 0);
+    const hasRfqOrAutoGenerate = Boolean(rfqText.trim()) || Boolean(surveyJson); // Allow extraction with just survey
+    
+    if (hasSurvey && hasRfqOrAutoGenerate && !isExtracting && !extractedFields) {
+      console.log('🤖 [Field Extractor] Auto-triggering field extraction on component mount');
+      extractFields();
+    }
+  }, [surveyJson, rfqText, isExtracting, extractedFields, extractFields]);
 
   // WebSocket connection for real-time progress
   useEffect(() => {
@@ -103,53 +165,6 @@ export const IntelligentFieldExtractor: React.FC<IntelligentFieldExtractorProps>
     }
   }, [isExtracting, sessionId, onProgressUpdate, onFieldsExtracted]);
 
-  const extractFields = useCallback(async () => {
-    if (!rfqText.trim() || !surveyJson || Object.keys(surveyJson).length === 0) {
-      setError('Please provide both RFQ text and Survey JSON for field extraction');
-      return;
-    }
-
-    console.log('🔍 [Field Extractor] Starting intelligent field extraction');
-    console.log('📝 [Field Extractor] RFQ length:', rfqText.length);
-    console.log('📊 [Field Extractor] Survey keys:', Object.keys(surveyJson));
-
-    setIsExtracting(true);
-    setError(null);
-    setProgress(null);
-    setExtractedFields(null);
-
-    try {
-      const response = await fetch('/api/v1/field-extraction/extract', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          rfq_text: rfqText,
-          survey_json: surveyJson,
-          session_id: sessionId
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to extract fields');
-      }
-
-      const result = await response.json();
-      console.log('✅ [Field Extractor] Field extraction completed:', result);
-      
-      setExtractedFields(result);
-      onFieldsExtracted(result);
-      
-    } catch (err) {
-      console.error('❌ [Field Extractor] Field extraction failed:', err);
-      setError(err instanceof Error ? err.message : 'Failed to extract fields');
-    } finally {
-      setIsExtracting(false);
-    }
-  }, [rfqText, surveyJson, sessionId, onFieldsExtracted]);
-
   const canExtract = rfqText.trim().length > 0 && 
                     surveyJson && 
                     Object.keys(surveyJson).length > 0 && 
@@ -194,6 +209,11 @@ export const IntelligentFieldExtractor: React.FC<IntelligentFieldExtractorProps>
               className="bg-gradient-to-r from-blue-500 to-indigo-500 h-3 rounded-full transition-all duration-500 ease-out"
               style={{ width: `${progress.percent}%` }}
             />
+          </div>
+          
+          {/* Timing Note */}
+          <div className="mt-2 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+            ⏱️ This process typically takes 5-10 minutes
           </div>
           
           {/* Step Details */}

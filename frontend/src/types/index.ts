@@ -459,7 +459,7 @@ export interface GoldenExample {
   methodology_tags: string[];
   industry_category: string;
   research_goal: string;
-  quality_score: number;
+  quality_score: number | null;
   usage_count: number;
   created_at: string;
 }
@@ -471,7 +471,16 @@ export interface GoldenExampleRequest {
   methodology_tags: string[];
   industry_category: string;
   research_goal: string;
-  quality_score?: number;
+  quality_score?: number | null;
+  auto_generate_rfq?: boolean;  // Flag to indicate if RFQ should be auto-generated
+}
+
+export interface GoldenExampleFormState {
+  formData: GoldenExampleRequest;
+  autoGenerateRfq: boolean;
+  inputMode: 'upload' | 'manual';
+  rfqInputMode: 'text' | 'upload';
+  timestamp: number;
 }
 
 export interface GoldenExamplesResponse {
@@ -935,6 +944,9 @@ export interface DocumentUploadProgress {
   stage: 'uploading' | 'parsing' | 'analyzing' | 'mapping' | 'completed' | 'error';
   progress: number;
   message: string;
+  details?: string;
+  estimated_time?: number;
+  content_preview?: string;
   error?: string;
 }
 
@@ -1103,6 +1115,13 @@ export interface AppStore {
   // Document Processing State Persistence
   persistDocumentProcessingState: (isProcessing: boolean, sessionId?: string) => void;
   restoreDocumentProcessingState: () => boolean;
+
+  // Golden Example State Management
+  goldenExampleSessionId: string | null;
+  goldenExampleState: GoldenExampleFormState | null;
+  persistGoldenExampleState: (sessionId: string, state: GoldenExampleFormState) => Promise<void>;
+  restoreGoldenExampleState: () => Promise<boolean>;
+  clearGoldenExampleState: (sessionId?: string) => Promise<void>;
 
   // Enhanced RFQ Conversion
   createEnhancedRfqFromBasic: (basicRfq: RFQRequest) => EnhancedRFQRequest;

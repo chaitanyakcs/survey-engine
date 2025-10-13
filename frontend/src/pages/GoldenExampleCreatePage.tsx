@@ -8,16 +8,32 @@ import { ToastContainer } from '../components/Toast';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 
 export const GoldenExampleCreatePage: React.FC = () => {
-  const { createGoldenExample, toasts, removeToast } = useAppStore();
+  const { 
+    createGoldenExample, 
+    toasts, 
+    removeToast,
+    persistGoldenExampleState,
+    restoreGoldenExampleState,
+    clearGoldenExampleState,
+    goldenExampleState,
+    addToast
+  } = useAppStore();
   const [isLoading, setIsLoading] = useState(false);
   const { mainContentClasses } = useSidebarLayout();
+  
+  // Add session ID state
+  const [sessionId] = useState(() => {
+    return localStorage.getItem('golden_example_session_id') || 
+           `golden-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  });
+  
   const [formData, setFormData] = useState<GoldenExampleRequest>({
     rfq_text: '',
     survey_json: { survey_id: '', title: '', description: '', estimated_time: 10, confidence_score: 0.8, methodologies: [], golden_examples: [], questions: [], metadata: { target_responses: 0, methodology: [] } },
     methodology_tags: [],
     industry_category: '',
     research_goal: '',
-    quality_score: 0.8
+    quality_score: undefined
   });
   
   // Document parsing states
@@ -37,6 +53,62 @@ export const GoldenExampleCreatePage: React.FC = () => {
   // Intelligent field extraction states
   const [showFieldExtractor, setShowFieldExtractor] = useState(false);
 
+  // Restore state on mount
+  useEffect(() => {
+    const restoreState = async () => {
+      console.log('🔄 [GoldenExampleCreatePage] Attempting to restore state...');
+      console.log('🔄 [GoldenExampleCreatePage] Session ID:', sessionId);
+      
+      const restored = await restoreGoldenExampleState();
+      console.log('🔄 [GoldenExampleCreatePage] Restore result:', restored);
+      console.log('🔄 [GoldenExampleCreatePage] Golden example state:', goldenExampleState);
+      
+      if (restored && goldenExampleState) {
+        console.log('✅ [GoldenExampleCreatePage] Restoring form data:', goldenExampleState.formData);
+        setFormData(goldenExampleState.formData);
+        setAutoGenerateRfq(goldenExampleState.autoGenerateRfq);
+        setInputMode(goldenExampleState.inputMode);
+        setRfqInputMode(goldenExampleState.rfqInputMode);
+        // Show toast notification
+        addToast({
+          type: 'info',
+          title: 'Progress Restored',
+          message: 'Your previous work has been restored',
+          duration: 3000
+        });
+      } else {
+        console.log('⚠️ [GoldenExampleCreatePage] No state to restore');
+      }
+    };
+    restoreState();
+  }, [addToast, goldenExampleState, restoreGoldenExampleState, sessionId]);
+
+  // Auto-save state on changes (debounced)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      const hasContent = (formData.survey_json.questions?.length ?? 0) > 0 || formData.rfq_text;
+      console.log('💾 [GoldenExampleCreatePage] Auto-save check:', {
+        hasContent,
+        questionsLength: formData.survey_json.questions?.length ?? 0,
+        rfqTextLength: formData.rfq_text.length,
+        sessionId
+      });
+      
+      if (hasContent) {
+        console.log('💾 [GoldenExampleCreatePage] Auto-saving state...');
+        persistGoldenExampleState(sessionId, {
+          formData,
+          autoGenerateRfq,
+          inputMode,
+          rfqInputMode,
+          timestamp: Date.now()
+        });
+      }
+    }, 1000); // Debounce 1 second
+    
+    return () => clearTimeout(timeoutId);
+  }, [formData, autoGenerateRfq, inputMode, rfqInputMode, sessionId, persistGoldenExampleState]);
+
   // Handle field extraction results
   const handleFieldsExtracted = (fields: any) => {
     console.log('🎯 [Golden Create] Fields extracted:', fields);
@@ -45,7 +117,7 @@ export const GoldenExampleCreatePage: React.FC = () => {
       methodology_tags: fields.methodology_tags || [],
       industry_category: fields.industry_category || '',
       research_goal: fields.research_goal || '',
-      quality_score: fields.quality_score || 0.8
+      quality_score: fields.quality_score || undefined
     }));
     
     // Update title if suggested
@@ -75,6 +147,49 @@ export const GoldenExampleCreatePage: React.FC = () => {
     setShowFieldExtractor(hasSurvey && (hasRfq || autoGenerateRfq));
   }, [formData.rfq_text, formData.survey_json, autoGenerateRfq]);
 
+  // Auto-enable RFQ generation when survey is uploaded and no RFQ text is provided
+  useEffect(() => {
+    const hasSurvey = Boolean(formData.survey_json &&
+                     formData.survey_json.questions &&
+                     formData.survey_json.questions.length > 0);
+    const hasRfq = Boolean(formData.rfq_text && formData.rfq_text.trim().length > 0);
+    
+    // If we have a survey but no RFQ text, auto-enable RFQ generation
+    if (hasSurvey && !hasRfq && !autoGenerateRfq) {
+      console.log('🤖 [Golden Create] Auto-enabling RFQ generation since survey is available but no RFQ text provided');
+      setAutoGenerateRfq(true);
+    }
+  }, [formData.survey_json, formData.rfq_text, autoGenerateRfq]);
+
+  // Auto-enable RFQ generation when survey is uploaded (even if user unchecks it)
+  useEffect(() => {
+    const hasSurvey = Boolean(formData.survey_json &&
+                     formData.survey_json.questions &&
+                     formData.survey_json.questions.length > 0);
+    
+    // Always enable auto-generation when a survey is uploaded
+    if (hasSurvey && !autoGenerateRfq) {
+      console.log('🤖 [Golden Create] Auto-enabling RFQ generation for uploaded survey');
+      setAutoGenerateRfq(true);
+    }
+  }, [formData.survey_json, autoGenerateRfq]);
+
+  // Auto-trigger field extraction when survey is uploaded and no fields are populated
+  useEffect(() => {
+    const hasSurvey = Boolean(formData.survey_json &&
+                     formData.survey_json.questions &&
+                     formData.survey_json.questions.length > 0);
+    const hasFields = formData.methodology_tags.length > 0 || 
+                     formData.industry_category || 
+                     formData.research_goal;
+    
+    // If we have a survey but no extracted fields, trigger field extraction
+    if (hasSurvey && !hasFields) {
+      console.log('🎯 [Golden Create] Survey uploaded but no fields extracted - triggering field extraction');
+      // The IntelligentFieldExtractor will handle this automatically when it becomes visible
+    }
+  }, [formData.survey_json, formData.methodology_tags, formData.industry_category, formData.research_goal]);
+
   const handleCreateExample = async () => {
     console.log('🏆 [Golden Create] Starting golden example creation');
 
@@ -82,8 +197,15 @@ export const GoldenExampleCreatePage: React.FC = () => {
     const submissionData = {
       ...formData,
       // If auto-generate is enabled, send empty string to trigger generation
-      rfq_text: autoGenerateRfq ? '' : formData.rfq_text
+      rfq_text: autoGenerateRfq ? '' : formData.rfq_text,
+      // Include the auto-generate flag
+      auto_generate_rfq: autoGenerateRfq
     };
+
+    // Remove quality_score if it's null/undefined to avoid validation errors
+    if (submissionData.quality_score === null || submissionData.quality_score === undefined) {
+      delete submissionData.quality_score;
+    }
 
     console.log('📝 [Golden Create] Form data:', {
       auto_generate_rfq: autoGenerateRfq,
@@ -101,6 +223,10 @@ export const GoldenExampleCreatePage: React.FC = () => {
       console.log('🚀 [Golden Create] Calling createGoldenExample API');
       await createGoldenExample(submissionData);
       console.log('✅ [Golden Create] Golden example created successfully');
+      
+      // Clear saved state after successful creation
+      await clearGoldenExampleState(sessionId);
+      
       // Navigate back to golden examples list
       window.location.href = '/golden-examples';
     } catch (error) {
@@ -285,6 +411,10 @@ export const GoldenExampleCreatePage: React.FC = () => {
         setFormData(prev => ({ ...prev, survey_json: surveyJson }));
         console.log('💾 [Document Parse] Survey JSON saved to form data');
         
+        // Trigger automatic field extraction after document parsing
+        console.log('🤖 [Document Parse] Triggering automatic field extraction...');
+        // The field extraction will be triggered by the useEffect that watches formData.survey_json
+        
       } catch (jsonError) {
         console.error('❌ [Document Parse] Failed to parse survey JSON:', jsonError);
         console.error('❌ [Document Parse] JSON error details:', {
@@ -389,6 +519,16 @@ export const GoldenExampleCreatePage: React.FC = () => {
                         <label htmlFor="auto-generate-rfq" className="text-xs text-gray-600">
                           Auto-generate from survey
                         </label>
+                        {formData.survey_json?.questions && formData.survey_json.questions.length > 0 && !formData.rfq_text && (
+                          <span className="text-xs text-blue-600 ml-2">
+                            (Recommended when survey is uploaded)
+                          </span>
+                        )}
+                        {!autoGenerateRfq && !formData.rfq_text && (
+                          <span className="text-xs text-gray-500 ml-2">
+                            (Can create without RFQ)
+                          </span>
+                        )}
                       </div>
                       {!autoGenerateRfq && (
                         <div className="flex space-x-2">
@@ -566,6 +706,9 @@ export const GoldenExampleCreatePage: React.FC = () => {
                               <div className="text-center">
                                 <p className="text-sm font-medium text-gray-700 mb-1">Processing Document</p>
                                 <p className="text-xs text-gray-500">Converting your DOCX to survey JSON...</p>
+                                <p className="text-xs text-yellow-600 mt-2 bg-yellow-50 px-2 py-1 rounded">
+                                  ⏱️ This process typically takes 5-10 minutes
+                                </p>
                                 {retryCount > 0 && (
                                   <p className="text-xs text-yellow-600 mt-1">Retry attempt {retryCount + 1}</p>
                                 )}

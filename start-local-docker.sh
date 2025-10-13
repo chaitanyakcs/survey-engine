@@ -110,18 +110,18 @@ run_migrations() {
     echo -e "${BLUE}⏳ Waiting for database to be ready...${NC}"
     sleep 10
     
-    # Run migrations using the backend container
-    if $COMPOSE_CMD exec backend alembic upgrade head; then
+    # Run migrations using the admin API system
+    if $COMPOSE_CMD exec backend python3 run_migrations.py; then
         echo -e "${GREEN}✅ Database migrations completed${NC}"
     else
         echo -e "${YELLOW}⚠️  Migration failed, trying alternative approach...${NC}"
         # Try using docker run if exec fails
-        if $COMPOSE_CMD run --rm backend alembic upgrade head; then
+        if $COMPOSE_CMD run --rm backend python3 run_migrations.py; then
             echo -e "${GREEN}✅ Database migrations completed (alternative method)${NC}"
         else
             echo -e "${RED}❌ Database migrations failed${NC}"
             echo -e "${YELLOW}You may need to run migrations manually:${NC}"
-            echo -e "${CYAN}  $COMPOSE_CMD exec backend alembic upgrade head${NC}"
+            echo -e "${CYAN}  $COMPOSE_CMD exec backend python3 run_migrations.py${NC}"
         fi
     fi
 }

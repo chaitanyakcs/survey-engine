@@ -11,6 +11,9 @@ STRICT_TYPES=false
 STRICT_LINT=false
 CLEAN_BUILD=false
 AUTO_MIGRATE=false
+SKIP_TESTS=false
+STRICT_TESTS=false
+TEST_ONLY=false
 for arg in "$@"; do
     case $arg in
         --strict-types)
@@ -34,13 +37,28 @@ for arg in "$@"; do
             AUTO_MIGRATE=true
             shift
             ;;
+        --skip-tests)
+            SKIP_TESTS=true
+            shift
+            ;;
+        --strict-tests)
+            STRICT_TESTS=true
+            shift
+            ;;
+        --test-only)
+            TEST_ONLY=true
+            shift
+            ;;
         --help|-h)
-            echo "Usage: $0 [--strict-types] [--strict-lint] [--strict] [--clean] [--auto-migrate]"
+            echo "Usage: $0 [--strict-types] [--strict-lint] [--strict] [--clean] [--auto-migrate] [--skip-tests] [--strict-tests] [--test-only]"
             echo "  --strict-types    Enforce strict type checking (mypy errors block deployment)"
             echo "  --strict-lint     Enforce strict linting (flake8 errors block deployment)"
             echo "  --strict          Enable both strict type checking and linting"
             echo "  --clean           Perform a clean build (remove build artifacts and Docker cache)"
             echo "  --auto-migrate    Automatically run database migrations after deployment"
+            echo "  --skip-tests      Skip all tests (use with caution)"
+            echo "  --strict-tests    Integration tests must pass too"
+            echo "  --test-only       Run tests without deploying"
             echo "  --help, -h        Show this help message"
             echo ""
             echo "Note: Development checks (formatting, imports, logger) are now in start-local.sh"
@@ -114,6 +132,57 @@ fi
 echo "✅ Essential build checks passed!"
 echo "================================================"
 
+# Run test suite before deployment (unless skipped)
+if [ "$SKIP_TESTS" = false ]; then
+    echo "🧪 Running test suite before deployment..."
+    echo "================================================"
+    
+    # Install development dependencies if not already installed
+    uv sync --dev > /dev/null 2>&1
+    
+    # Run critical tests (must pass for deployment)
+    echo "🔍 Running critical test suite..."
+    if ./scripts/run_tests.sh critical --quiet; then
+        echo "✅ Critical tests passed!"
+    else
+        echo "❌ Critical tests failed! Cannot deploy."
+        echo "   Fix failing tests before deploying."
+        exit 1
+    fi
+    
+    # Run integration tests (can warn but not block unless strict)
+    if [ "$STRICT_TESTS" = true ]; then
+        echo "🔍 Running integration tests (strict mode)..."
+        if ./scripts/run_tests.sh integration --quiet; then
+            echo "✅ Integration tests passed!"
+        else
+            echo "❌ Integration tests failed! Cannot deploy in strict mode."
+            echo "   Fix failing tests or run without --strict-tests"
+            exit 1
+        fi
+    else
+        echo "🔍 Running integration tests..."
+        if ./scripts/run_tests.sh integration --quiet; then
+            echo "✅ Integration tests passed!"
+        else
+            echo "⚠️  Integration tests found issues, but continuing with deployment..."
+            echo "   (Use --strict-tests to enforce integration test passing)"
+        fi
+    fi
+    
+    echo "✅ Test suite completed!"
+    echo "================================================"
+else
+    echo "⚠️  Skipping tests (--skip-tests flag used)"
+    echo "================================================"
+fi
+
+# If test-only mode, exit here
+if [ "$TEST_ONLY" = true ]; then
+    echo "✅ Test-only mode completed successfully!"
+    exit 0
+fi
+
 # Clean build if requested
 if [ "$CLEAN_BUILD" = true ]; then
     echo "🧹 Performing clean build..."
@@ -181,21 +250,18 @@ if [ $? -eq 0 ]; then
         
         # Wait for deployment to complete if auto-migrate is enabled
         if [ "$AUTO_MIGRATE" = true ]; then
-            echo "⏳ Waiting for deployment to complete and transformers to load..."
+            echo "⏳ Waiting for deployment to complete..."
             
             # Wait for transformers to load by checking the health endpoint
             HEALTH_URL="https://survey-engine-production.up.railway.app/api/v1/admin/health"
             MAX_WAIT_ATTEMPTS=60  # 60 attempts * 10 seconds = 10 minutes max
             WAIT_COUNT=0
             
-            echo "   Checking if server is ready (transformers loading)..."
             while [ $WAIT_COUNT -lt $MAX_WAIT_ATTEMPTS ]; do
-                echo "   Attempt $((WAIT_COUNT + 1))/$MAX_WAIT_ATTEMPTS - checking server health..."
                 if curl -s "$HEALTH_URL" | grep -q '"status":"healthy"'; then
-                    echo "✅ Server is ready! Transformers have loaded."
+                    echo "✅ Server is ready!"
                     break
                 else
-                    echo "   Server not ready yet, waiting 10 seconds..."
                     sleep 10
                     WAIT_COUNT=$((WAIT_COUNT + 1))
                 fi
@@ -203,7 +269,6 @@ if [ $? -eq 0 ]; then
             
             if [ $WAIT_COUNT -eq $MAX_WAIT_ATTEMPTS ]; then
                 echo "⚠️  Server health check timed out after 10 minutes."
-                echo "   Proceeding with migration attempts anyway..."
             fi
             
             # Try to run migrations with retries
@@ -213,12 +278,10 @@ if [ $? -eq 0 ]; then
             RETRY_COUNT=0
             
             while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-                echo "   Migration attempt $((RETRY_COUNT + 1))/$MAX_RETRIES..."
                 if curl -s -X POST "$MIGRATION_URL" | grep -q '"status":"success"'; then
                     echo "✅ Database migrations completed successfully!"
                     break
                 else
-                    echo "⚠️  Migration attempt failed, retrying in 10 seconds..."
                     sleep 10
                     RETRY_COUNT=$((RETRY_COUNT + 1))
                 fi
@@ -228,6 +291,25 @@ if [ $? -eq 0 ]; then
                 echo "❌ Database migrations failed after $MAX_RETRIES attempts."
                 echo "   Please run manually: curl -X POST $MIGRATION_URL"
             fi
+            
+            # Post-deployment smoke tests
+            echo "🧪 Running post-deployment smoke tests..."
+            PROD_URL="https://survey-engine-production.up.railway.app"
+            
+            # Test critical endpoints
+            if curl -f "$PROD_URL/health" > /dev/null 2>&1; then
+                echo "✅ Health check passed"
+            else
+                echo "⚠️ Health check failed"
+            fi
+            
+            if curl -f "$PROD_URL/api/v1/golden/" > /dev/null 2>&1; then
+                echo "✅ Golden API passed"
+            else
+                echo "⚠️ Golden API failed"
+            fi
+            
+            echo "✅ Post-deployment smoke tests completed"
         fi
     else
         echo "❌ Railway redeploy failed."

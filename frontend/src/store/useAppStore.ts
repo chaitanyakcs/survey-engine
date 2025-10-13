@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { AppStore, RFQRequest, EnhancedRFQRequest, WorkflowState, ProgressMessage, GoldenExampleRequest, ToastMessage, SurveyAnnotations, getQuestionCount, PendingReview, ReviewDecision, RFQFieldMapping, DocumentAnalysisResponse, Survey, SurveyTextContent, TextComplianceReport, AiRATextLabel, METHODOLOGY_TEXT_REQUIREMENTS, AIRA_LABEL_TO_TYPE_MAP } from '../types';
+import { AppStore, RFQRequest, EnhancedRFQRequest, WorkflowState, ProgressMessage, GoldenExampleRequest, GoldenExampleFormState, ToastMessage, SurveyAnnotations, getQuestionCount, PendingReview, ReviewDecision, RFQFieldMapping, DocumentAnalysisResponse, Survey, SurveyTextContent, TextComplianceReport, AiRATextLabel, METHODOLOGY_TEXT_REQUIREMENTS, AIRA_LABEL_TO_TYPE_MAP } from '../types';
 import { ErrorClassifier } from '../types/errors';
 import { apiService } from '../services/api';
 import { rfqTemplateService } from '../services/RFQTemplateService';
@@ -854,7 +854,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         methodology_tags: item.methodology_tags || [],
         industry_category: item.industry_category || 'General',
         research_goal: item.research_goal || 'Market Research',
-        quality_score: item.quality_score || 0.8,
+        quality_score: item.quality_score || undefined,
         usage_count: item.usage_count || 0,
         created_at: new Date().toISOString() // Backend doesn't provide this
       }));
@@ -3053,6 +3053,89 @@ export const useAppStore = create<AppStore>((set, get) => ({
       recommendations,
       analysis_timestamp: new Date().toISOString()
     };
+  },
+
+  // Golden Example State Management
+  goldenExampleSessionId: null,
+  goldenExampleState: null,
+
+  persistGoldenExampleState: async (sessionId: string, state: GoldenExampleFormState) => {
+    try {
+      console.log('💾 [Store] Persisting golden example state for session:', sessionId);
+      console.log('💾 [Store] State data:', state);
+      
+      // Save to database
+      const response = await fetch('/api/v1/golden-pairs/state/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, state_data: state })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      // Also save to localStorage for faster restoration
+      localStorage.setItem('golden_example_session_id', sessionId);
+      localStorage.setItem('golden_example_state', JSON.stringify(state));
+      
+      set({ goldenExampleSessionId: sessionId, goldenExampleState: state });
+      console.log('✅ [Store] Golden example state persisted successfully');
+    } catch (error) {
+      console.error('❌ [Store] Failed to persist golden example state:', error);
+    }
+  },
+
+  restoreGoldenExampleState: async () => {
+    try {
+      console.log('📂 [Store] Attempting to restore golden example state...');
+      
+      // Try localStorage first (faster)
+      const sessionId = localStorage.getItem('golden_example_session_id');
+      console.log('📂 [Store] Session ID from localStorage:', sessionId);
+      
+      if (!sessionId) {
+        console.log('⚠️ [Store] No session ID found in localStorage');
+        return false;
+      }
+      
+      // Then fetch from database (more reliable)
+      console.log('📂 [Store] Fetching state from database...');
+      const response = await fetch(`/api/v1/golden-pairs/state/${sessionId}`);
+      console.log('📂 [Store] Database response status:', response.status);
+      
+      if (!response.ok) {
+        console.log('⚠️ [Store] Database fetch failed:', response.status, response.statusText);
+        return false;
+      }
+      
+      const data = await response.json();
+      console.log('📂 [Store] Database response data:', data);
+      
+      set({ 
+        goldenExampleSessionId: sessionId, 
+        goldenExampleState: data.state_data 
+      });
+      console.log('✅ [Store] Golden example state restored successfully');
+      return true;
+    } catch (error) {
+      console.error('❌ [Store] Failed to restore golden example state:', error);
+      return false;
+    }
+  },
+
+  clearGoldenExampleState: async (sessionId?: string) => {
+    const sid = sessionId || get().goldenExampleSessionId;
+    if (sid) {
+      try {
+        await fetch(`/api/v1/golden-pairs/state/${sid}`, { method: 'DELETE' });
+      } catch (error) {
+        console.warn('⚠️ Failed to clear state from database:', error);
+      }
+    }
+    localStorage.removeItem('golden_example_session_id');
+    localStorage.removeItem('golden_example_state');
+    set({ goldenExampleSessionId: null, goldenExampleState: null });
   },
 
   generateMissingTextContent: (missing: AiRATextLabel[], methodology: string[], rfq?: EnhancedRFQRequest): SurveyTextContent[] => {

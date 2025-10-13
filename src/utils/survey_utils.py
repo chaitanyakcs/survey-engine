@@ -42,3 +42,82 @@ def get_questions_count(survey: Optional[Dict[str, Any]]) -> int:
         int: Total number of questions
     """
     return len(extract_all_questions(survey))
+
+
+def validate_survey_json(survey: Optional[Dict[str, Any]]) -> tuple[bool, List[str]]:
+    """
+    Validate a survey JSON structure
+
+    Args:
+        survey: Survey object to validate
+
+    Returns:
+        tuple: (is_valid, list_of_errors)
+    """
+    errors = []
+    
+    if not survey:
+        return False, ["Survey is None or empty"]
+    
+    # Check required fields
+    if not isinstance(survey, dict):
+        return False, ["Survey must be a dictionary"]
+    
+    # Check for title
+    if not survey.get("title"):
+        errors.append("Survey must have a title")
+    
+    # Check for questions or sections
+    if not survey.get("questions") and not survey.get("sections"):
+        errors.append("Survey must have either 'questions' or 'sections'")
+    
+    # If sections format, validate structure
+    if survey.get("sections"):
+        if not isinstance(survey["sections"], list):
+            errors.append("Sections must be a list")
+        else:
+            for i, section in enumerate(survey["sections"]):
+                if not isinstance(section, dict):
+                    errors.append(f"Section {i} must be a dictionary")
+                    continue
+                
+                if not section.get("id"):
+                    errors.append(f"Section {i} must have an id")
+                
+                if not section.get("title"):
+                    errors.append(f"Section {i} must have a title")
+                
+                # Check questions in section
+                questions = section.get("questions", [])
+                if not isinstance(questions, list):
+                    errors.append(f"Section {i} questions must be a list")
+                else:
+                    for j, question in enumerate(questions):
+                        if not isinstance(question, dict):
+                            errors.append(f"Section {i}, Question {j} must be a dictionary")
+                            continue
+                        
+                        if not question.get("id"):
+                            errors.append(f"Section {i}, Question {j} must have an id")
+                        
+                        if not question.get("text"):
+                            errors.append(f"Section {i}, Question {j} must have text")
+    
+    # If legacy format, validate questions
+    elif survey.get("questions"):
+        questions = survey["questions"]
+        if not isinstance(questions, list):
+            errors.append("Questions must be a list")
+        else:
+            for i, question in enumerate(questions):
+                if not isinstance(question, dict):
+                    errors.append(f"Question {i} must be a dictionary")
+                    continue
+                
+                if not question.get("id"):
+                    errors.append(f"Question {i} must have an id")
+                
+                if not question.get("text"):
+                    errors.append(f"Question {i} must have text")
+    
+    return len(errors) == 0, errors

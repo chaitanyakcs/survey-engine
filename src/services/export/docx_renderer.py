@@ -6,12 +6,26 @@ Implements the abstract base renderer with Word document generation.
 import re
 from io import BytesIO
 from typing import Dict, List, Any
-from docx import Document
-from docx.document import Document as DocumentType
-from docx.shared import Inches, Pt
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.oxml.shared import OxmlElement, qn
+
+try:
+    from docx import Document
+    from docx.document import Document as DocumentType
+    from docx.shared import Inches, Pt
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.enum.table import WD_TABLE_ALIGNMENT
+    from docx.oxml.shared import OxmlElement, qn
+    DOCX_AVAILABLE = True
+except ImportError:
+    # DocX not available - used for testing environments
+    Document = None
+    DocumentType = None
+    Inches = None
+    Pt = None
+    WD_ALIGN_PARAGRAPH = None
+    WD_TABLE_ALIGNMENT = None
+    OxmlElement = None
+    qn = None
+    DOCX_AVAILABLE = False
 
 from .base import SurveyExportRenderer, QuestionType, export_registry
 
@@ -23,6 +37,8 @@ class DocxSurveyRenderer(SurveyExportRenderer):
     """
 
     def __init__(self) -> None:
+        if not DOCX_AVAILABLE:
+            raise ImportError("python-docx is required for DocxSurveyRenderer but not available")
         self.document: DocumentType | None = None
         super().__init__()
 

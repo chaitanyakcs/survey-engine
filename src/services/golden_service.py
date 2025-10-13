@@ -139,7 +139,8 @@ We need a comprehensive survey with approximately {len(questions)} questions to 
         methodology_tags: Optional[List[str]] = None,
         industry_category: Optional[str] = None,
         research_goal: Optional[str] = None,
-        quality_score: float = 1.0
+        quality_score: Optional[float] = None,
+        auto_generate_rfq: bool = False
     ) -> GoldenRFQSurveyPair:
         """
         Create new golden standard pair with embedding generation
@@ -154,16 +155,21 @@ We need a comprehensive survey with approximately {len(questions)} questions to 
         logger.info(f"⭐ [GoldenService] Quality score: {quality_score}")
 
         try:
-            # Generate RFQ if not provided
+            # Handle RFQ text - generate if requested, or allow empty if auto-generate is enabled
             if not rfq_text or not rfq_text.strip():
-                logger.info(f"🤖 [GoldenService] RFQ text is missing, generating from survey")
-                rfq_text = await self.generate_rfq_from_survey(
-                    survey_json=survey_json,
-                    methodology_tags=methodology_tags,
-                    industry_category=industry_category,
-                    research_goal=research_goal
-                )
-                logger.info(f"✅ [GoldenService] RFQ generated, length: {len(rfq_text)}")
+                if auto_generate_rfq:
+                    logger.info(f"🤖 [GoldenService] RFQ text is missing and auto_generate_rfq is True, generating from survey")
+                    rfq_text = await self.generate_rfq_from_survey(
+                        survey_json=survey_json,
+                        methodology_tags=methodology_tags,
+                        industry_category=industry_category,
+                        research_goal=research_goal
+                    )
+                    logger.info(f"✅ [GoldenService] RFQ generated, length: {len(rfq_text)}")
+                else:
+                    # Allow creating golden examples without RFQ text
+                    logger.info(f"📝 [GoldenService] No RFQ text provided and auto_generate_rfq is False - creating golden example without RFQ")
+                    rfq_text = ""  # Use empty string instead of raising error
             else:
                 logger.info(f"📝 [GoldenService] Using provided RFQ text")
 
@@ -173,7 +179,10 @@ We need a comprehensive survey with approximately {len(questions)} questions to 
             logger.info(f"✅ [GoldenService] Embedding generated successfully, length: {len(rfq_embedding) if rfq_embedding else 0}")
 
             logger.info(f"💾 [GoldenService] Creating GoldenRFQSurveyPair record")
-            # Create golden pair record
+            # Create golden pair record with default quality score if not provided
+            final_quality_score = quality_score if quality_score is not None else 1.0
+            logger.info(f"⭐ [GoldenService] Using quality score: {final_quality_score}")
+            
             golden_pair = GoldenRFQSurveyPair(
                 title=title,
                 rfq_text=rfq_text,
@@ -182,7 +191,7 @@ We need a comprehensive survey with approximately {len(questions)} questions to 
                 methodology_tags=methodology_tags,
                 industry_category=industry_category,
                 research_goal=research_goal,
-                quality_score=quality_score
+                quality_score=final_quality_score
             )
             
             logger.info(f"💾 [GoldenService] Adding golden pair to database")

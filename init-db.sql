@@ -4,7 +4,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 -- Create vector index function for optimal performance
 CREATE OR REPLACE FUNCTION create_vector_indexes() RETURNS void AS $$
 BEGIN
-    -- Create indexes after tables are created by Alembic
+    -- Create indexes after tables are created by SQL migrations
     -- This will be run after initial migration
 END;
 $$ LANGUAGE plpgsql;

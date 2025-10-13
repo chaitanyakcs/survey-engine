@@ -1,6 +1,12 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from src.services.retrieval_service import RetrievalService
+
+# Mock pgvector before importing RetrievalService
+with patch.dict('sys.modules', {
+    'pgvector': MagicMock(),
+    'pgvector.sqlalchemy': MagicMock()
+}):
+    from src.services.retrieval_service import RetrievalService
 
 
 class TestRetrievalService:

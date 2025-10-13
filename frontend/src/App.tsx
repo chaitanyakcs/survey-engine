@@ -13,7 +13,7 @@ import { ToastContainer } from './components/Toast';
 import { SidebarProvider } from './contexts/SidebarContext';
 
 function App() {
-  const { toasts, removeToast, currentSurvey, recoverWorkflowState, restoreDocumentProcessingState, restoreEnhancedRfqState } = useAppStore();
+  const { toasts, removeToast, currentSurvey, recoverWorkflowState, restoreDocumentProcessingState, restoreEnhancedRfqState, restoreGoldenExampleState } = useAppStore();
   
   // Simple routing based on URL path
   const getCurrentPage = () => {
@@ -62,7 +62,8 @@ function App() {
     recoverWorkflowState();
     restoreDocumentProcessingState();
     restoreEnhancedRfqState(false); // Restore without showing toast on app load
-  }, [recoverWorkflowState, restoreDocumentProcessingState, restoreEnhancedRfqState]);
+    restoreGoldenExampleState(); // Add this
+  }, [recoverWorkflowState, restoreDocumentProcessingState, restoreEnhancedRfqState, restoreGoldenExampleState]);
 
   // Load survey from URL parameters when on preview page
   useEffect(() => {

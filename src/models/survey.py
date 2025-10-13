@@ -16,6 +16,10 @@ class QuestionType(str, Enum):
     DROPDOWN = "dropdown"
     MATRIX = "matrix"
     RANKING = "ranking"
+    NUMERIC = "numeric"
+    DATE = "date"
+    BOOLEAN = "boolean"
+    FILE_UPLOAD = "file_upload"
     # Methodology-specific types
     VAN_WESTENDORP = "van_westendorp"
     GABOR_GRANGER = "gabor_granger"

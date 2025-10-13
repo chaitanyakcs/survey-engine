@@ -273,8 +273,8 @@ Return ONLY a JSON object with this exact structure:
                         input={
                             "prompt": prompt,
                             "temperature": 0.1,
-                            "max_tokens": 2000,
-                            "system_prompt": "You are a survey methodology expert. Extract the requested fields from the provided RFQ and Survey content. Return ONLY valid JSON in the exact format specified.",
+                            "max_tokens": 1000,  # Reduced from 2000 for faster processing
+                            "system_prompt": "Extract fields from RFQ/Survey. Return ONLY valid JSON.\n\nExtract:\n- methodology_tags: [\"van_westendorp\", \"conjoint\", \"maxdiff\", \"nps\", \"satisfaction\"]\n- industry_category: \"electronics|healthcare|financial|retail|automotive\"\n- research_goal: \"pricing_research|feature_research|satisfaction_research|brand_research|market_sizing\"\n- quality_score: 0.0-1.0\n- suggested_title: \"[descriptive title]\"\n\nMethodology Detection:\n- Van Westendorp: \"too cheap\", \"too expensive\" questions\n- Conjoint: Choice scenarios with attributes\n- MaxDiff: \"Most/Least important\" selections\n- NPS: \"How likely to recommend\"",
                         },
                     )
 
@@ -299,7 +299,7 @@ Return ONLY a JSON object with this exact structure:
                     input={
                         "prompt": prompt,
                         **get_json_optimized_hyperparameters("rfq_parsing"),
-                        "system_prompt": "You are a survey methodology expert. Extract the requested fields from the provided RFQ and Survey content. Return ONLY valid JSON in the exact format specified.",
+                        "system_prompt": "Extract fields from RFQ/Survey. Return ONLY valid JSON.\n\nExtract:\n- methodology_tags: [\"van_westendorp\", \"conjoint\", \"maxdiff\", \"nps\", \"satisfaction\"]\n- industry_category: \"electronics|healthcare|financial|retail|automotive\"\n- research_goal: \"pricing_research|feature_research|satisfaction_research|brand_research|market_sizing\"\n- quality_score: 0.0-1.0\n- suggested_title: \"[descriptive title]\"\n\nMethodology Detection:\n- Van Westendorp: \"too cheap\", \"too expensive\" questions\n- Conjoint: Choice scenarios with attributes\n- MaxDiff: \"Most/Least important\" selections\n- NPS: \"How likely to recommend\"",
                     },
                 )
 

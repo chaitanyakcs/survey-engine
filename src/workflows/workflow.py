@@ -1,4 +1,8 @@
-from langgraph.graph import StateGraph
+try:
+    from langgraph.graph import StateGraph
+except ImportError:
+    # Fallback for different langgraph versions
+    from langgraph import StateGraph
 from sqlalchemy.orm import Session
 from typing import Any, Dict
 from .state import SurveyGenerationState

@@ -80,7 +80,7 @@ Your response must be parseable by json.loads() without any modification."""
         """Get optimal hyperparameters for JSON generation based on purpose"""
         base_params = {
             "top_p": 0.9,
-            "max_tokens": 8000,
+            "max_tokens": 2000,  # Reduced from 8000 for faster processing
             "frequency_penalty": 0.0,
             "presence_penalty": 0.0,
             "stop_sequences": ["```", "```json", "```\n", "\n\n\n"]  # Stop at code blocks or excessive newlines

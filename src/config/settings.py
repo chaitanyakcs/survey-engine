@@ -29,13 +29,26 @@ class Settings(BaseSettings):
     debug: bool = False
     log_level: str = "INFO"
     
+    # Additional environment variables that might be present
+    skip_migrations: str = "false"  # Handle as string to avoid validation issues
+    database_host: str = "localhost"
+    database_port: str = "5432"
+    database_user: str = "chaitanya"
+    database_password: str = ""
+    database_name: str = "survey_engine_db"
+    openai_api_key: str = "your_openai_api_key_here"
+    service: str = "backend"
+    port: str = "8000"
+    
     @property
     def edit_collection_priority_list(self) -> List[str]:
         return [item.strip() for item in self.edit_collection_priority.split(",")]
     
     model_config = ConfigDict(
         env_file=".env",
-        extra="ignore"  # Ignore extra fields from environment
+        extra="ignore",  # Ignore extra fields from environment
+        validate_assignment=False,  # Don't validate on assignment
+        arbitrary_types_allowed=True  # Allow arbitrary types
     )
 
 

@@ -41,7 +41,7 @@ async def extract_text(
         
         logger.info(f"📝 [Text Extract] Extracting text from: {file.filename}")
         # Extract text only
-        extracted_text = document_parser.extract_text_from_docx(file_content)
+        extracted_text = await document_parser.extract_text_from_docx(file_content)
         logger.info(f"✅ [Text Extract] Text extraction completed, length: {len(extracted_text)} chars")
         
         response = TextExtractionResponse(

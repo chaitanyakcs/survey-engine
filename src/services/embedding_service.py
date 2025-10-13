@@ -263,7 +263,11 @@ class EmbeddingService:
             # Run encoding in thread pool to avoid blocking
             loop = asyncio.get_event_loop()
             embedding = await loop.run_in_executor(None, self.model.encode, text)
-            return embedding.tolist()
+            # Handle both numpy arrays and lists
+            if hasattr(embedding, 'tolist'):
+                return embedding.tolist()
+            else:
+                return list(embedding)
         except Exception as e:
             print(f"❌ [EmbeddingService] Error generating embedding: {str(e)}")
             raise Exception(f"Failed to generate embedding: {str(e)}")
@@ -283,7 +287,14 @@ class EmbeddingService:
             # Run batch encoding in thread pool to avoid blocking
             loop = asyncio.get_event_loop()
             embeddings = await loop.run_in_executor(None, self.model.encode, texts)
-            return [embedding.tolist() for embedding in embeddings]
+            # Handle both numpy arrays and lists
+            result = []
+            for embedding in embeddings:
+                if hasattr(embedding, 'tolist'):
+                    result.append(embedding.tolist())
+                else:
+                    result.append(list(embedding))
+            return result
         except Exception as e:
             print(f"❌ [EmbeddingService] Error generating batch embeddings: {str(e)}")
             raise Exception(f"Failed to generate batch embeddings: {str(e)}")

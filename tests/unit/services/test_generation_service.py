@@ -41,32 +41,16 @@ class TestGenerationService:
             yield mock_instance
 
     @pytest.fixture
-    def mock_pillar_scoring_service(self):
-        """Mock PillarScoringService"""
-        with patch('src.services.generation_service.PillarScoringService') as mock:
+    def mock_llm_audit_service(self):
+        """Mock LLMAuditService"""
+        with patch('src.services.generation_service.LLMAuditService') as mock:
             mock_instance = MagicMock()
-            mock_instance.evaluate_survey_pillars.return_value = MagicMock(
-                overall_grade="B",
-                weighted_score=0.8,
-                total_score=0.8,
-                summary="Good quality survey",
-                pillar_scores=[
-                    MagicMock(
-                        pillar_name="content_validity",
-                        score=0.8,
-                        weighted_score=0.16,
-                        weight=0.2,
-                        criteria_met=8,
-                        total_criteria=10,
-                        recommendations=["Improve question clarity"]
-                    )
-                ]
-            )
+            mock_instance.log_llm_interaction = MagicMock()
             mock.return_value = mock_instance
             yield mock_instance
 
     @pytest.fixture
-    def generation_service(self, mock_db_session, mock_settings, mock_prompt_service, mock_pillar_scoring_service):
+    def generation_service(self, mock_db_session, mock_settings, mock_prompt_service, mock_llm_audit_service):
         """Create GenerationService instance with mocked dependencies"""
         return GenerationService(db_session=mock_db_session)
 
@@ -127,7 +111,7 @@ class TestGenerationService:
         assert service.db_session == mock_db_session
         assert service.model == "test/model"
         assert service.prompt_service is not None
-        assert service.pillar_scoring_service is not None
+        assert service.replicate_client is not None
 
     def test_init_without_api_token(self, mock_db_session):
         """Test GenerationService initialization fails without API token"""
@@ -484,7 +468,7 @@ class TestGenerationServiceIntegration:
     @pytest.fixture
     def integration_service(self, mock_settings):
         """Create service for integration testing"""
-        with patch('src.services.generation_service.PillarScoringService'), \
+        with patch('src.services.generation_service.LLMAuditService'), \
              patch('src.services.generation_service.PromptService'):
             return GenerationService(db_session=MagicMock())
 
@@ -593,7 +577,7 @@ class TestGenerationServicePerformance:
     @pytest.fixture
     def performance_service(self, mock_settings):
         """Create service for performance testing"""
-        with patch('src.services.generation_service.PillarScoringService'), \
+        with patch('src.services.generation_service.LLMAuditService'), \
              patch('src.services.generation_service.PromptService'):
             return GenerationService(db_session=MagicMock())
 

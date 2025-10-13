@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from '../components/Sidebar';
 import { SurveyPreview } from '../components/SurveyPreview';
 import { useAppStore } from '../store/useAppStore';
@@ -22,14 +22,14 @@ export const GoldenExampleEditPage: React.FC = () => {
     const path = window.location.pathname;
     console.log('🔍 [GoldenExampleEdit] Current path:', path);
     // Try to match both /golden-examples/{id}/edit and /golden-examples/{id}
-    const match = path.match(/\/golden-examples\/([^\/]+)(?:\/edit)?$/);
+    const match = path.match(/\/golden-examples\/([^/]+)(?:\/edit)?$/);
     const extractedId = match ? match[1] : null;
     console.log('🔍 [GoldenExampleEdit] Extracted ID:', extractedId);
     return extractedId;
   };
   
   const [id] = useState<string | null>(getGoldenExampleId());
-  const { goldenExamples, fetchGoldenExamples, updateGoldenExample } = useAppStore();
+  const { fetchGoldenExamples, updateGoldenExample } = useAppStore();
   const { mainContentClasses } = useSidebarLayout();
   
   const [example, setExample] = useState<GoldenExample | null>(null);
@@ -44,14 +44,10 @@ export const GoldenExampleEditPage: React.FC = () => {
     methodology_tags: [],
     industry_category: '',
     research_goal: '',
-    quality_score: 0.8
+    quality_score: undefined
   });
 
-  useEffect(() => {
-    loadGoldenExample();
-  }, [id]);
-
-  const loadGoldenExample = async () => {
+  const loadGoldenExample = useCallback(async () => {
     if (!id) {
       setIsLoading(false);
       return;
@@ -140,7 +136,11 @@ export const GoldenExampleEditPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [id, fetchGoldenExamples]);
+
+  useEffect(() => {
+    loadGoldenExample();
+  }, [loadGoldenExample]);
 
   const handleSave = async () => {
     if (!example) return;
@@ -286,7 +286,7 @@ export const GoldenExampleEditPage: React.FC = () => {
                 <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl p-4 border border-yellow-200">
                   <label className="block text-sm font-medium text-yellow-700 mb-2">Quality Score</label>
                   <div className="text-3xl font-bold text-yellow-600">
-                    {example.quality_score.toFixed(2)}
+                    {example.quality_score ? example.quality_score.toFixed(2) : 'Not rated'}
                   </div>
                 </div>
                 <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl p-4 border border-yellow-200">

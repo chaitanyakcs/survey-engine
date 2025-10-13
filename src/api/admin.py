@@ -121,6 +121,21 @@ async def migrate_all(db: Session = Depends(get_db)):
                 "message": f"Performance indexes migration failed: {str(e)}"
             })
         
+        # Step 6: Clean up Alembic version table
+        try:
+            await _migrate_drop_alembic_version(db)
+            migration_results.append({
+                "step": "drop_alembic_version",
+                "status": "success",
+                "message": "Alembic version table cleanup completed"
+            })
+        except Exception as e:
+            migration_results.append({
+                "step": "drop_alembic_version",
+                "status": "failed",
+                "message": f"Alembic version table cleanup failed: {str(e)}"
+            })
+        
         # Determine overall success
         successful_migrations = len([r for r in migration_results if r["status"] == "success"])
         failed_migrations = len([r for r in migration_results if r["status"] == "failed"])
@@ -534,6 +549,29 @@ async def _migrate_performance_indexes(db: Session):
     
     db.commit()
     logger.info("✅ Performance indexes added")
+
+
+async def _migrate_drop_alembic_version(db: Session):
+    """
+    Drop the alembic_version table as we transition to SQL-only migrations
+    """
+    logger.info("🧹 Dropping alembic_version table...")
+    
+    # Read and execute the migration SQL file
+    migration_file = "migrations/017_drop_alembic_version.sql"
+    try:
+        with open(migration_file, 'r') as f:
+            migration_sql = f.read()
+        
+        db.execute(text(migration_sql))
+        db.commit()
+        logger.info("✅ alembic_version table dropped successfully")
+    except FileNotFoundError:
+        logger.warning(f"⚠️ Migration file {migration_file} not found, skipping")
+    except Exception as e:
+        logger.warning(f"⚠️ Error dropping alembic_version table: {e}")
+        # Don't fail the migration if this step fails
+        db.rollback()
 
 
 @router.get("/check-migration-status")

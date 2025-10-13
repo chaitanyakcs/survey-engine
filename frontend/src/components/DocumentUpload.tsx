@@ -90,7 +90,10 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
               setUploadProgress({
                 stage: progressData.stage,
                 progress: progressData.progress,
-                message: progressData.message
+                message: progressData.message,
+                details: progressData.details,
+                estimated_time: progressData.estimated_time,
+                content_preview: progressData.content_preview
               });
             } else if (progressData.type === 'completed') {
               console.log('✅ [Document Upload] Received completion message from WebSocket');
@@ -274,8 +277,25 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
           <div className="flex-1">
             <h3 className="text-lg font-semibold text-gray-900">{uploadProgress.message}</h3>
             <p className="text-sm text-gray-600 mt-1">{getStageDescription()}</p>
-            {getEstimatedTime() && (
-              <p className="text-xs text-gray-500 mt-1">Estimated time: {getEstimatedTime()}</p>
+            
+            {/* Enhanced details display */}
+            {uploadProgress.details && (
+              <p className="text-xs text-blue-600 mt-1 font-medium">{uploadProgress.details}</p>
+            )}
+            
+            {/* Content preview */}
+            {uploadProgress.content_preview && (
+              <div className="mt-2 p-2 bg-gray-50 rounded-lg border-l-4 border-blue-400">
+                <p className="text-xs text-gray-500 mb-1">Content Preview:</p>
+                <p className="text-xs text-gray-700 italic">{uploadProgress.content_preview}</p>
+              </div>
+            )}
+            
+            {/* Estimated time */}
+            {(uploadProgress.estimated_time || getEstimatedTime()) && (
+              <p className="text-xs text-gray-500 mt-1">
+                Estimated time: {uploadProgress.estimated_time ? `${uploadProgress.estimated_time}s remaining` : getEstimatedTime()}
+              </p>
             )}
           </div>
         </div>
