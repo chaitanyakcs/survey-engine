@@ -5,8 +5,8 @@ API endpoints for survey annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from typing import List, Optional, Dict, Any, Union
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 import logging
 
@@ -33,6 +33,7 @@ class QuestionAnnotationRequest(BaseModel):
     comment: Optional[str] = None
     labels: Optional[List[str]] = None
     annotator_id: str = "current-user"
+    ai_confidence: Optional[float] = Field(ge=0.0, le=1.0, default=None)
 
 class SectionAnnotationRequest(BaseModel):
     section_id: int
@@ -104,7 +105,7 @@ class QuestionAnnotationResponse(BaseModel):
     analytical_value: int
     business_impact: int
     comment: Optional[str]
-    labels: Optional[Dict[str, Any]] = None
+    labels: Optional[Any] = None
     annotator_id: str
     created_at: datetime
     updated_at: Optional[datetime]
@@ -134,7 +135,7 @@ class SectionAnnotationResponse(BaseModel):
     analytical_value: int
     business_impact: int
     comment: Optional[str]
-    labels: Optional[Dict[str, Any]] = None
+    labels: Optional[Any] = None
     annotator_id: str
     created_at: datetime
     updated_at: Optional[datetime]
@@ -436,7 +437,9 @@ def save_bulk_annotations(
                     ai_generated=is_ai_generated,
                     ai_confidence=qa_req.ai_confidence if is_ai_generated else None,
                     human_verified=False if is_ai_generated else True,
-                    generation_timestamp=datetime.now() if is_ai_generated else None
+                    generation_timestamp=datetime.now() if is_ai_generated else None,
+                    # Set human override tracking fields
+                    human_overridden=False
                 )
                 db.add(new_qa)
         

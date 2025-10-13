@@ -994,19 +994,28 @@ export const useAppStore = create<AppStore>((set, get) => ({
       // Transform frontend format to backend format
       const transformedRequest = {
         survey_id: annotations.surveyId,
-        question_annotations: annotations.questionAnnotations.map(qa => ({
-          question_id: qa.questionId,
-          required: qa.required,
-          quality: qa.quality,
-          relevant: qa.relevant,
-          methodological_rigor: qa.pillars.methodologicalRigor,
-          content_validity: qa.pillars.contentValidity,
-          respondent_experience: qa.pillars.respondentExperience,
-          analytical_value: qa.pillars.analyticalValue,
-          business_impact: qa.pillars.businessImpact,
-          comment: qa.comment,
-          annotator_id: qa.annotatorId || "current-user"
-        })),
+        question_annotations: annotations.questionAnnotations.map(qa => {
+          const questionIdToUse = qa.originalQuestionId || qa.questionId;
+          console.log('🔍 [saveAnnotations] Question ID mapping:', { 
+            questionId: qa.questionId, 
+            originalQuestionId: qa.originalQuestionId, 
+            questionIdToUse 
+          });
+          return {
+            question_id: questionIdToUse, // Use original question ID with prefix if available
+            required: qa.required,
+            quality: qa.quality,
+            relevant: qa.relevant,
+            methodological_rigor: qa.pillars.methodologicalRigor,
+            content_validity: qa.pillars.contentValidity,
+            respondent_experience: qa.pillars.respondentExperience,
+            analytical_value: qa.pillars.analyticalValue,
+            business_impact: qa.pillars.businessImpact,
+            comment: qa.comment,
+            labels: qa.labels,
+            annotator_id: qa.annotatorId || "current-user"
+          };
+        }),
         section_annotations: annotations.sectionAnnotations.map(sa => ({
           section_id: parseInt(sa.sectionId),
           quality: sa.quality,
@@ -1017,6 +1026,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           analytical_value: sa.pillars.analyticalValue,
           business_impact: sa.pillars.businessImpact,
           comment: sa.comment,
+          labels: sa.labels,
           annotator_id: sa.annotatorId || "current-user",
           // Advanced labeling fields
           section_classification: sa.section_classification,
@@ -1039,7 +1049,44 @@ export const useAppStore = create<AppStore>((set, get) => ({
         body: JSON.stringify(transformedRequest),
       });
       
-      if (!response.ok) throw new Error('Failed to save annotations');
+      console.log('🔍 [saveAnnotations] Request payload:', transformedRequest);
+      
+      // Detailed logging for q1 changes
+      const q1Annotation = transformedRequest.question_annotations.find(qa => qa.question_id === 'q1');
+      if (q1Annotation) {
+        console.log('🎯 [saveAnnotations] Q1 CHANGES BEING SENT TO SERVER:', {
+          question_id: q1Annotation.question_id,
+          required: q1Annotation.required,
+          quality: q1Annotation.quality,
+          relevant: q1Annotation.relevant,
+          pillars: {
+            methodological_rigor: q1Annotation.methodological_rigor,
+            content_validity: q1Annotation.content_validity,
+            respondent_experience: q1Annotation.respondent_experience,
+            analytical_value: q1Annotation.analytical_value,
+            business_impact: q1Annotation.business_impact
+          },
+          comment: q1Annotation.comment,
+          labels: q1Annotation.labels,
+          annotator_id: q1Annotation.annotator_id
+        });
+      }
+      
+      console.log('🔍 [saveAnnotations] Question annotations details:', transformedRequest.question_annotations.map(qa => ({
+        question_id: qa.question_id,
+        methodological_rigor: qa.methodological_rigor,
+        content_validity: qa.content_validity,
+        respondent_experience: qa.respondent_experience,
+        analytical_value: qa.analytical_value,
+        business_impact: qa.business_impact
+      })));
+      console.log('🔍 [saveAnnotations] Response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ [saveAnnotations] API error:', errorText);
+        throw new Error(`Failed to save annotations: ${response.status} ${errorText}`);
+      }
       
       const result = await response.json();
       
@@ -1109,6 +1156,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
             const transformedAnnotation = {
               id: qa.id, // Database ID for API operations
               questionId: mappedQuestionId,
+              originalQuestionId: originalQuestionId, // Store original question ID with prefix for API operations
               required: qa.required,
               quality: qa.quality,
               relevant: qa.relevant,
@@ -1135,10 +1183,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
               originalAiComment: qa.original_ai_comment
             };
             
-            // If we already have an annotation for this question ID, prefer AI-generated ones
-            if (!annotationMap.has(mappedQuestionId) || qa.ai_generated) {
+            // If we already have an annotation for this question ID, prefer human annotations over AI-generated ones
+            if (!annotationMap.has(mappedQuestionId) || (!qa.ai_generated && annotationMap.get(mappedQuestionId)?.aiGenerated)) {
               annotationMap.set(mappedQuestionId, transformedAnnotation);
-              console.log('🔍 [Store] Stored annotation for:', mappedQuestionId, 'AI generated:', qa.ai_generated);
+              console.log('🔍 [Store] Stored annotation for:', mappedQuestionId, 'AI generated:', qa.ai_generated, 'originalQuestionId:', originalQuestionId);
             }
           });
           

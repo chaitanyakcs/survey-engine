@@ -121,7 +121,22 @@ async def migrate_all(db: Session = Depends(get_db)):
                 "message": f"Performance indexes migration failed: {str(e)}"
             })
         
-        # Step 6: Clean up Alembic version table
+        # Step 6: Fix SurveyAnnotation constraint
+        try:
+            await _fix_survey_annotation_constraint(db)
+            migration_results.append({
+                "step": "fix_survey_annotation_constraint",
+                "status": "success",
+                "message": "SurveyAnnotation constraint fix completed"
+            })
+        except Exception as e:
+            migration_results.append({
+                "step": "fix_survey_annotation_constraint",
+                "status": "failed", 
+                "message": f"SurveyAnnotation constraint fix failed: {str(e)}"
+            })
+        
+        # Step 7: Clean up Alembic version table
         try:
             await _migrate_drop_alembic_version(db)
             migration_results.append({
@@ -261,9 +276,9 @@ async def _migrate_ai_annotation_fields(db: Session):
     # Add AI fields to question_annotations
     db.execute(text("""
         ALTER TABLE question_annotations 
-        ADD COLUMN IF NOT EXISTS ai_generated BOOLEAN DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS ai_generated BOOLEAN NOT NULL DEFAULT FALSE,
         ADD COLUMN IF NOT EXISTS ai_confidence DECIMAL(3,2) CHECK (ai_confidence >= 0.00 AND ai_confidence <= 1.00),
-        ADD COLUMN IF NOT EXISTS human_verified BOOLEAN DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS human_verified BOOLEAN NOT NULL DEFAULT FALSE,
         ADD COLUMN IF NOT EXISTS generation_timestamp TIMESTAMP WITH TIME ZONE
     """))
     
@@ -281,9 +296,9 @@ async def _migrate_ai_annotation_fields(db: Session):
     # Add AI fields to section_annotations
     db.execute(text("""
         ALTER TABLE section_annotations 
-        ADD COLUMN IF NOT EXISTS ai_generated BOOLEAN DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS ai_generated BOOLEAN NOT NULL DEFAULT FALSE,
         ADD COLUMN IF NOT EXISTS ai_confidence DECIMAL(3,2) CHECK (ai_confidence >= 0.00 AND ai_confidence <= 1.00),
-        ADD COLUMN IF NOT EXISTS human_verified BOOLEAN DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS human_verified BOOLEAN NOT NULL DEFAULT FALSE,
         ADD COLUMN IF NOT EXISTS generation_timestamp TIMESTAMP WITH TIME ZONE
     """))
     
@@ -303,6 +318,16 @@ async def _migrate_ai_annotation_fields(db: Session):
         ADD COLUMN IF NOT EXISTS advanced_metadata JSONB
     """))
     
+    # Create indexes for AI annotation fields
+    db.execute(text("""
+        CREATE INDEX IF NOT EXISTS idx_question_annotations_ai_generated ON question_annotations(ai_generated);
+        CREATE INDEX IF NOT EXISTS idx_question_annotations_human_overridden ON question_annotations(human_overridden);
+        CREATE INDEX IF NOT EXISTS idx_question_annotations_human_verified ON question_annotations(human_verified);
+        CREATE INDEX IF NOT EXISTS idx_section_annotations_ai_generated ON section_annotations(ai_generated);
+        CREATE INDEX IF NOT EXISTS idx_section_annotations_human_overridden ON section_annotations(human_overridden);
+        CREATE INDEX IF NOT EXISTS idx_section_annotations_human_verified ON section_annotations(human_verified)
+    """))
+    
     db.commit()
     logger.info("✅ AI annotation fields added")
 
@@ -316,7 +341,7 @@ async def _migrate_human_override_tracking(db: Session):
     # Add override fields to question_annotations
     db.execute(text("""
         ALTER TABLE question_annotations 
-        ADD COLUMN IF NOT EXISTS human_overridden BOOLEAN DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS human_overridden BOOLEAN NOT NULL DEFAULT FALSE,
         ADD COLUMN IF NOT EXISTS override_timestamp TIMESTAMP WITH TIME ZONE,
         ADD COLUMN IF NOT EXISTS original_ai_quality INTEGER,
         ADD COLUMN IF NOT EXISTS original_ai_relevant INTEGER,
@@ -326,7 +351,7 @@ async def _migrate_human_override_tracking(db: Session):
     # Add override fields to section_annotations
     db.execute(text("""
         ALTER TABLE section_annotations 
-        ADD COLUMN IF NOT EXISTS human_overridden BOOLEAN DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS human_overridden BOOLEAN NOT NULL DEFAULT FALSE,
         ADD COLUMN IF NOT EXISTS override_timestamp TIMESTAMP WITH TIME ZONE,
         ADD COLUMN IF NOT EXISTS original_ai_quality INTEGER,
         ADD COLUMN IF NOT EXISTS original_ai_relevant INTEGER,
@@ -549,6 +574,34 @@ async def _migrate_performance_indexes(db: Session):
     
     db.commit()
     logger.info("✅ Performance indexes added")
+
+
+async def _fix_survey_annotation_constraint(db: Session):
+    """
+    Fix SurveyAnnotation unique constraint to allow multiple annotators per survey
+    """
+    logger.info("🔧 Fixing SurveyAnnotation unique constraint...")
+    
+    try:
+        # Drop the existing unique constraint on survey_id only
+        db.execute(text("ALTER TABLE survey_annotations DROP CONSTRAINT IF EXISTS survey_annotations_survey_id_key"))
+        
+        # Add a new unique constraint on (survey_id, annotator_id) - use IF NOT EXISTS equivalent
+        db.execute(text("ALTER TABLE survey_annotations ADD CONSTRAINT survey_annotations_survey_id_annotator_id_key UNIQUE (survey_id, annotator_id)"))
+        
+        # Add an index for better query performance
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_survey_annotations_survey_id_annotator_id ON survey_annotations(survey_id, annotator_id)"))
+        
+        db.commit()
+        logger.info("✅ SurveyAnnotation constraint fixed")
+    except Exception as e:
+        if "already exists" in str(e):
+            logger.info("✅ SurveyAnnotation constraint already exists, skipping")
+            db.rollback()
+        else:
+            logger.error(f"❌ Error fixing SurveyAnnotation constraint: {e}")
+            db.rollback()
+            raise
 
 
 async def _migrate_drop_alembic_version(db: Session):

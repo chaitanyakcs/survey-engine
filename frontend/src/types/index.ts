@@ -714,6 +714,7 @@ export type MandatoryQNRSection = typeof MANDATORY_QNR_SECTIONS[number];
 export interface QuestionAnnotation {
   id?: number; // Database ID for API operations
   questionId: string;
+  originalQuestionId?: string; // Original question ID with survey prefix for API operations
   required: boolean;
   quality: LikertScale;
   relevant: LikertScale;

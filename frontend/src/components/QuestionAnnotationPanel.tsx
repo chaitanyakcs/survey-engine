@@ -67,7 +67,39 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
   }, [question.id, annotation]);
 
   const updateField = (field: keyof QuestionAnnotation, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    const newFormData = { ...formData, [field]: value };
+    setFormData(newFormData);
+    
+        // For pillar fields, save immediately
+        if (field === 'pillars') {
+          console.log('🔄 [QuestionAnnotationPanel] Pillar scores changed, saving immediately...');
+          console.log('🔄 [QuestionAnnotationPanel] New pillar data:', value);
+          
+          const annotationToSave: QuestionAnnotation = {
+            ...newFormData,
+            questionId: question.id,
+            timestamp: new Date().toISOString()
+          };
+          
+          console.log('🔄 [QuestionAnnotationPanel] Saving annotation:', annotationToSave);
+          
+          // Special logging for q1 changes
+          if (question.id === 'q1') {
+            console.log('🎯 [QuestionAnnotationPanel] Q1 PILLAR CHANGES DETECTED:', {
+              questionId: question.id,
+              oldPillars: formData.pillars,
+              newPillars: value,
+              fullAnnotation: annotationToSave
+            });
+          }
+          
+          try {
+            onSave(annotationToSave);
+            console.log('✅ [QuestionAnnotationPanel] Annotation saved successfully');
+          } catch (error) {
+            console.error('❌ [QuestionAnnotationPanel] Failed to save annotation:', error);
+          }
+        }
   };
 
   // Calculate completion progress

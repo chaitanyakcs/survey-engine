@@ -179,9 +179,23 @@ const AnnotationPage: React.FC = () => {
     }
   };
 
-  const handleExitAnnotationMode = () => {
-    // Navigate back to the survey preview or generator
-    window.history.back();
+  const handleExitAnnotationMode = async () => {
+    try {
+      // Save any pending annotations before exiting
+      if (currentAnnotations && currentSurvey?.survey_id) {
+        console.log('💾 Saving annotations before exiting annotation page...');
+        await saveAnnotations(currentAnnotations);
+        console.log('✅ Annotations saved successfully before exit');
+      }
+      
+      // Navigate back to the survey preview or generator
+      window.history.back();
+    } catch (error) {
+      console.error('Error saving annotations before exit:', error);
+      // Still navigate back even if save fails, but show error
+      alert('Failed to save annotations before exit. Please try again.');
+      window.history.back();
+    }
   };
 
   if (loading) {

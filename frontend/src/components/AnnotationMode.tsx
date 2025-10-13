@@ -34,26 +34,14 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
   });
   
   // Debug: Log survey data structure
-  console.log('🔍 [AnnotationMode] Survey data:', survey);
-  console.log('🔍 [AnnotationMode] Survey sections:', survey?.sections);
-  console.log('🔍 [AnnotationMode] Survey questions:', survey?.questions);
-  console.log('🔍 [AnnotationMode] Survey final_output:', survey?.final_output);
-  console.log('🔍 [AnnotationMode] Current annotations:', currentAnnotations);
-  console.log('🔍 [AnnotationMode] Question annotations count:', currentAnnotations?.questionAnnotations?.length);
-  console.log('🔍 [AnnotationMode] Section annotations count:', currentAnnotations?.sectionAnnotations?.length);
+  // Remove excessive debug logging - only keep essential logs
   
   // Handle nested survey data structure
   const actualSurvey = survey?.final_output || survey;
-  console.log('🔍 [AnnotationMode] Actual survey data:', actualSurvey);
-  console.log('🔍 [AnnotationMode] Actual survey sections:', actualSurvey?.sections);
-  console.log('🔍 [AnnotationMode] Actual survey questions:', actualSurvey?.questions);
   
   // Handle both sections format and legacy questions format
   const hasSections = actualSurvey?.sections && actualSurvey.sections.length > 0;
   const hasQuestions = actualSurvey?.questions && actualSurvey.questions.length > 0;
-  
-  console.log('🔍 [AnnotationMode] Has sections:', hasSections);
-  console.log('🔍 [AnnotationMode] Has questions:', hasQuestions);
   
   // If no sections but has questions, create a default section
   const sectionsToUse = hasSections ? actualSurvey.sections : (hasQuestions ? [{
@@ -62,8 +50,6 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
     description: 'All survey questions',
     questions: actualSurvey.questions
   }] : []);
-  
-  console.log('🔍 [AnnotationMode] Sections to use:', sectionsToUse);
   
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(sectionsToUse.map((s: any) => String(s.id || s.section_id))));
   
@@ -114,12 +100,9 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
   };
 
   const getQuestionAnnotation = (questionId: string) => {
-    console.log('🔍 [AnnotationMode] Getting annotation for question:', questionId);
-    console.log('🔍 [AnnotationMode] Current annotations:', currentAnnotations);
-    console.log('🔍 [AnnotationMode] Question annotations:', currentAnnotations?.questionAnnotations);
+  // Remove excessive debug logging
     
     if (!currentAnnotations?.questionAnnotations) {
-      console.log('🔍 [AnnotationMode] No question annotations available');
       return undefined;
     }
     
@@ -127,23 +110,19 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
     const annotation = currentAnnotations.questionAnnotations.find((qa: QuestionAnnotation) => {
       // Direct match
       if (qa.questionId === questionId) {
-        console.log('🔍 [AnnotationMode] Direct match found:', qa.questionId, 'AI:', qa.aiGenerated);
         return true;
       }
       // Match with survey ID prefix (if we have survey ID)
       if (survey?.survey_id && qa.questionId === `${survey.survey_id}_${questionId}`) {
-        console.log('🔍 [AnnotationMode] Prefixed match found:', qa.questionId, 'AI:', qa.aiGenerated);
         return true;
       }
       // Match after removing survey ID prefix
       if (qa.questionId?.endsWith(`_${questionId}`)) {
-        console.log('🔍 [AnnotationMode] Suffix match found:', qa.questionId, 'AI:', qa.aiGenerated);
         return true;
       }
       return false;
     });
     
-    console.log('🔍 [AnnotationMode] Final annotation result:', annotation);
     return annotation;
   };
 

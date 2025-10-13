@@ -214,6 +214,12 @@ const QuestionCard: React.FC<{
                     <div className="text-blue-600">{annotation.pillars.businessImpact}/5</div>
                   </div>
                 </div>
+                {/* Debug logging for q1 */}
+                {question.id === 'q1' && (
+                  <div className="text-xs text-red-600 mt-1">
+                    DEBUG: Pillars = {JSON.stringify(annotation.pillars)}
+                  </div>
+                )}
               </div>
             )}
             
@@ -666,7 +672,8 @@ const SectionCard: React.FC<{
                 questionId: question.id,
                 annotationId: questionAnnotation.questionId,
                 aiGenerated: questionAnnotation.aiGenerated,
-                quality: questionAnnotation.quality
+                quality: questionAnnotation.quality,
+                pillars: questionAnnotation.pillars
               });
             }
             
@@ -802,6 +809,13 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
 
   const handleExitAnnotationMode = async () => {
     try {
+      // Save any pending annotations before exiting
+      if (currentAnnotations && survey?.survey_id) {
+        console.log('💾 Saving annotations before exiting annotation mode...');
+        await saveAnnotations(currentAnnotations);
+        console.log('✅ Annotations saved successfully before exit');
+      }
+      
       setAnnotationMode(false);
       // Clear annotation pane state when exiting annotation mode
       setAnnotationPane({
@@ -811,6 +825,8 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
       console.log('Exited annotation mode');
     } catch (error) {
       console.error('Error exiting annotation mode:', error);
+      // Still exit even if save fails, but show error
+      alert('Failed to save annotations before exit. Please try again.');
     }
   };
 
@@ -1457,6 +1473,8 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
 
 
   const handleQuestionAnnotation = async (annotation: QuestionAnnotation) => {
+    console.log('🔄 [SurveyPreview] handleQuestionAnnotation called with:', annotation);
+    
     let updatedAnnotations: SurveyAnnotations;
     
     if (!currentAnnotations) {
@@ -1475,7 +1493,17 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
       const questionAnnotations = [...(currentAnnotations.questionAnnotations || [])];
       
       if (existingIndex >= 0) {
-        questionAnnotations[existingIndex] = annotation;
+        // Preserve the originalQuestionId when updating an existing annotation
+        const existingAnnotation = questionAnnotations[existingIndex];
+        console.log('🔍 [SurveyPreview] Updating existing annotation:', {
+          questionId: annotation.questionId,
+          existingOriginalQuestionId: existingAnnotation.originalQuestionId,
+          newOriginalQuestionId: annotation.originalQuestionId
+        });
+        questionAnnotations[existingIndex] = {
+          ...annotation,
+          originalQuestionId: existingAnnotation.originalQuestionId || annotation.originalQuestionId
+        };
       } else {
         questionAnnotations.push(annotation);
       }
@@ -1487,11 +1515,13 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
       };
     }
     
+    console.log('🔄 [SurveyPreview] Updated annotations to save:', updatedAnnotations);
+    
     try {
       await saveAnnotations(updatedAnnotations);
-      console.log('Question annotation saved successfully');
+      console.log('✅ [SurveyPreview] Question annotation saved successfully');
     } catch (error) {
-      console.error('Error saving question annotation:', error);
+      console.error('❌ [SurveyPreview] Error saving question annotation:', error);
       alert('Failed to save question annotation');
     }
   };
