@@ -131,6 +131,40 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
   };
 
 
+  // Render selected question details inline
+  const renderSelectedQuestionDetails = (question: any) => {
+    if (!annotationPane.target || annotationPane.type !== 'question' || 
+        (annotationPane.target.question_id || annotationPane.target.id) !== (question.question_id || question.id)) {
+      return null;
+    }
+
+    return (
+      <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg mx-3 mb-2">
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-lg font-semibold text-amber-800">Question Details</h4>
+        </div>
+        <div className="mb-4">
+          <p className="text-gray-800 text-sm leading-relaxed">
+            {question.question_text || question.text || 'No text available'}
+          </p>
+          {question.options && question.options.length > 0 && (
+            <div className="mt-3">
+              <h5 className="text-sm font-medium text-gray-700 mb-2">Options:</h5>
+              <ul className="text-sm text-gray-600 space-y-1">
+                {question.options.map((option: any, index: number) => (
+                  <li key={index} className="flex items-start">
+                    <span className="text-gray-400 mr-2">•</span>
+                    <span>{option}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="w-full h-screen flex flex-col bg-gray-50">
       {/* Header */}
@@ -155,8 +189,8 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Panel - Survey Structure (45%) */}
-        <div className="w-[45%] bg-white overflow-y-auto">
+        {/* Left Panel - Survey Structure with Question Details (60%) */}
+        <div className="w-[60%] bg-white overflow-y-auto">
           <div className="p-4">
             <h3 
               className="heading-4 mb-4 cursor-pointer hover:text-primary-600 transition-colors flex items-center gap-2"
@@ -165,6 +199,7 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
               Survey Structure
               <TagIcon className="w-4 h-4" />
             </h3>
+            
             <div className="space-y-2">
               {sectionsToUse.map((section: any) => {
                 const sectionId = String(section.id || section.section_id);
@@ -177,14 +212,6 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
                     (() => {
                       const targetSectionId = String(annotationPane.target?.id || annotationPane.target?.section_id);
                       const isSelected = annotationPane.type === 'section' && targetSectionId === sectionId;
-                      console.log('🔍 [AnnotationMode] Section highlighting check:', {
-                        sectionId,
-                        annotationPaneType: annotationPane.type,
-                        annotationPaneTargetId: annotationPane.target?.id,
-                        annotationPaneTargetSectionId: annotationPane.target?.section_id,
-                        targetSectionId,
-                        isSelected
-                      });
                       return isSelected;
                     })()
                       ? 'bg-amber-50 border-l-2 border-amber-300 shadow-sm ring-1 ring-amber-200'
@@ -252,55 +279,58 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
                         section.questions.map((question: any) => {
                           const questionId = question.question_id || question.id;
                           return (
-                            <div 
-                              key={questionId}
-                              className={`flex items-center justify-between p-3 cursor-pointer transition-all duration-200 ${
-                                selectedQuestion === questionId
-                                  ? 'bg-amber-50 border-l-2 border-amber-300 shadow-sm ring-1 ring-amber-200'
-                                  : 'hover:bg-gray-100'
-                              }`}
-                              onClick={() => handleQuestionSelect(questionId)}
-                            >
-                              <div className="flex items-center space-x-2 flex-1 min-w-0">
-                                {selectedQuestion === questionId && (
-                                  <div className="w-1 h-6 bg-amber-400 rounded-full flex-shrink-0"></div>
-                                )}
-                                <span className={`text-sm transition-colors flex-1 min-w-0 ${
+                            <div key={questionId}>
+                              <div 
+                                className={`flex items-center justify-between p-3 cursor-pointer transition-all duration-200 ${
                                   selectedQuestion === questionId
-                                    ? 'text-amber-800 font-semibold'
-                                    : 'text-gray-700'
-                                }`}>
+                                    ? 'bg-amber-50 border-l-2 border-amber-300 shadow-sm ring-1 ring-amber-200'
+                                    : 'hover:bg-gray-100'
+                                }`}
+                                onClick={() => handleQuestionSelect(questionId)}
+                              >
+                                <div className="flex items-center space-x-2 flex-1 min-w-0">
+                                  {selectedQuestion === questionId && (
+                                    <div className="w-1 h-6 bg-amber-400 rounded-full flex-shrink-0"></div>
+                                  )}
+                                  <span className={`text-sm transition-colors flex-1 min-w-0 ${
+                                    selectedQuestion === questionId
+                                      ? 'text-amber-800 font-semibold'
+                                      : 'text-gray-700'
+                                  }`}>
+                                    {(() => {
+                                      const fullText = question.question_text || question.text || 'No text';
+                                      const words = fullText.split(' ');
+                                      return words.length > 50 ? words.slice(0, 50).join(' ') + '...' : fullText;
+                                    })()}
+                                  </span>
                                   {(() => {
-                                    const fullText = question.question_text || question.text || 'No text';
-                                    const words = fullText.split(' ');
-                                    return words.length > 30 ? words.slice(0, 30).join(' ') + '...' : fullText;
-                                  })()}
-                                </span>
-                                {(() => {
-                                  const annotation = getQuestionAnnotation(questionId);
-                                  if (annotation) {
-                                    if (annotation.aiGenerated) {
-                                      return (
-                                        <div className="flex items-center space-x-1 flex-shrink-0 ml-2">
-                                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                            🤖 AI
-                                          </span>
-                                          {annotation.aiConfidence && (
-                                            <span className="text-xs text-blue-600">
-                                              {Math.round(annotation.aiConfidence * 100)}%
+                                    const annotation = getQuestionAnnotation(questionId);
+                                    if (annotation) {
+                                      if (annotation.aiGenerated) {
+                                        return (
+                                          <div className="flex items-center space-x-1 flex-shrink-0 ml-2">
+                                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                              🤖 AI
                                             </span>
-                                          )}
-                                        </div>
-                                      );
-                                    } else {
-                                      return (
-                                        <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0 ml-2"></div>
-                                      );
+                                            {annotation.aiConfidence && (
+                                              <span className="text-xs text-blue-600">
+                                                {Math.round(annotation.aiConfidence * 100)}%
+                                              </span>
+                                            )}
+                                          </div>
+                                        );
+                                      } else {
+                                        return (
+                                          <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0 ml-2"></div>
+                                        );
+                                      }
                                     }
-                                  }
-                                  return null;
-                                })()}
+                                    return null;
+                                  })()}
+                                </div>
                               </div>
+                              {/* Show question details inline if this question is selected */}
+                              {renderSelectedQuestionDetails(question)}
                             </div>
                           );
                         })
@@ -318,8 +348,8 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
           </div>
         </div>
 
-        {/* Right Panel - Annotation Pane (55%) */}
-        <div className="w-[55%]">
+        {/* Right Panel - Annotation Interface (40%) */}
+        <div className="w-[40%]">
           <AnnotationSidePane
             annotationType={annotationPane.type}
             annotationTarget={annotationPane.target}

@@ -36,7 +36,7 @@ export const GoldenExampleEditPage: React.FC = () => {
   const [actualSurvey, setActualSurvey] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
-  const [activeMainTab, setActiveMainTab] = useState<'rfq' | 'survey'>('rfq');
+  const [activeMainTab, setActiveMainTab] = useState<'rfq' | 'survey'>('survey');
   const [activeSurveyTab, setActiveSurveyTab] = useState<'preview' | 'json' | 'docx'>('preview');
   const [formData, setFormData] = useState<GoldenExampleRequest>({
     rfq_text: '',
@@ -120,6 +120,14 @@ export const GoldenExampleEditPage: React.FC = () => {
         
         setExample(foundExample);
         setActualSurvey(actualSurvey);
+        
+        // Generate a survey_id for reference examples if they don't have one
+        // This allows annotation functionality to work properly
+        if (actualSurvey && !actualSurvey.survey_id) {
+          actualSurvey.survey_id = foundExample.id;  // Use the golden example ID directly as UUID
+          console.log('🔍 [GoldenExampleEdit] Using golden example ID as survey_id:', actualSurvey.survey_id);
+        }
+        
         setFormData({
           rfq_text: foundExample.rfq_text,
           survey_json: actualSurvey,
@@ -170,9 +178,15 @@ export const GoldenExampleEditPage: React.FC = () => {
 
   const handleCancel = () => {
     if (example && actualSurvey) {
+      // Ensure the generated survey_id is preserved when canceling
+      const surveyToUse = { ...actualSurvey };
+      if (!surveyToUse.survey_id) {
+        surveyToUse.survey_id = example.id;  // Use the golden example ID directly as UUID
+      }
+      
       setFormData({
         rfq_text: example.rfq_text,
-        survey_json: actualSurvey,
+        survey_json: surveyToUse,
         methodology_tags: example.methodology_tags,
         industry_category: example.industry_category || '',
         research_goal: example.research_goal || '',
@@ -238,8 +252,10 @@ export const GoldenExampleEditPage: React.FC = () => {
         {/* Top Bar */}
         <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200/50 sticky top-0 z-30 shadow-sm">
           <div className="px-6 py-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
+            <div className="flex flex-col space-y-6">
+              {/* Header Section */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-4">
                 <button
                   onClick={() => window.location.href = '/golden-examples'}
                   className="p-3 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-xl transition-all duration-200 group"
@@ -258,34 +274,106 @@ export const GoldenExampleEditPage: React.FC = () => {
                   </p>
                 </div>
               </div>
+              </div>
               
-              <div className="flex items-center space-x-3">
-                {isEditing ? (
-                  <>
+              {/* Stats and Actions Section */}
+              <div className="flex flex-col lg:flex-row lg:items-center space-y-4 lg:space-y-0 lg:space-x-8">
+                {/* Stats Cards */}
+                <div className="flex flex-wrap gap-4">
+                  {/* Quality Score Card */}
+                  <div className="bg-gradient-to-br from-yellow-50 to-amber-50 border border-yellow-200 rounded-xl p-4 min-w-[120px]">
+                    <div className="flex items-center space-x-2 mb-1">
+                      <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                      <span className="text-xs font-medium text-yellow-700 uppercase tracking-wide">Quality</span>
+                    </div>
+                    <div className="text-2xl font-bold text-yellow-800">
+                      {example.quality_score ? example.quality_score.toFixed(2) : 'N/A'}
+                    </div>
+                  </div>
+
+                  {/* Usage Count Card */}
+                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4 min-w-[120px]">
+                    <div className="flex items-center space-x-2 mb-1">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                      <span className="text-xs font-medium text-blue-700 uppercase tracking-wide">Usage</span>
+                    </div>
+                    <div className="text-2xl font-bold text-blue-800">
+                      {example.usage_count}
+                    </div>
+                  </div>
+
+                  {/* Industry Card */}
+                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-xl p-4 min-w-[140px]">
+                    <div className="flex items-center space-x-2 mb-1">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      <span className="text-xs font-medium text-green-700 uppercase tracking-wide">Industry</span>
+                    </div>
+                    <div className="text-lg font-semibold text-green-800 truncate">
+                      {example.industry_category || 'N/A'}
+                    </div>
+                  </div>
+
+                  {/* Research Goal Card */}
+                  <div className="bg-gradient-to-br from-purple-50 to-violet-50 border border-purple-200 rounded-xl p-4 min-w-[160px]">
+                    <div className="flex items-center space-x-2 mb-1">
+                      <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                      <span className="text-xs font-medium text-purple-700 uppercase tracking-wide">Research Goal</span>
+                    </div>
+                    <div className="text-lg font-semibold text-purple-800 truncate">
+                      {example.research_goal || 'N/A'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Methodology Tags Section */}
+                {example.methodology_tags.length > 0 && (
+                  <div className="flex flex-col space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
+                      <span className="text-xs font-medium text-gray-700 uppercase tracking-wide">Methodologies</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {example.methodology_tags.map((tag, index) => (
+                        <span 
+                          key={tag} 
+                          className="px-3 py-1.5 bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 rounded-lg text-sm font-medium border border-gray-300 hover:from-gray-200 hover:to-gray-300 transition-all duration-200"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex items-center space-x-3 lg:ml-auto">
+                  {isEditing ? (
+                    <>
+                      <button
+                        onClick={handleCancel}
+                        className="px-6 py-3 text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-all duration-200 flex items-center space-x-2 font-medium"
+                      >
+                        <XMarkIcon className="h-4 w-4" />
+                        <span>Cancel</span>
+                      </button>
+                      <button
+                        onClick={handleSave}
+                        className="px-6 py-3 bg-gradient-to-r from-yellow-600 to-amber-600 text-white rounded-xl hover:from-yellow-700 hover:to-amber-700 transition-all duration-200 flex items-center space-x-2 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                      >
+                        <CheckIcon className="h-4 w-4" />
+                        <span>Save Changes</span>
+                      </button>
+                    </>
+                  ) : (
                     <button
-                      onClick={handleCancel}
-                      className="px-6 py-3 text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-all duration-200 flex items-center space-x-2 font-medium"
-                    >
-                      <XMarkIcon className="h-4 w-4" />
-                      <span>Cancel</span>
-                    </button>
-                    <button
-                      onClick={handleSave}
+                      onClick={() => setIsEditing(true)}
                       className="px-6 py-3 bg-gradient-to-r from-yellow-600 to-amber-600 text-white rounded-xl hover:from-yellow-700 hover:to-amber-700 transition-all duration-200 flex items-center space-x-2 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
                     >
-                      <CheckIcon className="h-4 w-4" />
-                      <span>Save Changes</span>
+                      <PencilIcon className="h-4 w-4" />
+                      <span>Edit</span>
                     </button>
-                  </>
-                ) : (
-                  <button
-                    onClick={() => setIsEditing(true)}
-                    className="px-6 py-3 bg-gradient-to-r from-yellow-600 to-amber-600 text-white rounded-xl hover:from-yellow-700 hover:to-amber-700 transition-all duration-200 flex items-center space-x-2 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-                  >
-                    <PencilIcon className="h-4 w-4" />
-                    <span>Edit</span>
-                  </button>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -293,64 +381,11 @@ export const GoldenExampleEditPage: React.FC = () => {
 
         <main className="flex-1 overflow-y-auto p-6">
           <div className="max-w-7xl mx-auto space-y-6">
-            {/* Metadata Section */}
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6 hover:shadow-xl transition-all duration-300">
-              <h2 className="text-xl font-semibold text-gray-900 mb-6">Example Details</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl p-4 border border-yellow-200">
-                  <label className="block text-sm font-medium text-yellow-700 mb-2">Quality Score</label>
-                  <div className="text-3xl font-bold text-yellow-600">
-                    {example.quality_score ? example.quality_score.toFixed(2) : 'Not rated'}
-                  </div>
-                </div>
-                <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl p-4 border border-yellow-200">
-                  <label className="block text-sm font-medium text-yellow-700 mb-2">Usage Count</label>
-                  <div className="text-3xl font-bold text-yellow-600">
-                    {example.usage_count}
-                  </div>
-                </div>
-                <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-xl p-4 border border-yellow-200">
-                  <label className="block text-sm font-medium text-yellow-700 mb-2">Industry</label>
-                  <div className="text-lg font-semibold text-gray-900">
-                    {example.industry_category || 'Not specified'}
-                  </div>
-                </div>
-                <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200">
-                  <label className="block text-sm font-medium text-purple-700 mb-2">Research Goal</label>
-                  <div className="text-lg font-semibold text-gray-900">
-                    {example.research_goal || 'Not specified'}
-                  </div>
-                </div>
-              </div>
-              
-              <div className="mt-6">
-                <label className="block text-sm font-medium text-gray-700 mb-3">Methodology Tags</label>
-                <div className="flex flex-wrap gap-2">
-                  {example.methodology_tags.map((tag) => (
-                    <span key={tag} className="px-4 py-2 bg-gradient-to-r from-yellow-100 to-orange-100 text-yellow-800 rounded-full text-sm font-medium border border-yellow-200">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-
             {/* Main Content Tabs */}
             <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 overflow-hidden hover:shadow-xl transition-all duration-300">
               {/* Main Tab Navigation */}
               <div className="border-b border-gray-200">
                 <div className="flex space-x-1">
-                  <button
-                    onClick={() => setActiveMainTab('rfq')}
-                    className={`px-8 py-4 text-sm font-medium transition-all duration-200 flex items-center space-x-3 rounded-t-xl ${
-                      activeMainTab === 'rfq'
-                        ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
-                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    <DocumentIcon className="h-5 w-5" />
-                    <span>RFQ Text</span>
-                  </button>
                   <button
                     onClick={() => setActiveMainTab('survey')}
                     className={`px-8 py-4 text-sm font-medium transition-all duration-200 flex items-center space-x-3 rounded-t-xl ${
@@ -362,33 +397,21 @@ export const GoldenExampleEditPage: React.FC = () => {
                     <ClipboardDocumentListIcon className="h-5 w-5" />
                     <span>Survey</span>
                   </button>
+                  <button
+                    onClick={() => setActiveMainTab('rfq')}
+                    className={`px-8 py-4 text-sm font-medium transition-all duration-200 flex items-center space-x-3 rounded-t-xl ${
+                      activeMainTab === 'rfq'
+                        ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
+                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <DocumentIcon className="h-5 w-5" />
+                    <span>RFQ Text</span>
+                  </button>
                 </div>
               </div>
 
               <div className="p-8">
-                {/* RFQ Tab Content */}
-                {activeMainTab === 'rfq' && (
-                  <div className="space-y-6">
-                    <h2 className="text-xl font-semibold text-gray-900">Request for Quotation (RFQ)</h2>
-                    {isEditing ? (
-                      <textarea
-                        value={formData.rfq_text}
-                        onChange={(e) => setFormData({ ...formData, rfq_text: e.target.value })}
-                        className="w-full h-96 border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                        placeholder="Enter the RFQ description..."
-                      />
-                    ) : (
-                      <div className="prose max-w-none">
-                        <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
-                          <pre className="text-gray-700 whitespace-pre-wrap leading-relaxed text-sm font-mono">
-                            {example.rfq_text}
-                          </pre>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
                 {/* Survey Tab Content */}
                 {activeMainTab === 'survey' && (
                   <div className="space-y-6">
@@ -434,7 +457,7 @@ export const GoldenExampleEditPage: React.FC = () => {
                     {/* Survey Sub-tab Content */}
                     <div>
                       {activeSurveyTab === 'preview' && (
-                        <div className="w-full">
+                        <div className="w-full border border-gray-200 rounded-xl overflow-hidden">
                           {(() => {
                             console.log('🔍 [GoldenExampleEdit] ===== RENDERING SURVEY PREVIEW =====');
                             console.log('🔍 [GoldenExampleEdit] activeSurveyTab:', activeSurveyTab);
@@ -446,11 +469,14 @@ export const GoldenExampleEditPage: React.FC = () => {
                             console.log('🔍 [GoldenExampleEdit] ===== END RENDERING LOGIC =====');
                             
                             return actualSurvey ? (
-                              <SurveyPreview 
-                                survey={isEditing ? formData.survey_json : actualSurvey}
-                                isEditable={isEditing}
-                                onSurveyChange={isEditing ? (survey) => setFormData({ ...formData, survey_json: survey }) : undefined}
-                              />
+                              <div>
+                                <SurveyPreview 
+                                  survey={isEditing ? formData.survey_json : actualSurvey}
+                                  isEditable={isEditing}
+                                  onSurveyChange={isEditing ? (survey) => setFormData({ ...formData, survey_json: survey }) : undefined}
+                                  hideHeader={true}
+                                />
+                              </div>
                             ) : (
                               <div className="text-center py-12">
                                 <div className="text-gray-500 text-lg mb-2">No survey data available</div>
@@ -478,6 +504,7 @@ export const GoldenExampleEditPage: React.FC = () => {
                         </div>
                       )}
                       
+                      
                       {activeSurveyTab === 'docx' && (
                         <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-6 border border-gray-200">
                           {example?.survey_json?.raw_output?.document_text ? (
@@ -495,6 +522,29 @@ export const GoldenExampleEditPage: React.FC = () => {
                         </div>
                       )}
                     </div>
+                  </div>
+                )}
+
+                {/* RFQ Tab Content */}
+                {activeMainTab === 'rfq' && (
+                  <div className="space-y-6">
+                    <h2 className="text-xl font-semibold text-gray-900">Request for Quotation (RFQ)</h2>
+                    {isEditing ? (
+                      <textarea
+                        value={formData.rfq_text}
+                        onChange={(e) => setFormData({ ...formData, rfq_text: e.target.value })}
+                        className="w-full h-96 border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                        placeholder="Enter the RFQ description..."
+                      />
+                    ) : (
+                      <div className="prose max-w-none">
+                        <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+                          <pre className="text-gray-700 whitespace-pre-wrap leading-relaxed text-sm font-mono">
+                            {example.rfq_text}
+                          </pre>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

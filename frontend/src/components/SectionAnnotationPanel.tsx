@@ -70,7 +70,28 @@ const SectionAnnotationPanel: React.FC<SectionAnnotationPanelProps> = ({
   }, [section.id, annotation]);
 
   const updateField = (field: keyof SectionAnnotation, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    const newFormData = { ...formData, [field]: value };
+    setFormData(newFormData);
+    
+    // Auto-save for important fields
+    if (field === 'pillars' || field === 'quality' || field === 'relevant' || field === 'comment') {
+      console.log('🔄 [SectionAnnotationPanel] Field changed, saving immediately...', { field, value });
+      
+      const annotationToSave: SectionAnnotation = {
+        ...newFormData,
+        sectionId: String(section.id),
+        timestamp: new Date().toISOString()
+      };
+      
+      console.log('🔄 [SectionAnnotationPanel] Saving annotation:', annotationToSave);
+      
+      try {
+        onSave(annotationToSave);
+        console.log('✅ [SectionAnnotationPanel] Annotation saved successfully');
+      } catch (error) {
+        console.error('❌ [SectionAnnotationPanel] Failed to save annotation:', error);
+      }
+    }
   };
 
   const getComplianceScoreColor = (score: number) => {
@@ -362,13 +383,6 @@ const SectionAnnotationPanel: React.FC<SectionAnnotationPanelProps> = ({
           />
         </div>
 
-        {/* Section Preview */}
-        <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-          <div className="text-sm font-semibold text-gray-700 mb-2">
-            Section Preview: {section.title} ({section.questions.length} questions)
-          </div>
-          <div className="text-sm text-gray-600 leading-relaxed">{section.description}</div>
-        </div>
       </div>
     </div>
   );

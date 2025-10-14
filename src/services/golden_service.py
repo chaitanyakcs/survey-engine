@@ -1,9 +1,11 @@
 from sqlalchemy.orm import Session
 from src.database import GoldenRFQSurveyPair
+from src.database.models import Survey
 from src.services.embedding_service import EmbeddingService
 from typing import Dict, List, Any, Optional
 from uuid import UUID
 from src.config import settings
+from datetime import datetime
 import replicate
 import json
 import logging
@@ -183,6 +185,7 @@ We need a comprehensive survey with approximately {len(questions)} questions to 
             final_quality_score = quality_score if quality_score is not None else 1.0
             logger.info(f"⭐ [GoldenService] Using quality score: {final_quality_score}")
             
+            # Create the golden pair first to get the ID
             golden_pair = GoldenRFQSurveyPair(
                 title=title,
                 rfq_text=rfq_text,
@@ -197,13 +200,43 @@ We need a comprehensive survey with approximately {len(questions)} questions to 
             logger.info(f"💾 [GoldenService] Adding golden pair to database")
             self.db.add(golden_pair)
             
-            logger.info(f"💾 [GoldenService] Committing transaction")
+            # Commit to get the golden_pair.id
             self.db.commit()
-            
-            logger.info(f"💾 [GoldenService] Refreshing golden pair from database")
             self.db.refresh(golden_pair)
             
+            # Generate survey_id for the reference example (use actual UUID)
+            survey_id = golden_pair.id  # Use the same UUID as the golden pair
+            logger.info(f"🔍 [GoldenService] Using golden pair ID as survey_id for reference example: {survey_id}")
+            
+            # Add survey_id to the survey_json for consistency
+            if isinstance(survey_json, dict):
+                survey_json["survey_id"] = str(survey_id)  # Convert UUID to string for JSON
+                
+                # Ensure survey JSON has a title (use golden pair title if survey JSON doesn't have one)
+                if not survey_json.get('title') and title:
+                    survey_json["title"] = title
+                    logger.info(f"📝 [GoldenService] Added title to survey JSON: {title}")
+                
+                # Update the golden pair with the modified survey_json
+                golden_pair.survey_json = survey_json
+                self.db.commit()
+            
+            # Create survey record for annotation support
+            logger.info(f"💾 [GoldenService] Creating survey record for reference example")
+            reference_survey = Survey(
+                id=survey_id,  # Use the same UUID as golden pair
+                rfq_id=None,  # Reference examples don't have RFQ
+                status="reference",  # Special status for reference examples
+                raw_output=survey_json,
+                final_output=survey_json,
+                created_at=datetime.now()
+            )
+            
+            self.db.add(reference_survey)
+            self.db.commit()
+            
             logger.info(f"✅ [GoldenService] Golden pair created successfully with ID: {golden_pair.id}")
+            logger.info(f"✅ [GoldenService] Survey record created with ID: {survey_id}")
             logger.info(f"📋 [GoldenService] Created pair details - title: {golden_pair.title}, quality_score: {golden_pair.quality_score}")
             
             return golden_pair
@@ -235,6 +268,13 @@ We need a comprehensive survey with approximately {len(questions)} questions to 
             if not golden_pair:
                 raise ValueError("Golden pair not found")
             
+            # Generate survey_id for the reference example (use actual UUID)
+            survey_id = golden_pair.id  # Use the same UUID as the golden pair
+            
+            # Add survey_id to the survey_json for consistency
+            if isinstance(survey_json, dict):
+                survey_json["survey_id"] = str(survey_id)  # Convert UUID to string for JSON
+            
             # Update fields
             golden_pair.rfq_text = rfq_text
             golden_pair.survey_json = survey_json
@@ -244,6 +284,24 @@ We need a comprehensive survey with approximately {len(questions)} questions to 
             
             if quality_score is not None:
                 golden_pair.quality_score = quality_score
+            
+            # Update or create the corresponding survey record
+            existing_survey = self.db.query(Survey).filter(Survey.id == survey_id).first()
+            if existing_survey:
+                # Update existing survey record
+                existing_survey.raw_output = survey_json
+                existing_survey.final_output = survey_json
+            else:
+                # Create new survey record
+                reference_survey = Survey(
+                    id=survey_id,
+                    rfq_id=None,
+                    status="reference",
+                    raw_output=survey_json,
+                    final_output=survey_json,
+                    created_at=datetime.now()
+                )
+                self.db.add(reference_survey)
             
             self.db.commit()
             self.db.refresh(golden_pair)
@@ -269,6 +327,13 @@ We need a comprehensive survey with approximately {len(questions)} questions to 
             
             if not golden_pair:
                 return False
+            
+            # Also delete the corresponding survey record
+            survey_id = golden_id  # Use the same UUID as the golden pair
+            survey_record = self.db.query(Survey).filter(Survey.id == survey_id).first()
+            if survey_record:
+                self.db.delete(survey_record)
+                logger.info(f"🗑️ [GoldenService] Deleted survey record: {survey_id}")
             
             # Log what we're deleting for debugging
             try:

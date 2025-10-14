@@ -1,0 +1,11 @@
+﻿Label,Applicable_Labels,Descr,Mandatory,Type
+Message_reaction,,"Question to check preference for Product/Feature Name, Caption etc",No,QNR
+Concept_Intro,Concept_Intro,Concept Introduction for pricing and reaction with hyperlink,Yes,Text
+Concept_eval_funnel,,"Likelihood to 
+1. Follow up and learn
+2. New & Different
+3. Meets needs
+4. Recommend to others",No,QNR
+Concept_impression,,Overall Impression,Yes,QNR
+Concept_Feature_Highlight,,Highlight most important & least important words/phrases from the concept descr. Additional text feedback,No,QNR
+Concept_Purchase_Likelihood,,"How likely are you to purchase, how soon will you purchase",Yes,QNR

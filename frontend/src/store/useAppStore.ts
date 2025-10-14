@@ -1195,10 +1195,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
           return annotations;
         })(),
         sectionAnnotations: (backendAnnotations.section_annotations || []).map((sa: any, index: number) => {
-          // For now, map section annotations by index order
-          // This is a simple approach that works for most cases
-          const mappedSectionId = (index + 1).toString();
-          console.log('🔍 [Store] Mapping section ID by index:', { hashedSectionId: sa.section_id, mappedSectionId, index });
+          // Use the actual section_id from the backend
+          const mappedSectionId = String(sa.section_id);
+          console.log('🔍 [Store] Mapping section ID from backend:', { backendSectionId: sa.section_id, mappedSectionId, index });
           return {
             id: sa.id, // Database ID for API operations
             sectionId: mappedSectionId,

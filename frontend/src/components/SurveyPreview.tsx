@@ -1639,7 +1639,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
   }
 
   return (
-    <div className="w-full h-screen flex flex-col">
+    <div className={`w-full ${hideHeader ? 'h-full' : 'h-screen'} flex flex-col`}>
       {/* Header with Survey Title and Save Controls - conditionally rendered */}
       {!hideHeader && (
         <div className="bg-white border-b border-gray-200 px-6 py-4">
@@ -1691,7 +1691,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
       )}
 
       {/* Main Content */}
-      <div className="flex flex-1">
+      <div className={`flex ${hideHeader ? 'flex-1 min-h-0' : 'flex-1'}`}>
           {/* Left Panel - Survey Content */}
           <div className={`${hideRightPanel ? 'w-full' : (isAnnotationMode || annotationPane.type) ? 'w-[45%]' : 'w-[75%]'} overflow-y-auto`}>
         <div className="p-6">

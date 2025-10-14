@@ -169,6 +169,7 @@ async def update_golden_pair(
         )
         
     except Exception as e:
+        logger.error(f"❌ [Golden API] Failed to update golden pair {golden_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to update golden pair: {str(e)}")
 
 

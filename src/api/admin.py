@@ -136,7 +136,22 @@ async def migrate_all(db: Session = Depends(get_db)):
                 "message": f"SurveyAnnotation constraint fix failed: {str(e)}"
             })
         
-        # Step 7: Clean up Alembic version table
+        # Step 7: Update survey status constraint
+        try:
+            await _migrate_survey_status_constraint(db)
+            migration_results.append({
+                "step": "update_survey_status_constraint",
+                "status": "success",
+                "message": "Survey status constraint updated to include 'reference' status"
+            })
+        except Exception as e:
+            migration_results.append({
+                "step": "update_survey_status_constraint",
+                "status": "failed",
+                "message": f"Survey status constraint update failed: {str(e)}"
+            })
+        
+        # Step 8: Clean up Alembic version table
         try:
             await _migrate_drop_alembic_version(db)
             migration_results.append({
@@ -909,3 +924,25 @@ async def get_human_vs_ai_stats(db: Session = Depends(get_db)):
             status_code=500,
             detail=f"Failed to fetch human vs AI stats: {str(e)}"
         )
+
+
+async def _migrate_survey_status_constraint(db: Session):
+    """
+    Update survey status constraint to include 'reference' status
+    """
+    logger.info("📝 Updating survey status constraint to include 'reference' status...")
+    
+    # Read and execute the migration SQL file
+    migration_file = "migrations/018_update_survey_status_constraint.sql"
+    try:
+        with open(migration_file, 'r') as f:
+            migration_sql = f.read()
+        
+        db.execute(text(migration_sql))
+        db.commit()
+        logger.info("✅ Survey status constraint updated successfully")
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to update survey status constraint: {str(e)}")
+        db.rollback()
+        raise

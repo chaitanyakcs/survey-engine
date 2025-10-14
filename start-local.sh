@@ -159,30 +159,62 @@ except Exception as e:
     fi
 }
 
-# Function to run database migrations
+# Function to run database migrations via API
 run_migrations() {
-    echo -e "${YELLOW}📊 Running database migrations using new admin API system...${NC}"
+    echo -e "${YELLOW}📊 Running database migrations using admin API...${NC}"
     
-    # Check if migration script exists
-    if [ ! -f "run_migrations.py" ]; then
-        echo -e "${RED}❌ Migration script run_migrations.py not found!${NC}"
-        echo -e "${YELLOW}💡 Make sure you're in the project root directory${NC}"
+    # Start FastAPI server temporarily for migrations
+    echo -e "${BLUE}🔄 Starting FastAPI server for migrations...${NC}"
+    REPLICATE_API_TOKEN="$REPLICATE_API_TOKEN" DATABASE_URL="$DATABASE_URL" uvicorn src.main:app --host 0.0.0.0 --port 8000 &
+    MIGRATION_PID=$!
+    
+    # Wait for server to be ready
+    echo -e "${YELLOW}⏳ Waiting for FastAPI to be ready...${NC}"
+    sleep 5
+    
+    # Check if server is running
+    if ! kill -0 $MIGRATION_PID 2>/dev/null; then
+        echo -e "${RED}❌ FastAPI failed to start for migrations${NC}"
         return 1
     fi
     
-    # Run migrations using the new admin API system
-    echo -e "${BLUE}📝 Executing migration command...${NC}"
-    if python3 run_migrations.py; then
+    # Wait for server to be ready
+    local max_attempts=30
+    local attempt=0
+    while [ $attempt -lt $max_attempts ]; do
+        if curl -s http://localhost:8000/health > /dev/null 2>&1; then
+            echo -e "${GREEN}✅ FastAPI is ready for migrations${NC}"
+            break
+        fi
+        echo -e "${YELLOW}⏳ Waiting for FastAPI... (attempt $((attempt + 1))/$max_attempts)${NC}"
+        sleep 2
+        attempt=$((attempt + 1))
+    done
+    
+    if [ $attempt -eq $max_attempts ]; then
+        echo -e "${RED}❌ FastAPI failed to become ready for migrations${NC}"
+        kill $MIGRATION_PID 2>/dev/null || true
+        return 1
+    fi
+    
+    # Run migrations via API
+    echo -e "${BLUE}📝 Executing migrations via API...${NC}"
+    local migration_result
+    migration_result=$(curl -s -X POST "http://localhost:8000/api/v1/admin/migrate-all" -H "Content-Type: application/json")
+    
+    # Stop the temporary server
+    echo -e "${YELLOW}🔄 Stopping temporary FastAPI server...${NC}"
+    kill $MIGRATION_PID 2>/dev/null || true
+    sleep 2
+    
+    # Check migration result
+    if echo "$migration_result" | grep -q '"status":"success"'; then
         echo -e "${GREEN}✅ Database migrations completed successfully${NC}"
         return 0
     else
-        local exit_code=$?
-        echo -e "${RED}❌ Database migrations failed with exit code $exit_code${NC}"
-        
-        # Show detailed error information
-        echo -e "${RED}Migration error details:${NC}"
-        python3 run_migrations.py 2>&1 | head -20
-        return $exit_code
+        echo -e "${RED}❌ Database migrations failed${NC}"
+        echo -e "${RED}Migration result: $migration_result${NC}"
+        return 1
     fi
 }
 

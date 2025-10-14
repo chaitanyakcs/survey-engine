@@ -879,36 +879,24 @@ export const GoldenExampleCreatePage: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Industry Category</label>
-                    <select
+                    <input
+                      type="text"
                       value={formData.industry_category}
                       onChange={(e) => setFormData({ ...formData, industry_category: e.target.value })}
                       className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all duration-200"
-                    >
-                      <option value="">Select Industry</option>
-                      <option value="Consumer Electronics">Consumer Electronics</option>
-                      <option value="B2B Technology">B2B Technology</option>
-                      <option value="Automotive">Automotive</option>
-                      <option value="Healthcare">Healthcare</option>
-                      <option value="Financial Services">Financial Services</option>
-                      <option value="Retail">Retail</option>
-                    </select>
+                      placeholder="Enter industry category (e.g., Consumer Electronics, Healthcare, Finance)"
+                    />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Research Goal</label>
-                    <select
+                    <input
+                      type="text"
                       value={formData.research_goal}
                       onChange={(e) => setFormData({ ...formData, research_goal: e.target.value })}
                       className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all duration-200"
-                    >
-                      <option value="">Select Research Goal</option>
-                      <option value="pricing_research">Pricing Research</option>
-                      <option value="product_development">Product Development</option>
-                      <option value="market_segmentation">Market Segmentation</option>
-                      <option value="brand_positioning">Brand Positioning</option>
-                      <option value="customer_satisfaction">Customer Satisfaction</option>
-                      <option value="competitive_analysis">Competitive Analysis</option>
-                    </select>
+                      placeholder="Enter research goal (e.g., Pricing Research, Product Development, Market Segmentation)"
+                    />
                   </div>
                 </div>
 

@@ -1,0 +1,13 @@
+﻿Label,Applicable_Labels,Descr,Mandatory,Type
+Category_Usage_Consider,,are you considering in the future,Yes,QNR
+Category_Usage_Frequency,,How often you use,Yes,QNR
+Recent_Participation,,Participated in Market Research study recently. Terminate,Yes,QNR
+Confidentiality_Agreement,,,Yes,Text
+Study_Intro,,"Thanks for agreeing, inform eligibility, state LOI",Yes,Text
+Medical_Conditions_Study,,"Current, Past and future",Yes,QNR
+Medical_Conditions_General,,Multiselect,No,QNR
+Category_Usage_Adnl,,Where will you use and how,No,
+CoI_Check,,Conflict of Interest check. Terminate,Yes,QNR
+Category_Usage_Financial,,How much you spend now and in future,Yes,QNR
+User_Categorization_Logic,,"User/Non-User, Continue/Terminate, Other categorization rules",Yes,Rules
+Demog_Basic,,"Age, Gender. Check categories specific to country",Yes,QNR

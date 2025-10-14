@@ -91,35 +91,68 @@ check_redis() {
     fi
 }
 
-# Function to run migrations
+# Function to run migrations via API
 run_migrations() {
     if [ "$SKIP_MIGRATIONS" = "true" ]; then
         log_info "Skipping database migrations (SKIP_MIGRATIONS=true)"
         return 0
     fi
     
-    log_info "Running database migrations using new migration system..."
+    log_info "Running database migrations using admin API..."
     log_info "Current working directory: $(pwd)"
     
-    # Check if migration script exists
-    if [ ! -f "run_migrations.py" ]; then
-        log_error "Migration script run_migrations.py not found!"
+    # Start FastAPI server temporarily for migrations
+    log_info "Starting FastAPI server for migrations..."
+    $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port 8000 &
+    local migration_pid=$!
+    
+    # Wait for server to be ready
+    log_info "Waiting for FastAPI to be ready..."
+    sleep 5
+    
+    # Check if server is running
+    if ! kill -0 $migration_pid 2>/dev/null; then
+        log_error "FastAPI failed to start for migrations"
         return 1
     fi
     
-    # Run migrations using the new system
-    log_info "Executing migration command..."
-    if $UV_CMD run python run_migrations.py 2>&1; then
+    # Wait for server to be ready
+    local max_attempts=30
+    local attempt=0
+    while [ $attempt -lt $max_attempts ]; do
+        if curl -s http://localhost:8000/health > /dev/null 2>&1; then
+            log_success "FastAPI is ready for migrations"
+            break
+        fi
+        log_info "Waiting for FastAPI... (attempt $((attempt + 1))/$max_attempts)"
+        sleep 2
+        attempt=$((attempt + 1))
+    done
+    
+    if [ $attempt -eq $max_attempts ]; then
+        log_error "FastAPI failed to become ready for migrations"
+        kill $migration_pid 2>/dev/null || true
+        return 1
+    fi
+    
+    # Run migrations via API
+    log_info "Executing migrations via API..."
+    local migration_result
+    migration_result=$(curl -s -X POST "http://localhost:8000/api/v1/admin/migrate-all" -H "Content-Type: application/json")
+    
+    # Stop the temporary server
+    log_info "Stopping temporary FastAPI server..."
+    kill $migration_pid 2>/dev/null || true
+    sleep 2
+    
+    # Check migration result
+    if echo "$migration_result" | grep -q '"status":"success"'; then
         log_success "Database migrations completed successfully"
         return 0
     else
-        local exit_code=$?
-        log_error "Database migrations failed with exit code $exit_code"
-        
-        # Show detailed error information
-        log_error "Migration error details:"
-        $UV_CMD run python run_migrations.py 2>&1 | head -20
-        return $exit_code
+        log_error "Database migrations failed"
+        log_error "Migration result: $migration_result"
+        return 1
     fi
 }
 
@@ -423,18 +456,9 @@ main() {
     check_redis || true  # Redis is optional, don't exit if unavailable
     
     log_info "Step 3: Running migrations and seeding..."
-    # For Railway, use new migration system directly
-    if [ -n "$RAILWAY_ENVIRONMENT" ] || [ -n "$RAILWAY_PROJECT_ID" ]; then
-        log_info "Railway environment detected - using new migration system..."
-        run_migrations || exit 1
-    elif [ -f "start-local.sh" ]; then
-        log_info "Using comprehensive startup script for database operations..."
-        ./start-local.sh migrate
-        ./start-local.sh seed
-    else
-        log_info "Falling back to basic migrations..."
-        run_migrations || exit 1
-    fi
+    # Always use admin API for migrations (consistent across all environments)
+    log_info "Using admin API for database migrations..."
+    run_migrations || exit 1
     
     log_info "Step 4: Starting services..."
     

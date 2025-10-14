@@ -110,10 +110,25 @@ class AnnotationInsightsService:
                 question_type = self._classify_question_type(question_text)
                 if question_type not in patterns["question_patterns"]:
                     patterns["question_patterns"][question_type] = []
+                # Extract anchored text context from advanced_labels if available
+                anchored_text_context = ""
+                if qa.advanced_labels:
+                    try:
+                        if isinstance(qa.advanced_labels, dict):
+                            anchored_text = qa.advanced_labels.get("anchored_text", "")
+                            comment_author = qa.advanced_labels.get("comment_author", "")
+                            if anchored_text:
+                                anchored_text_context = f" | Anchored to: \"{anchored_text}\""
+                                if comment_author:
+                                    anchored_text_context += f" (by {comment_author})"
+                    except Exception as e:
+                        logger.debug(f"Failed to extract anchored text context: {e}")
+                
                 patterns["question_patterns"][question_type].append({
                     "text": question_text,
                     "score": self._get_average_score(qa),
-                    "comment": qa.comment
+                    "comment": qa.comment,
+                    "anchored_text_context": anchored_text_context
                 })
                 
                 # Extract phrasing patterns
@@ -472,14 +487,16 @@ class AnnotationInsightsService:
             "common_issues": []
         }
         
-        # Format high-quality patterns
+        # Format high-quality patterns with anchored text context
         for question_type, examples in patterns["high_quality_patterns"].get("question_patterns", {}).items():
             if examples:
                 best_example = max(examples, key=lambda x: x["score"])
+                
                 guidelines["high_quality_examples"].append({
                     "type": question_type,
                     "example": best_example["text"],
-                    "score": best_example["score"]
+                    "score": best_example["score"],
+                    "context": best_example.get("anchored_text_context", "")
                 })
         
         # Format patterns to avoid

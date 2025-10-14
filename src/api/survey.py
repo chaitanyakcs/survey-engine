@@ -84,9 +84,23 @@ async def list_surveys(
             elif metadata.get('quality_score'):
                 quality_score = metadata.get('quality_score')
             
+            # Extract title with improved logic for reference examples
+            title = survey_data.get('title', 'Untitled Survey')
+            
+            # For reference examples, try to get title from golden pair if survey title is missing
+            if survey.status == 'reference' and (not title or title == 'Untitled Survey'):
+                try:
+                    from src.database.models import GoldenRFQSurveyPair
+                    golden_pair = db.query(GoldenRFQSurveyPair).filter(GoldenRFQSurveyPair.id == survey.id).first()
+                    if golden_pair and golden_pair.title:
+                        title = golden_pair.title
+                        logger.info(f"📝 [Survey List] Using golden pair title for reference survey {survey.id}: {title}")
+                except Exception as e:
+                    logger.warning(f"⚠️ [Survey List] Failed to get golden pair title for survey {survey.id}: {e}")
+            
             survey_list.append(SurveyListItem(
                 id=str(survey.id),
-                title=survey_data.get('title', 'Untitled Survey'),
+                title=title,
                 description=survey_data.get('description', 'No description available'),
                 status=survey.status,
                 created_at=survey.created_at.isoformat() if survey.created_at else '',

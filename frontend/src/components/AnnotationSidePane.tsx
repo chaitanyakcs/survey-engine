@@ -61,7 +61,7 @@ export const AnnotationSidePane: React.FC<AnnotationSidePaneProps> = ({
 
     switch (annotationType) {
       case 'question':
-        return annotationTarget.question_text || annotationTarget.text || 'Question';
+        return 'Question selected - details shown in left pane';
       case 'section':
         return annotationTarget.title || annotationTarget.section_title || 'Section';
       case 'survey':

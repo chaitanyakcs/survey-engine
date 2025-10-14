@@ -221,17 +221,19 @@ def get_survey_annotations(
     section_conditions = [SectionAnnotation.survey_id == survey_id]
     
     if include_ai_annotations:
-        # Include both user and AI annotations
+        # Include both user and AI annotations (including DOCX parser annotations)
         question_conditions.append(
             or_(
                 QuestionAnnotation.annotator_id == annotator_id,
-                QuestionAnnotation.annotator_id == "ai_system"
+                QuestionAnnotation.annotator_id == "ai_system",
+                QuestionAnnotation.ai_generated == True  # Include any AI-generated annotations regardless of annotator_id
             )
         )
         section_conditions.append(
             or_(
                 SectionAnnotation.annotator_id == annotator_id,
-                SectionAnnotation.annotator_id == "ai_system"
+                SectionAnnotation.annotator_id == "ai_system",
+                SectionAnnotation.ai_generated == True  # Include any AI-generated annotations regardless of annotator_id
             )
         )
     else:
@@ -376,7 +378,8 @@ def save_bulk_annotations(
             existing_qa = db.query(QuestionAnnotation).filter(
                 and_(
                     QuestionAnnotation.question_id == qa_req.question_id,
-                    QuestionAnnotation.annotator_id == qa_req.annotator_id
+                    QuestionAnnotation.annotator_id == qa_req.annotator_id,
+                    QuestionAnnotation.survey_id == survey_id
                 )
             ).first()
             
@@ -454,7 +457,8 @@ def save_bulk_annotations(
             existing_sa = db.query(SectionAnnotation).filter(
                 and_(
                     SectionAnnotation.section_id == sa_req.section_id,
-                    SectionAnnotation.annotator_id == sa_req.annotator_id
+                    SectionAnnotation.annotator_id == sa_req.annotator_id,
+                    SectionAnnotation.survey_id == survey_id
                 )
             ).first()
             

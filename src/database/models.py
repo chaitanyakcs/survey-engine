@@ -57,7 +57,7 @@ class Survey(Base):
     rfq_id = Column(UUID(as_uuid=True), ForeignKey("rfqs.id"))
     status = Column(
         Text,
-        CheckConstraint("status IN ('draft','validated','edited','final')"),
+        CheckConstraint("status IN ('draft','validated','edited','final','reference')"),
         nullable=False
     )
     raw_output = Column(JSONB)

@@ -1,0 +1,5 @@
+﻿Label,Applicable_Labels,Descr,Mandatory,Type
+Concept_Intro,Concept_Intro,Concept Introduction for pricing and reaction with hyperlink,Yes,Text
+VW_Likelihood,Van Westendorp,Additional likelihood on chosen price points for calibration,No,QNR
+VW_pricing,Van Westendorp,"Good value, expensive etc",Yes,QNR
+GG_Likelihood,Gabor Granger,Random price point and change basis response,Yes,QNR

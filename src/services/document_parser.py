@@ -179,8 +179,8 @@ class DocumentParser:
                     estimated_time=0)
             raise DocumentParsingError(f"Failed to extract text from document: {str(e)}")
     
-    def create_conversion_prompt(self, document_text: str) -> str:
-        """Create the system prompt for LLM conversion."""
+    def create_conversion_prompt(self, document_text: str, comments: List[Dict[str, Any]] = None) -> str:
+        """Create the system prompt for LLM conversion with comment context."""
         
         # Define the expected JSON schema with explicit question types
         json_schema = {
@@ -200,17 +200,30 @@ class DocumentParser:
                     "options": "array of strings (for choice questions)",
                     "scale_min": "number (for scale questions)",
                     "scale_max": "number (for scale questions)",
-                    "scale_labels": "array of strings (for scale questions)",
+                    "scale_labels": "object with min/max keys (for scale questions, e.g. {'min': 'Poor', 'max': 'Excellent'})",
                     "required": "boolean",
-                    "logic": "object (optional)"
+                    "logic": "object (optional)",
+                    "annotation": "object (optional) - include if there's a comment for this question"
                 }
             ]
         }
         
+        # Build comment context if available
+        comment_context = ""
+        if comments:
+            comment_context = "\n\nCOMMENTS FROM DOCUMENT:\n"
+            for i, comment in enumerate(comments):
+                if comment.get('anchored_text'):
+                    comment_context += f"{i+1}. Comment: \"{comment.get('text', '')}\"\n"
+                    comment_context += f"   Anchored to: \"{comment.get('anchored_text', '')}\"\n"
+                    if comment.get('author'):
+                        comment_context += f"   Author: {comment.get('author')}\n"
+                    comment_context += "\n"
+
         prompt = f"""You are an expert survey methodologist. Convert the following survey document to JSON format.
 
 DOCUMENT TEXT:
-{document_text}
+{document_text}{comment_context}
 
 INSTRUCTIONS:
 1. Extract the survey structure and convert to the exact JSON schema provided below
@@ -219,6 +232,13 @@ INSTRUCTIONS:
 4. Preserve question order and logic flow
 5. If unsure about any field, use null rather than guessing
 6. Generate a confidence_score (0.0-1.0) based on how well you could parse the document
+7. COMMENT MATCHING: If there are comments provided, match each comment to the question it was anchored to:
+   - Compare the "Anchored to" text with each question's text
+   - If a comment matches a question, add an "annotation" field to that question with:
+     - "comment": the comment text
+     - "anchored_text": the exact text the comment was attached to
+     - "author": the comment author (if available)
+     - "date": the comment date (if available)
 
 REQUIRED JSON SCHEMA:
 {json.dumps(json_schema, indent=2)}
@@ -235,7 +255,7 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
 """
         return prompt
     
-    async def convert_to_json(self, document_text: str, session_id: str = None) -> Dict[str, Any]:
+    async def convert_to_json(self, document_text: str, comments: List[Dict[str, Any]] = None, session_id: str = None) -> Dict[str, Any]:
         """Convert document text to JSON using LLM with detailed progress updates."""
         logger.info(f"🤖 [Document Parser] Starting LLM conversion with model: {self.model}")
         try:
@@ -247,7 +267,7 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                     estimated_time=45)
             
             logger.info(f"📝 [Document Parser] Creating conversion prompt")
-            prompt = self.create_conversion_prompt(document_text)
+            prompt = self.create_conversion_prompt(document_text, comments)
             logger.info(f"✅ [Document Parser] Conversion prompt created, length: {len(prompt)} chars")
             
             if session_id:
@@ -361,40 +381,30 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
             
             # CRITICAL FIX: Handle character array output from LLM
             # Sometimes the LLM returns a character array instead of a JSON string
+            logger.info(f"🔍 [Document Parser] Checking for character array format...")
+            logger.info(f"🔍 [Document Parser] Content starts with: {json_content[:50]}")
+            logger.info(f"🔍 [Document Parser] Content ends with: {json_content[-50:]}")
+            
             if json_content.startswith('[') and json_content.endswith(']'):
+                logger.info(f"🔧 [Document Parser] Detected potential character array format")
                 try:
                     # Try to parse as a character array and join it
                     import ast
                     char_array = ast.literal_eval(json_content)
                     if isinstance(char_array, list) and all(isinstance(c, str) for c in char_array):
+                        original_length = len(json_content)
                         json_content = ''.join(char_array).strip()
-                        logger.info(f"🔧 [Document Parser] Converted character array to string, length: {len(json_content)}")
+                        logger.info(f"🔧 [Document Parser] Successfully converted character array to string")
+                        logger.info(f"🔧 [Document Parser] Original length: {original_length}, New length: {len(json_content)}")
                         logger.info(f"🔧 [Document Parser] First 200 chars: {json_content[:200]}")
                     else:
                         logger.warning(f"⚠️ [Document Parser] Character array contains non-string elements")
+                        logger.warning(f"⚠️ [Document Parser] Array type: {type(char_array)}, First few elements: {char_array[:5] if char_array else 'empty'}")
                 except Exception as e:
                     logger.warning(f"⚠️ [Document Parser] Failed to parse character array: {e}")
                     logger.warning(f"⚠️ [Document Parser] Raw content: {json_content[:100]}")
-            
-            logger.info(f"📝 [Document Parser] Final JSON content length: {len(json_content)}")
-            logger.debug(f"📝 [Document Parser] JSON content preview: {json_content[:200]}...")
-            
-            # CRITICAL FIX: Handle character array output from LLM
-            # Sometimes the LLM returns a character array instead of a JSON string
-            if json_content.startswith('[') and json_content.endswith(']'):
-                try:
-                    # Try to parse as a character array and join it
-                    import ast
-                    char_array = ast.literal_eval(json_content)
-                    if isinstance(char_array, list) and all(isinstance(c, str) for c in char_array):
-                        json_content = ''.join(char_array).strip()
-                        logger.info(f"🔧 [Document Parser] Converted character array to string, length: {len(json_content)}")
-                        logger.info(f"🔧 [Document Parser] First 200 chars: {json_content[:200]}")
-                    else:
-                        logger.warning(f"⚠️ [Document Parser] Character array contains non-string elements")
-                except Exception as e:
-                    logger.warning(f"⚠️ [Document Parser] Failed to parse character array: {e}")
-                    logger.warning(f"⚠️ [Document Parser] Raw content: {json_content[:100]}")
+            else:
+                logger.info(f"🔍 [Document Parser] Content does not appear to be a character array")
             
             logger.info(f"📝 [Document Parser] Final JSON content length: {len(json_content)}")
             logger.debug(f"📝 [Document Parser] JSON content preview: {json_content[:200]}...")
@@ -411,6 +421,27 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
             
             # Use centralized JSON parsing utility
             survey_data = parse_llm_json_response(json_content, service_name="DocumentParser")
+            
+            # If parsing failed, try to extract JSON from text (for character array responses)
+            if survey_data is None:
+                logger.info(f"🔧 [Document Parser] Standard JSON parsing failed, trying JSON extraction...")
+                import re
+                
+                # Try to find JSON between ``` markers
+                json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', json_content, re.DOTALL)
+                if json_match:
+                    json_text = json_match.group(1)
+                    logger.info(f"🔧 [Document Parser] Found JSON between ``` markers")
+                    survey_data = parse_llm_json_response(json_text, service_name="DocumentParser")
+                else:
+                    # Try to find JSON object starting with {
+                    json_match = re.search(r'(\{.*\})', json_content, re.DOTALL)
+                    if json_match:
+                        json_text = json_match.group(1)
+                        logger.info(f"🔧 [Document Parser] Found JSON object in text")
+                        survey_data = parse_llm_json_response(json_text, service_name="DocumentParser")
+                    else:
+                        logger.warning(f"⚠️ [Document Parser] No JSON object found in converted text")
             
             if survey_data is None:
                 logger.error(f"❌ [Document Parser] All JSON extraction methods failed")
@@ -479,15 +510,44 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                 final_output = survey_data["final_output"]
                 logger.info(f"🔍 [Document Parser] Validating final_output structure")
                 
-                # Add order field to questions if missing
+                # Add order field to questions if missing and handle annotation fields
                 if "questions" in final_output and isinstance(final_output["questions"], list):
                     for i, question in enumerate(final_output["questions"]):
                         if isinstance(question, dict) and "order" not in question:
                             question["order"] = i + 1
+                        
+                        # Fix scale_labels format - convert array to dictionary if needed
+                        if isinstance(question, dict) and "scale_labels" in question:
+                            scale_labels = question["scale_labels"]
+                            if isinstance(scale_labels, list) and len(scale_labels) >= 2:
+                                # Convert array to dictionary format
+                                question["scale_labels"] = {
+                                    "min": scale_labels[0],
+                                    "max": scale_labels[-1]
+                                }
+                                logger.debug(f"🔧 [Document Parser] Fixed scale_labels for question {i+1}: {scale_labels} -> {question['scale_labels']}")
+                            elif not isinstance(scale_labels, dict):
+                                # Remove invalid scale_labels
+                                question.pop("scale_labels", None)
+                                logger.debug(f"🔧 [Document Parser] Removed invalid scale_labels for question {i+1}")
+                
+                # Extract annotation fields before validation (SurveyCreate doesn't support them)
+                annotation_fields = {}
+                if "questions" in final_output and isinstance(final_output["questions"], list):
+                    for i, question in enumerate(final_output["questions"]):
+                        if isinstance(question, dict) and "annotation" in question:
+                            annotation_fields[question.get("id", f"q{i+1}")] = question.pop("annotation")
                 
                 # Create a SurveyCreate object to validate the structure
                 survey = SurveyCreate(**final_output)
                 validated_data = survey.model_dump()
+                
+                # Restore annotation fields after validation
+                if annotation_fields and "questions" in validated_data:
+                    for question in validated_data["questions"]:
+                        question_id = question.get("id")
+                        if question_id in annotation_fields:
+                            question["annotation"] = annotation_fields[question_id]
                 
                 # Preserve metadata fields that are not part of SurveyCreate model
                 metadata_fields = {}
@@ -506,6 +566,24 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
             else:
                 # Fallback for legacy format
                 logger.warning(f"⚠️ [Document Parser] Using legacy format validation")
+                
+                # Fix scale_labels format for legacy format
+                if "questions" in survey_data and isinstance(survey_data["questions"], list):
+                    for i, question in enumerate(survey_data["questions"]):
+                        if isinstance(question, dict) and "scale_labels" in question:
+                            scale_labels = question["scale_labels"]
+                            if isinstance(scale_labels, list) and len(scale_labels) >= 2:
+                                # Convert array to dictionary format
+                                question["scale_labels"] = {
+                                    "min": scale_labels[0],
+                                    "max": scale_labels[-1]
+                                }
+                                logger.debug(f"🔧 [Document Parser] Fixed scale_labels for legacy question {i+1}: {scale_labels} -> {question['scale_labels']}")
+                            elif not isinstance(scale_labels, dict):
+                                # Remove invalid scale_labels
+                                question.pop("scale_labels", None)
+                                logger.debug(f"🔧 [Document Parser] Removed invalid scale_labels for legacy question {i+1}")
+                
                 survey = SurveyCreate(**survey_data)
                 validated_data = survey.model_dump()
                 
@@ -666,6 +744,18 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                             mapped_type = type_mapping.get(original_type.lower(), 'unknown')
                             logger.info(f"🔧 [Document Parser] Mapped question type '{original_type}' to '{mapped_type}'")
                             fixed_question['type'] = mapped_type
+                    
+                    # Fix scale_labels format
+                    if 'scale_labels' in fixed_question:
+                        scale_labels = fixed_question['scale_labels']
+                        if isinstance(scale_labels, list) and len(scale_labels) >= 2:
+                            fixed_question['scale_labels'] = {
+                                "min": scale_labels[0],
+                                "max": scale_labels[-1]
+                            }
+                        elif not isinstance(scale_labels, dict):
+                            fixed_question.pop('scale_labels', None)
+                    
                     fixed_questions.append(fixed_question)
                 final_output['questions'] = fixed_questions
             fixed_data["final_output"] = final_output
@@ -681,6 +771,18 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                             mapped_type = type_mapping.get(original_type.lower(), 'unknown')
                             logger.info(f"🔧 [Document Parser] Mapped question type '{original_type}' to '{mapped_type}'")
                             fixed_question['type'] = mapped_type
+                    
+                    # Fix scale_labels format
+                    if 'scale_labels' in fixed_question:
+                        scale_labels = fixed_question['scale_labels']
+                        if isinstance(scale_labels, list) and len(scale_labels) >= 2:
+                            fixed_question['scale_labels'] = {
+                                "min": scale_labels[0],
+                                "max": scale_labels[-1]
+                            }
+                        elif not isinstance(scale_labels, dict):
+                            fixed_question.pop('scale_labels', None)
+                    
                     fixed_questions.append(fixed_question)
                 fixed_data['questions'] = fixed_questions
         
@@ -2019,9 +2121,9 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
             comments = self.extract_comments_from_docx(docx_content)
             logger.info(f"✅ [Document Parser] Found {len(comments)} comments")
 
-            # Convert to JSON using LLM
-            logger.info(f"🤖 [Document Parser] Converting text to JSON using LLM")
-            survey_json = await self.convert_to_json(document_text)
+            # Convert to JSON using LLM with comment context
+            logger.info(f"🤖 [Document Parser] Converting text to JSON using LLM with comment context")
+            survey_json = await self.convert_to_json(document_text, comments)
             logger.info(f"✅ [Document Parser] LLM conversion completed")
 
             # Validate the JSON
@@ -2030,12 +2132,21 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
             logger.info(f"✅ [Document Parser] JSON validation successful")
 
             # NEW: Create question annotations from comments
+            # Check both direct questions and nested final_output questions
+            questions_to_process = None
             if comments and "questions" in validated_survey and validated_survey["questions"]:
+                questions_to_process = validated_survey["questions"]
+                logger.info(f"💬 [Document Parser] Found questions directly in survey_json")
+            elif comments and "final_output" in validated_survey and "questions" in validated_survey["final_output"] and validated_survey["final_output"]["questions"]:
+                questions_to_process = validated_survey["final_output"]["questions"]
+                logger.info(f"💬 [Document Parser] Found questions in final_output")
+            
+            if questions_to_process:
                 survey_id = validated_survey.get("survey_id", str(uuid.uuid4()))
-                logger.info(f"💬 [Document Parser] Creating question annotations from comments")
+                logger.info(f"💬 [Document Parser] Creating question annotations from comments for {len(questions_to_process)} questions")
                 self.create_question_annotations_from_comments(
                     survey_id, 
-                    validated_survey["questions"], 
+                    questions_to_process, 
                     comments
                 )
                 logger.info(f"✅ [Document Parser] Question annotations created successfully")
@@ -2068,10 +2179,67 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
             logger.error(f"❌ [Document Parser] Unexpected error during document parsing: {str(e)}", exc_info=True)
             raise DocumentParsingError(f"Unexpected error: {str(e)}")
 
+    def _extract_comment_ranges_from_document(self, docx_content: bytes) -> Dict[str, str]:
+        """
+        Extract the exact text that each comment is anchored to using commentRangeStart/End markers.
+        Returns a mapping of comment_id -> anchored_text.
+        """
+        import zipfile
+        import xml.etree.ElementTree as ET
+        
+        comment_ranges = {}
+        
+        try:
+            with zipfile.ZipFile(BytesIO(docx_content), 'r') as docx_zip:
+                if 'word/document.xml' not in docx_zip.namelist():
+                    logger.warning(f"⚠️ [Comment Ranges] No document.xml found")
+                    return comment_ranges
+                
+                document_xml = docx_zip.read('word/document.xml')
+                doc_root = ET.fromstring(document_xml)
+                
+                # Namespace for Word XML
+                ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+                
+                # Find all paragraphs and process them
+                for para in doc_root.findall('.//w:p', ns):
+                    # Track if we're inside a comment range
+                    current_comment_id = None
+                    anchored_text = []
+                    
+                    # Process all elements in the paragraph
+                    for elem in para.iter():
+                        # Check for comment range start
+                        if elem.tag == f"{{{ns['w']}}}commentRangeStart":
+                            current_comment_id = elem.get(f"{{{ns['w']}}}id")
+                            anchored_text = []
+                        
+                        # Collect text if we're inside a comment range
+                        elif current_comment_id and elem.tag == f"{{{ns['w']}}}t":
+                            if elem.text:
+                                anchored_text.append(elem.text)
+                        
+                        # Check for comment range end
+                        elif elem.tag == f"{{{ns['w']}}}commentRangeEnd":
+                            end_comment_id = elem.get(f"{{{ns['w']}}}id")
+                            if end_comment_id == current_comment_id and anchored_text:
+                                # Store the anchored text for this comment
+                                comment_ranges[current_comment_id] = ''.join(anchored_text).strip()
+                                logger.debug(f"🔗 [Comment Ranges] Comment {current_comment_id} anchored to: '{comment_ranges[current_comment_id][:50]}...'")
+                            current_comment_id = None
+                            anchored_text = []
+                
+                logger.info(f"✅ [Comment Ranges] Extracted {len(comment_ranges)} comment anchor ranges")
+                return comment_ranges
+                
+        except Exception as e:
+            logger.error(f"❌ [Comment Ranges] Error extracting comment ranges: {str(e)}")
+            return comment_ranges
+
     def extract_comments_from_docx(self, docx_content: bytes) -> List[Dict[str, Any]]:
         """
-        Extract comments from a DOCX file with positional context.
-        Returns a list of comment dictionaries with author, date, text, and context.
+        Extract comments from a DOCX file with exact anchored text from commentRange markers.
+        Returns a list of comment dictionaries with author, date, text, and anchored_text.
         """
         import zipfile
         import xml.etree.ElementTree as ET
@@ -2110,11 +2278,22 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
                         'text': comment_text.strip()
                     })
             
-            # Now extract positional context by parsing the main document
-            comments_with_context = self._add_positional_context_to_comments(docx_content, comments)
+            # Extract exact anchored text ranges from document.xml
+            logger.info(f"🔗 [Comment Extraction] Extracting comment anchor ranges from document.xml")
+            comment_ranges = self._extract_comment_ranges_from_document(docx_content)
             
-            logger.info(f"✅ [Comment Extraction] Found {len(comments_with_context)} comments with context")
-            return comments_with_context
+            # Merge anchored text with comment data
+            for comment in comments:
+                comment_id = comment['id']
+                if comment_id in comment_ranges:
+                    comment['anchored_text'] = comment_ranges[comment_id]
+                    logger.info(f"✅ [Comment Extraction] Comment {comment_id} anchored to: '{comment['anchored_text'][:50]}...'")
+                else:
+                    comment['anchored_text'] = None
+                    logger.warning(f"⚠️ [Comment Extraction] No anchor text found for comment {comment_id}")
+            
+            logger.info(f"✅ [Comment Extraction] Found {len(comments)} comments, {len(comment_ranges)} with anchored text")
+            return comments
             
         except Exception as e:
             logger.error(f"❌ [Comment Extraction] Error extracting comments: {str(e)}")
@@ -2313,7 +2492,7 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
         questions: List[Dict], 
         comments: List[Dict]
     ) -> None:
-        """Create question annotations with comment content as labels."""
+        """Create question annotations from LLM-embedded annotation data."""
         
         if not self.db_session:
             logger.warning(f"⚠️ [Comment Annotation] No database session available, skipping annotation creation")
@@ -2322,42 +2501,75 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
         try:
             from ..database.models import QuestionAnnotation
             
-            logger.info(f"💬 [Comment Annotation] Creating annotations for {len(questions)} questions with {len(comments)} comments")
+            logger.info(f"💬 [Comment Annotation] Processing annotations for {len(questions)} questions")
+            
+            annotations_created = 0
             
             for i, question in enumerate(questions):
-                # Find best matching comment for this question
-                best_comment = self.find_best_comment_match(question, comments)
+                question_id = question.get("id", f"q_{i+1}")
                 
-                if best_comment:
-                    comment_text = best_comment["text"]
+                # Check if this question has an annotation embedded by the LLM
+                if "annotation" in question and isinstance(question["annotation"], dict):
+                    annotation_data = question["annotation"]
                     
-                    # Create annotation with comment as label
-                    annotation = QuestionAnnotation(
-                        question_id=question.get("id", f"q_{i+1}"),
-                        survey_id=survey_id,
-                        
-                        # Map comment text to labels field
-                        labels=[comment_text],
-                        
-                        # Use comment author as annotator_id
-                        annotator_id=best_comment["author"] or "docx_parser",
-                        
-                        # Default values for required fields
-                        required=True,
-                        quality=3,
-                        relevant=3,
-                        methodological_rigor=3,
-                        content_validity=3,
-                        respondent_experience=3,
-                        analytical_value=3,
-                        business_impact=3
-                    )
+                    # Extract annotation details
+                    comment_text = annotation_data.get("comment", "")
+                    anchored_text = annotation_data.get("anchored_text", "")
+                    author = annotation_data.get("author", "docx_parser")
+                    date = annotation_data.get("date", "")
                     
-                    self.db_session.add(annotation)
-                    logger.info(f"✅ [Comment Annotation] Created annotation for question {i+1}: {comment_text}")
+                    if comment_text:  # Only create annotation if there's actual comment text
+                        # Create advanced_labels with full context
+                        advanced_labels = {
+                            "comment_text": comment_text,
+                            "anchored_text": anchored_text,
+                            "comment_author": author,
+                            "comment_date": date,
+                            "matching_method": "llm_with_anchored_text",
+                            "matching_confidence": 1.0  # LLM did the matching, so high confidence
+                        }
+                        
+                        # Create annotation with full context
+                        annotation = QuestionAnnotation(
+                            question_id=question_id,
+                            survey_id=survey_id,
+                            
+                            # Store comment text in the comment field (primary) and labels field (backup)
+                            comment=comment_text,
+                            labels=[comment_text],
+                            
+                            # Store full context in advanced_labels
+                            advanced_labels=advanced_labels,
+                            
+                            # Use comment author as annotator_id
+                            annotator_id=author,
+                            
+                            # Default values for required fields
+                            required=True,
+                            quality=3,
+                            relevant=3,
+                            methodological_rigor=3,
+                            content_validity=3,
+                            respondent_experience=3,
+                            analytical_value=3,
+                            business_impact=3,
+                            
+                            # Mark as AI-generated from DOCX parsing
+                            ai_generated=True,
+                            ai_confidence=1.0,
+                            generation_timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                        )
+                        
+                        self.db_session.add(annotation)
+                        annotations_created += 1
+                        logger.info(f"✅ [Comment Annotation] Created annotation for question {question_id}: '{comment_text[:50]}...'")
+                    else:
+                        logger.debug(f"⚠️ [Comment Annotation] Question {question_id} has annotation field but no comment text")
+                else:
+                    logger.debug(f"ℹ️ [Comment Annotation] Question {question_id} has no annotation field")
             
             self.db_session.commit()
-            logger.info(f"🎉 [Comment Annotation] Successfully created {len(questions)} question annotations")
+            logger.info(f"🎉 [Comment Annotation] Successfully created {annotations_created} question annotations from LLM-embedded data")
             
         except Exception as e:
             logger.error(f"❌ [Comment Annotation] Error creating annotations: {str(e)}")

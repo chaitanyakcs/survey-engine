@@ -1,0 +1,9 @@
+﻿Label,Applicable_Labels,Descr,Mandatory,Type
+Category_Usage_Frequency,,How often you use,Yes,QNR
+Brand_awareness_funnel,,What brands are you aware of. Funnel Questions - Aware → Considered → Purchased → Continue → Preferred,Yes,QNR
+Brand_Recall,,Top of the mind brands,Yes,QNR
+Purchase_Decision,,Who influences purchase decision,No,
+Brand_Product_Satisfaction,,With the products used in the past and current,Yes,QNR
+Product_Usage_Frequency,,"Frequency of usage and purchase, Quantity",Yes,QNR
+Product_Usage_Financial,,"How much do you spend and if it is higher, type of purchase - subscription etc, channel info",Yes,QNR
+Product_Usage,,"What products do you use in the category. ",Yes,Text

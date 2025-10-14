@@ -727,6 +727,7 @@ class PromptBuilder:
                         f"**{example['type'].replace('_', ' ').title()} Questions:**",
                         f"- Example: \"{example['example']}\"",
                         f"- Expert Score: {example['score']:.1f}/5",
+                        f"- Context: {example.get('context', 'No additional context')}",
                         ""
                     ])
             
