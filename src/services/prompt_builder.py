@@ -146,11 +146,33 @@ class OutputFormatter:
             "   - REQUIRED: Study_Intro in introText",
             "   - OPTIONAL: Confidentiality_Agreement in textBlocks (for sensitive methodologies)",
             "2. **Screener** (id: 2): Initial qualification questions and basic demographics",
+            "   REQUIRED QUESTIONS:",
+            "   - Recent participation check (market research in last 6 months)",
+            "   - Conflict of interest screening (industry employment, competitors)",
+            "   - Basic demographics (age, gender)",
+            "   - Category usage qualification",
+            "   SEQUENCING: General → Specific, terminate early if disqualified",
             "3. **Brand/Product Awareness & Usage** (id: 3): Brand recall, awareness funnel, and usage patterns",
+            "   REQUIRED QUESTIONS (if brand study):",
+            "   - Unaided brand recall (top-of-mind brands)",
+            "   - Brand awareness funnel: Aware → Considered → Purchased → Continue → Preferred",
+            "   - Product satisfaction ratings",
+            "   - Usage frequency and patterns",
             "   - REQUIRED: Product_Usage in textBlocks (for product-related studies)",
             "4. **Concept Exposure** (id: 4): Product/concept introduction and reaction assessment",
+            "   REQUIRED QUESTIONS (if concept testing):",
+            "   - Concept introduction text",
+            "   - Overall impression rating",
+            "   - Purchase likelihood assessment",
             "   - REQUIRED: Concept_Intro in introText (for concept testing)",
             "5. **Methodology** (id: 5): Research-specific questions (Conjoint, Pricing, Feature Importance)",
+            "   Van Westendorp REQUIRED (if pricing study):",
+            "   - Too cheap price point",
+            "   - Bargain/good value price point",
+            "   - Getting expensive price point",
+            "   - Too expensive price point",
+            "   Gabor Granger REQUIRED (if pricing study):",
+            "   - Sequential price acceptance questions",
             "6. **Additional Questions** (id: 6): Supplementary research questions and follow-ups",
             "7. **Programmer Instructions** (id: 7): Technical implementation notes and data specifications",
             "",
@@ -477,6 +499,16 @@ class PromptBuilder:
         if text_requirements_section:
             self.section_manager.add_section("text_requirements", text_requirements_section)
 
+        # Add survey structure requirements section if enhanced RFQ data is available
+        survey_structure_section = self._build_survey_structure_section(context)
+        if survey_structure_section:
+            self.section_manager.add_section("survey_structure", survey_structure_section)
+
+        # Add advanced classification section if enhanced RFQ data is available
+        advanced_classification_section = self._build_advanced_classification_section(context)
+        if advanced_classification_section:
+            self.section_manager.add_section("advanced_classification", advanced_classification_section)
+
         self.section_manager.add_section("json_requirements",
             OutputFormatter.get_json_requirements_section())
 
@@ -625,6 +657,233 @@ class PromptBuilder:
 
         except Exception as e:
             logger.warning(f"⚠️ [PromptBuilder] Failed to build text requirements section: {str(e)}")
+            return None
+
+    def _build_survey_structure_section(self, context: Dict[str, Any]) -> Optional[PromptSection]:
+        """Build survey structure requirements section from enhanced RFQ data"""
+        try:
+            # Check if enhanced RFQ data is available in context
+            enhanced_rfq_data = context.get("enhanced_rfq_data")
+            if not enhanced_rfq_data:
+                return None
+
+            survey_structure = enhanced_rfq_data.get("survey_structure", {})
+            survey_logic = enhanced_rfq_data.get("survey_logic", {})
+            brand_usage = enhanced_rfq_data.get("brand_usage_requirements", {})
+
+            content = []
+
+            # QNR Section Requirements
+            qnr_sections = survey_structure.get("qnr_sections", [])
+            if qnr_sections:
+                content.extend([
+                    "## 🏗️ CUSTOM QNR SECTION REQUIREMENTS:",
+                    "",
+                    "Based on user selections, the following sections MUST be included:",
+                    ""
+                ])
+
+                section_names = {
+                    "sample_plan": "Sample Plan (Section 1)",
+                    "screener": "Screener (Section 2)", 
+                    "brand_awareness": "Brand/Product Awareness (Section 3)",
+                    "concept_exposure": "Concept Exposure (Section 4)",
+                    "methodology_section": "Methodology (Section 5)",
+                    "additional_questions": "Additional Questions (Section 6)",
+                    "programmer_instructions": "Programmer Instructions (Section 7)"
+                }
+
+                for section_id in qnr_sections:
+                    section_name = section_names.get(section_id, section_id)
+                    content.append(f"✅ **{section_name}**: REQUIRED")
+
+                content.extend(["", "⚠️ **IMPORTANT**: Only include the sections listed above. Do NOT include unselected sections."])
+
+            # Survey Logic Requirements
+            logic_requirements = []
+            if survey_logic.get("requires_piping_logic"):
+                logic_requirements.append("• **Piping Logic**: Carry forward responses between questions")
+            if survey_logic.get("requires_sampling_logic"):
+                logic_requirements.append("• **Sampling Logic**: Randomization and quota controls")
+            if survey_logic.get("requires_screener_logic"):
+                logic_requirements.append("• **Screener Logic**: Advanced qualification routing")
+            if survey_logic.get("custom_logic_requirements"):
+                logic_requirements.append(f"• **Custom Logic**: {survey_logic['custom_logic_requirements']}")
+
+            if logic_requirements:
+                content.extend([
+                    "",
+                    "## ⚙️ SURVEY LOGIC REQUIREMENTS:",
+                    "",
+                    "The following logic features MUST be implemented:"
+                ])
+                content.extend(logic_requirements)
+
+            # Brand & Usage Requirements
+            brand_requirements = []
+            if brand_usage.get("brand_recall_required"):
+                brand_requirements.append("• **Brand Recall Questions**: Unaided and aided brand awareness")
+            if brand_usage.get("brand_awareness_funnel"):
+                brand_requirements.append("• **Brand Awareness Funnel**: Awareness → Consideration → Trial → Purchase")
+            if brand_usage.get("brand_product_satisfaction"):
+                brand_requirements.append("• **Brand/Product Satisfaction**: Satisfaction and loyalty metrics")
+            if brand_usage.get("usage_frequency_tracking"):
+                brand_requirements.append("• **Usage Frequency Tracking**: Frequency, occasion, and context tracking")
+
+            if brand_requirements:
+                content.extend([
+                    "",
+                    "## 🏷️ BRAND & USAGE REQUIREMENTS:",
+                    "",
+                    "The following brand research elements MUST be included:"
+                ])
+                content.extend(brand_requirements)
+
+            if not content:
+                return None
+
+            content.extend([
+                "",
+                "🚨 **IMPLEMENTATION**: These requirements must be reflected in the survey structure and question flow."
+            ])
+
+            return PromptSection(
+                title="Survey Structure Requirements",
+                content=content,
+                order=4.5,  # Place after text requirements but before JSON requirements
+                required=True
+            )
+
+        except Exception as e:
+            logger.warning(f"⚠️ [PromptBuilder] Failed to build survey structure section: {str(e)}")
+            return None
+
+    def _build_advanced_classification_section(self, context: Dict[str, Any]) -> Optional[PromptSection]:
+        """Build advanced classification requirements section from enhanced RFQ data"""
+        try:
+            # Check if enhanced RFQ data is available in context
+            enhanced_rfq_data = context.get("enhanced_rfq_data")
+            if not enhanced_rfq_data:
+                return None
+
+            advanced_classification = enhanced_rfq_data.get("advanced_classification", {})
+            if not advanced_classification:
+                return None
+
+            content = []
+
+            # Industry Classification
+            industry_classification = advanced_classification.get("industry_classification")
+            if industry_classification:
+                content.extend([
+                    "## 🏭 INDUSTRY CLASSIFICATION REQUIREMENTS:",
+                    "",
+                    f"**Target Industry**: {industry_classification}",
+                    "",
+                    "🚨 **CRITICAL**: Survey questions, terminology, and examples MUST be appropriate for this industry:",
+                    f"- Use industry-specific language and terminology relevant to {industry_classification}",
+                    "- Include industry-appropriate examples and scenarios",
+                    "- Ensure question context matches industry standards and practices",
+                    "- Consider industry-specific regulations and compliance requirements",
+                    ""
+                ])
+
+            # Respondent Classification
+            respondent_classification = advanced_classification.get("respondent_classification")
+            if respondent_classification:
+                content.extend([
+                    "## 👥 RESPONDENT CLASSIFICATION REQUIREMENTS:",
+                    "",
+                    f"**Target Respondents**: {respondent_classification}",
+                    "",
+                    "🚨 **CRITICAL**: Survey design MUST be tailored for this respondent type:",
+                    f"- Adjust question complexity and language for {respondent_classification}",
+                    "- Use appropriate terminology and examples for this audience",
+                    "- Consider respondent expertise level and familiarity with industry concepts",
+                    "- Ensure question flow and logic matches respondent expectations",
+                    ""
+                ])
+
+            # Methodology Tags
+            methodology_tags = advanced_classification.get("methodology_tags", [])
+            if methodology_tags:
+                content.extend([
+                    "## 📊 METHODOLOGY CLASSIFICATION REQUIREMENTS:",
+                    "",
+                    f"**Required Methodologies**: {', '.join(methodology_tags)}",
+                    "",
+                    "🚨 **CRITICAL**: Survey MUST implement these specific methodologies:"
+                ])
+
+                methodology_requirements = {
+                    "quantitative": "• Include statistical analysis-ready questions with rating scales, multiple choice, and numerical inputs",
+                    "qualitative": "• Include open-ended questions and detailed feedback collection mechanisms",
+                    "attitudinal": "• Focus on opinions, preferences, and subjective assessments with Likert scales",
+                    "behavioral": "• Include questions about past actions, usage patterns, and behavioral data",
+                    "brand_tracking": "• Include brand awareness, recognition, and perception questions with unaided/aided recall",
+                    "customer_satisfaction": "• Include satisfaction ratings, NPS questions, and service quality assessments",
+                    "pricing_research": "• Include price sensitivity, willingness to pay, and value perception questions",
+                    "market_sizing": "• Include market size estimation, penetration, and growth questions",
+                    "mixed_methods": "• Combine quantitative and qualitative approaches with both structured and open-ended questions",
+                    "concept_testing": "• Include concept introduction, evaluation, and purchase intent questions",
+                    "segmentation": "• Include demographic, psychographic, and behavioral segmentation questions",
+                    "competitive_analysis": "• Include competitive awareness, preference, and comparison questions"
+                }
+
+                for tag in methodology_tags:
+                    tag_lower = tag.lower().replace(' ', '_')
+                    if tag_lower in methodology_requirements:
+                        content.append(methodology_requirements[tag_lower])
+
+                content.append("")
+
+            # Compliance Requirements
+            compliance_requirements = advanced_classification.get("compliance_requirements", [])
+            if compliance_requirements:
+                content.extend([
+                    "## ⚖️ COMPLIANCE REQUIREMENTS:",
+                    "",
+                    f"**Required Compliance**: {', '.join(compliance_requirements)}",
+                    "",
+                    "🚨 **CRITICAL**: Survey MUST meet these compliance standards:"
+                ])
+
+                compliance_requirements_map = {
+                    "standard_data_protection": "• Include data protection notices and consent mechanisms",
+                    "gdpr_compliance": "• Include GDPR-compliant consent forms, data processing notices, and right to deletion information",
+                    "hipaa_compliance": "• Include HIPAA-compliant health information protection and consent mechanisms",
+                    "iso_27001": "• Include ISO 27001-compliant security and data handling notices",
+                    "soc_2_compliance": "• Include SOC 2-compliant security and availability notices",
+                    "custom_compliance": "• Include custom compliance requirements as specified by the client"
+                }
+
+                for compliance in compliance_requirements:
+                    compliance_lower = compliance.lower().replace(' ', '_')
+                    if compliance_lower in compliance_requirements_map:
+                        content.append(compliance_requirements_map[compliance_lower])
+
+                content.extend([
+                    "",
+                    "⚠️ **IMPLEMENTATION**: Include appropriate legal notices, consent forms, and data protection information in text blocks."
+                ])
+
+            if not content:
+                return None
+
+            content.extend([
+                "",
+                "🚨 **IMPLEMENTATION**: These classification requirements must be reflected in survey design, question wording, and compliance measures."
+            ])
+
+            return PromptSection(
+                title="Advanced Classification Requirements",
+                content=content,
+                order=4.7,  # Place after survey structure but before JSON requirements
+                required=True
+            )
+
+        except Exception as e:
+            logger.warning(f"⚠️ [PromptBuilder] Failed to build advanced classification section: {str(e)}")
             return None
 
     def _generate_default_text_requirements(self, methodology_tags: List[str]) -> str:

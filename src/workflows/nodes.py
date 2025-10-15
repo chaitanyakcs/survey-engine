@@ -328,15 +328,19 @@ class GoldenValidatorNode:
     def __init__(self, db: Session):
         self.db = db
         self.validation_service = ValidationService(db)
+        # Import structure validator
+        from src.services.survey_structure_validator import SurveyStructureValidator
+        self.structure_validator = SurveyStructureValidator(db)
     
     async def __call__(self, state: SurveyGenerationState) -> Dict[str, Any]:
         """
-        Validate against schema, methodology rules, and golden similarity
+        Validate against schema, methodology rules, golden similarity, and structure
         """
         try:
             if state.generated_survey is None:
                 validation_results = {"schema_valid": False, "methodology_compliant": False}
                 similarity_score = 0.0
+                structure_validation = None
             else:
                 # Get a fresh database session to avoid transaction issues
                 from src.database import get_db
@@ -355,6 +359,22 @@ class GoldenValidatorNode:
                         survey=state.generated_survey,
                         golden_examples=state.golden_examples
                     )
+                    
+                    # NEW: Structure validation (non-blocking)
+                    try:
+                        structure_validation = await self.structure_validator.validate_structure(
+                            survey_json=state.generated_survey,
+                            rfq_context={
+                                'methodology_tags': getattr(state, 'methodology_tags', []) or [],
+                                'industry': getattr(state, 'industry_category', None),
+                                'respondent_type': getattr(state, 'respondent_type', None)
+                            }
+                        )
+                        self.logger.info(f"🔍 [GoldenValidatorNode] Structure validation completed: {structure_validation.get_summary()}")
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ [GoldenValidatorNode] Structure validation failed: {e}")
+                        structure_validation = None
+                        
                 finally:
                     fresh_db.close()
             
@@ -364,18 +384,34 @@ class GoldenValidatorNode:
                 similarity_score >= 0.75  # TODO: Use config threshold
             )
             
-            # Increment retry count if validation fails
+            # Structure validation NEVER blocks generation
+            # It only provides quality scoring and flagging
+            
+            # Increment retry count if validation fails (but not for structure issues)
             updated_retry_count = state.retry_count
             if not quality_gate_passed:
                 updated_retry_count += 1
             
-            return {
+            # Prepare response
+            response = {
                 "validation_results": validation_results,
                 "golden_similarity_score": similarity_score,
                 "quality_gate_passed": quality_gate_passed,
                 "retry_count": updated_retry_count,
                 "error_message": None
             }
+            
+            # Add structure validation results if available
+            if structure_validation:
+                response["structure_validation"] = structure_validation.to_dict()
+                
+                # Flag for review if critical issues (but don't block)
+                if structure_validation.has_critical_issues():
+                    response["flagged_for_review"] = True
+                    response["flag_reason"] = structure_validation.get_critical_issues_summary()
+                    self.logger.warning(f"🚩 [GoldenValidatorNode] Survey flagged for review: {response['flag_reason']}")
+            
+            return response
             
         except Exception as e:
             return {
@@ -618,6 +654,85 @@ class ResearcherNode:
         except Exception as e:
             return {
                 "error_message": f"Human review setup failed: {str(e)}"
+            }
+
+
+class LabelDetectionNode:
+    def __init__(self, db: Session, connection_manager=None):
+        self.db = db
+        self.connection_manager = connection_manager
+        import logging
+        self.logger = logging.getLogger(__name__)
+        
+        # Initialize label detection services
+        from src.services.qnr_label_taxonomy import QNRLabelTaxonomy
+        from src.services.question_label_detector import QuestionLabelDetector
+        
+        self.taxonomy = QNRLabelTaxonomy()
+        self.detector = QuestionLabelDetector(self.taxonomy)
+    
+    async def __call__(self, state: SurveyGenerationState) -> Dict[str, Any]:
+        """
+        Automatically detect and assign labels to generated questions
+        """
+        try:
+            self.logger.info("🏷️ [LabelDetectionNode] Starting automatic label detection...")
+            
+            if not state.generated_survey:
+                self.logger.warning("⚠️ [LabelDetectionNode] No generated survey found, skipping label detection")
+                return {
+                    "labels_assigned": False,
+                    "error_message": "No survey available for label detection"
+                }
+            
+            # Detect labels for each section
+            detected_labels = self.detector.detect_labels_in_survey(state.generated_survey)
+            self.logger.info(f"🏷️ [LabelDetectionNode] Detected labels: {detected_labels}")
+            
+            # Assign labels to questions in the survey
+            labels_assigned = 0
+            for section in state.generated_survey.get('sections', []):
+                section_id = section.get('id')
+                section_labels = detected_labels.get(section_id, set())
+                
+                # Add labels to section metadata
+                if 'metadata' not in section:
+                    section['metadata'] = {}
+                section['metadata']['detected_labels'] = list(section_labels)
+                
+                # Assign labels to individual questions
+                for question in section.get('questions', []):
+                    question_labels = self.detector.detect_labels_in_question(question)
+                    
+                    # Add labels to question metadata
+                    if 'metadata' not in question:
+                        question['metadata'] = {}
+                    question['metadata']['labels'] = question_labels
+                    
+                    # Also add labels to the question object directly for backward compatibility
+                    question['labels'] = question_labels
+                    
+                    labels_assigned += len(question_labels)
+                    
+                    self.logger.debug(f"🏷️ [LabelDetectionNode] Question '{question.get('text', '')[:50]}...' assigned labels: {question_labels}")
+            
+            self.logger.info(f"✅ [LabelDetectionNode] Successfully assigned {labels_assigned} labels across {len(state.generated_survey.get('sections', []))} sections")
+            
+            # Update the state with the modified survey
+            state.generated_survey = state.generated_survey
+            
+            return {
+                "labels_assigned": True,
+                "total_labels_assigned": labels_assigned,
+                "detected_labels": {str(k): list(v) for k, v in detected_labels.items()},
+                "error_message": None
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ [LabelDetectionNode] Label detection failed: {str(e)}", exc_info=True)
+            return {
+                "labels_assigned": False,
+                "error_message": f"Label detection failed: {str(e)}"
             }
 
 

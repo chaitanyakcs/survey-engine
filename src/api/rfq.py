@@ -122,7 +122,7 @@ async def submit_rfq(
 
         survey = Survey(
             rfq_id=rfq.id,
-            status="started",
+            status="draft",
             model_version=model_version_value
         )
         db.add(survey)
@@ -157,14 +157,14 @@ async def submit_rfq(
         except Exception as e:
             logger.error(f"❌ [RFQ API] Failed to start workflow processing: {str(e)}")
             # Mark survey as pending if workflow fails to start
-            survey.status = "pending"
+            survey.status = "draft"
             db.commit()
         
         # Return immediate response
         response = RFQSubmissionResponse(
             workflow_id=workflow_id,
             survey_id=str(survey.id),
-            status="started"
+            status="draft"
         )
         
         logger.info(f"🎉 [RFQ API] Returning async response: {response.model_dump()}")
@@ -641,7 +641,7 @@ async def submit_enhanced_rfq(
 
         survey = Survey(
             rfq_id=rfq.id,
-            status="started",
+            status="draft",
             model_version=model_version_value
         )
         db.add(survey)
@@ -672,7 +672,7 @@ async def submit_enhanced_rfq(
         except Exception as e:
             logger.error(f"❌ [Enhanced RFQ API] Failed to start enhanced workflow processing: {str(e)}")
             # Mark survey as pending if workflow fails to start
-            survey.status = "pending"
+            survey.status = "draft"
             db.commit()
 
         # Return enhanced response
@@ -680,7 +680,7 @@ async def submit_enhanced_rfq(
             rfq_id=str(rfq.id),
             workflow_id=workflow_id,
             survey_id=str(survey.id),
-            status="started",
+            status="draft",
             enhanced_data_processed=True,
             field_count=field_count
         )

@@ -179,6 +179,9 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
   // Reset confirmation modal state
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
+  // Survey structure tab state
+  const [surveyStructureTab, setSurveyStructureTab] = useState<string>('sections');
+
   // Resilient setCurrentSection that safely persists to localStorage
   const setCurrentSectionWithPersistence = useCallback((section: string) => {
     console.log('🔍 [EnhancedRFQEditor] Setting current section with persistence', 'section:', section);
@@ -1636,308 +1639,530 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                   <div className="space-y-6">
                     <h2 className="text-2xl font-bold text-gray-900 flex items-center">
                       <span className="text-3xl mr-3">🏗️</span>
-                      Survey Structure Preferences
+                      Survey Structure
                     </h2>
 
-                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
-                      <div className="flex items-start space-x-3">
-                        <div className="text-blue-600 text-2xl">ℹ️</div>
-                        <div>
-                          <h3 className="font-semibold text-blue-900 mb-2">QNR Section Structure</h3>
-                          <p className="text-blue-800 text-sm">
-                            Configure how your survey should be structured using the standardized 7-section QNR format.
-                            This ensures compliance with industry best practices and optimal respondent experience.
-                          </p>
-                        </div>
-                      </div>
+                    {/* Tab Navigation */}
+                    <div className="border-b border-gray-200">
+                      <nav className="-mb-px flex space-x-8">
+                        {[
+                          { id: 'sections', name: 'Sections', icon: '📋' },
+                          { id: 'quality', name: 'Quality Preview', icon: '🎯' },
+                          { id: 'text', name: 'Text Blocks', icon: '📝' },
+                          { id: 'logic', name: 'Logic & Brand', icon: '⚙️' }
+                        ].map((tab) => (
+                          <button
+                            key={tab.id}
+                            onClick={() => setSurveyStructureTab(tab.id)}
+                            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                              surveyStructureTab === tab.id
+                                ? 'border-yellow-500 text-yellow-600'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                            }`}
+                          >
+                            <span className="mr-2">{tab.icon}</span>
+                            {tab.name}
+                          </button>
+                        ))}
+                      </nav>
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-800 mb-3">
-                        QNR Section Organization Preferences
-                      </label>
+                    {/* Tab Content */}
+                    {surveyStructureTab === 'sections' && (
                       <div className="space-y-4">
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                          <div className="flex items-start space-x-3">
+                            <div className="text-blue-600 text-lg">ℹ️</div>
+                            <div>
+                              <h3 className="font-semibold text-blue-900 mb-1">QNR Section Structure</h3>
+                              <p className="text-blue-800 text-sm">
+                                Select which sections to include in your survey. All sections follow industry best practices.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
                         <div className="grid grid-cols-1 gap-3">
                           {[
-                            { id: 'sample_plan', name: 'Sample Plan', description: 'Participant qualification criteria, recruitment requirements, and quotas' },
-                            { id: 'screener', name: 'Screener', description: 'Initial qualification questions and basic demographics' },
-                            { id: 'brand_awareness', name: 'Brand/Product Awareness & Usage', description: 'Brand recall, awareness funnel, and usage patterns' },
-                            { id: 'concept_exposure', name: 'Concept Exposure', description: 'Product/concept introduction and reaction assessment' },
-                            { id: 'methodology_section', name: 'Methodology', description: 'Research-specific questions (Conjoint, Pricing, Feature Importance)' },
-                            { id: 'additional_questions', name: 'Additional Questions', description: 'Supplementary research questions and follow-ups' },
-                            { id: 'programmer_instructions', name: 'Programmer Instructions', description: 'Technical implementation notes and data specifications' }
+                            { id: 'sample_plan', name: 'Sample Plan', description: 'Participant qualification criteria and quotas', required: true },
+                            { id: 'screener', name: 'Screener', description: 'Initial qualification and demographics', required: true },
+                            { id: 'brand_awareness', name: 'Brand/Product Awareness', description: 'Brand recall and awareness funnel', required: false },
+                            { id: 'concept_exposure', name: 'Concept Exposure', description: 'Product concept introduction and reaction', required: false },
+                            { id: 'methodology_section', name: 'Methodology', description: 'Research-specific questions (Pricing, Conjoint)', required: false },
+                            { id: 'additional_questions', name: 'Additional Questions', description: 'Supplementary research questions', required: false },
+                            { id: 'programmer_instructions', name: 'Programmer Instructions', description: 'Technical implementation notes', required: false }
                           ].map((section) => (
-                            <div key={section.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg bg-gray-50">
+                            <div key={section.id} className={`flex items-center justify-between p-3 border rounded-lg ${
+                              section.required ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50'
+                            }`}>
                               <div className="flex items-center space-x-3">
                                 <input
                                   type="checkbox"
-                                  checked={(enhancedRfq.survey_structure?.qnr_sections || []).includes(section.id)}
+                                  checked={section.required || (enhancedRfq.survey_structure?.qnr_sections || []).includes(section.id)}
+                                  disabled={section.required}
                                   onChange={(e) => {
-                                    const sections = [...(enhancedRfq.survey_structure?.qnr_sections || [])];
-                                    if (e.target.checked) {
-                                      sections.push(section.id);
-                                    } else {
-                                      const index = sections.indexOf(section.id);
-                                      if (index > -1) sections.splice(index, 1);
-                                    }
-                                    setEnhancedRfq({
-                                      ...enhancedRfq,
-                                      survey_structure: {
-                                        ...enhancedRfq.survey_structure,
-                                        qnr_sections: sections
+                                    if (!section.required) {
+                                      const sections = [...(enhancedRfq.survey_structure?.qnr_sections || [])];
+                                      if (e.target.checked) {
+                                        sections.push(section.id);
+                                      } else {
+                                        const index = sections.indexOf(section.id);
+                                        if (index > -1) sections.splice(index, 1);
                                       }
-                                    });
+                                      setEnhancedRfq({
+                                        ...enhancedRfq,
+                                        survey_structure: {
+                                          ...enhancedRfq.survey_structure,
+                                          qnr_sections: sections
+                                        }
+                                      });
+                                    }
                                   }}
                                   className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
                                 />
                                 <div>
-                                  <div className="font-medium text-gray-900">{section.name}</div>
+                                  <div className="font-medium text-gray-900 flex items-center">
+                                    {section.name}
+                                    {section.required && <span className="ml-2 text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">Required</span>}
+                                  </div>
                                   <div className="text-sm text-gray-600">{section.description}</div>
                                 </div>
                               </div>
                               <div className="text-xs text-gray-500 font-mono">
-                                Section {['sample_plan', 'screener', 'brand_awareness', 'concept_exposure', 'methodology_section', 'additional_questions', 'programmer_instructions'].indexOf(section.id) + 1}
+                                #{['sample_plan', 'screener', 'brand_awareness', 'concept_exposure', 'methodology_section', 'additional_questions', 'programmer_instructions'].indexOf(section.id) + 1}
                               </div>
                             </div>
                           ))}
                         </div>
                       </div>
-                    </div>
+                    )}
 
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-800 mb-3">
-                        Text Introduction Requirements
-                      </label>
-                      <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-4">
-                        <div className="flex items-start space-x-3">
-                          <div className="text-yellow-600 text-xl">⚠️</div>
-                          <div>
-                            <h4 className="font-semibold text-yellow-900 mb-1">Mandatory Text Blocks</h4>
-                            <p className="text-yellow-800 text-sm">
-                              Based on your selected methodologies, certain text introductions are required for compliance and best practices.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        {[
-                          { id: 'study_intro', name: 'Study Introduction', description: 'Required at the beginning - participant welcome and study overview', mandatory: true },
-                          { id: 'concept_intro', name: 'Concept Introduction', description: 'Required before concept evaluation sections', mandatory: false },
-                          { id: 'product_usage', name: 'Product Usage Introduction', description: 'Required before brand/usage awareness questions', mandatory: false },
-                          { id: 'confidentiality_agreement', name: 'Confidentiality Agreement', description: 'Required for sensitive research topics', mandatory: false },
-                          { id: 'methodology_instructions', name: 'Methodology Instructions', description: 'Method-specific instructions (conjoint, pricing, etc.)', mandatory: false },
-                          { id: 'closing_thank_you', name: 'Closing Thank You', description: 'Final section thank you and next steps', mandatory: false }
-                        ].map((textBlock) => (
-                          <label key={textBlock.id} className={`flex items-start space-x-3 p-4 border rounded-lg cursor-pointer transition-colors ${
-                            textBlock.mandatory
-                              ? 'border-green-200 bg-green-50 cursor-not-allowed'
-                              : 'border-gray-200 hover:bg-gray-50'
-                          }`}>
-                            <input
-                              type="checkbox"
-                              checked={textBlock.mandatory || (enhancedRfq.survey_structure?.text_requirements || []).includes(textBlock.id)}
-                              disabled={textBlock.mandatory}
-                              onChange={(e) => {
-                                if (!textBlock.mandatory) {
-                                  const requirements = [...(enhancedRfq.survey_structure?.text_requirements || [])];
-                                  if (e.target.checked) {
-                                    requirements.push(textBlock.id);
-                                  } else {
-                                    const index = requirements.indexOf(textBlock.id);
-                                    if (index > -1) requirements.splice(index, 1);
-                                  }
-                                  setEnhancedRfq({
-                                    ...enhancedRfq,
-                                    survey_structure: {
-                                      ...enhancedRfq.survey_structure,
-                                      text_requirements: requirements
-                                    }
-                                  });
-                                }
-                              }}
-                              className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500 mt-1"
-                            />
-                            <div className="flex-1">
-                              <div className="flex items-center space-x-2">
-                                <span className="font-medium text-gray-900">{textBlock.name}</span>
-                                {textBlock.mandatory && (
-                                  <span className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full font-medium">
-                                    Required
-                                  </span>
-                                )}
+                    {/* Quality Preview Tab */}
+                    {surveyStructureTab === 'quality' && (
+                      <div className="space-y-4">
+                        {/* Compact Quality Overview */}
+                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              <div className="text-blue-600 text-2xl">🎯</div>
+                              <div>
+                                <h4 className="font-semibold text-blue-900">Structure Validation Preview</h4>
+                                <p className="text-blue-800 text-sm">AI will validate your survey against QNR best practices</p>
                               </div>
-                              <div className="text-sm text-gray-600 mt-1">{textBlock.description}</div>
                             </div>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-800 mb-3">
-                        Survey Logic Requirements
-                      </label>
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        <label className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={enhancedRfq.survey_logic?.requires_piping_logic || false}
-                            onChange={(e) => setEnhancedRfq({
-                              ...enhancedRfq,
-                              survey_logic: {
-                                ...enhancedRfq.survey_logic,
-                                requires_piping_logic: e.target.checked
-                              }
-                            })}
-                            className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
-                          />
-                          <div>
-                            <div className="font-medium text-gray-900">Piping Logic</div>
-                            <div className="text-sm text-gray-600">Carry forward responses between questions</div>
+                            <div className="text-right">
+                              <div className="text-2xl font-bold text-blue-900">85%+</div>
+                              <div className="text-xs text-blue-700">Target Quality</div>
+                            </div>
                           </div>
-                        </label>
+                        </div>
 
-                        <label className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={enhancedRfq.survey_logic?.requires_sampling_logic || false}
-                            onChange={(e) => setEnhancedRfq({
-                              ...enhancedRfq,
-                              survey_logic: {
-                                ...enhancedRfq.survey_logic,
-                                requires_sampling_logic: e.target.checked
-                              }
-                            })}
-                            className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
-                          />
-                          <div>
-                            <div className="font-medium text-gray-900">Sampling Logic</div>
-                            <div className="text-sm text-gray-600">Randomization and quota controls</div>
+                        {/* Compact Requirements Grid */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                          
+                          {/* Essential Requirements - Always shown */}
+                          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                            <div className="flex items-center mb-3">
+                              <span className="text-green-600 text-lg mr-2">✅</span>
+                              <h5 className="font-semibold text-green-900">Essential Requirements</h5>
+                            </div>
+                            <div className="space-y-2">
+                              {[
+                                {
+                                  name: 'Recent participation check',
+                                  tooltip: 'Prevents respondents from participating in multiple similar studies, ensuring data quality and preventing bias from professional survey takers.'
+                                },
+                                {
+                                  name: 'Conflict of interest screening', 
+                                  tooltip: 'Identifies respondents who work for competitors or have financial interests that could bias their responses.'
+                                },
+                                {
+                                  name: 'Basic demographics',
+                                  tooltip: 'Essential demographic questions (age, gender, location) for sample representativeness and quota management.'
+                                },
+                                {
+                                  name: 'Category usage qualification',
+                                  tooltip: 'Ensures respondents have relevant experience with the product category being researched.'
+                                }
+                              ].map((req, index) => (
+                                <div key={index} className="flex items-center text-sm text-green-800 group">
+                                  <span className="text-green-600 mr-2">•</span>
+                                  <span className="flex-1">{req.name}</span>
+                                  <div className="relative">
+                                    <span className="text-green-600 cursor-help">ℹ️</span>
+                                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10">
+                                      {req.tooltip}
+                                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                        </label>
 
-                        <label className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={enhancedRfq.survey_logic?.requires_screener_logic || false}
-                            onChange={(e) => setEnhancedRfq({
-                              ...enhancedRfq,
-                              survey_logic: {
-                                ...enhancedRfq.survey_logic,
-                                requires_screener_logic: e.target.checked
-                              }
-                            })}
-                            className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
-                          />
-                          <div>
-                            <div className="font-medium text-gray-900">Screener Logic</div>
-                            <div className="text-sm text-gray-600">Advanced qualification routing</div>
+                          {/* Conditional Requirements - Dynamic */}
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                            <div className="flex items-center mb-3">
+                              <span className="text-blue-600 text-lg mr-2">⚠️</span>
+                              <h5 className="font-semibold text-blue-900">Smart Requirements</h5>
+                              <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">Auto-detected</span>
+                            </div>
+                            <div className="space-y-2">
+                              {/* Brand Study Requirements */}
+                              {(enhancedRfq.research_objectives?.key_research_questions?.some((obj: string) => 
+                                obj.toLowerCase().includes('brand') || 
+                                obj.toLowerCase().includes('awareness') ||
+                                obj.toLowerCase().includes('recall')
+                              ) || enhancedRfq.business_context?.company_product_background?.toLowerCase().includes('consumer')) && (
+                                <>
+                                  <div className="text-xs font-medium text-blue-700 mb-1 flex items-center group">
+                                    Brand Study:
+                                    <span className="ml-1 text-blue-600 cursor-help">ℹ️</span>
+                                    <div className="absolute bottom-full left-0 mb-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10">
+                                      Brand studies require specific question sequences to measure awareness, consideration, and purchase intent.
+                                      <div className="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                                    </div>
+                                  </div>
+                                  <div className="text-sm text-blue-800">• Unaided brand recall • Awareness funnel • Product satisfaction</div>
+                                </>
+                              )}
+
+                              {/* Concept Testing Requirements */}
+                              {enhancedRfq.research_objectives?.key_research_questions?.some((obj: string) => 
+                                obj.toLowerCase().includes('concept') || 
+                                obj.toLowerCase().includes('testing') ||
+                                obj.toLowerCase().includes('evaluation')
+                              ) && (
+                                <>
+                                  <div className="text-xs font-medium text-blue-700 mb-1 flex items-center group">
+                                    Concept Testing:
+                                    <span className="ml-1 text-blue-600 cursor-help">ℹ️</span>
+                                    <div className="absolute bottom-full left-0 mb-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10">
+                                      Concept testing requires structured introduction, evaluation questions, and purchase intent measurement.
+                                      <div className="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                                    </div>
+                                  </div>
+                                  <div className="text-sm text-blue-800">• Concept introduction • Overall impression • Purchase likelihood</div>
+                                </>
+                              )}
+
+                              {/* Van Westendorp Requirements */}
+                              {(enhancedRfq.methodology?.primary_method === 'van_westendorp' || 
+                                enhancedRfq.methodology?.required_methodologies?.some((tag: string) => 
+                                  tag.toLowerCase().includes('van westendorp') || 
+                                  tag.toLowerCase().includes('pricing')
+                                )) && (
+                                <>
+                                  <div className="text-xs font-medium text-orange-700 mb-1 flex items-center group">
+                                    Van Westendorp Pricing:
+                                    <span className="ml-1 text-orange-600 cursor-help">ℹ️</span>
+                                    <div className="absolute bottom-full left-0 mb-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10">
+                                      Van Westendorp requires exactly 4 price questions: too cheap, bargain, getting expensive, too expensive. Missing any will fail validation.
+                                      <div className="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                                    </div>
+                                  </div>
+                                  <div className="text-sm text-orange-800">• 4 price sensitivity questions (critical)</div>
+                                </>
+                              )}
+
+                              {/* Gabor Granger Requirements */}
+                              {(enhancedRfq.methodology?.primary_method === 'gabor_granger' || 
+                                enhancedRfq.methodology?.required_methodologies?.some((tag: string) => 
+                                  tag.toLowerCase().includes('gabor granger') || 
+                                  tag.toLowerCase().includes('sequential')
+                                )) && (
+                                <>
+                                  <div className="text-xs font-medium text-purple-700 mb-1 flex items-center group">
+                                    Gabor Granger Pricing:
+                                    <span className="ml-1 text-purple-600 cursor-help">ℹ️</span>
+                                    <div className="absolute bottom-full left-0 mb-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10">
+                                      Gabor Granger uses sequential price testing where respondents see increasing prices until they reject. Requires proper price sequence logic.
+                                      <div className="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                                    </div>
+                                  </div>
+                                  <div className="text-sm text-purple-800">• Sequential price acceptance questions</div>
+                                </>
+                              )}
+
+                              {/* Default message if no conditional requirements */}
+                              {!enhancedRfq.research_objectives?.key_research_questions?.some((obj: string) => 
+                                obj.toLowerCase().includes('brand') || 
+                                obj.toLowerCase().includes('awareness') ||
+                                obj.toLowerCase().includes('recall') ||
+                                obj.toLowerCase().includes('concept') || 
+                                obj.toLowerCase().includes('testing') ||
+                                obj.toLowerCase().includes('evaluation')
+                              ) && !enhancedRfq.business_context?.company_product_background?.toLowerCase().includes('consumer') &&
+                              enhancedRfq.methodology?.primary_method !== 'van_westendorp' &&
+                              enhancedRfq.methodology?.primary_method !== 'gabor_granger' &&
+                              !enhancedRfq.methodology?.required_methodologies?.some((tag: string) => 
+                                tag.toLowerCase().includes('van westendorp') || 
+                                tag.toLowerCase().includes('pricing') ||
+                                tag.toLowerCase().includes('gabor granger') || 
+                                tag.toLowerCase().includes('sequential')
+                              ) && (
+                                <div className="text-sm text-gray-600 italic">No additional requirements detected</div>
+                              )}
+                            </div>
                           </div>
-                        </label>
+                        </div>
 
-                        <div className="lg:col-span-2">
-                          <FormField
-                            label="Custom Logic Requirements"
-                            value={enhancedRfq.survey_logic?.custom_logic_requirements || ''}
-                            onChange={(value) => setEnhancedRfq({
-                              ...enhancedRfq,
-                              survey_logic: {
-                                ...enhancedRfq.survey_logic,
-                                custom_logic_requirements: value
-                              }
-                            })}
-                            placeholder="Describe any custom logic, skip patterns, or complex routing requirements..."
-                            type="textarea"
-                            rows={3}
-                            isAutoFilled={isFieldAutoFilled('survey_logic.custom_logic_requirements')}
-                          />
+                        {/* Quality Assurance Note */}
+                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                          <div className="flex items-start space-x-2">
+                            <div className="text-gray-500 text-sm">ℹ️</div>
+                            <div className="text-sm text-gray-700">
+                              <span className="font-medium">Quality Assurance:</span> Missing requirements will be flagged but won't block generation. 
+                              Aim for 85%+ compliance for optimal survey quality.
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    )}
 
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-800 mb-3">
-                        Brand & Usage Requirements
-                      </label>
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        <label className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={enhancedRfq.brand_usage_requirements?.brand_recall_required || false}
-                            onChange={(e) => setEnhancedRfq({
-                              ...enhancedRfq,
-                              brand_usage_requirements: {
-                                ...enhancedRfq.brand_usage_requirements,
-                                brand_recall_required: e.target.checked
-                              }
-                            })}
-                            className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
-                          />
-                          <div>
-                            <div className="font-medium text-gray-900">Brand Recall Questions</div>
-                            <div className="text-sm text-gray-600">Unaided and aided brand awareness</div>
+                    {/* Text Blocks Tab */}
+                    {surveyStructureTab === 'text' && (
+                      <div className="space-y-4">
+                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                          <div className="flex items-start space-x-3">
+                            <div className="text-yellow-600 text-lg">⚠️</div>
+                            <div>
+                              <h4 className="font-semibold text-yellow-900 mb-1">Text Introduction Requirements</h4>
+                              <p className="text-yellow-800 text-sm">
+                                Select text blocks to include in your survey for compliance and best practices.
+                              </p>
+                            </div>
                           </div>
-                        </label>
+                        </div>
 
-                        <label className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={enhancedRfq.brand_usage_requirements?.brand_awareness_funnel || false}
-                            onChange={(e) => setEnhancedRfq({
-                              ...enhancedRfq,
-                              brand_usage_requirements: {
-                                ...enhancedRfq.brand_usage_requirements,
-                                brand_awareness_funnel: e.target.checked
-                              }
-                            })}
-                            className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
-                          />
-                          <div>
-                            <div className="font-medium text-gray-900">Brand Awareness Funnel</div>
-                            <div className="text-sm text-gray-600">Awareness → Consideration → Trial → Purchase</div>
-                          </div>
-                        </label>
-
-                        <label className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={enhancedRfq.brand_usage_requirements?.brand_product_satisfaction || false}
-                            onChange={(e) => setEnhancedRfq({
-                              ...enhancedRfq,
-                              brand_usage_requirements: {
-                                ...enhancedRfq.brand_usage_requirements,
-                                brand_product_satisfaction: e.target.checked
-                              }
-                            })}
-                            className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
-                          />
-                          <div>
-                            <div className="font-medium text-gray-900">Brand/Product Satisfaction</div>
-                            <div className="text-sm text-gray-600">Satisfaction and loyalty metrics</div>
-                          </div>
-                        </label>
-
-                        <label className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={enhancedRfq.brand_usage_requirements?.usage_frequency_tracking || false}
-                            onChange={(e) => setEnhancedRfq({
-                              ...enhancedRfq,
-                              brand_usage_requirements: {
-                                ...enhancedRfq.brand_usage_requirements,
-                                usage_frequency_tracking: e.target.checked
-                              }
-                            })}
-                            className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
-                          />
-                          <div>
-                            <div className="font-medium text-gray-900">Usage Frequency Tracking</div>
-                            <div className="text-sm text-gray-600">Frequency, occasion, and context tracking</div>
-                          </div>
-                        </label>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                          {[
+                            { id: 'study_intro', name: 'Study Introduction', description: 'Participant welcome and study overview', mandatory: true },
+                            { id: 'concept_intro', name: 'Concept Introduction', description: 'Before concept evaluation sections', mandatory: false },
+                            { id: 'product_usage', name: 'Product Usage Introduction', description: 'Before brand/usage awareness questions', mandatory: false },
+                            { id: 'confidentiality_agreement', name: 'Confidentiality Agreement', description: 'For sensitive research topics', mandatory: false },
+                            { id: 'methodology_instructions', name: 'Methodology Instructions', description: 'Method-specific instructions', mandatory: false },
+                            { id: 'closing_thank_you', name: 'Closing Thank You', description: 'Final section thank you and next steps', mandatory: false }
+                          ].map((textBlock) => (
+                            <label key={textBlock.id} className={`flex items-start space-x-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                              textBlock.mandatory
+                                ? 'border-green-200 bg-green-50 cursor-not-allowed'
+                                : 'border-gray-200 hover:bg-gray-50'
+                            }`}>
+                              <input
+                                type="checkbox"
+                                checked={textBlock.mandatory || (enhancedRfq.survey_structure?.text_requirements || []).includes(textBlock.id)}
+                                disabled={textBlock.mandatory}
+                                onChange={(e) => {
+                                  if (!textBlock.mandatory) {
+                                    const requirements = [...(enhancedRfq.survey_structure?.text_requirements || [])];
+                                    if (e.target.checked) {
+                                      requirements.push(textBlock.id);
+                                    } else {
+                                      const index = requirements.indexOf(textBlock.id);
+                                      if (index > -1) requirements.splice(index, 1);
+                                    }
+                                    setEnhancedRfq({
+                                      ...enhancedRfq,
+                                      survey_structure: {
+                                        ...enhancedRfq.survey_structure,
+                                        text_requirements: requirements
+                                      }
+                                    });
+                                  }
+                                }}
+                                className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500 mt-1"
+                              />
+                              <div className="flex-1">
+                                <div className="flex items-center space-x-2">
+                                  <span className="font-medium text-gray-900">{textBlock.name}</span>
+                                  {textBlock.mandatory && (
+                                    <span className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full font-medium">
+                                      Required
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-sm text-gray-600 mt-1">{textBlock.description}</div>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    )}
+
+                    {/* Logic & Brand Tab */}
+                    {surveyStructureTab === 'logic' && (
+                      <div className="space-y-6">
+                        {/* Survey Logic Section */}
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <span className="text-blue-600 mr-2">⚙️</span>
+                            Survey Logic Requirements
+                          </h3>
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                            <label className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={enhancedRfq.survey_logic?.requires_piping_logic || false}
+                                onChange={(e) => setEnhancedRfq({
+                                  ...enhancedRfq,
+                                  survey_logic: {
+                                    ...enhancedRfq.survey_logic,
+                                    requires_piping_logic: e.target.checked
+                                  }
+                                })}
+                                className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+                              />
+                              <div>
+                                <div className="font-medium text-gray-900">Piping Logic</div>
+                                <div className="text-sm text-gray-600">Carry forward responses between questions</div>
+                              </div>
+                            </label>
+
+                            <label className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={enhancedRfq.survey_logic?.requires_sampling_logic || false}
+                                onChange={(e) => setEnhancedRfq({
+                                  ...enhancedRfq,
+                                  survey_logic: {
+                                    ...enhancedRfq.survey_logic,
+                                    requires_sampling_logic: e.target.checked
+                                  }
+                                })}
+                                className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+                              />
+                              <div>
+                                <div className="font-medium text-gray-900">Sampling Logic</div>
+                                <div className="text-sm text-gray-600">Randomization and quota controls</div>
+                              </div>
+                            </label>
+
+                            <label className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={enhancedRfq.survey_logic?.requires_screener_logic || false}
+                                onChange={(e) => setEnhancedRfq({
+                                  ...enhancedRfq,
+                                  survey_logic: {
+                                    ...enhancedRfq.survey_logic,
+                                    requires_screener_logic: e.target.checked
+                                  }
+                                })}
+                                className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+                              />
+                              <div>
+                                <div className="font-medium text-gray-900">Screener Logic</div>
+                                <div className="text-sm text-gray-600">Advanced qualification routing</div>
+                              </div>
+                            </label>
+
+                            <div className="lg:col-span-2">
+                              <FormField
+                                label="Custom Logic Requirements"
+                                value={enhancedRfq.survey_logic?.custom_logic_requirements || ''}
+                                onChange={(value) => setEnhancedRfq({
+                                  ...enhancedRfq,
+                                  survey_logic: {
+                                    ...enhancedRfq.survey_logic,
+                                    custom_logic_requirements: value
+                                  }
+                                })}
+                                placeholder="Describe any custom logic, skip patterns, or complex routing requirements..."
+                                type="textarea"
+                                rows={3}
+                                isAutoFilled={isFieldAutoFilled('survey_logic.custom_logic_requirements')}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Brand & Usage Section */}
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <span className="text-purple-600 mr-2">🏷️</span>
+                            Brand & Usage Requirements
+                          </h3>
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                            <label className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={enhancedRfq.brand_usage_requirements?.brand_recall_required || false}
+                                onChange={(e) => setEnhancedRfq({
+                                  ...enhancedRfq,
+                                  brand_usage_requirements: {
+                                    ...enhancedRfq.brand_usage_requirements,
+                                    brand_recall_required: e.target.checked
+                                  }
+                                })}
+                                className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+                              />
+                              <div>
+                                <div className="font-medium text-gray-900">Brand Recall Questions</div>
+                                <div className="text-sm text-gray-600">Unaided and aided brand awareness</div>
+                              </div>
+                            </label>
+
+                            <label className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={enhancedRfq.brand_usage_requirements?.brand_awareness_funnel || false}
+                                onChange={(e) => setEnhancedRfq({
+                                  ...enhancedRfq,
+                                  brand_usage_requirements: {
+                                    ...enhancedRfq.brand_usage_requirements,
+                                    brand_awareness_funnel: e.target.checked
+                                  }
+                                })}
+                                className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+                              />
+                              <div>
+                                <div className="font-medium text-gray-900">Brand Awareness Funnel</div>
+                                <div className="text-sm text-gray-600">Awareness → Consideration → Trial → Purchase</div>
+                              </div>
+                            </label>
+
+                            <label className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={enhancedRfq.brand_usage_requirements?.brand_product_satisfaction || false}
+                                onChange={(e) => setEnhancedRfq({
+                                  ...enhancedRfq,
+                                  brand_usage_requirements: {
+                                    ...enhancedRfq.brand_usage_requirements,
+                                    brand_product_satisfaction: e.target.checked
+                                  }
+                                })}
+                                className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+                              />
+                              <div>
+                                <div className="font-medium text-gray-900">Brand/Product Satisfaction</div>
+                                <div className="text-sm text-gray-600">Satisfaction and loyalty metrics</div>
+                              </div>
+                            </label>
+
+                            <label className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={enhancedRfq.brand_usage_requirements?.usage_frequency_tracking || false}
+                                onChange={(e) => setEnhancedRfq({
+                                  ...enhancedRfq,
+                                  brand_usage_requirements: {
+                                    ...enhancedRfq.brand_usage_requirements,
+                                    usage_frequency_tracking: e.target.checked
+                                  }
+                                })}
+                                className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+                              />
+                              <div>
+                                <div className="font-medium text-gray-900">Usage Frequency Tracking</div>
+                                <div className="text-sm text-gray-600">Frequency, occasion, and context tracking</div>
+                              </div>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -2154,7 +2379,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
               </div>
             </div>
           </div>
-      </div>
+        </div>
 
       {/* Reset Confirmation Modal */}
       {showResetConfirm && (

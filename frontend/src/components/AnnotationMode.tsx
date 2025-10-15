@@ -180,9 +180,9 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
           <div className="flex items-center space-x-3">
             <button
               onClick={onExitAnnotationMode}
-              className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700"
+              className="px-4 py-2 bg-gray-600 text-white text-sm font-medium rounded-lg hover:bg-gray-700"
             >
-              Save and Exit
+              Exit
             </button>
           </div>
         </div>

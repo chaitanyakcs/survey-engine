@@ -573,8 +573,8 @@ class WorkflowService:
                 is_failed_survey = generated_survey.get('metadata', {}).get('generation_failed', False)
 
                 if is_failed_survey:
-                    logger.warning(f"⚠️ [WorkflowService] Survey {survey.id} marked as failed due to generation failure")
-                    survey.status = "failed"
+                    logger.warning(f"⚠️ [WorkflowService] Survey {survey.id} marked as draft due to generation failure")
+                    survey.status = "draft"
                     survey.pillar_scores = None  # Don't store pillar scores for failed surveys
                 else:
                     survey.pillar_scores = final_state.get("pillar_scores")

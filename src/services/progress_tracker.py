@@ -26,9 +26,11 @@ class ProgressTracker:
         "generating_questions": (35, 60),   # Updated: 35-60% for Generating Questions LLM processing
         "llm_processing": (35, 60),         # Updated: 35-60% for LLM processing (same as generating_questions)
         "parsing_output": (60, 65),         # Updated: 60-65% for parsing output
-        "validation_scoring": (65, 75),     # Updated: 65-75% for validation scoring
-        "evaluating_pillars": (75, 85),     # Updated: 75-85% for evaluating pillars
-        "finalizing": (85, 95),             # Updated: 85-95% for finalizing
+        "detecting_labels": (65, 70),       # New: 65-70% for label detection
+        "labels_detected": (70, 75),        # New: 70-75% for label detection completion
+        "validation_scoring": (75, 80),     # Updated: 75-80% for validation scoring
+        "evaluating_pillars": (80, 90),     # Updated: 80-90% for evaluating pillars
+        "finalizing": (90, 95),             # Updated: 90-95% for finalizing
         "completed": (95, 100),
 
         # Document parsing workflow

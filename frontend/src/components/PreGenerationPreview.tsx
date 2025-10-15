@@ -581,6 +581,126 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                     </div>
                   )}
                 </div>
+
+                {/* QNR Label Requirements Preview */}
+                <div className="mt-6 pt-6 border-t border-gray-200">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                    <span className="text-xl mr-2">🎯</span>
+                    Quality Requirements Preview
+                  </h3>
+                  
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {/* Essential Requirements - Always shown */}
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                      <div className="flex items-center mb-3">
+                        <span className="text-green-600 text-lg mr-2">✅</span>
+                        <h4 className="font-semibold text-green-900">Essential Requirements</h4>
+                      </div>
+                      <div className="space-y-2">
+                        {[
+                          'Recent participation check',
+                          'Conflict of interest screening', 
+                          'Basic demographics',
+                          'Category usage qualification'
+                        ].map((req, index) => (
+                          <div key={index} className="flex items-center text-sm text-green-800">
+                            <span className="text-green-600 mr-2">•</span>
+                            {req}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Conditional Requirements - Dynamic */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <div className="flex items-center mb-3">
+                        <span className="text-blue-600 text-lg mr-2">⚠️</span>
+                        <h4 className="font-semibold text-blue-900">Smart Requirements</h4>
+                        <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">Auto-detected</span>
+                      </div>
+                      <div className="space-y-2">
+                        {/* Brand Study Requirements */}
+                        {(rfq.research_objectives?.key_research_questions?.some((obj: string) => 
+                          obj.toLowerCase().includes('brand') || 
+                          obj.toLowerCase().includes('awareness') ||
+                          obj.toLowerCase().includes('recall')
+                        ) || rfq.business_context?.company_product_background?.toLowerCase().includes('consumer')) && (
+                          <>
+                            <div className="text-xs font-medium text-blue-700 mb-1">Brand Study:</div>
+                            <div className="text-sm text-blue-800">• Unaided brand recall • Awareness funnel • Product satisfaction</div>
+                          </>
+                        )}
+
+                        {/* Concept Testing Requirements */}
+                        {rfq.research_objectives?.key_research_questions?.some((obj: string) => 
+                          obj.toLowerCase().includes('concept') || 
+                          obj.toLowerCase().includes('testing') ||
+                          obj.toLowerCase().includes('evaluation')
+                        ) && (
+                          <>
+                            <div className="text-xs font-medium text-blue-700 mb-1">Concept Testing:</div>
+                            <div className="text-sm text-blue-800">• Concept introduction • Overall impression • Purchase likelihood</div>
+                          </>
+                        )}
+
+                        {/* Van Westendorp Requirements */}
+                        {(rfq.methodology?.primary_method === 'van_westendorp' || 
+                          rfq.methodology?.required_methodologies?.some((tag: string) => 
+                            tag.toLowerCase().includes('van westendorp') || 
+                            tag.toLowerCase().includes('pricing')
+                          )) && (
+                          <>
+                            <div className="text-xs font-medium text-orange-700 mb-1">Van Westendorp Pricing:</div>
+                            <div className="text-sm text-orange-800">• 4 price sensitivity questions (critical)</div>
+                          </>
+                        )}
+
+                        {/* Gabor Granger Requirements */}
+                        {(rfq.methodology?.primary_method === 'gabor_granger' || 
+                          rfq.methodology?.required_methodologies?.some((tag: string) => 
+                            tag.toLowerCase().includes('gabor granger') || 
+                            tag.toLowerCase().includes('sequential')
+                          )) && (
+                          <>
+                            <div className="text-xs font-medium text-purple-700 mb-1">Gabor Granger Pricing:</div>
+                            <div className="text-sm text-purple-800">• Sequential price acceptance questions</div>
+                          </>
+                        )}
+
+                        {/* Default message if no conditional requirements */}
+                        {!rfq.research_objectives?.key_research_questions?.some((obj: string) => 
+                          obj.toLowerCase().includes('brand') || 
+                          obj.toLowerCase().includes('awareness') ||
+                          obj.toLowerCase().includes('recall') ||
+                          obj.toLowerCase().includes('concept') || 
+                          obj.toLowerCase().includes('testing') ||
+                          obj.toLowerCase().includes('evaluation')
+                        ) && !rfq.business_context?.company_product_background?.toLowerCase().includes('consumer') &&
+                        rfq.methodology?.primary_method !== 'van_westendorp' &&
+                        rfq.methodology?.primary_method !== 'gabor_granger' &&
+                        !rfq.methodology?.required_methodologies?.some((tag: string) => 
+                          tag.toLowerCase().includes('van westendorp') || 
+                          tag.toLowerCase().includes('pricing') ||
+                          tag.toLowerCase().includes('gabor granger') || 
+                          tag.toLowerCase().includes('sequential')
+                        ) && (
+                          <div className="text-sm text-gray-600 italic">No additional requirements detected</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Quality Assurance Note */}
+                  <div className="mt-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                    <div className="flex items-start space-x-2">
+                      <div className="text-gray-500 text-sm">ℹ️</div>
+                      <div className="text-sm text-gray-700">
+                        <span className="font-medium">Quality Assurance:</span> Missing requirements will be flagged but won't block generation. 
+                        Aim for 85%+ compliance for optimal survey quality.
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -615,6 +735,55 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                     <div className="p-4 bg-orange-50 rounded-xl">
                       <h4 className="font-semibold text-orange-800 mb-1">Custom Logic</h4>
                       <p className="text-orange-700 text-sm">{rfq.survey_logic.custom_logic_requirements}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Advanced Classification */}
+            {rfq.advanced_classification && (
+              <div className="bg-white/70 backdrop-blur-lg rounded-3xl shadow-2xl border border-white/20 p-8">
+                <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center">
+                  <span className="text-3xl mr-3">🏭</span>
+                  Advanced Classification
+                </h2>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {rfq.advanced_classification.industry_classification && (
+                    <div className="p-4 bg-blue-50 rounded-xl">
+                      <h4 className="font-semibold text-blue-800 mb-1">Industry</h4>
+                      <p className="text-blue-700 text-sm">{rfq.advanced_classification.industry_classification.replace('_', ' ').toUpperCase()}</p>
+                    </div>
+                  )}
+                  {rfq.advanced_classification.respondent_classification && (
+                    <div className="p-4 bg-green-50 rounded-xl">
+                      <h4 className="font-semibold text-green-800 mb-1">Respondent Type</h4>
+                      <p className="text-green-700 text-sm">{rfq.advanced_classification.respondent_classification}</p>
+                    </div>
+                  )}
+                  {rfq.advanced_classification.methodology_tags && rfq.advanced_classification.methodology_tags.length > 0 && (
+                    <div className="p-4 bg-purple-50 rounded-xl">
+                      <h4 className="font-semibold text-purple-800 mb-1">Methodology Tags</h4>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {rfq.advanced_classification.methodology_tags.map((tag, index) => (
+                          <span key={index} className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded">
+                            {tag.replace('_', ' ').toUpperCase()}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {rfq.advanced_classification.compliance_requirements && rfq.advanced_classification.compliance_requirements.length > 0 && (
+                    <div className="p-4 bg-orange-50 rounded-xl">
+                      <h4 className="font-semibold text-orange-800 mb-1">Compliance</h4>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {rfq.advanced_classification.compliance_requirements.map((req, index) => (
+                          <span key={index} className="px-2 py-1 bg-orange-100 text-orange-700 text-xs rounded">
+                            {req.replace('_', ' ').toUpperCase()}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>

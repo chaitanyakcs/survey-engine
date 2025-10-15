@@ -5,7 +5,7 @@ import {
   SECTION_CLASSIFICATIONS
 } from '../types';
 import LikertScale from './LikertScale';
-import LabelsInput from './LabelsInput';
+import EnhancedLabelsInput from './EnhancedLabelsInput';
 import { useAppStore } from '../store/useAppStore';
 
 interface SectionAnnotationPanelProps {
@@ -45,52 +45,53 @@ const SectionAnnotationPanel: React.FC<SectionAnnotationPanelProps> = ({
     compliance_score: annotation?.compliance_score ?? 0
   });
 
-  // Update form data when section or annotation changes
+  // Update form data when section or annotation changes (but not when we're in the middle of editing)
   useEffect(() => {
-    setFormData({
-      sectionId: String(section.id),
-      quality: annotation?.quality ?? 3,
-      relevant: annotation?.relevant ?? 3,
-      pillars: {
-        methodologicalRigor: annotation?.pillars?.methodologicalRigor ?? 3,
-        contentValidity: annotation?.pillars?.contentValidity ?? 3,
-        respondentExperience: annotation?.pillars?.respondentExperience ?? 3,
-        analyticalValue: annotation?.pillars?.analyticalValue ?? 3,
-        businessImpact: annotation?.pillars?.businessImpact ?? 3,
-      },
-      comment: annotation?.comment ?? '',
-      labels: annotation?.labels ?? [],
-      timestamp: new Date().toISOString(),
-      // Advanced labeling fields
-      section_classification: annotation?.section_classification ?? '',
-      mandatory_elements: annotation?.mandatory_elements ?? {},
-      compliance_score: annotation?.compliance_score ?? 0
-    });
-    setIsVerified(annotation?.humanVerified || false);
-  }, [section.id, annotation]);
+    // Only update if the annotation has actually changed and we're not currently editing
+    if (annotation && annotation.timestamp !== formData.timestamp) {
+      setFormData({
+        sectionId: String(section.id),
+        quality: annotation?.quality ?? 3,
+        relevant: annotation?.relevant ?? 3,
+        pillars: {
+          methodologicalRigor: annotation?.pillars?.methodologicalRigor ?? 3,
+          contentValidity: annotation?.pillars?.contentValidity ?? 3,
+          respondentExperience: annotation?.pillars?.respondentExperience ?? 3,
+          analyticalValue: annotation?.pillars?.analyticalValue ?? 3,
+          businessImpact: annotation?.pillars?.businessImpact ?? 3,
+        },
+        comment: annotation?.comment ?? '',
+        labels: annotation?.labels ?? [],
+        timestamp: new Date().toISOString(),
+        // Advanced labeling fields
+        section_classification: annotation?.section_classification ?? '',
+        mandatory_elements: annotation?.mandatory_elements ?? {},
+        compliance_score: annotation?.compliance_score ?? 0
+      });
+      setIsVerified(annotation?.humanVerified || false);
+    }
+  }, [section.id, annotation, formData.timestamp]);
 
   const updateField = (field: keyof SectionAnnotation, value: any) => {
     const newFormData = { ...formData, [field]: value };
     setFormData(newFormData);
     
-    // Auto-save for important fields
-    if (field === 'pillars' || field === 'quality' || field === 'relevant' || field === 'comment') {
-      console.log('🔄 [SectionAnnotationPanel] Field changed, saving immediately...', { field, value });
-      
-      const annotationToSave: SectionAnnotation = {
-        ...newFormData,
-        sectionId: String(section.id),
-        timestamp: new Date().toISOString()
-      };
-      
-      console.log('🔄 [SectionAnnotationPanel] Saving annotation:', annotationToSave);
-      
-      try {
-        onSave(annotationToSave);
-        console.log('✅ [SectionAnnotationPanel] Annotation saved successfully');
-      } catch (error) {
-        console.error('❌ [SectionAnnotationPanel] Failed to save annotation:', error);
-      }
+    // Auto-save on ALL field changes in annotation mode
+    console.log('🔄 [SectionAnnotationPanel] Field changed, saving immediately...', { field, value });
+    
+    const annotationToSave: SectionAnnotation = {
+      ...newFormData,
+      sectionId: String(section.id),
+      timestamp: new Date().toISOString()
+    };
+    
+    console.log('🔄 [SectionAnnotationPanel] Saving annotation:', annotationToSave);
+    
+    try {
+      onSave(annotationToSave);
+      console.log('✅ [SectionAnnotationPanel] Annotation saved successfully');
+    } catch (error) {
+      console.error('❌ [SectionAnnotationPanel] Failed to save annotation:', error);
     }
   };
 
@@ -361,11 +362,12 @@ const SectionAnnotationPanel: React.FC<SectionAnnotationPanelProps> = ({
           <label className="block text-sm font-semibold text-gray-700 mb-3">
             Labels
           </label>
-          <LabelsInput
+          <EnhancedLabelsInput
             labels={formData.labels || []}
             onLabelsChange={(labels) => setFormData({...formData, labels})}
             placeholder="Add labels for this section..."
             maxLabels={10}
+            showMasterList={true}
           />
         </div>
 

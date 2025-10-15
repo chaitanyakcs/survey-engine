@@ -12,3 +12,4 @@ ALTER TABLE section_annotations DROP CONSTRAINT IF EXISTS idx_section_annotation
 
 -- Create a new unique constraint for section annotations that includes survey_id
 CREATE UNIQUE INDEX idx_section_annotations_unique ON section_annotations (section_id, annotator_id, survey_id);
+

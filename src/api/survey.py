@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from sqlalchemy.orm import Session
 from src.database import get_db, Survey
 from src.services.survey_service import SurveyService
+from src.services.survey_structure_validator import SurveyStructureValidator
 from src.utils.survey_utils import get_questions_count
 from src.models.survey import QuestionUpdate, SectionUpdate, SurveySection
 from pydantic import BaseModel
@@ -913,3 +914,116 @@ async def delete_section(
     except Exception as e:
         db.rollback()
         logger.error(f"❌ [Survey API] Failed to delete section {section_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+class StructureValidationRequest(BaseModel):
+    """Request model for structure validation"""
+    survey_data: Dict[str, Any]
+    methodology_tags: Optional[List[str]] = None
+    industry: Optional[str] = None
+    respondent_type: Optional[str] = None
+
+
+@router.post("/{survey_id}/structure-validate")
+async def validate_survey_structure(
+    survey_id: str,
+    request: StructureValidationRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Validate survey structure using QNR labeling framework
+    Returns quality score and flagged issues (non-blocking)
+    """
+    try:
+        logger.info(f"🔍 [Survey API] Starting structure validation for survey {survey_id}")
+        
+        # Initialize structure validator
+        validator = SurveyStructureValidator(db)
+        
+        # Prepare RFQ context
+        rfq_context = {
+            'methodology_tags': request.methodology_tags or [],
+            'industry': request.industry,
+            'respondent_type': request.respondent_type
+        }
+        
+        # Validate structure
+        validation_report = await validator.validate_structure(
+            survey_json=request.survey_data,
+            rfq_context=rfq_context
+        )
+        
+        # Convert to API response format
+        response = {
+            'survey_id': survey_id,
+            'structure_validation': validation_report.to_dict(),
+            'summary': validation_report.get_summary(),
+            'is_high_quality': validation_report.is_high_quality(),
+            'has_critical_issues': validation_report.has_critical_issues(),
+            'flagged_for_review': validation_report.has_critical_issues(),
+            'flag_reason': validation_report.get_critical_issues_summary() if validation_report.has_critical_issues() else None
+        }
+        
+        logger.info(f"✅ [Survey API] Structure validation completed: {validation_report.get_summary()}")
+        return response
+        
+    except Exception as e:
+        logger.error(f"❌ [Survey API] Structure validation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Structure validation failed: {str(e)}")
+
+
+@router.get("/{survey_id}/structure-validate")
+async def get_survey_structure_validation(
+    survey_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get structure validation results for an existing survey
+    """
+    try:
+        logger.info(f"🔍 [Survey API] Getting structure validation for survey {survey_id}")
+        
+        # Get survey from database
+        survey = db.query(Survey).filter(Survey.id == survey_id).first()
+        if not survey:
+            raise HTTPException(status_code=404, detail="Survey not found")
+        
+        if not survey.final_output:
+            raise HTTPException(status_code=400, detail="Survey has no final output to validate")
+        
+        # Initialize structure validator
+        validator = SurveyStructureValidator(db)
+        
+        # Prepare RFQ context (extract from survey metadata if available)
+        rfq_context = {
+            'methodology_tags': getattr(survey, 'methodology_tags', []) or [],
+            'industry': getattr(survey, 'industry_category', None),
+            'respondent_type': getattr(survey, 'respondent_type', None)
+        }
+        
+        # Validate structure
+        validation_report = await validator.validate_structure(
+            survey_json=survey.final_output,
+            rfq_context=rfq_context
+        )
+        
+        # Convert to API response format
+        response = {
+            'survey_id': survey_id,
+            'structure_validation': validation_report.to_dict(),
+            'summary': validation_report.get_summary(),
+            'is_high_quality': validation_report.is_high_quality(),
+            'has_critical_issues': validation_report.has_critical_issues(),
+            'flagged_for_review': validation_report.has_critical_issues(),
+            'flag_reason': validation_report.get_critical_issues_summary() if validation_report.has_critical_issues() else None
+        }
+        
+        logger.info(f"✅ [Survey API] Structure validation retrieved: {validation_report.get_summary()}")
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [Survey API] Failed to get structure validation: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get structure validation: {str(e)}")

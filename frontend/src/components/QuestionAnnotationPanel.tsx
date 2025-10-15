@@ -4,7 +4,7 @@ import {
   Question
 } from '../types';
 import LikertScale from './LikertScale';
-import LabelsInput from './LabelsInput';
+import EnhancedLabelsInput from './EnhancedLabelsInput';
 import TabGroup from './TabGroup';
 import ProgressIndicator from './ProgressIndicator';
 import PillarTooltip from './PillarTooltip';
@@ -44,61 +44,61 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
   });
 
 
-  // Update form data when question or annotation changes
+  // Update form data when question or annotation changes (but not when we're in the middle of editing)
   useEffect(() => {
-    setFormData({
-      questionId: question.id,
-      required: annotation?.required ?? true,
-      quality: annotation?.quality ?? 3,
-      relevant: annotation?.relevant ?? 3,
-      pillars: {
-        methodologicalRigor: annotation?.pillars?.methodologicalRigor ?? 3,
-        contentValidity: annotation?.pillars?.contentValidity ?? 3,
-        respondentExperience: annotation?.pillars?.respondentExperience ?? 3,
-        analyticalValue: annotation?.pillars?.analyticalValue ?? 3,
-        businessImpact: annotation?.pillars?.businessImpact ?? 3,
-      },
-      comment: annotation?.comment ?? '',
-      labels: annotation?.labels ?? [],
-      timestamp: new Date().toISOString()
-    });
-    setIsVerified(annotation?.humanVerified || false);
-  }, [question.id, annotation]);
+    // Only update if the annotation has actually changed and we're not currently editing
+    if (annotation && annotation.timestamp !== formData.timestamp) {
+      setFormData({
+        questionId: question.id,
+        required: annotation?.required ?? true,
+        quality: annotation?.quality ?? 3,
+        relevant: annotation?.relevant ?? 3,
+        pillars: {
+          methodologicalRigor: annotation?.pillars?.methodologicalRigor ?? 3,
+          contentValidity: annotation?.pillars?.contentValidity ?? 3,
+          respondentExperience: annotation?.pillars?.respondentExperience ?? 3,
+          analyticalValue: annotation?.pillars?.analyticalValue ?? 3,
+          businessImpact: annotation?.pillars?.businessImpact ?? 3,
+        },
+        comment: annotation?.comment ?? '',
+        labels: annotation?.labels ?? [],
+        timestamp: new Date().toISOString()
+      });
+      setIsVerified(annotation?.humanVerified || false);
+    }
+  }, [question.id, annotation, formData.timestamp]);
 
   const updateField = (field: keyof QuestionAnnotation, value: any) => {
     const newFormData = { ...formData, [field]: value };
     setFormData(newFormData);
     
-        // For pillar fields, save immediately
-        if (field === 'pillars') {
-          console.log('🔄 [QuestionAnnotationPanel] Pillar scores changed, saving immediately...');
-          console.log('🔄 [QuestionAnnotationPanel] New pillar data:', value);
-          
-          const annotationToSave: QuestionAnnotation = {
-            ...newFormData,
-            questionId: question.id,
-            timestamp: new Date().toISOString()
-          };
-          
-          console.log('🔄 [QuestionAnnotationPanel] Saving annotation:', annotationToSave);
-          
-          // Special logging for q1 changes
-          if (question.id === 'q1') {
-            console.log('🎯 [QuestionAnnotationPanel] Q1 PILLAR CHANGES DETECTED:', {
-              questionId: question.id,
-              oldPillars: formData.pillars,
-              newPillars: value,
-              fullAnnotation: annotationToSave
-            });
-          }
-          
-          try {
-            onSave(annotationToSave);
-            console.log('✅ [QuestionAnnotationPanel] Annotation saved successfully');
-          } catch (error) {
-            console.error('❌ [QuestionAnnotationPanel] Failed to save annotation:', error);
-          }
-        }
+    // Auto-save on ALL field changes in annotation mode
+    console.log('🔄 [QuestionAnnotationPanel] Field changed, saving immediately...', { field, value });
+    
+    const annotationToSave: QuestionAnnotation = {
+      ...newFormData,
+      questionId: question.id,
+      timestamp: new Date().toISOString()
+    };
+    
+    console.log('🔄 [QuestionAnnotationPanel] Saving annotation:', annotationToSave);
+    
+    // Special logging for q1 changes
+    if (question.id === 'q1') {
+      console.log('🎯 [QuestionAnnotationPanel] Q1 CHANGES DETECTED:', {
+        questionId: question.id,
+        field,
+        value,
+        fullAnnotation: annotationToSave
+      });
+    }
+    
+    try {
+      onSave(annotationToSave);
+      console.log('✅ [QuestionAnnotationPanel] Annotation saved successfully');
+    } catch (error) {
+      console.error('❌ [QuestionAnnotationPanel] Failed to save annotation:', error);
+    }
   };
 
   // Calculate completion progress
@@ -258,11 +258,12 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
                     <label className="block text-sm font-semibold text-gray-700 mb-3">
                       Labels
                     </label>
-                    <LabelsInput
+                    <EnhancedLabelsInput
                       labels={formData.labels || []}
                       onLabelsChange={(labels) => updateField('labels', labels)}
                       placeholder="Add labels for this question..."
                       maxLabels={8}
+                      showMasterList={true}
                     />
                   </div>
 

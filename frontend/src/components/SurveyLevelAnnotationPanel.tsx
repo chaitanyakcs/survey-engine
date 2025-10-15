@@ -28,21 +28,6 @@ const LIKERT_OPTIONS: { value: LikertScale; label: string; color: string }[] = [
   { value: 5, label: 'Excellent', color: 'text-success-600' }
 ];
 
-const CATEGORY_OPTIONS = [
-  'Demographics',
-  'Behavior',
-  'Preferences',
-  'Attitudes',
-  'Satisfaction',
-  'Brand',
-  'Product',
-  'Service',
-  'Experience',
-  'Feedback',
-  'Professionals',
-  'Consumers',
-  'Other'
-];
 
 const SurveyLevelAnnotationPanel: React.FC<SurveyLevelAnnotationPanelProps> = ({
   surveyId,
@@ -72,21 +57,41 @@ const SurveyLevelAnnotationPanel: React.FC<SurveyLevelAnnotationPanelProps> = ({
   });
 
   useEffect(() => {
-    if (annotation) {
+    // Only update if the annotation has actually changed and we're not currently editing
+    if (annotation && annotation.timestamp !== formData.timestamp) {
       setFormData({
         ...annotation,
         surveyId,
         timestamp: new Date().toISOString()
       });
     }
-  }, [annotation, surveyId]);
+  }, [annotation, surveyId, formData.timestamp]);
 
   const handleInputChange = (field: keyof SurveyLevelAnnotation, value: any) => {
-    setFormData(prev => ({
-      ...prev,
+    const newFormData = {
+      ...formData,
       [field]: value,
       timestamp: new Date().toISOString()
-    }));
+    };
+    setFormData(newFormData);
+    
+    // Auto-save on ALL field changes in annotation mode
+    console.log('🔄 [SurveyLevelAnnotationPanel] Field changed, saving immediately...', { field, value });
+    
+    const annotationToSave: SurveyLevelAnnotation = {
+      ...newFormData,
+      surveyId,
+      timestamp: new Date().toISOString()
+    };
+    
+    console.log('🔄 [SurveyLevelAnnotationPanel] Saving annotation:', annotationToSave);
+    
+    try {
+      onSave(annotationToSave);
+      console.log('✅ [SurveyLevelAnnotationPanel] Annotation saved successfully');
+    } catch (error) {
+      console.error('❌ [SurveyLevelAnnotationPanel] Failed to save annotation:', error);
+    }
   };
 
   const handleSave = () => {

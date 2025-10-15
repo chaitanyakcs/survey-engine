@@ -13,7 +13,8 @@ from .nodes import (
     GeneratorAgent,
     GoldenValidatorNode,
     ValidatorAgent,
-    HumanPromptReviewNode
+    HumanPromptReviewNode,
+    LabelDetectionNode
 )
 from src.services.websocket_client import WebSocketNotificationService
 from src.services.progress_tracker import get_progress_tracker
@@ -34,6 +35,7 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     context_builder = ContextBuilderNode(db)
     prompt_reviewer = HumanPromptReviewNode(db)
     generator = GeneratorAgent(db, connection_manager=connection_manager)
+    label_detector = LabelDetectionNode(db, connection_manager=connection_manager)
     validator = ValidatorAgent(db, connection_manager=connection_manager)
     
     # Initialize WebSocket client for progress updates
@@ -271,6 +273,33 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
         
         return result
     
+    async def detect_labels_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
+        """Detect and assign labels to questions with progress update"""
+        progress_tracker = get_progress_tracker(state.workflow_id)
+        
+        try:
+            logger.info(f"📡 [Workflow] Sending progress update: detecting_labels for workflow_id={state.workflow_id}")
+            progress_data = progress_tracker.get_progress_data("detecting_labels")
+            progress_data["message"] = "Automatically detecting and assigning question labels..."
+            await ws_client.send_progress_update(state.workflow_id, progress_data)
+            logger.info(f"✅ [Workflow] Progress update sent successfully: detecting_labels")
+        except Exception as e:
+            logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
+        
+        result = await label_detector(state)
+        
+        # Send completion progress update
+        try:
+            logger.info(f"📡 [Workflow] Sending progress update: labels_detected for workflow_id={state.workflow_id}")
+            progress_data = progress_tracker.get_progress_data("labels_detected")
+            progress_data["message"] = "Question labels detected and assigned successfully!"
+            await ws_client.send_progress_update(state.workflow_id, progress_data)
+            logger.info(f"✅ [Workflow] Progress update sent successfully: labels_detected")
+        except Exception as e:
+            logger.error(f"❌ [Workflow] Failed to send label detection completion progress update: {str(e)}")
+        
+        return result
+    
     async def validate_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
         """Validate survey with progress update"""
         progress_tracker = get_progress_tracker(state.workflow_id)
@@ -313,6 +342,7 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     workflow.add_node("build_context", build_context_with_progress)
     workflow.add_node("prompt_review", prompt_review_with_progress)
     workflow.add_node("generate", generate_with_progress)
+    workflow.add_node("detect_labels", detect_labels_with_progress)
     workflow.add_node("validate", validate_with_progress)
     
     # Set entry point
@@ -322,6 +352,7 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     workflow.add_edge("parse_rfq", "retrieve_golden")
     workflow.add_edge("retrieve_golden", "build_context")
     workflow.add_edge("build_context", "prompt_review")
+    workflow.add_edge("detect_labels", "validate")
     # Conditional edge to check if LLM evaluation should be skipped
     def should_skip_validation(state: SurveyGenerationState) -> str:
         """
@@ -354,19 +385,19 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
                 logger.info(f"⏭️ [Workflow] LLM evaluation disabled, skipping validation step")
                 return "completion_handler"
             else:
-                logger.info(f"✅ [Workflow] LLM evaluation enabled, proceeding to validation")
-                return "validate"
+                logger.info(f"✅ [Workflow] LLM evaluation enabled, proceeding to label detection")
+                return "detect_labels"
         except Exception as e:
             logger.error(f"❌ [Workflow] Error checking evaluation settings: {e}")
-            # Default to validation if there's an error
-            return "validate"
+            # Default to label detection if there's an error
+            return "detect_labels"
 
     # Add conditional edge to check if validation should be skipped
     workflow.add_conditional_edges(
         "generate",
         should_skip_validation,
         {
-            "validate": "validate",
+            "detect_labels": "detect_labels",
             "completion_handler": "completion_handler"
         }
     )
