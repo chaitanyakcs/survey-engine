@@ -1236,8 +1236,8 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                             <button
                               onClick={() => {
                                 if (currentSurvey?.survey_id) {
-                                  // Open survey preview in new tab to keep user in ProgressStepper
-                                  window.open(`/preview?surveyId=${currentSurvey.survey_id}`, '_blank');
+                                  // Navigate to survey view page instead of opening in new tab
+                                  window.location.href = `/surveys/${currentSurvey.survey_id}`;
                                 }
                               }}
                               className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 shadow-md hover:shadow-lg flex items-center justify-center"
@@ -1251,8 +1251,8 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                             <button
                               onClick={() => {
                                 if (currentSurvey?.survey_id) {
-                                  // Open survey preview in same tab for editing
-                                  window.location.href = `/preview?surveyId=${currentSurvey.survey_id}`;
+                                  // Navigate to survey edit page
+                                  window.location.href = `/surveys/${currentSurvey.survey_id}/edit`;
                                 }
                               }}
                               className="flex-1 border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center"

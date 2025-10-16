@@ -103,7 +103,7 @@ class EmbeddingService:
             EmbeddingService._model_loading = False
     
     async def preload_model(self):
-        """Preload the model in background"""
+        """Preload the model in background (non-blocking)"""
         if not self._should_use_replicate():
             if self.model is None and EmbeddingService._model is None:
                 print(f"🔄 [EmbeddingService] Preloading model in background: {self.model_name}")
@@ -114,6 +114,39 @@ class EmbeddingService:
                 print(f"✅ [EmbeddingService] Model already loaded: {self.model_name}")
         else:
             print(f"🌐 [EmbeddingService] Using Replicate API, no local model to preload")
+    
+    @classmethod
+    def is_ready(cls) -> bool:
+        """Check if embedding models are ready"""
+        return cls._initialized and (cls._model is not None or cls._should_use_replicate_static())
+    
+    @classmethod
+    def wait_until_ready(cls, timeout: int = 300) -> bool:
+        """Wait for models to be ready with timeout"""
+        import time
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            if cls.is_ready():
+                return True
+            time.sleep(0.1)  # Check every 100ms
+        
+        return False
+    
+    @classmethod
+    def _should_use_replicate_static(cls) -> bool:
+        """Static version of _should_use_replicate for class methods"""
+        from src.config import settings
+        replicate_indicators = [
+            "text-embedding-ada",  # OpenAI-style models
+            "text-embedding-3",
+            "/",  # Custom Replicate model paths
+            "replicate:",  # Explicit replicate prefix
+            "nateraw/",  # Popular Replicate embedding models
+            "sentence-transformers/"  # Sentence transformers on Replicate
+        ]
+        
+        return any(indicator in settings.embedding_model for indicator in replicate_indicators)
     
     def _should_use_replicate(self) -> bool:
         """

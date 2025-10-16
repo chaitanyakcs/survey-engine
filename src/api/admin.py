@@ -36,6 +36,59 @@ async def admin_health_check(db: Session = Depends(get_db)):
         }
 
 
+@router.get("/ready")
+async def readiness_check():
+    """
+    Readiness check - returns 200 if models loaded, 425 if still loading
+    Used by load balancers and health check systems
+    """
+    try:
+        from src.services.model_loader import BackgroundModelLoader
+        from src.services.embedding_service import EmbeddingService
+        
+        # Check if models are ready
+        if EmbeddingService.is_ready() and BackgroundModelLoader.is_ready():
+            return {
+                "status": "ready",
+                "message": "All systems ready",
+                "ready": True,
+                "models_loaded": True
+            }
+        
+        # Models still loading - return 425 Too Early
+        status = BackgroundModelLoader.get_status()
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=425,  # Too Early
+            detail={
+                "status": "initializing",
+                "message": "AI models are still loading",
+                "ready": False,
+                "progress": status["progress"],
+                "estimated_seconds": status["estimated_seconds"],
+                "phase": status["phase"],
+                "type": "initialization"  # Distinguish from errors
+            },
+            headers={"Retry-After": str(max(status["estimated_seconds"], 30))}
+        )
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions (425 Too Early)
+        raise
+    except Exception as e:
+        logger.error(f"❌ Readiness check failed: {str(e)}")
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "status": "error",
+                "message": f"Readiness check failed: {str(e)}",
+                "ready": False,
+                "type": "error"
+            }
+        )
+
+
 @router.post("/migrate-all")
 async def migrate_all(db: Session = Depends(get_db)):
     """
@@ -164,6 +217,21 @@ async def migrate_all(db: Session = Depends(get_db)):
                 "step": "drop_alembic_version",
                 "status": "failed",
                 "message": f"Alembic version table cleanup failed: {str(e)}"
+            })
+        
+        # Step 9: Seed generation rules
+        try:
+            await _seed_generation_rules(db)
+            migration_results.append({
+                "step": "seed_generation_rules",
+                "status": "success",
+                "message": "Generation rules seeding completed"
+            })
+        except Exception as e:
+            migration_results.append({
+                "step": "seed_generation_rules",
+                "status": "failed",
+                "message": f"Generation rules seeding failed: {str(e)}"
             })
         
         # Determine overall success
@@ -946,3 +1014,52 @@ async def _migrate_survey_status_constraint(db: Session):
         logger.error(f"❌ Failed to update survey status constraint: {str(e)}")
         db.rollback()
         raise
+
+
+async def _seed_generation_rules(db: Session):
+    """
+    Seed 58 core generation rules from AiRA v1 framework
+    """
+    logger.info("🌱 Seeding generation rules...")
+    
+    from src.database.core_generation_rules import CORE_GENERATION_RULES
+    import json
+    
+    # Clear existing AiRA v1 generation rules
+    db.execute(text("""
+        DELETE FROM survey_rules
+        WHERE rule_type = 'generation'
+        AND rule_content->>'source_framework' = 'aira_v1'
+    """))
+    
+    # Insert all 58 generation rules with ON CONFLICT handling
+    for rule_data in CORE_GENERATION_RULES:
+        rule_content_json = json.dumps({
+            'generation_guideline': rule_data['generation_guideline'],
+            'implementation_notes': rule_data['implementation_notes'],
+            'quality_indicators': rule_data['quality_indicators'],
+            'source_framework': 'aira_v1',
+            'priority': rule_data['priority'],
+            'weight': rule_data['weight']
+        })
+        
+        db.execute(text("""
+            INSERT INTO survey_rules (
+                id, rule_type, category, rule_name, rule_description,
+                rule_content, is_active, priority, created_by, created_at
+            ) VALUES (
+                gen_random_uuid(), 'generation', :category, :rule_name,
+                :rule_description, CAST(:rule_content AS jsonb), true,
+                :priority, 'aira_v1_system', NOW()
+            )
+            ON CONFLICT (rule_description, category, rule_type) DO NOTHING
+        """), {
+            'category': rule_data['category'],
+            'rule_name': f"Core Quality: {rule_data['generation_guideline'][:80]}",
+            'rule_description': rule_data['generation_guideline'],
+            'rule_content': rule_content_json,
+            'priority': {'core': 1000, 'high': 800, 'medium': 600, 'low': 400}[rule_data['priority']]
+        })
+    
+    db.commit()
+    logger.info("✅ Seeded 58 generation rules")

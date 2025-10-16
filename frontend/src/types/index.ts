@@ -1000,6 +1000,17 @@ export interface TextValidationUtils {
 }
 
 export interface AppStore {
+  // Model Loading State
+  modelLoading: {
+    loading: boolean;
+    ready: boolean;
+    progress: number;
+    estimatedSeconds: number;
+    phase: 'connecting' | 'loading' | 'finalizing' | 'ready' | 'error';
+    message: string;
+  };
+  setModelLoading: (state: Partial<AppStore['modelLoading']>) => void;
+
   // RFQ Input
   rfqInput: RFQRequest;
   setRFQInput: (input: Partial<RFQRequest>) => void;

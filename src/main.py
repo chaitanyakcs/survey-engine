@@ -75,9 +75,14 @@ manager = ConnectionManager()
 async def startup_event() -> None:
     logger.info("🚀 [FastAPI] Starting Survey Generation Engine...")
     
-    # Note: Models are preloaded by start.sh before FastAPI starts
-    # This avoids double-loading and reduces startup time
-    logger.info("✅ [FastAPI] Models already preloaded by startup script")
+    # Start background model loading
+    from src.services.model_loader import BackgroundModelLoader
+    logger.info("🔄 [FastAPI] Starting background model loading...")
+    
+    # Launch model loading task (non-blocking)
+    model_loading_task = await BackgroundModelLoader.load_models_async()
+    
+    logger.info("✅ [FastAPI] Server ready - models loading in background")
     logger.info("🎉 [FastAPI] Startup completed successfully - server is ready to accept requests")
 
 app.include_router(rfq_router, prefix="/api/v1")
@@ -137,6 +142,48 @@ async def rfq_parsing_websocket(websocket: WebSocket, session_id: str) -> None:
     except Exception as e:
         logger.error(f"❌ [RFQ Parsing WebSocket] WebSocket error for session {session_id}: {str(e)}", exc_info=True)
         rfq_parsing_manager.disconnect(websocket, session_id)
+        await websocket.close()
+
+
+@app.websocket("/ws/init/{client_id}")
+async def model_init_websocket(websocket: WebSocket, client_id: str) -> None:
+    """
+    WebSocket endpoint for real-time model loading progress updates
+    """
+    await manager.connect(websocket, f"init_{client_id}")
+    logger.info(f"🔌 [Model Init WebSocket] Connection established for client_id={client_id}")
+    
+    try:
+        from src.services.model_loader import BackgroundModelLoader
+        
+        # Stream progress updates every 1 second while loading
+        while BackgroundModelLoader.is_loading():
+            status = BackgroundModelLoader.get_status()
+            await manager.send_progress(f"init_{client_id}", {
+                "type": "model_loading",
+                "progress": status["progress"],  # 0-100
+                "estimated_seconds": status["estimated_seconds"],
+                "phase": status["phase"],  # "connecting" | "loading" | "finalizing"
+                "message": status["message"]
+            })
+            await asyncio.sleep(1)
+        
+        # Send ready notification
+        await manager.send_progress(f"init_{client_id}", {
+            "type": "models_ready",
+            "message": "All systems ready!",
+            "ready": True
+        })
+        
+        # Keep connection alive for a bit to ensure message is sent
+        await asyncio.sleep(2)
+        
+    except WebSocketDisconnect:
+        logger.info(f"🔌 [Model Init WebSocket] Client disconnected for client_id={client_id}")
+        manager.disconnect(websocket, f"init_{client_id}")
+    except Exception as e:
+        logger.error(f"❌ [Model Init WebSocket] WebSocket error for client {client_id}: {str(e)}", exc_info=True)
+        manager.disconnect(websocket, f"init_{client_id}")
         await websocket.close()
 
 

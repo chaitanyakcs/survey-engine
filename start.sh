@@ -159,21 +159,11 @@ run_migrations() {
 # Global flag to track if models are already preloaded
 MODELS_PRELOADED=false
 
-# Function to preload models
+# Function to preload models (deprecated - now handled by FastAPI startup)
 preload_models() {
-    if [ "$MODELS_PRELOADED" = true ]; then
-        log_info "Models already preloaded, skipping..."
-        return 0
-    fi
-    
-    log_info "Preloading ML models to avoid startup delays..."
-    if python3 preload_models.py; then
-        log_success "Model preloading completed successfully"
-        MODELS_PRELOADED=true
-    else
-        log_warning "Model preloading failed, but continuing with startup"
-        MODELS_PRELOADED=true  # Mark as attempted to prevent retries
-    fi
+    log_info "Model preloading is now handled by FastAPI startup - skipping standalone preload"
+    log_info "Models will load in background after server starts"
+    return 0
 }
 
 # Function to start FastAPI server
@@ -206,13 +196,8 @@ start_consolidated() {
     local nginx_port=${PORT:-8080}
     log_info "Starting consolidated FastAPI + nginx server..."
     
-    # Step 1: Preload models and wait for completion
-    log_info "🔄 Step 1: Preloading ML models..."
-    preload_models
-    log_success "✅ Step 1: Model preloading completed"
-    
-    # Step 2: Start nginx in background
-    log_info "🔄 Step 2: Starting nginx on port $nginx_port..."
+    # Step 1: Start nginx in background
+    log_info "🔄 Step 1: Starting nginx on port $nginx_port..."
     generate_nginx_config
     nginx -g "daemon on;" || {
         log_error "Failed to start nginx"
@@ -226,7 +211,7 @@ start_consolidated() {
     while [ $attempt -le $max_attempts ]; do
         # Check if nginx process is running AND responding on the port
         if pgrep nginx > /dev/null 2>&1 && curl -s -f "http://localhost:$nginx_port/health" > /dev/null 2>&1; then
-            log_success "✅ Step 2: Nginx is ready and responding on port $nginx_port!"
+            log_success "✅ Step 1: Nginx is ready and responding on port $nginx_port!"
             break
         fi
         log_info "Nginx not ready yet - attempt $attempt/$max_attempts"
@@ -244,8 +229,8 @@ start_consolidated() {
         fi
     fi
     
-    # Step 3: Start FastAPI in foreground
-    log_info "🔄 Step 3: Starting FastAPI server on port $fastapi_port..."
+    # Step 2: Start FastAPI in foreground
+    log_info "🔄 Step 2: Starting FastAPI server on port $fastapi_port..."
     log_success "🚀 All services ready! Starting FastAPI..."
     # Manual deployment only - no auto-reload
     $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $fastapi_port --timeout-keep-alive 600
@@ -302,9 +287,6 @@ start_nginx() {
 # Function to start both services
 start_both() {
     log_info "Starting FastAPI, WebSocket, and nginx servers..."
-    
-    # Preload models first
-    preload_models
     
     # Start FastAPI in background
     log_info "Starting FastAPI server..."
@@ -465,16 +447,13 @@ main() {
     # Start the appropriate service(s)
     case "${SERVICE:-consolidated}" in
         "backend"|"fastapi")
-            preload_models
             start_fastapi
             ;;
         "nginx")
-            preload_models
             start_nginx
             ;;
         "websocket")
             log_warning "WebSocket server is now integrated into FastAPI. Starting consolidated server instead."
-            preload_models
             start_consolidated
             ;;
         "both"|"consolidated"|"")

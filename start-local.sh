@@ -22,36 +22,31 @@ echo -e "${BLUE}🚀 Starting Survey Engine...${NC}"
 
 # Function to kill existing processes
 kill_existing_processes() {
-    echo -e "${YELLOW}🛑 Checking for existing processes...${NC}"
+    echo -e "${YELLOW}🛑 Cleaning up existing processes...${NC}"
     
-    # Kill any existing nginx processes
-    if pgrep -f "nginx.*4321" > /dev/null; then
-        echo -e "${YELLOW}🔄 Killing existing nginx processes on port 4321...${NC}"
-        pkill -f "nginx.*4321" || true
-        sleep 2
+    # Kill any existing nginx processes (check both common ports)
+    if pgrep -f "nginx" > /dev/null; then
+        pkill -f "nginx" || true
+        sleep 1
     fi
     
-    # Kill any existing FastAPI processes on port 8000
-    if pgrep -f "uvicorn.*8000" > /dev/null; then
-        echo -e "${YELLOW}🔄 Killing existing FastAPI processes on port 8000...${NC}"
-        pkill -f "uvicorn.*8000" || true
-        sleep 2
+    # Kill any existing FastAPI/uvicorn processes
+    if pgrep -f "uvicorn" > /dev/null; then
+        pkill -f "uvicorn" || true
+        sleep 1
     fi
     
-    # Kill any processes using port 4321
-    if lsof -ti:4321 > /dev/null 2>&1; then
-        echo -e "${YELLOW}🔄 Killing processes using port 4321...${NC}"
-        lsof -ti:4321 | xargs kill -9 2>/dev/null || true
-        sleep 2
+    # Kill any processes using port 3000 (nginx)
+    if lsof -ti:3000 > /dev/null 2>&1; then
+        lsof -ti:3000 | xargs kill -9 2>/dev/null || true
+        sleep 1
     fi
     
-    # Kill any processes using port 8000
+    # Kill any processes using port 8000 (FastAPI)
     if lsof -ti:8000 > /dev/null 2>&1; then
-        echo -e "${YELLOW}🔄 Killing processes using port 8000...${NC}"
         lsof -ti:8000 | xargs kill -9 2>/dev/null || true
-        sleep 2
+        sleep 1
     fi
-    
     
     echo -e "${GREEN}✅ Existing processes cleaned up${NC}"
 }
@@ -161,15 +156,13 @@ except Exception as e:
 
 # Function to run database migrations via API
 run_migrations() {
-    echo -e "${YELLOW}📊 Running database migrations using admin API...${NC}"
+    echo -e "${YELLOW}📊 Running database migrations...${NC}"
     
     # Start FastAPI server temporarily for migrations
-    echo -e "${BLUE}🔄 Starting FastAPI server for migrations...${NC}"
     REPLICATE_API_TOKEN="$REPLICATE_API_TOKEN" DATABASE_URL="$DATABASE_URL" uvicorn src.main:app --host 0.0.0.0 --port 8000 &
     MIGRATION_PID=$!
     
     # Wait for server to be ready
-    echo -e "${YELLOW}⏳ Waiting for FastAPI to be ready...${NC}"
     sleep 5
     
     # Check if server is running
@@ -186,7 +179,7 @@ run_migrations() {
             echo -e "${GREEN}✅ FastAPI is ready for migrations${NC}"
             break
         fi
-        echo -e "${YELLOW}⏳ Waiting for FastAPI... (attempt $((attempt + 1))/$max_attempts)${NC}"
+        # Silent wait - only show if it takes too long
         sleep 2
         attempt=$((attempt + 1))
     done
@@ -203,7 +196,6 @@ run_migrations() {
     migration_result=$(curl -s -X POST "http://localhost:8000/api/v1/admin/migrate-all" -H "Content-Type: application/json")
     
     # Stop the temporary server
-    echo -e "${YELLOW}🔄 Stopping temporary FastAPI server...${NC}"
     kill $MIGRATION_PID 2>/dev/null || true
     sleep 2
     
@@ -238,8 +230,8 @@ seed_database() {
 start_application() {
     echo -e "${YELLOW}🚀 Starting application...${NC}"
     
-    # Check if we're in Railway (has PORT env var) or local development
-    if [ -n "$RAILWAY_ENVIRONMENT" ] || [ -n "$PORT" ]; then
+    # Check if we're in Railway (has RAILWAY_ENVIRONMENT) or local development
+    if [ -n "$RAILWAY_ENVIRONMENT" ]; then
         echo -e "${BLUE}🏗️  Starting in production mode (Railway)${NC}"
         echo -e "${BLUE}   - Nginx will run on port $APP_PORT${NC}"
         echo -e "${BLUE}   - FastAPI will run on port $FASTAPI_PORT${NC}"
@@ -263,7 +255,6 @@ start_application() {
         FASTAPI_PID=$!
         
         # Wait for FastAPI to be ready
-        echo -e "${YELLOW}⏳ Waiting for FastAPI to be ready...${NC}"
         sleep 5
         
         # Check if FastAPI is running
@@ -274,32 +265,8 @@ start_application() {
             exit 1
         fi
         
-        # Build and serve React production build
-        echo -e "${YELLOW}🔄 Building React application...${NC}"
-        cd frontend && npm run build
-        cd ..
-        
-        # Start nginx to serve the built React app
-        echo -e "${YELLOW}🔄 Starting nginx to serve React app...${NC}"
-        nginx -c $(pwd)/nginx-local.conf &
-        NGINX_PID=$!
-        
-        # Wait for nginx to be ready
-        echo -e "${YELLOW}⏳ Waiting for nginx to be ready...${NC}"
-        sleep 3
-        
-        # Check if nginx process is running
-        if ! kill -0 $NGINX_PID 2>/dev/null; then
-            echo -e "${RED}❌ Nginx failed to start${NC}"
-            exit 1
-        fi
-        
-        # Check if nginx is responding
-        if curl -s http://localhost:3000 > /dev/null; then
-            echo -e "${GREEN}✅ React app is running on port 3000${NC}"
-        else
-            echo -e "${YELLOW}⚠️  React app may still be starting up...${NC}"
-        fi
+        # Nginx is already running from early startup
+        echo -e "${GREEN}✅ Nginx already running and serving frontend on port 3000${NC}"
         
         echo -e "${GREEN}✅ Services started successfully!${NC}"
         echo -e "${GREEN}   - Frontend: http://localhost:3000${NC}"
@@ -467,72 +434,84 @@ run_dev_checks() {
     echo -e "${GREEN}✅ Development checks completed${NC}"
 }
 
-# Function to preload models
-preload_models() {
-    echo -e "${YELLOW}🧠 Preloading ML models...${NC}"
+# Function to start nginx early for immediate frontend access
+start_nginx_early() {
+    echo -e "${YELLOW}🔄 Building React application...${NC}"
+    cd frontend && npm run build
+    cd ..
     
-    if uv run python3 -c "
-import sys
-sys.path.append('src')
-from src.services.embedding_service import EmbeddingService
-import asyncio
-
-async def preload():
-    try:
-        service = EmbeddingService()
-        await service.preload_model()
-        print('Models preloaded successfully')
-    except Exception as e:
-        print(f'Model preloading failed: {e}')
-        # Don't exit on model preload failure
-        pass
-
-asyncio.run(preload())
-"; then
-        echo -e "${GREEN}✅ Models preloaded successfully${NC}"
-    else
-        echo -e "${YELLOW}⚠️  Model preloading failed, continuing without preloaded models${NC}"
+    echo -e "${YELLOW}🔄 Starting nginx early...${NC}"
+    nginx -c $(pwd)/nginx-local.conf &
+    NGINX_PID=$!
+    
+    # Wait for nginx to be ready
+    sleep 3
+    
+    # Check if nginx is responding (more reliable than PID check)
+    local max_attempts=5
+    local attempt=1
+    while [ $attempt -le $max_attempts ]; do
+        if curl -s http://localhost:3000/health > /dev/null 2>&1; then
+            echo -e "${GREEN}✅ Nginx is running and serving frontend on port 3000${NC}"
+            break
+        fi
+        echo -e "${YELLOW}⏳ Waiting for nginx... (attempt $attempt/$max_attempts)${NC}"
+        sleep 2
+        attempt=$((attempt + 1))
+    done
+    
+    if [ $attempt -gt $max_attempts ]; then
+        echo -e "${RED}❌ Nginx failed to start or respond${NC}"
+        echo -e "${YELLOW}Checking nginx processes...${NC}"
+        ps aux | grep nginx | grep -v grep
+        exit 1
     fi
+}
+
+# Function to preload models (deprecated - now handled by FastAPI startup)
+preload_models() {
+    echo -e "${BLUE}🧠 Model preloading is now handled by FastAPI startup${NC}"
+    echo -e "${BLUE}   Models will load in background after server starts${NC}"
+    return 0
 }
 
 # Main execution
 main() {
-    echo -e "${BLUE}🎯 Survey Engine Startup Sequence${NC}"
-    echo -e "${BLUE}================================${NC}"
+    echo -e "${BLUE}🚀 Starting Survey Engine...${NC}"
     
-    # Step 1: Load environment variables
+    # Load environment variables
     if [ -f ".env" ]; then
         echo -e "${BLUE}📄 Loading environment variables from .env${NC}"
         export $(grep -v '^#' .env | xargs)
     fi
     
-    # Step 2: Kill existing processes
+    # Always clean up existing processes first
     kill_existing_processes
     
-    # Step 3: Check port availability
+    # Check prerequisites
     check_port_availability
-    
-    # Step 4: Check environment configuration
     check_environment
     
-    # Step 5: Check database connection
+    # Start nginx early (frontend available immediately)
+    if [ -z "$RAILWAY_ENVIRONMENT" ]; then
+        echo -e "${YELLOW}🔄 Starting nginx early for immediate frontend access...${NC}"
+        start_nginx_early
+    fi
+    
+    # Check database and setup
     check_database
-    
-    # Step 6: Run migrations
     run_migrations
-    
-    # Step 7: Seed database
     seed_database
     
-    # Step 8: Run development checks (only in local development)
+    # Run development checks (only in local development)
     if [ -z "$RAILWAY_ENVIRONMENT" ] && [ -z "$PORT" ]; then
         run_dev_checks
     fi
     
-    # Step 9: Preload models (in background)
+    # Preload models (in background)
     preload_models &
     
-    # Step 10: Start application
+    # Start application
     start_application
 }
 
@@ -591,7 +570,7 @@ case "${1:-startup}" in
         echo "Usage: $0 [command]"
         echo ""
         echo "Commands:"
-        echo "  startup       - Full startup sequence (default)"
+        echo "  startup       - Full startup sequence (default) - kills existing processes first"
         echo "  startup-safe  - Run tests first, then startup (safer)"
         echo "  migrate       - Run database migrations only"
         echo "  seed          - Seed database only"
@@ -600,9 +579,11 @@ case "${1:-startup}" in
         echo "  test-quick    - Run quick smoke tests (<30s)"
         echo "  test-full     - Run full test suite"
         echo "  test-coverage - Run tests with coverage report"
-        echo "  kill          - Kill existing processes on ports 4321 and 8000"
+        echo "  kill          - Kill existing processes on ports 3000 and 8000"
         echo "  setup-env     - Create .env file from .env.example template"
         echo "  help          - Show this help message"
+        echo ""
+        echo "Note: All startup commands automatically kill existing processes first"
         ;;
     *)
         echo -e "${RED}❌ Unknown command: $1${NC}"

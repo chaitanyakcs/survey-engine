@@ -8,6 +8,20 @@ import { rfqTemplateService } from '../services/RFQTemplateService';
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
 export const useAppStore = create<AppStore>((set, get) => ({
+  // Model Loading State
+  modelLoading: {
+    loading: false,
+    ready: false,
+    progress: 0,
+    estimatedSeconds: 0,
+    phase: 'connecting' as 'connecting' | 'loading' | 'finalizing' | 'ready' | 'error',
+    message: 'Initializing...'
+  },
+
+  setModelLoading: (state) => set((prev) => ({
+    modelLoading: { ...prev.modelLoading, ...state }
+  })),
+
   // RFQ Input State
   rfqInput: {
     title: '',

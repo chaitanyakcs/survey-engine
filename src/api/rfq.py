@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from src.database import get_db, RFQ, Survey
+from src.api.dependencies import require_models_ready
 from src.models.enhanced_rfq import (
     EnhancedRFQRequest,
     EnhancedRFQResponse,
@@ -837,7 +838,8 @@ async def analyze_text_for_rfq(
 @router.post("/preview-prompt", response_model=PromptPreviewResponse)
 async def preview_survey_generation_prompt(
     request: PromptPreviewRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_models_ready)
 ) -> PromptPreviewResponse:
     """
     Preview the survey generation prompt that would be used for the given RFQ data.

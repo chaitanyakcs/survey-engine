@@ -53,14 +53,7 @@ class SectionManager:
             "- Market research methodology design with 15+ years experience",
             "- Question design and survey optimization",
             "- Statistical analysis and data quality assurance",
-            "- Industry best practices and compliance standards",
-            "",
-            "## Core Design Principles:",
-            "- Prioritize data quality and respondent experience",
-            "- Design surveys that are clear, unbiased, and actionable",
-            "- Follow established research methodologies rigorously",
-            "- Ensure questions are specific, measurable, and relevant",
-            "- Maintain logical flow and appropriate question sequencing"
+            "- Industry best practices and compliance standards"
         ]
         return PromptSection("system_role", content, order=1)
 

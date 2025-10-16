@@ -11,9 +11,18 @@ import { LLMAuditViewer } from './components/LLMAuditViewer';
 import { AnnotationInsightsDashboard } from './components/AnnotationInsightsDashboard';
 import { ToastContainer } from './components/Toast';
 import { SidebarProvider } from './contexts/SidebarContext';
+import { useModelLoading } from './hooks/useModelLoading';
+import { setupApiInterceptor } from './utils/apiInterceptor';
+import ModelLoadingOverlay from './components/ModelLoadingOverlay';
 
 function App() {
   const { toasts, removeToast, currentSurvey, recoverWorkflowState, restoreDocumentProcessingState, restoreEnhancedRfqState, restoreGoldenExampleState } = useAppStore();
+  const { modelLoading } = useModelLoading();
+  
+  // Setup API interceptor for 425 responses
+  useEffect(() => {
+    setupApiInterceptor();
+  }, []);
   
   // Simple routing based on URL path
   const getCurrentPage = () => {
@@ -140,6 +149,14 @@ function App() {
           <SurveyGeneratorPage />
         )}
       </div>
+      
+      {/* Model Loading Overlay */}
+      <ModelLoadingOverlay 
+        isVisible={modelLoading.loading && !modelLoading.ready}
+        onReady={() => {
+          console.log('🎉 Models are ready!');
+        }}
+      />
     </SidebarProvider>
   );
 }

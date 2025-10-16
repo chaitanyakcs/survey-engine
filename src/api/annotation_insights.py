@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from src.database import get_db
+from src.api.dependencies import require_models_ready
 from src.services.annotation_insights_service import AnnotationInsightsService
 from src.utils.database_session_manager import DatabaseSessionManager
 from typing import Dict, Any
@@ -326,7 +327,8 @@ async def get_annotation_insights(db: Session = Depends(get_db)) -> Dict[str, An
 async def test_annotation_weighted_retrieval(
     rfq_text: str = Query(..., description="RFQ text to test retrieval"),
     limit: int = Query(5, description="Number of examples to retrieve"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_models_ready)
 ) -> Dict[str, Any]:
     """
     Test annotation-weighted golden example retrieval

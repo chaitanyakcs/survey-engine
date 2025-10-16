@@ -12,6 +12,7 @@ sys.path.append(str(Path(__file__).parent / "src"))
 
 from src.database import get_db, SurveyRule
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 import logging
 import json
 
@@ -462,6 +463,48 @@ async def seed_rules_to_database():
                 new_rules_count += 1
                 logger.info(f"Created new rule: {rule_type}/{category}")
         
+        # Seed generation rules (NEW)
+        logger.info("🌱 Seeding generation rules...")
+        from src.database.core_generation_rules import CORE_GENERATION_RULES
+        
+        # Clear existing AiRA v1 generation rules
+        db.execute(text("""
+            DELETE FROM survey_rules
+            WHERE rule_type = 'generation'
+            AND rule_content->>'source_framework' = 'aira_v1'
+        """))
+        
+        generation_rules_count = 0
+        # Insert generation rules
+        for rule_data in CORE_GENERATION_RULES:
+            db.execute(text("""
+                INSERT INTO survey_rules (
+                    id, rule_type, category, rule_name, rule_description,
+                    rule_content, is_active, priority, created_by, created_at
+                ) VALUES (
+                    gen_random_uuid(), 'generation', :category, :rule_name,
+                    :rule_description, :rule_content::jsonb, true,
+                    :priority, 'aira_v1_system', NOW()
+                )
+                ON CONFLICT (rule_description, category, rule_type) DO NOTHING
+            """), {
+                'category': rule_data['category'],
+                'rule_name': f"Core Quality: {rule_data['generation_guideline'][:80]}",
+                'rule_description': rule_data['generation_guideline'],
+                'rule_content': json.dumps({
+                    'generation_guideline': rule_data['generation_guideline'],
+                    'implementation_notes': rule_data['implementation_notes'],
+                    'quality_indicators': rule_data['quality_indicators'],
+                    'source_framework': 'aira_v1',
+                    'priority': rule_data['priority'],
+                    'weight': rule_data['weight']
+                }),
+                'priority': {'core': 1000, 'high': 800, 'medium': 600, 'low': 400}[rule_data['priority']]
+            })
+            generation_rules_count += 1
+        
+        logger.info(f"✅ Seeded {generation_rules_count} generation rules")
+        
         # Commit all changes
         db.commit()
         
@@ -471,7 +514,8 @@ async def seed_rules_to_database():
         print("\n📊 Rules Seeding Summary:")
         print(f"  • New rules created: {new_rules_count}")
         print(f"  • Existing rules updated: {updated_rules_count}")
-        print(f"  • Total rules processed: {len(rules_to_seed)}")
+        print(f"  • Generation rules seeded: {generation_rules_count}")
+        print(f"  • Total rules processed: {len(rules_to_seed) + generation_rules_count}")
         
         # Show some examples
         print("\n🔍 Example Methodology Rules:")

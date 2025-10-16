@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from sqlalchemy.orm import Session
 from src.database import get_db
+from src.api.dependencies import require_models_ready
 from src.services.golden_service import GoldenService
 from src.services.golden_state_service import GoldenStateService
 from src.services.document_parser import document_parser, DocumentParsingError
@@ -74,7 +75,8 @@ async def list_golden_pairs(
 @router.post("/", response_model=GoldenPairResponse)
 async def create_golden_pair(
     request: CreateGoldenPairRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_models_ready)
 ):
     """
     Add new golden standard (requires quality_score)
