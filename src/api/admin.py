@@ -1043,17 +1043,28 @@ async def _seed_generation_rules(db: Session):
             'weight': rule_data['weight']
         })
         
-        db.execute(text("""
-            INSERT INTO survey_rules (
-                id, rule_type, category, rule_name, rule_description,
-                rule_content, is_active, priority, created_by, created_at
-            ) VALUES (
-                gen_random_uuid(), 'generation', :category, :rule_name,
-                :rule_description, CAST(:rule_content AS jsonb), true,
-                :priority, 'aira_v1_system', NOW()
-            )
-            ON CONFLICT (rule_description, category, rule_type) DO NOTHING
+        # Check if rule already exists
+        existing = db.execute(text("""
+            SELECT id FROM survey_rules 
+            WHERE rule_type = 'generation' 
+            AND category = :category 
+            AND rule_description = :rule_description
         """), {
+            'category': rule_data['category'],
+            'rule_description': rule_data['generation_guideline']
+        }).fetchone()
+        
+        if not existing:
+            db.execute(text("""
+                INSERT INTO survey_rules (
+                    id, rule_type, category, rule_name, rule_description,
+                    rule_content, is_active, priority, created_by, created_at
+                ) VALUES (
+                    gen_random_uuid(), 'generation', :category, :rule_name,
+                    :rule_description, CAST(:rule_content AS jsonb), true,
+                    :priority, 'aira_v1_system', NOW()
+                )
+            """), {
             'category': rule_data['category'],
             'rule_name': f"Core Quality: {rule_data['generation_guideline'][:80]}",
             'rule_description': rule_data['generation_guideline'],
