@@ -241,7 +241,7 @@ start_application() {
         
         # Start FastAPI in background
         echo -e "${YELLOW}🔄 Starting FastAPI server...${NC}"
-        REPLICATE_API_TOKEN="$REPLICATE_API_TOKEN" DATABASE_URL="$DATABASE_URL" uvicorn src.main:app --host 0.0.0.0 --port 8000 &
+        REPLICATE_API_TOKEN="$REPLICATE_API_TOKEN" DATABASE_URL="$DATABASE_URL" uv run uvicorn src.main:app --host 0.0.0.0 --port 8000 &
         FASTAPI_PID=$!
         
         # Wait for FastAPI to be ready
