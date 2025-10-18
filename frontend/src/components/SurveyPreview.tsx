@@ -1104,8 +1104,42 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
     }
   };
 
-  const handleExportPDF = () => {
-    alert('PDF export functionality is not yet implemented');
+  const handleExportPDF = async () => {
+    if (!surveyToDisplay) {
+      console.error('No survey data available for export');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/v1/export/survey', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          survey_data: surveyToDisplay,
+          format: 'docx',
+          filename: `survey-${surveyToDisplay.survey_id}.docx`
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to export document');
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `survey-${surveyToDisplay.survey_id}.docx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exporting document:', error);
+      alert('Failed to export document');
+    }
   };
 
   const handleExportDOCX = async () => {
@@ -1878,7 +1912,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
               onClick={handleExportPDF}
               className="w-full text-left text-red-600 hover:text-red-800 font-medium text-sm"
             >
-              PDF Download PDF
+              PDF Download DOCX (PDF coming soon)
             </button>
             <button
               onClick={handleExportDOCX}
@@ -1888,12 +1922,10 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
             </button>
           </div>
         </div>
-        </div>
-      )}
 
         {/* AI Evaluation Analysis Section */}
         {surveyToDisplay?.pillar_scores && (
-          <div className="flex-1 p-4">
+          <div className="p-4">
             <div className="bg-white rounded-lg border border-gray-200 p-4">
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
@@ -2003,6 +2035,8 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
             </div>
           </div>
         )}
+        </div>
+      )}
 
         {/* Annotation Pane - Show when annotation mode is active OR when there's an active annotation pane */}
         {(() => {
