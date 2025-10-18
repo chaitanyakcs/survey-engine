@@ -14,7 +14,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 DB_MIGRATIONS_DIR="migrations"
-SEED_SCRIPT="seed_rules.py"
+# Rules are seeded via migrations, no separate seeding needed
 APP_PORT=${PORT:-8080}
 FASTAPI_PORT=${FASTAPI_PORT:-8000}
 
@@ -212,18 +212,8 @@ run_migrations() {
 
 # Function to seed the database
 seed_database() {
-    echo -e "${YELLOW}🌱 Seeding database with rules...${NC}"
-    
-    if [ -f "$SEED_SCRIPT" ]; then
-        if DATABASE_URL="$DATABASE_URL" uv run python3 "$SEED_SCRIPT"; then
-            echo -e "${GREEN}✅ Database seeding completed${NC}"
-        else
-            echo -e "${RED}❌ Database seeding failed${NC}"
-            exit 1
-        fi
-    else
-        echo -e "${YELLOW}⚠️  Seed script not found, skipping seeding${NC}"
-    fi
+    echo -e "${GREEN}✅ Rules are managed via database migrations${NC}"
+    echo -e "${BLUE}💡 No separate seeding needed - migrations handle rule creation${NC}"
 }
 
 # Function to start the application

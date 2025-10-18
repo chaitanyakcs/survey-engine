@@ -35,11 +35,19 @@ class APIService {
       confidence_score: backendResponse.golden_similarity_score || 0.8,
       methodologies: backendResponse.final_output?.methodologies || [],
       golden_examples: backendResponse.final_output?.golden_examples || [],
-      questions: (backendResponse.final_output?.questions || []).sort((a: any, b: any) => (a.order || 0) - (b.order || 0)),
+      questions: (backendResponse.final_output?.questions || []).map((question: any) => ({
+        ...question,
+        // Preserve labels field from backend
+        labels: question.labels || question.metadata?.labels || []
+      })).sort((a: any, b: any) => (a.order || 0) - (b.order || 0)),
       sections: (backendResponse.final_output?.sections || []).map((section: any, index: number) => ({
         ...section,
         order: section.order || index + 1, // Ensure each section has an order field
-        questions: (section.questions || []).sort((a: any, b: any) => (a.order || 0) - (b.order || 0)) // Sort questions by order
+        questions: (section.questions || []).map((question: any) => ({
+          ...question,
+          // Preserve labels field from backend
+          labels: question.labels || question.metadata?.labels || []
+        })).sort((a: any, b: any) => (a.order || 0) - (b.order || 0)) // Sort questions by order
       })).sort((a: any, b: any) => (a.order || 0) - (b.order || 0)), // Include sections, sorted by order
       pillar_scores: backendResponse.pillar_scores || null, // Use cached pillar scores if available
       metadata: {

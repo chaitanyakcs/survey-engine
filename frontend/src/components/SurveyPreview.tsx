@@ -107,6 +107,19 @@ const QuestionCard: React.FC<{
               Annotated
             </span>
           )}
+          {/* Display auto-detected labels */}
+          {question.labels && question.labels.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {question.labels.map((label, index) => (
+                <span 
+                  key={index}
+                  className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                >
+                  {label}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         
         <div className="flex items-center space-x-2">
@@ -1464,6 +1477,8 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
   };
 
   const openQuestionAnnotation = (question: Question) => {
+    console.log('🔍 [SurveyPreview] openQuestionAnnotation called with question:', question);
+    console.log('🔍 [SurveyPreview] Question labels:', question.labels);
     openAnnotationPane('question', question);
   };
 
@@ -1474,6 +1489,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
 
   const handleQuestionAnnotation = async (annotation: QuestionAnnotation) => {
     console.log('🔄 [SurveyPreview] handleQuestionAnnotation called with:', annotation);
+    console.log('🔍 [SurveyPreview] Annotation removedLabels field:', annotation.removedLabels);
     
     let updatedAnnotations: SurveyAnnotations;
     
@@ -1692,8 +1708,8 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
 
       {/* Main Content */}
       <div className={`flex ${hideHeader ? 'flex-1 min-h-0' : 'flex-1'}`}>
-          {/* Left Panel - Survey Content */}
-          <div className={`${hideRightPanel ? 'w-full' : (isAnnotationMode || annotationPane.type) ? 'w-[45%]' : 'w-[75%]'} overflow-y-auto`}>
+        {/* Left Panel - Survey Content */}
+        <div className={`${hideRightPanel ? 'w-full' : (isAnnotationMode || annotationPane.type) ? 'w-[45%]' : 'w-[75%]'} overflow-y-auto`}>
         <div className="p-6">
           <div className="space-y-8">
             {/* Annotation Mode Instructions */}
@@ -1872,6 +1888,8 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
             </button>
           </div>
         </div>
+        </div>
+      )}
 
         {/* AI Evaluation Analysis Section */}
         {surveyToDisplay?.pillar_scores && (
@@ -1987,11 +2005,24 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
         )}
 
         {/* Annotation Pane - Show when annotation mode is active OR when there's an active annotation pane */}
-        {(isAnnotationMode || annotationPane.type) && (
+        {(() => {
+          const shouldShow = isAnnotationMode || annotationPane.type;
+          console.log('🔍 [SurveyPreview] Annotation pane condition:', {
+            isAnnotationMode,
+            annotationPaneType: annotationPane.type,
+            shouldShow,
+            annotationTarget: annotationPane.target
+          });
+          return shouldShow;
+        })() && (
           <div className="w-[55%]">
             <AnnotationSidePane
               annotationType={annotationPane.type}
-              annotationTarget={annotationPane.target}
+              annotationTarget={(() => {
+                console.log('🔍 [SurveyPreview] Passing annotationTarget to AnnotationSidePane:', annotationPane.target);
+                console.log('🔍 [SurveyPreview] Question labels:', annotationPane.target?.labels);
+                return annotationPane.target;
+              })()}
               currentAnnotations={currentAnnotations}
               onQuestionAnnotation={handleQuestionAnnotation}
               onSectionAnnotation={handleSectionAnnotation}
@@ -1999,8 +2030,6 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
             />
           </div>
         )}
-      </div>
-      )}
       </div>
     </div>
   );

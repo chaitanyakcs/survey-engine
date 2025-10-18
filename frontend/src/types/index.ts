@@ -370,6 +370,7 @@ export interface Question {
   ai_rationale?: string;
   description?: string; // For additional context, especially useful for instructions
   label?: string; // For programming notes and other labels
+  labels?: string[]; // Array of auto-detected labels for categorization
   order?: number; // Order within section or survey
 }
 
@@ -727,6 +728,7 @@ export interface QuestionAnnotation {
   };
   comment?: string;
   labels?: string[];
+  removedLabels?: string[]; // Track auto-generated labels that user explicitly removed
   annotatorId?: string;
   timestamp?: string;
   

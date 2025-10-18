@@ -133,13 +133,21 @@ export const SurveysPage: React.FC = () => {
         sections = surveyData.final_output.sections.map((section: any, index: number) => ({
           ...section,
           order: section.order || index + 1,
-          questions: (section.questions || []).sort((a: any, b: any) => (a.order || 0) - (b.order || 0))
+          questions: (section.questions || []).map((question: any) => ({
+            ...question,
+            // Preserve labels field from backend
+            labels: question.labels || question.metadata?.labels || []
+          })).sort((a: any, b: any) => (a.order || 0) - (b.order || 0))
         })).sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
         extractedQuestions = sections.flatMap((section: any) => section.questions || []);
         console.log('📋 [Survey View] Using sections format - sections:', sections.length, 'questions:', extractedQuestions.length);
       } else if (surveyData.final_output?.questions && surveyData.final_output.questions.length > 0) {
         // Legacy questions format
-        extractedQuestions = (surveyData.final_output.questions || []).sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
+        extractedQuestions = (surveyData.final_output.questions || []).map((question: any) => ({
+          ...question,
+          // Preserve labels field from backend
+          labels: question.labels || question.metadata?.labels || []
+        })).sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
         console.log('📋 [Survey View] Using legacy questions format - questions:', extractedQuestions.length);
       } else if (surveyData.raw_output?.sections && surveyData.raw_output.sections.length > 0) {
         // Fallback to raw_output sections

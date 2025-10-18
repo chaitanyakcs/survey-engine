@@ -760,6 +760,26 @@ class ValidatorAgent:
                     "quality_gate_passed": False
                 }
 
+            # Check evaluation settings to determine validation mode
+            try:
+                from src.services.settings_service import SettingsService
+                from src.database import get_db
+                
+                fresh_db = next(get_db())
+                settings_service = SettingsService(fresh_db)
+                evaluation_settings = settings_service.get_evaluation_settings()
+                enable_llm_evaluation = evaluation_settings.get('enable_llm_evaluation', True)
+                fresh_db.close()
+                
+                if not enable_llm_evaluation:
+                    self.logger.info("⏭️ [ValidatorAgent] LLM evaluation disabled, running basic validation only")
+                    return await self._run_basic_validation(state)
+                else:
+                    self.logger.info("✅ [ValidatorAgent] LLM evaluation enabled, running full evaluation")
+            except Exception as e:
+                self.logger.warning(f"⚠️ [ValidatorAgent] Could not check evaluation settings: {e}, defaulting to full evaluation")
+                # Continue with full evaluation if settings check fails
+
             # Check if this is a failed survey that should skip evaluation
             is_failed_survey = state.generated_survey.get('metadata', {}).get('generation_failed', False)
             skip_evaluation = state.generated_survey.get('metadata', {}).get('skip_evaluation', False)
@@ -886,4 +906,91 @@ class ValidatorAgent:
                 "error_message": f"Survey evaluation failed: {str(e)}",
                 "pillar_scores": {},
                 "quality_gate_passed": False
+            }
+
+    async def _run_basic_validation(self, state: SurveyGenerationState) -> Dict[str, Any]:
+        """
+        Run basic structural validation without LLM calls when LLM evaluation is disabled
+        """
+        try:
+            self.logger.info("🔧 [ValidatorAgent] Running basic structural validation...")
+            
+            survey = state.generated_survey
+            sections = survey.get('sections', [])
+            total_questions = 0
+            
+            # Basic structural checks
+            validation_results = {
+                "schema_valid": True,
+                "methodology_compliant": True,
+                "basic_checks_passed": True
+            }
+            
+            # Check if survey has sections
+            if not sections:
+                self.logger.warning("⚠️ [ValidatorAgent] No sections found in survey")
+                validation_results["schema_valid"] = False
+                validation_results["basic_checks_passed"] = False
+            
+            # Count questions and check basic structure
+            for section in sections:
+                questions = section.get('questions', [])
+                total_questions += len(questions)
+                
+                # Check if section has questions
+                if not questions:
+                    self.logger.warning(f"⚠️ [ValidatorAgent] Section '{section.get('id', 'unknown')}' has no questions")
+                    validation_results["basic_checks_passed"] = False
+                
+                # Basic question structure validation
+                for question in questions:
+                    if not question.get('text'):
+                        self.logger.warning("⚠️ [ValidatorAgent] Question missing text")
+                        validation_results["basic_checks_passed"] = False
+                    
+                    if not question.get('type'):
+                        self.logger.warning("⚠️ [ValidatorAgent] Question missing type")
+                        validation_results["basic_checks_passed"] = False
+            
+            # Check minimum question count
+            if total_questions < 1:
+                self.logger.warning("⚠️ [ValidatorAgent] Survey has no questions")
+                validation_results["basic_checks_passed"] = False
+            
+            # Create minimal pillar scores for basic validation
+            pillar_scores = {
+                "content_validity": 0.8 if validation_results["basic_checks_passed"] else 0.3,
+                "methodological_rigor": 0.7 if validation_results["basic_checks_passed"] else 0.3,
+                "respondent_experience": 0.8 if validation_results["basic_checks_passed"] else 0.3,
+                "analytical_value": 0.7 if validation_results["basic_checks_passed"] else 0.3,
+                "business_impact": 0.7 if validation_results["basic_checks_passed"] else 0.3,
+                "weighted_score": 0.74 if validation_results["basic_checks_passed"] else 0.3
+            }
+            
+            # Quality gate: basic validation passes if structural checks pass
+            quality_gate_passed = validation_results["basic_checks_passed"]
+            
+            self.logger.info(f"✅ [ValidatorAgent] Basic validation completed - Quality gate: {'PASSED' if quality_gate_passed else 'FAILED'}")
+            self.logger.info(f"📊 [ValidatorAgent] Survey has {total_questions} questions across {len(sections)} sections")
+            
+            return {
+                "pillar_scores": pillar_scores,
+                "quality_gate_passed": quality_gate_passed,
+                "validation_results": validation_results,
+                "retry_count": state.retry_count,
+                "workflow_should_continue": True,
+                "error_message": None,
+                "evaluation_mode": "basic"
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ [ValidatorAgent] Basic validation failed: {str(e)}", exc_info=True)
+            return {
+                "error_message": f"Basic validation failed: {str(e)}",
+                "pillar_scores": {},
+                "quality_gate_passed": False,
+                "validation_results": {"schema_valid": False, "methodology_compliant": False},
+                "retry_count": state.retry_count,
+                "workflow_should_continue": True,
+                "evaluation_mode": "basic"
             }

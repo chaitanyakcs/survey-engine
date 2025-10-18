@@ -1027,6 +1027,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
             business_impact: qa.pillars.businessImpact,
             comment: qa.comment,
             labels: qa.labels,
+            removed_labels: qa.removedLabels,
             annotator_id: qa.annotatorId || "current-user"
           };
         }),
@@ -1088,12 +1089,24 @@ export const useAppStore = create<AppStore>((set, get) => ({
       
       console.log('🔍 [saveAnnotations] Question annotations details:', transformedRequest.question_annotations.map(qa => ({
         question_id: qa.question_id,
+        labels: qa.labels,
+        removed_labels: qa.removed_labels,
         methodological_rigor: qa.methodological_rigor,
         content_validity: qa.content_validity,
         respondent_experience: qa.respondent_experience,
         analytical_value: qa.analytical_value,
         business_impact: qa.business_impact
       })));
+      
+      // Debug: Check if removed_labels is present in the request
+      const hasRemovedLabels = transformedRequest.question_annotations.some(qa => 
+        qa.hasOwnProperty('removed_labels')
+      );
+      console.log('🔍 [saveAnnotations] Has removed_labels field:', hasRemovedLabels);
+      
+      if (!hasRemovedLabels) {
+        console.log('❌ [saveAnnotations] WARNING: No removed_labels field found in request!');
+      }
       console.log('🔍 [saveAnnotations] Response status:', response.status);
       
       if (!response.ok) {
@@ -1182,6 +1195,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
                 businessImpact: qa.business_impact,
               },
               comment: qa.comment,
+              labels: qa.labels || [], // Include labels field
+              removedLabels: qa.removed_labels || [], // Include removed labels field
               annotatorId: qa.annotator_id,
               timestamp: qa.created_at,
               // AI annotation fields
@@ -1225,6 +1240,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
               businessImpact: sa.business_impact,
             },
             comment: sa.comment,
+            labels: sa.labels || [], // Include labels field
             annotatorId: sa.annotator_id,
             timestamp: sa.created_at,
             // Advanced labeling fields
@@ -1337,6 +1353,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
       throw error;
     }
   },
+
+
 
   // Advanced Labeling Actions
   applyAdvancedLabeling: async (surveyId: string) => {

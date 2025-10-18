@@ -130,18 +130,8 @@ run_migrations() {
 seed_database() {
     echo -e "${YELLOW}🌱 Seeding database...${NC}"
     
-    if $COMPOSE_CMD exec backend python3 seed_rules.py; then
-        echo -e "${GREEN}✅ Database seeding completed${NC}"
-    else
-        echo -e "${YELLOW}⚠️  Seeding failed, trying alternative approach...${NC}"
-        if $COMPOSE_CMD run --rm backend python3 seed_rules.py; then
-            echo -e "${GREEN}✅ Database seeding completed (alternative method)${NC}"
-        else
-            echo -e "${RED}❌ Database seeding failed${NC}"
-            echo -e "${YELLOW}You may need to seed manually:${NC}"
-            echo -e "${CYAN}  $COMPOSE_CMD exec backend python3 seed_rules.py${NC}"
-        fi
-    fi
+    echo -e "${GREEN}✅ Rules are managed via database migrations${NC}"
+    echo -e "${BLUE}💡 No separate seeding needed - migrations handle rule creation${NC}"
 }
 
 # Function to show service status and URLs

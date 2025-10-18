@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { TagIcon } from '@heroicons/react/24/outline';
 import { QuestionAnnotation, SectionAnnotation, SurveyLevelAnnotation } from '../types';
 import QuestionAnnotationPanel from './QuestionAnnotationPanel';
@@ -22,14 +22,34 @@ export const AnnotationSidePane: React.FC<AnnotationSidePaneProps> = ({
   onSectionAnnotation,
   onSurveyLevelAnnotation
 }) => {
+  // Log when props change to track data flow
+  useEffect(() => {
+    console.log('🔍 [AnnotationSidePane] Props changed:', {
+      annotationType,
+      annotationTargetId: annotationTarget?.id || annotationTarget?.question_id,
+      annotationTargetLabels: annotationTarget?.labels,
+      hasCurrentAnnotations: !!currentAnnotations
+    });
+  }, [annotationType, annotationTarget, currentAnnotations]);
+
   const getAnnotationData = () => {
     if (!annotationTarget) return null;
 
     switch (annotationType) {
       case 'question':
-        return currentAnnotations?.questionAnnotations?.find(
+        console.log('🔍 [AnnotationSidePane] Looking for annotation for question:', {
+          questionId: annotationTarget.id,
+          questionLabels: annotationTarget.labels,
+          availableAnnotations: currentAnnotations?.questionAnnotations?.map((qa: QuestionAnnotation) => qa.questionId)
+        });
+        const foundAnnotation = currentAnnotations?.questionAnnotations?.find(
           (qa: QuestionAnnotation) => qa.questionId === annotationTarget.id
         );
+        console.log('🔍 [AnnotationSidePane] Found annotation:', {
+          found: !!foundAnnotation,
+          annotationLabels: foundAnnotation?.labels
+        });
+        return foundAnnotation;
       case 'section':
         return currentAnnotations?.sectionAnnotations?.find(
           (sa: SectionAnnotation) => sa.sectionId === String(annotationTarget.id)
@@ -72,7 +92,15 @@ export const AnnotationSidePane: React.FC<AnnotationSidePaneProps> = ({
   };
 
   const renderAnnotationContent = () => {
+    console.log('🔍 [AnnotationSidePane] renderAnnotationContent called with:', {
+      annotationTarget,
+      annotationType,
+      hasAnnotationTarget: !!annotationTarget,
+      hasAnnotationType: !!annotationType
+    });
+    
     if (!annotationTarget || !annotationType) {
+      console.log('🔍 [AnnotationSidePane] No annotation target or type, showing placeholder');
       return (
         <div className="flex items-center justify-center h-full">
           <div className="text-center">
@@ -85,9 +113,15 @@ export const AnnotationSidePane: React.FC<AnnotationSidePaneProps> = ({
     }
 
     const annotation = getAnnotationData();
+    console.log('🔍 [AnnotationSidePane] getAnnotationData() returned:', annotation);
 
     switch (annotationType) {
       case 'question':
+        console.log('🔍 [AnnotationSidePane] Rendering QuestionAnnotationPanel with:', {
+          question: annotationTarget,
+          annotation: annotation,
+          questionLabels: annotationTarget?.labels
+        });
         return (
           <QuestionAnnotationPanel
             question={annotationTarget}

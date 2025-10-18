@@ -352,14 +352,16 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     workflow.add_edge("parse_rfq", "retrieve_golden")
     workflow.add_edge("retrieve_golden", "build_context")
     workflow.add_edge("build_context", "prompt_review")
+    workflow.add_edge("generate", "detect_labels")  # Always run label detection after generation
     workflow.add_edge("detect_labels", "validate")
-    # Conditional edge to check if LLM evaluation should be skipped
-    def should_skip_validation(state: SurveyGenerationState) -> str:
+    
+    # Conditional edge to check if LLM validation should be skipped
+    def should_run_llm_validation(state: SurveyGenerationState) -> str:
         """
-        Check if validation should be skipped based on settings or generation errors
+        Check if LLM-based validation should be run based on settings or generation errors
         """
         try:
-            logger.info(f"🔍 [Workflow] should_skip_validation called - error_message: {state.error_message}, generated_survey: {bool(state.generated_survey)}")
+            logger.info(f"🔍 [Workflow] should_run_llm_validation called - error_message: {state.error_message}, generated_survey: {bool(state.generated_survey)}")
             
             # First check if generation failed - if so, skip validation
             if state.error_message:
@@ -382,22 +384,22 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
             enable_llm_evaluation = evaluation_settings.get('enable_llm_evaluation', True)
             
             if not enable_llm_evaluation:
-                logger.info(f"⏭️ [Workflow] LLM evaluation disabled, skipping validation step")
-                return "completion_handler"
+                logger.info(f"⏭️ [Workflow] LLM evaluation disabled, running basic validation only")
+                return "validate"  # Still run validation but with basic mode
             else:
-                logger.info(f"✅ [Workflow] LLM evaluation enabled, proceeding to label detection")
-                return "detect_labels"
+                logger.info(f"✅ [Workflow] LLM evaluation enabled, running full validation")
+                return "validate"
         except Exception as e:
             logger.error(f"❌ [Workflow] Error checking evaluation settings: {e}")
-            # Default to label detection if there's an error
-            return "detect_labels"
+            # Default to validation if there's an error
+            return "validate"
 
     # Add conditional edge to check if validation should be skipped
     workflow.add_conditional_edges(
-        "generate",
-        should_skip_validation,
+        "detect_labels",
+        should_run_llm_validation,
         {
-            "detect_labels": "detect_labels",
+            "validate": "validate",
             "completion_handler": "completion_handler"
         }
     )

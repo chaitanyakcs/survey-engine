@@ -36,6 +36,52 @@ async def admin_health_check(db: Session = Depends(get_db)):
         }
 
 
+@router.get("/debug/check-removed-labels-column")
+async def check_removed_labels_column(db: Session = Depends(get_db)):
+    """Debug endpoint to check if removed_labels column exists"""
+    try:
+        # Check if the column exists
+        result = db.execute(text("""
+            SELECT column_name, data_type 
+            FROM information_schema.columns 
+            WHERE table_name = 'question_annotations' 
+            AND column_name = 'removed_labels'
+        """)).fetchone()
+        
+        if result:
+            # Also check actual data in the table
+            data_result = db.execute(text("""
+                SELECT question_id, labels, removed_labels 
+                FROM question_annotations 
+                WHERE survey_id = '2' 
+                ORDER BY created_at DESC 
+                LIMIT 3
+            """)).fetchall()
+            
+            return {
+                "column_exists": True,
+                "column_name": result[0],
+                "data_type": result[1],
+                "sample_data": [
+                    {
+                        "question_id": row[0],
+                        "labels": row[1],
+                        "removed_labels": row[2]
+                    } for row in data_result
+                ]
+            }
+        else:
+            return {
+                "column_exists": False,
+                "message": "removed_labels column not found in question_annotations table"
+            }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "column_exists": False
+        }
+
+
 @router.get("/ready")
 async def readiness_check():
     """
@@ -114,7 +160,22 @@ async def migrate_all(db: Session = Depends(get_db)):
                 "message": f"Core tables migration failed: {str(e)}"
             })
         
-        # Step 2: AI annotation fields
+        # Step 2: Add removed_labels column
+        try:
+            await _migrate_removed_labels_column(db)
+            migration_results.append({
+                "step": "removed_labels_column",
+                "status": "success", 
+                "message": "Removed labels column migration completed"
+            })
+        except Exception as e:
+            migration_results.append({
+                "step": "removed_labels_column",
+                "status": "failed",
+                "message": f"Removed labels column migration failed: {str(e)}"
+            })
+        
+        # Step 3: AI annotation fields
         try:
             await _migrate_ai_annotation_fields(db)
             migration_results.append({
@@ -129,7 +190,7 @@ async def migrate_all(db: Session = Depends(get_db)):
                 "message": f"AI annotation fields migration failed: {str(e)}"
             })
         
-        # Step 3: Human override tracking
+        # Step 4: Human override tracking
         try:
             await _migrate_human_override_tracking(db)
             migration_results.append({
@@ -298,6 +359,7 @@ async def _migrate_core_tables(db: Session):
             analytical_value INTEGER NOT NULL DEFAULT 3 CHECK (analytical_value >= 1 AND analytical_value <= 5),
             business_impact INTEGER NOT NULL DEFAULT 3 CHECK (business_impact >= 1 AND business_impact <= 5),
             labels JSONB,
+            removed_labels JSONB,
             UNIQUE(question_id, annotator_id)
         )
     """))
@@ -348,6 +410,28 @@ async def _migrate_core_tables(db: Session):
     
     db.commit()
     logger.info("✅ Core tables migration completed")
+
+
+async def _migrate_removed_labels_column(db: Session):
+    """
+    Add removed_labels column to question_annotations table
+    """
+    logger.info("🏷️ Adding removed_labels column...")
+    
+    # Add removed_labels column to question_annotations
+    db.execute(text("""
+        ALTER TABLE question_annotations 
+        ADD COLUMN IF NOT EXISTS removed_labels JSONB
+    """))
+    
+    # Add comment for documentation
+    db.execute(text("""
+        COMMENT ON COLUMN question_annotations.removed_labels IS 
+        'Array of auto-generated labels that the user has explicitly removed from this annotation'
+    """))
+    
+    db.commit()
+    logger.info("✅ Removed labels column migration completed")
 
 
 async def _migrate_ai_annotation_fields(db: Session):

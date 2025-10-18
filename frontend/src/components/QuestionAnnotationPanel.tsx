@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   QuestionAnnotation,
   Question
@@ -23,75 +23,124 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
   onSave,
   onCancel
 }) => {
+  console.log('🚀 [QuestionAnnotationPanel] NEW VERSION LOADED - No more infinite loops!');
+  
   const [isVerifying, setIsVerifying] = useState(false);
   const [isVerified, setIsVerified] = useState(annotation?.humanVerified || false);
 
-  const [formData, setFormData] = useState<QuestionAnnotation>({
-    questionId: question.id,
-    required: annotation?.required ?? true,
-    quality: annotation?.quality ?? 3,
-    relevant: annotation?.relevant ?? 3,
-    pillars: {
-      methodologicalRigor: annotation?.pillars?.methodologicalRigor ?? 3,
-      contentValidity: annotation?.pillars?.contentValidity ?? 3,
-      respondentExperience: annotation?.pillars?.respondentExperience ?? 3,
-      analyticalValue: annotation?.pillars?.analyticalValue ?? 3,
-      businessImpact: annotation?.pillars?.businessImpact ?? 3,
-    },
-    comment: annotation?.comment ?? '',
-    labels: annotation?.labels ?? [],
-    timestamp: new Date().toISOString()
+  // Single state object for all form data - no circular dependencies
+  const [formData, setFormData] = useState<QuestionAnnotation>(() => {
+    const questionLabels = question.labels || [];
+    const annotationLabels = annotation?.labels || [];
+    const removedLabels = new Set(annotation?.removedLabels || []);
+    
+    // Merge labels: question labels + annotation labels - removed labels
+    const mergedLabels = [...questionLabels, ...annotationLabels]
+      .filter((label, index, arr) => arr.indexOf(label) === index) // Remove duplicates
+      .filter(label => !removedLabels.has(label)); // Remove user-removed labels
+    
+    return {
+      questionId: question.id,
+      required: annotation?.required ?? true,
+      quality: annotation?.quality ?? 3,
+      relevant: annotation?.relevant ?? 3,
+      pillars: {
+        methodologicalRigor: annotation?.pillars?.methodologicalRigor ?? 3,
+        contentValidity: annotation?.pillars?.contentValidity ?? 3,
+        respondentExperience: annotation?.pillars?.respondentExperience ?? 3,
+        analyticalValue: annotation?.pillars?.analyticalValue ?? 3,
+        businessImpact: annotation?.pillars?.businessImpact ?? 3,
+      },
+      comment: annotation?.comment ?? '',
+      labels: mergedLabels,
+      removedLabels: Array.from(removedLabels),
+      timestamp: new Date().toISOString()
+    };
   });
 
+  // Track if we've initialized for this question
+  const [initializedForQuestion, setInitializedForQuestion] = useState<string | null>(null);
 
-  // Update form data when question or annotation changes (but not when we're in the middle of editing)
+  // Initialize form data when question changes - only once per question
   useEffect(() => {
-    // Only update if the annotation has actually changed and we're not currently editing
-    if (annotation && annotation.timestamp !== formData.timestamp) {
-      setFormData({
-        questionId: question.id,
-        required: annotation?.required ?? true,
-        quality: annotation?.quality ?? 3,
-        relevant: annotation?.relevant ?? 3,
-        pillars: {
-          methodologicalRigor: annotation?.pillars?.methodologicalRigor ?? 3,
-          contentValidity: annotation?.pillars?.contentValidity ?? 3,
-          respondentExperience: annotation?.pillars?.respondentExperience ?? 3,
-          analyticalValue: annotation?.pillars?.analyticalValue ?? 3,
-          businessImpact: annotation?.pillars?.businessImpact ?? 3,
-        },
-        comment: annotation?.comment ?? '',
-        labels: annotation?.labels ?? [],
-        timestamp: new Date().toISOString()
-      });
-      setIsVerified(annotation?.humanVerified || false);
+    if (initializedForQuestion === question.id) {
+      return; // Already initialized for this question
     }
-  }, [question.id, annotation, formData.timestamp]);
 
-  const updateField = (field: keyof QuestionAnnotation, value: any) => {
-    const newFormData = { ...formData, [field]: value };
-    setFormData(newFormData);
+    console.log('🔍 [QuestionAnnotationPanel] Initializing for question:', question.id);
+
+    const questionLabels = question.labels || [];
+    const annotationLabels = annotation?.labels || [];
+    const removedLabels = new Set(annotation?.removedLabels || []);
     
-    // Auto-save on ALL field changes in annotation mode
-    console.log('🔄 [QuestionAnnotationPanel] Field changed, saving immediately...', { field, value });
+    // Merge labels: question labels + annotation labels - removed labels
+    const mergedLabels = [...questionLabels, ...annotationLabels]
+      .filter((label, index, arr) => arr.indexOf(label) === index) // Remove duplicates
+      .filter(label => !removedLabels.has(label)); // Remove user-removed labels
+
+    setFormData({
+      questionId: question.id,
+      required: annotation?.required ?? true,
+      quality: annotation?.quality ?? 3,
+      relevant: annotation?.relevant ?? 3,
+      pillars: {
+        methodologicalRigor: annotation?.pillars?.methodologicalRigor ?? 3,
+        contentValidity: annotation?.pillars?.contentValidity ?? 3,
+        respondentExperience: annotation?.pillars?.respondentExperience ?? 3,
+        analyticalValue: annotation?.pillars?.analyticalValue ?? 3,
+        businessImpact: annotation?.pillars?.businessImpact ?? 3,
+      },
+      comment: annotation?.comment ?? '',
+      labels: mergedLabels,
+      removedLabels: Array.from(removedLabels),
+      timestamp: new Date().toISOString()
+    });
     
+    setIsVerified(annotation?.humanVerified || false);
+    setInitializedForQuestion(question.id);
+    
+    console.log('✅ [QuestionAnnotationPanel] Initialized with labels:', mergedLabels);
+  }, [question.id, annotation?.questionId, annotation?.removedLabels]);
+
+  // Calculate current merged labels on-demand - no useMemo circular dependency
+  const getCurrentMergedLabels = useCallback(() => {
+    const questionLabels = question.labels || [];
+    const currentLabels = formData.labels || [];
+    const removedLabels = new Set(formData.removedLabels || []);
+    
+    // Start with question labels (auto-generated)
+    let merged = [...questionLabels];
+    
+        // Add any user-defined labels that aren't already in question labels
+        currentLabels.forEach((label: string) => {
+          if (!questionLabels.includes(label) && !merged.includes(label)) {
+            merged.push(label);
+          }
+        });
+        
+        // Remove any labels that are in the removed set
+        merged = merged.filter((label: string) => !removedLabels.has(label));
+    
+    return merged;
+  }, [question.labels, formData.labels, formData.removedLabels]);
+
+  // Use ref to track current form data for saving
+  const formDataRef = useRef<QuestionAnnotation>(formData);
+  
+  // Update ref when form data changes
+  useEffect(() => {
+    formDataRef.current = formData;
+  }, [formData]);
+
+  // Save handler - uses ref to avoid circular dependencies
+  const handleSave = useCallback(() => {
     const annotationToSave: QuestionAnnotation = {
-      ...newFormData,
+      ...formDataRef.current,
       questionId: question.id,
       timestamp: new Date().toISOString()
     };
     
     console.log('🔄 [QuestionAnnotationPanel] Saving annotation:', annotationToSave);
-    
-    // Special logging for q1 changes
-    if (question.id === 'q1') {
-      console.log('🎯 [QuestionAnnotationPanel] Q1 CHANGES DETECTED:', {
-        questionId: question.id,
-        field,
-        value,
-        fullAnnotation: annotationToSave
-      });
-    }
     
     try {
       onSave(annotationToSave);
@@ -99,294 +148,316 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
     } catch (error) {
       console.error('❌ [QuestionAnnotationPanel] Failed to save annotation:', error);
     }
+  }, [question.id, onSave]);
+
+  // Update field handler - no circular dependencies
+  const updateField = useCallback((field: keyof QuestionAnnotation, value: any) => {
+    console.log('🔄 [QuestionAnnotationPanel] Field changed:', { field, value });
+    
+    setFormData(prev => {
+      const newFormData = { ...prev, [field]: value };
+      
+      // If labels field is updated, recalculate merged labels
+      if (field === 'labels') {
+        const questionLabels = question.labels || [];
+        const newLabels = value || [];
+        const removedLabels = new Set(prev.removedLabels || []);
+        
+        // Calculate what was removed and what was added back
+        const previousLabels = prev.labels || [];
+        const removed = previousLabels.filter((label: string) => !newLabels.includes(label));
+        const addedBack = newLabels.filter((label: string) => !previousLabels.includes(label));
+        
+        // Update removed labels
+        const newRemovedLabels = new Set(removedLabels);
+        removed.forEach((label: string) => newRemovedLabels.add(label));
+        addedBack.forEach((label: string) => newRemovedLabels.delete(label));
+        
+        newFormData.removedLabels = Array.from(newRemovedLabels);
+        
+        console.log('🔍 [QuestionAnnotationPanel] Label change tracking:', {
+          questionId: question.id,
+          previousLabels,
+          newLabels,
+          removed,
+          addedBack,
+          removedLabels: Array.from(newRemovedLabels)
+        });
+      }
+      
+      return newFormData;
+    });
+    
+    // Save after a short delay to debounce rapid changes
+    setTimeout(() => {
+      if (initializedForQuestion === question.id) {
+        handleSave();
+      }
+    }, 100);
+  }, [question.id, question.labels, handleSave, initializedForQuestion]);
+
+  // Get current merged labels for display
+  const currentMergedLabels = getCurrentMergedLabels();
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'essential' | 'additional'>('essential');
+
+  // Debug logging
+  console.log('🔍 [QuestionAnnotationPanel] Render with:', {
+    questionId: question.id,
+    questionLabels: question?.labels,
+    annotationLabels: annotation?.labels,
+    currentMergedLabels,
+    removedLabels: formData.removedLabels,
+    annotationId: annotation?.id
+  });
+
+  const handleVerify = async () => {
+    try {
+      setIsVerifying(true);
+      const { verifyAIAnnotation, currentSurvey } = useAppStore.getState();
+      if (currentSurvey?.survey_id && annotation?.id) {
+        console.log('🔍 [QuestionAnnotationPanel] Verifying annotation:', { surveyId: currentSurvey.survey_id, annotationId: annotation.id });
+        await verifyAIAnnotation(currentSurvey.survey_id, annotation.id, 'question');
+        setIsVerified(true);
+      } else {
+        console.error('🔍 [QuestionAnnotationPanel] Missing survey ID or annotation ID:', { surveyId: currentSurvey?.survey_id, annotationId: annotation?.id });
+      }
+    } catch (error) {
+      console.error('Failed to verify annotation:', error);
+    } finally {
+      setIsVerifying(false);
+    }
   };
 
-  // Calculate completion progress
-  const completionProgress = useMemo(() => {
-    const essentialFields = [
-      formData.required !== undefined,
-      formData.quality !== undefined,
-      formData.relevant !== undefined,
-      (formData.comment || '').trim().length > 0,
-      (formData.labels || []).length > 0
-    ];
-    
-    const pillarFields = [
-      formData.pillars.methodologicalRigor !== undefined,
-      formData.pillars.contentValidity !== undefined,
-      formData.pillars.respondentExperience !== undefined,
-      formData.pillars.analyticalValue !== undefined,
-      formData.pillars.businessImpact !== undefined
-    ];
-    
-    const essentialCompleted = essentialFields.filter(Boolean).length;
-    const pillarCompleted = pillarFields.filter(Boolean).length;
-    
-    return {
-      essential: { completed: essentialCompleted, total: essentialFields.length },
-      pillars: { completed: pillarCompleted, total: pillarFields.length },
-      overall: { 
-        completed: essentialCompleted + pillarCompleted,
-        total: essentialFields.length + pillarFields.length
-      }
-    };
-  }, [formData]);
-
   return (
-    <div className="h-full flex flex-col">
-      {/* Sticky Header */}
-      <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 z-10">
-        <div className="flex justify-between items-start">
-          {/* Left side - AI Status & Progress */}
-          <div className="flex-1">
-            <div className="flex items-center space-x-4">
-              {/* AI Status Badge - Single consolidated version */}
-              {annotation?.aiGenerated && (
-                <div className="inline-flex items-center px-3 py-2 bg-blue-100 border border-blue-200 rounded-lg shadow-sm">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                    <span className="text-sm font-semibold text-blue-800">AI Generated</span>
-                    {annotation.aiConfidence && (
-                      <span className="text-xs text-blue-700 font-medium">
-                        {(annotation.aiConfidence * 100).toFixed(0)}% confidence
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-              
-              {/* Progress Indicator */}
-              <ProgressIndicator
-                completed={completionProgress.overall.completed}
-                total={completionProgress.overall.total}
-                label="Annotation Progress"
-              />
-            </div>
+    <div className="h-full flex flex-col bg-white">
+      {/* Header */}
+      <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-medium text-gray-900">
+              Question Annotation
+            </h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Question ID: {question.id}
+            </p>
           </div>
-
-          {/* Right side - Action Buttons */}
-          <div className="flex items-center gap-2 ml-4">
-            {annotation?.aiGenerated && !isVerified && (
+          <div className="flex items-center space-x-2">
+            {annotation?.id && (
               <button
-                onClick={async () => {
-                  try {
-                    setIsVerifying(true);
-                    const { verifyAIAnnotation, currentSurvey } = useAppStore.getState();
-                    if (currentSurvey?.survey_id && annotation?.id) {
-                      console.log('🔍 [QuestionAnnotationPanel] Verifying annotation:', { surveyId: currentSurvey.survey_id, annotationId: annotation.id });
-                      await verifyAIAnnotation(currentSurvey.survey_id, annotation.id, 'question');
-                      setIsVerified(true);
-                    } else {
-                      console.error('🔍 [QuestionAnnotationPanel] Missing survey ID or annotation ID:', { surveyId: currentSurvey?.survey_id, annotationId: annotation?.id });
-                    }
-                  } catch (error) {
-                    console.error('Failed to verify annotation:', error);
-                  } finally {
-                    setIsVerifying(false);
-                  }
-                }}
-                disabled={isVerifying}
-                className="px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleVerify}
+                disabled={isVerifying || isVerified}
+                className={`px-3 py-1 text-xs font-medium rounded-full ${
+                  isVerified
+                    ? 'bg-green-100 text-green-800'
+                    : isVerifying
+                    ? 'bg-yellow-100 text-yellow-800'
+                    : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                }`}
               >
-                {isVerifying ? 'Verifying...' : 'Mark as Reviewed'}
+                {isVerified ? 'Verified' : isVerifying ? 'Verifying...' : 'Verify'}
               </button>
-            )}
-            {annotation?.aiGenerated && isVerified && (
-              <div className="px-4 py-2 bg-green-100 text-green-800 text-sm font-medium rounded-lg border border-green-200">
-                ✓ Human Verified
-              </div>
             )}
           </div>
         </div>
       </div>
 
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto">
+        {/* Question Text */}
+        <div className="p-6 border-b border-gray-200">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Question Text
+          </label>
+          <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700">
+            {question.text}
+          </div>
+        </div>
 
-      {/* Tabbed Content */}
-      <div className="flex-1 overflow-y-auto px-6 py-4">
-        <TabGroup
-          tabs={[
-            {
-              id: 'essential',
-              label: 'Essential',
-              badge: `${completionProgress.essential.completed}/${completionProgress.essential.total}`,
-              content: (
-                <div className="space-y-6">
-                  {/* Required Toggle */}
-                  <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
-                    <label className="block text-sm font-semibold text-gray-700 mb-3">
-                      Required Question
-                    </label>
-                    <div className="flex items-center">
-                      <label className="flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formData.required}
-                          onChange={(e) => updateField('required', e.target.checked)}
-                          className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
-                        />
-                        <span className="ml-3 text-sm font-medium text-gray-700">
-                          {formData.required ? 'Yes, this question is required' : 'No, this question is optional'}
-                        </span>
-                      </label>
-                    </div>
-                  </div>
+        {/* Tabs */}
+        <div className="border-b border-gray-200">
+          <nav className="flex space-x-8 px-6">
+            <button
+              onClick={() => setActiveTab('essential')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'essential'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Essential
+            </button>
+            <button
+              onClick={() => setActiveTab('additional')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'additional'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Additional
+            </button>
+          </nav>
+        </div>
 
-                  {/* Quality Rating */}
-                  <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
-                    <LikertScale
-                      label="Overall Quality"
-                      value={formData.quality}
-                      onChange={(value) => updateField('quality', value)}
-                      lowLabel="Poor"
-                      highLabel="Excellent"
-                    />
-                  </div>
-
-                  {/* Relevance Rating */}
-                  <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
-                    <LikertScale
-                      label="Relevance"
-                      value={formData.relevant}
-                      onChange={(value) => updateField('relevant', value)}
-                      lowLabel="Not Relevant"
-                      highLabel="Very Relevant"
-                    />
-                  </div>
-
-                  {/* Labels Section */}
-                  <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
-                    <label className="block text-sm font-semibold text-gray-700 mb-3">
-                      Labels
-                    </label>
-                    <EnhancedLabelsInput
-                      labels={formData.labels || []}
-                      onLabelsChange={(labels) => updateField('labels', labels)}
-                      placeholder="Add labels for this question..."
-                      maxLabels={8}
-                      showMasterList={true}
-                    />
-                  </div>
-
-                  {/* Comment Section */}
-                  <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
-                    <label className="block text-sm font-semibold text-gray-700 mb-3">
-                      Additional Comments & Observations
-                    </label>
-                    <textarea
-                      value={formData.comment}
-                      onChange={(e) => updateField('comment', e.target.value)}
-                      placeholder="Share your thoughts on this question's design, wording, placement, or any other observations that would help improve the survey..."
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-none"
-                      rows={4}
-                    />
-                  </div>
+        {/* Tab Content */}
+        <div className="p-6 space-y-6">
+          {activeTab === 'essential' && (
+            <>
+              {/* Labels */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Labels
+                </label>
+                <EnhancedLabelsInput
+                  labels={currentMergedLabels}
+                  onLabelsChange={(labels: string[]) => updateField('labels', labels)}
+                  placeholder="Add labels..."
+                />
+                <div className="mt-2 text-xs text-gray-500">
+                  Auto-generated labels: {question.labels?.length || 0} | 
+                  User-defined: {(currentMergedLabels.length - (question.labels?.length || 0))} |
+                  Removed: {formData.removedLabels?.length || 0}
                 </div>
-              )
-            },
-            {
-              id: 'pillars',
-              label: 'Five Pillars',
-              badge: `${completionProgress.pillars.completed}/${completionProgress.pillars.total}`,
-              content: (
-                <div className="space-y-6">
-                  <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
-                    <h5 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-                      <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                      Five Pillars Assessment
-                    </h5>
-                    <div className="space-y-6">
-                      <div className="flex items-center space-x-2">
-                        <LikertScale
-                          label="Methodological Rigor"
-                          value={formData.pillars.methodologicalRigor}
-                          onChange={(value) => updateField('pillars', { ...formData.pillars, methodologicalRigor: value })}
-                          lowLabel="Weak"
-                          highLabel="Strong"
-                        />
-                        <PillarTooltip
-                          pillarName="Methodological Rigor"
-                          description="Measures the scientific rigor and methodological soundness of the question design."
-                          examples={{
-                            high: "Clear question wording, appropriate response options, follows survey best practices",
-                            low: "Ambiguous wording, leading questions, inappropriate response scales"
-                          }}
-                        />
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <LikertScale
-                          label="Content Validity"
-                          value={formData.pillars.contentValidity}
-                          onChange={(value) => updateField('pillars', { ...formData.pillars, contentValidity: value })}
-                          lowLabel="Weak"
-                          highLabel="Strong"
-                        />
-                        <PillarTooltip
-                          pillarName="Content Validity"
-                          description="Assesses whether the question accurately measures what it intends to measure."
-                          examples={{
-                            high: "Question directly measures the intended construct without bias",
-                            low: "Question measures something different than intended or has systematic bias"
-                          }}
-                        />
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <LikertScale
-                          label="Respondent Experience"
-                          value={formData.pillars.respondentExperience}
-                          onChange={(value) => updateField('pillars', { ...formData.pillars, respondentExperience: value })}
-                          lowLabel="Poor"
-                          highLabel="Excellent"
-                        />
-                        <PillarTooltip
-                          pillarName="Respondent Experience"
-                          description="Evaluates how easy and engaging the question is for survey respondents."
-                          examples={{
-                            high: "Clear, engaging, easy to understand and answer",
-                            low: "Confusing, boring, difficult to understand or answer"
-                          }}
-                        />
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <LikertScale
-                          label="Analytical Value"
-                          value={formData.pillars.analyticalValue}
-                          onChange={(value) => updateField('pillars', { ...formData.pillars, analyticalValue: value })}
-                          lowLabel="Low"
-                          highLabel="High"
-                        />
-                        <PillarTooltip
-                          pillarName="Analytical Value"
-                          description="Measures the usefulness of responses for data analysis and insights."
-                          examples={{
-                            high: "Provides rich, actionable data for analysis and decision-making",
-                            low: "Limited analytical value, difficult to interpret or act upon"
-                          }}
-                        />
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <LikertScale
-                          label="Business Impact"
-                          value={formData.pillars.businessImpact}
-                          onChange={(value) => updateField('pillars', { ...formData.pillars, businessImpact: value })}
-                          lowLabel="Low"
-                          highLabel="High"
-                        />
-                        <PillarTooltip
-                          pillarName="Business Impact"
-                          description="Evaluates the potential business value and strategic importance of this question."
-                          examples={{
-                            high: "Directly supports key business decisions and strategic objectives",
-                            low: "Limited business relevance or unclear connection to objectives"
-                          }}
-                        />
-                      </div>
-                    </div>
+              </div>
+
+              {/* Quality and Relevance */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <span className="text-sm text-gray-700 mr-2">Quality</span>
+                    <PillarTooltip 
+                      pillarName="Quality"
+                      description="Assesses the overall quality and clarity of the question"
+                    />
                   </div>
+                  <LikertScale
+                    value={formData.quality}
+                    onChange={(value) => updateField('quality', value)}
+                    lowLabel="Poor"
+                    highLabel="Excellent"
+                  />
                 </div>
-              )
-            }
-          ]}
-        />
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <span className="text-sm text-gray-700 mr-2">Relevance</span>
+                    <PillarTooltip 
+                      pillarName="Relevance"
+                      description="Evaluates how relevant this question is to the research objectives"
+                    />
+                  </div>
+                  <LikertScale
+                    value={formData.relevant}
+                    onChange={(value) => updateField('relevant', value)}
+                    lowLabel="Not Relevant"
+                    highLabel="Very Relevant"
+                  />
+                </div>
+              </div>
+
+              {/* Required Toggle */}
+              <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                <div className="flex items-center">
+                  <span className="text-sm font-medium text-gray-700 mr-2">Required</span>
+                  <PillarTooltip 
+                    pillarName="Required"
+                    description="Indicates if this question is mandatory for the survey"
+                  />
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.required}
+                    onChange={(e) => updateField('required', e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                </label>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'additional' && (
+            <>
+              {/* Pillars */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-3">
+                  Evaluation Pillars
+                </label>
+                <div className="space-y-4">
+                  {[
+                    { key: 'methodologicalRigor', label: 'Methodological Rigor', tooltip: 'Assesses the scientific rigor and methodological soundness of the question' },
+                    { key: 'contentValidity', label: 'Content Validity', tooltip: 'Evaluates how well the question measures what it intends to measure' },
+                    { key: 'respondentExperience', label: 'Respondent Experience', tooltip: 'Considers the clarity and ease of understanding for survey respondents' },
+                    { key: 'analyticalValue', label: 'Analytical Value', tooltip: 'Assesses the potential for meaningful data analysis and insights' },
+                    { key: 'businessImpact', label: 'Business Impact', tooltip: 'Evaluates the strategic value and business relevance of the question' }
+                  ].map(({ key, label, tooltip }) => (
+                    <div key={key} className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <span className="text-sm text-gray-700 mr-2">{label}</span>
+                        <PillarTooltip 
+                          pillarName={label}
+                          description={tooltip}
+                        />
+                      </div>
+                      <LikertScale
+                        value={formData.pillars[key as keyof typeof formData.pillars]}
+                        onChange={(value) => updateField('pillars', { ...formData.pillars, [key]: value })}
+                        lowLabel="Low"
+                        highLabel="High"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Comment */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Comment
+                </label>
+                <textarea
+                  value={formData.comment}
+                  onChange={(e) => updateField('comment', e.target.value)}
+                  placeholder="Add any additional comments..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500"
+                  rows={3}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="flex-shrink-0 px-6 py-4 border-t border-gray-200">
+        <div className="flex justify-end">
+          {/* Only show verify button if there's an AI-generated annotation */}
+          {annotation?.aiGenerated && (
+            <button
+              onClick={handleVerify}
+              disabled={isVerifying || isVerified}
+              className="px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isVerifying ? (
+                <div className="flex items-center">
+                  <div className="animate-spin -ml-1 mr-2 h-4 w-4 text-white">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  </div>
+                  Verifying...
+                </div>
+              ) : isVerified ? (
+                'Verified'
+              ) : (
+                'Verify AI Annotation'
+              )}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

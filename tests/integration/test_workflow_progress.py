@@ -120,16 +120,21 @@ class TestWorkflowProgressUpdates:
     async def test_parse_rfq_progress_sequence(self, mock_db, mock_connection_manager, sample_state):
         """Test that parse_rfq sends all expected progress updates"""
         
-        workflow = create_workflow(mock_db, mock_connection_manager)
-        
-        # Mock the parse_rfq node function directly
-        parse_rfq_node = workflow.nodes['parse_rfq']
-        mock_rfq_func = AsyncMock()
-        mock_rfq_func.return_value = {"rfq_embedding": [1, 2, 3]}
-        parse_rfq_node.func = mock_rfq_func
-        
-        # Execute parse_rfq node
-        await parse_rfq_node.func(sample_state)
+        # Mock the RFQNode class to avoid actual embedding generation
+        with patch('src.workflows.workflow.RFQNode') as mock_rfq_class:
+            # Create a mock instance that is callable and awaitable
+            mock_rfq_instance = AsyncMock()
+            mock_rfq_instance.return_value = {"rfq_embedding": [1, 2, 3]}
+            # Make the mock instance itself awaitable by setting its __call__ method
+            mock_rfq_instance.__call__ = AsyncMock(return_value={"rfq_embedding": [1, 2, 3]})
+            mock_rfq_class.return_value = mock_rfq_instance
+            
+            # Create workflow after mocking
+            workflow = create_workflow(mock_db, mock_connection_manager)
+            
+            # Execute parse_rfq node (which is the wrapper function)
+            parse_rfq_node = workflow.nodes['parse_rfq']
+            await parse_rfq_node.func(sample_state)
         
         # Verify progress updates
         messages = mock_connection_manager.workflows.get("test-workflow-123", [])
@@ -157,10 +162,12 @@ class TestWorkflowProgressUpdates:
         """Test that build_context sends all expected progress updates"""
         workflow = create_workflow(mock_db, mock_connection_manager)
         
-        with patch('src.workflows.nodes.ContextBuilderNode') as mock_context_node:
-            mock_context_node.return_value = AsyncMock(return_value={"context": {"methodologies": ["vw"]}})
+        with patch('src.workflows.workflow.ContextBuilderNode') as mock_context_class:
+            mock_context_instance = AsyncMock()
+            mock_context_instance.return_value = {"context": {"methodologies": ["vw"]}}
+            mock_context_class.return_value = mock_context_instance
             
-            # Execute build_context node
+            # Execute build_context node (which is the wrapper function)
             build_context_node = workflow.nodes['build_context']
             await build_context_node.func(sample_state)
             
@@ -185,13 +192,15 @@ class TestWorkflowProgressUpdates:
         """Test that generate sends all expected progress updates"""
         workflow = create_workflow(mock_db, mock_connection_manager)
         
-        with patch('src.workflows.nodes.GeneratorAgent') as mock_generator:
-            mock_generator.return_value = AsyncMock(return_value={
+        with patch('src.workflows.workflow.GeneratorAgent') as mock_generator_class:
+            mock_generator_instance = AsyncMock()
+            mock_generator_instance.return_value = {
                 "generated_survey": {"title": "Test Survey"},
                 "generation_metadata": {"model": "openai/gpt-5"}
-            })
+            }
+            mock_generator_class.return_value = mock_generator_instance
             
-            # Execute generate node
+            # Execute generate node (which is the wrapper function)
             generate_node = workflow.nodes['generate']
             await generate_node.func(sample_state)
             
@@ -216,13 +225,15 @@ class TestWorkflowProgressUpdates:
         """Test that validate sends all expected progress updates"""
         workflow = create_workflow(mock_db, mock_connection_manager)
         
-        with patch('src.workflows.nodes.ValidatorAgent') as mock_validator:
-            mock_validator.return_value = AsyncMock(return_value={
+        with patch('src.workflows.workflow.ValidatorAgent') as mock_validator_class:
+            mock_validator_instance = AsyncMock()
+            mock_validator_instance.return_value = {
                 "quality_gate_passed": True,
                 "pillar_scores": {"overall_score": 0.85}
-            })
+            }
+            mock_validator_class.return_value = mock_validator_instance
             
-            # Execute validate node
+            # Execute validate node (which is the wrapper function)
             validate_node = workflow.nodes['validate']
             await validate_node.func(sample_state)
             
@@ -253,11 +264,11 @@ class TestWorkflowProgressUpdates:
         workflow = create_workflow(mock_db, mock_connection_manager)
         
         # Mock all nodes
-        with patch('src.workflows.nodes.RFQNode') as mock_rfq, \
-             patch('src.workflows.nodes.GoldenRetrieverNode') as mock_golden, \
-             patch('src.workflows.nodes.ContextBuilderNode') as mock_context, \
-             patch('src.workflows.nodes.GeneratorAgent') as mock_generator, \
-             patch('src.workflows.nodes.ValidatorAgent') as mock_validator:
+        with patch('src.workflows.workflow.RFQNode') as mock_rfq, \
+             patch('src.workflows.workflow.GoldenRetrieverNode') as mock_golden, \
+             patch('src.workflows.workflow.ContextBuilderNode') as mock_context, \
+             patch('src.workflows.workflow.GeneratorAgent') as mock_generator, \
+             patch('src.workflows.workflow.ValidatorAgent') as mock_validator:
             
             # Setup mocks
             mock_rfq.return_value = AsyncMock(return_value={"rfq_embedding": [1, 2, 3]})
@@ -266,7 +277,7 @@ class TestWorkflowProgressUpdates:
             mock_generator.return_value = AsyncMock(return_value={"generated_survey": {}})
             mock_validator.return_value = AsyncMock(return_value={"quality_gate_passed": True})
             
-            # Execute workflow nodes in sequence
+            # Execute workflow nodes in sequence (these are wrapper functions)
             for node_name in ['parse_rfq', 'retrieve_golden', 'build_context', 'generate', 'validate']:
                 node = workflow.nodes[node_name]
                 await node.func(sample_state)

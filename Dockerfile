@@ -41,7 +41,7 @@ COPY evaluations/ ./evaluations/
 COPY start.sh ./
 COPY start-local.sh ./
 COPY preload_models.py ./
-COPY seed_rules.py ./
+# Rules are seeded via migrations, no separate seeding needed
 COPY run_migrations.py ./
 COPY migrations/ ./migrations/
 
@@ -134,8 +134,9 @@ EOF
 
 # Make startup scripts executable
 RUN chmod +x /app/start.sh && \
-    chmod +x /app/start-local.sh && \
-    chmod +x /app/seed_rules.py
+    chmod +x /app/start-local.sh
+
+# Rules are seeded via migrations, no separate seeding needed
 
 # Install pg_isready and redis-cli for health checks
 RUN apt-get update && apt-get install -y postgresql-client redis-tools && rm -rf /var/lib/apt/lists/*

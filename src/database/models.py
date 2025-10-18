@@ -157,6 +157,7 @@ class QuestionAnnotation(Base):
 
     # Labels field
     labels = Column(JSONB)
+    removed_labels = Column(JSONB)  # Track auto-generated labels that user explicitly removed
 
     # Advanced labeling fields
     advanced_labels = Column(JSONB)

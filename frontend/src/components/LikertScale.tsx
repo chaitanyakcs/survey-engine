@@ -2,7 +2,7 @@ import React from 'react';
 import { LikertScale as LikertScaleType } from '../types';
 
 interface LikertScaleProps {
-  label: string;
+  label?: string;
   value: LikertScaleType | undefined;
   onChange: (value: LikertScaleType) => void;
   lowLabel?: string;
@@ -50,11 +50,13 @@ const LikertScale: React.FC<LikertScaleProps> = ({
   
   return (
     <div className={`flex items-center gap-4 ${className}`}>
-      <label className="text-sm font-medium text-gray-700 w-32 flex-shrink-0">
-        {label}
-      </label>
+      {label && (
+        <label className="text-sm font-medium text-gray-700 w-32 flex-shrink-0">
+          {label}
+        </label>
+      )}
       
-      <div className="flex-1 flex items-center gap-3">
+      <div className={`flex items-center gap-3 ${label ? 'flex-1' : 'w-full'}`}>
         <span className="text-xs text-gray-500 flex-shrink-0">{lowLabel}</span>
         
         {/* Slider */}

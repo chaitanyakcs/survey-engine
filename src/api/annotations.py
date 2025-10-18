@@ -32,6 +32,7 @@ class QuestionAnnotationRequest(BaseModel):
     business_impact: int = Field(ge=1, le=5)
     comment: Optional[str] = None
     labels: Optional[List[str]] = None
+    removed_labels: Optional[List[str]] = None  # Track auto-generated labels that user explicitly removed
     annotator_id: str = "current-user"
     ai_confidence: Optional[float] = Field(ge=0.0, le=1.0, default=None)
 
@@ -106,6 +107,7 @@ class QuestionAnnotationResponse(BaseModel):
     business_impact: int
     comment: Optional[str]
     labels: Optional[Any] = None
+    removed_labels: Optional[Any] = None
     annotator_id: str
     created_at: datetime
     updated_at: Optional[datetime]
@@ -297,6 +299,7 @@ def get_survey_annotations(
                 business_impact=qa.business_impact,
                 comment=qa.comment,
                 labels=qa.labels,
+                removed_labels=qa.removed_labels,
                 annotator_id=qa.annotator_id,
                 created_at=qa.created_at,
                 updated_at=qa.updated_at,
@@ -414,6 +417,7 @@ def save_bulk_annotations(
                 existing_qa.business_impact = qa_req.business_impact
                 existing_qa.comment = qa_req.comment
                 existing_qa.labels = qa_req.labels
+                existing_qa.removed_labels = qa_req.removed_labels
                 existing_qa.updated_at = datetime.now()
             else:
                 logger.debug(f"➕ [API] Creating new question annotation for question_id={qa_req.question_id}")
@@ -435,6 +439,7 @@ def save_bulk_annotations(
                     business_impact=qa_req.business_impact,
                     comment=qa_req.comment,
                     labels=qa_req.labels,
+                    removed_labels=qa_req.removed_labels,
                     annotator_id=qa_req.annotator_id,
                     # Set AI-generated fields based on annotator_id
                     ai_generated=is_ai_generated,
@@ -810,37 +815,10 @@ def get_survey_annotation(
             detail=f"Failed to get survey annotation: {str(e)}"
         )
 
-@router.delete("/surveys/{survey_id}/survey-annotation")
-def delete_survey_annotation(
-    survey_id: str,
-    db: Session = Depends(get_db)
-):
-    """Delete survey-level annotation"""
-    
-    try:
-        annotation = db.query(SurveyAnnotation).filter(
-            SurveyAnnotation.survey_id == survey_id
-        ).first()
-        
-        if not annotation:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Survey annotation not found"
-            )
-        
-        db.delete(annotation)
-        db.commit()
-        
-        return {"message": "Survey annotation deleted successfully"}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete survey annotation: {str(e)}"
-        )
+
+
+
+
 
 
 @router.post("/annotations/migrate-ai-flags")

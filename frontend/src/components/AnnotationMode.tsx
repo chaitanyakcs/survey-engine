@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronDownIcon, ChevronRightIcon, TagIcon } from '@heroicons/react/24/outline';
 import {
   QuestionAnnotation,
@@ -40,16 +40,20 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
   const actualSurvey = survey?.final_output || survey;
   
   // Handle both sections format and legacy questions format
-  const hasSections = actualSurvey?.sections && actualSurvey.sections.length > 0;
-  const hasQuestions = actualSurvey?.questions && actualSurvey.questions.length > 0;
-  
-  // If no sections but has questions, create a default section
-  const sectionsToUse = hasSections ? actualSurvey.sections : (hasQuestions ? [{
-    id: 'default',
-    title: 'Survey Questions',
-    description: 'All survey questions',
-    questions: actualSurvey.questions
-  }] : []);
+  // Wrap in useMemo to avoid triggering other useMemo hooks on every render
+  const sectionsToUse = useMemo(() => {
+    const hasSections = actualSurvey?.sections && actualSurvey.sections.length > 0;
+    const hasQuestions = actualSurvey?.questions && actualSurvey.questions.length > 0;
+    
+    // If no sections but has questions, create a default section
+    return hasSections ? actualSurvey.sections : (hasQuestions ? [{
+      id: 'default',
+      title: 'Survey Questions',
+      description: 'All survey questions',
+      questions: actualSurvey.questions
+    }] : []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actualSurvey, survey]); // Add survey to deps to ensure updates when survey prop changes
   
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(sectionsToUse.map((s: any) => String(s.id || s.section_id))));
   
@@ -58,18 +62,46 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
   console.log('🔍 [AnnotationMode] Current selectedQuestion:', selectedQuestion);
   console.log('🔍 [AnnotationMode] Current annotationPane:', annotationPane);
 
-  // When a question is selected, open fixed pane
-  const handleQuestionSelect = (questionId: string) => {
-    console.log('🔍 [AnnotationMode] Question selected:', questionId);
-    const question = sectionsToUse.flatMap((s: any) => s.questions || []).find((q: any) => (q.question_id || q.id) === questionId);
-    if (question) {
-      // Update global selected question state
-      setSelectedQuestion(questionId);
+  // Direct lookup for selected question - NO MEMOIZATION to ensure fresh data
+  const selectedQuestionObject = selectedQuestion 
+    ? sectionsToUse.flatMap((s: any) => s.questions || []).find((q: any) => (q.question_id || q.id) === selectedQuestion)
+    : null;
+
+  console.log('🔍 [AnnotationMode] selectedQuestionObject lookup:', {
+    selectedQuestion,
+    found: !!selectedQuestionObject,
+    labels: selectedQuestionObject?.labels,
+    questionId: selectedQuestionObject?.id || selectedQuestionObject?.question_id
+  });
+
+  // Watch for selection changes and update annotation pane
+  useEffect(() => {
+    console.log('🔍 [AnnotationMode] useEffect triggered:', {
+      selectedQuestion,
+      hasSelectedQuestionObject: !!selectedQuestionObject,
+      selectedQuestionObjectLabels: selectedQuestionObject?.labels
+    });
+    
+    if (selectedQuestion && selectedQuestionObject) {
+      console.log('🔍 [AnnotationMode] Setting annotation pane to question:', selectedQuestionObject);
       setAnnotationPane({
         type: 'question',
-        target: question
+        target: selectedQuestionObject
+      });
+    } else if (!selectedQuestion) {
+      // Clear pane if no question selected
+      console.log('🔍 [AnnotationMode] Clearing annotation pane');
+      setAnnotationPane({
+        type: null,
+        target: null
       });
     }
+  }, [selectedQuestion, selectedQuestionObject]);
+
+  // When a question is selected, open fixed pane
+  const handleQuestionSelect = (questionId: string) => {
+    // Update global selected question state (useEffect will handle pane update)
+    setSelectedQuestion(questionId);
   };
 
   // When a section is selected, open fixed pane
@@ -133,10 +165,9 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
 
   // Render selected question details inline
   const renderSelectedQuestionDetails = (question: any) => {
-    if (!annotationPane.target || annotationPane.type !== 'question' || 
-        (annotationPane.target.question_id || annotationPane.target.id) !== (question.question_id || question.id)) {
-      return null;
-    }
+    const questionId = question.question_id || question.id;
+    const isSelectedQuestion = annotationPane.type === 'question' && selectedQuestion === questionId;
+    if (!isSelectedQuestion) return null;
 
     return (
       <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg mx-3 mb-2">
@@ -158,6 +189,22 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
                   </li>
                 ))}
               </ul>
+            </div>
+          )}
+          {/* Display auto-detected labels */}
+          {question.labels && question.labels.length > 0 && (
+            <div className="mt-3">
+              <h5 className="text-sm font-medium text-gray-700 mb-2">Auto-detected Labels:</h5>
+              <div className="flex flex-wrap gap-1">
+                {question.labels.map((label: string, index: number) => (
+                  <span 
+                    key={index}
+                    className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -351,6 +398,7 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
         {/* Right Panel - Annotation Interface (40%) */}
         <div className="w-[40%]">
           <AnnotationSidePane
+            key={`${annotationPane.type}-${selectedQuestion || annotationPane.target?.id || 'none'}`}
             annotationType={annotationPane.type}
             annotationTarget={annotationPane.target}
             currentAnnotations={currentAnnotations}
