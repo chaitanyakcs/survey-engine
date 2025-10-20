@@ -295,6 +295,21 @@ async def migrate_all(db: Session = Depends(get_db)):
                 "message": f"Generation rules seeding failed: {str(e)}"
             })
         
+        # Step 10: Multi-level RAG tables
+        try:
+            await _migrate_multi_level_rag_tables(db)
+            migration_results.append({
+                "step": "multi_level_rag_tables",
+                "status": "success",
+                "message": "Multi-level RAG tables migration completed"
+            })
+        except Exception as e:
+            migration_results.append({
+                "step": "multi_level_rag_tables",
+                "status": "failed",
+                "message": f"Multi-level RAG tables migration failed: {str(e)}"
+            })
+        
         # Determine overall success
         successful_migrations = len([r for r in migration_results if r["status"] == "success"])
         failed_migrations = len([r for r in migration_results if r["status"] == "failed"])
@@ -331,6 +346,110 @@ async def migrate_all(db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=500,
             detail=f"Comprehensive migration failed: {str(e)}"
+        )
+
+
+@router.post("/bootstrap-golden-pairs")
+async def bootstrap_golden_pairs(db: Session = Depends(get_db)):
+    """
+    Bootstrap golden pairs from existing high-quality surveys
+    Only runs if production has < 10 golden pairs
+    """
+    try:
+        logger.info("🌱 [Admin] Starting golden pairs bootstrap")
+        
+        # Import the bootstrap function
+        import asyncio
+        import sys
+        import os
+        sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+        
+        from scripts.bootstrap_golden_pairs_from_existing import bootstrap_golden_pairs
+        
+        # Run bootstrap in production mode
+        stats = await bootstrap_golden_pairs(
+            min_quality_score=0.5,
+            dry_run=False,
+            production_mode=True
+        )
+        
+        if stats.get('skipped', False):
+            logger.info(f"✅ [Admin] Bootstrap skipped - already has {stats['existing_count']} golden pairs")
+            return {
+                "status": "success",
+                "message": f"Bootstrap skipped - already has {stats['existing_count']} golden pairs",
+                "skipped": True,
+                "existing_count": stats['existing_count']
+            }
+        elif stats['golden_pairs_created'] > 0:
+            logger.info(f"✅ [Admin] Bootstrap completed - created {stats['golden_pairs_created']} golden pairs")
+            return {
+                "status": "success",
+                "message": f"Bootstrap completed - created {stats['golden_pairs_created']} golden pairs",
+                "created": stats['golden_pairs_created'],
+                "total": stats['existing_count'] + stats['golden_pairs_created']
+            }
+        else:
+            logger.warning("⚠️ [Admin] Bootstrap completed but no golden pairs created")
+            return {
+                "status": "success",
+                "message": "Bootstrap completed but no golden pairs created",
+                "created": 0,
+                "total": stats['existing_count']
+            }
+            
+    except Exception as e:
+        logger.error(f"❌ [Admin] Bootstrap error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Bootstrap failed: {str(e)}"
+        )
+
+
+@router.post("/populate-multi-level-rag")
+async def populate_multi_level_rag(db: Session = Depends(get_db)):
+    """
+    Populate multi-level RAG tables (golden_sections and golden_questions)
+    from existing golden pairs
+    """
+    try:
+        logger.info("🔍 [Admin] Starting multi-level RAG population")
+        
+        import asyncio
+        import sys
+        import os
+        sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+        
+        from scripts.populate_multi_level_rag import populate_multi_level_rag
+        
+        stats = await populate_multi_level_rag(dry_run=False)
+        
+        if stats['sections_created'] > 0 or stats['questions_created'] > 0:
+            logger.info(f"✅ [Admin] Multi-level RAG population completed - created {stats['sections_created']} sections and {stats['questions_created']} questions")
+            return {
+                "status": "success",
+                "message": f"Multi-level RAG population completed - created {stats['sections_created']} sections and {stats['questions_created']} questions",
+                "sections_created": stats['sections_created'],
+                "questions_created": stats['questions_created'],
+                "golden_pairs_processed": stats['golden_pairs_processed'],
+                "errors": stats['errors']
+            }
+        else:
+            logger.warning("⚠️ [Admin] Multi-level RAG population completed but no sections/questions created")
+            return {
+                "status": "success",
+                "message": "Multi-level RAG population completed but no sections/questions created",
+                "sections_created": 0,
+                "questions_created": 0,
+                "golden_pairs_processed": stats['golden_pairs_processed'],
+                "errors": stats['errors']
+            }
+            
+    except Exception as e:
+        logger.error(f"❌ [Admin] Multi-level RAG population error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Multi-level RAG population failed: {str(e)}"
         )
 
 
@@ -1158,3 +1277,30 @@ async def _seed_generation_rules(db: Session):
     
     db.commit()
     logger.info("✅ Seeded 58 generation rules")
+
+
+async def _migrate_multi_level_rag_tables(db: Session):
+    """
+    Add multi-level RAG tables (golden_sections and golden_questions)
+    """
+    logger.info("📝 Migrating multi-level RAG tables...")
+    
+    try:
+        # Read the migration SQL file
+        with open('migrations/add_golden_sections_questions_tables.sql', 'r') as f:
+            migration_sql = f.read()
+        
+        # Split by semicolon and execute each statement
+        statements = [stmt.strip() for stmt in migration_sql.split(';') if stmt.strip()]
+        
+        for statement in statements:
+            if statement:
+                db.execute(text(statement))
+        
+        db.commit()
+        logger.info("✅ Multi-level RAG tables migration completed")
+        
+    except Exception as e:
+        logger.error(f"❌ Error migrating multi-level RAG tables: {e}")
+        db.rollback()
+        raise

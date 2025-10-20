@@ -790,6 +790,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
     target: null as any
   });
 
+
   const handleSurveyLevelAnnotation = async (annotation: SurveyLevelAnnotation) => {
     if (!survey?.survey_id) {
       console.error('No survey ID available for annotation');
@@ -1070,23 +1071,14 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
     }
   };
 
-  const handleViewSystemPrompt = () => {
-    if (surveyToDisplay?.metadata?.system_prompt) {
-      // Open system prompt in a new window or modal
-      const promptWindow = window.open('', '_blank', 'width=800,height=600');
-      if (promptWindow) {
-        promptWindow.document.write(`
-          <html>
-            <head><title>System Prompt</title></head>
-            <body style="font-family: monospace; padding: 20px; white-space: pre-wrap;">
-              ${surveyToDisplay.metadata.system_prompt}
-            </body>
-          </html>
-        `);
-      }
-    } else {
-      alert('No system prompt available for this survey');
+  const handleViewLLMAudits = () => {
+    if (!surveyToDisplay?.survey_id) {
+      alert('No survey ID available');
+      return;
     }
+
+    // Navigate to LLM Audit page with survey ID
+    window.location.href = `/?view=llm-audit-survey&surveyId=${surveyToDisplay.survey_id}`;
   };
 
   const handleExportJSON = () => {
@@ -1118,27 +1110,27 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
         },
         body: JSON.stringify({
           survey_data: surveyToDisplay,
-          format: 'docx',
-          filename: `survey-${surveyToDisplay.survey_id}.docx`
+          format: 'pdf',
+          filename: `survey-${surveyToDisplay.survey_id}.pdf`
         }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to export document');
+        throw new Error('Failed to export PDF');
       }
 
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `survey-${surveyToDisplay.survey_id}.docx`;
+      link.download = `survey-${surveyToDisplay.survey_id}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Error exporting document:', error);
-      alert('Failed to export document');
+      console.error('Error exporting PDF:', error);
+      alert('Failed to export PDF');
     }
   };
 
@@ -1887,13 +1879,13 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
               Save as Reference
             </button>
             <button
-              onClick={handleViewSystemPrompt}
-              className="w-full flex items-center gap-2 px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors text-sm"
+              onClick={handleViewLLMAudits}
+              className="w-full flex items-center gap-2 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors text-sm"
             >
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              View System Prompt
+              View LLM Audit
             </button>
           </div>
         </div>
@@ -1912,7 +1904,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
               onClick={handleExportPDF}
               className="w-full text-left text-red-600 hover:text-red-800 font-medium text-sm"
             >
-              PDF Download DOCX (PDF coming soon)
+              PDF Download PDF
             </button>
             <button
               onClick={handleExportDOCX}
@@ -2065,6 +2057,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
           </div>
         )}
       </div>
+
     </div>
   );
 };

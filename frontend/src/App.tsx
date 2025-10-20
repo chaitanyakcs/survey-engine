@@ -24,11 +24,46 @@ function App() {
     setupApiInterceptor();
   }, []);
   
-  // Simple routing based on URL path
+  // Simple routing based on URL path and search parameters
   const getCurrentPage = () => {
     const path = window.location.pathname;
-    console.log('🔍 [App] Current path:', path);
+    const searchParams = new URLSearchParams(window.location.search);
+    const view = searchParams.get('view');
     
+    console.log('🔍 [App] Current path:', path);
+    console.log('🔍 [App] Search params:', searchParams.toString());
+    console.log('🔍 [App] View param:', view);
+    
+    // Check URL search parameters first
+    if (view === 'llm-audit-survey') {
+      return 'llm-audit-survey';
+    }
+    if (view === 'llm-audit') {
+      return 'llm-audit';
+    }
+    if (view === 'preview') {
+      return 'preview';
+    }
+    if (view === 'rules') {
+      return 'rules';
+    }
+    if (view === 'settings') {
+      return 'settings';
+    }
+    if (view === 'surveys') {
+      return 'surveys';
+    }
+    if (view === 'golden-examples') {
+      return 'golden-examples';
+    }
+    if (view === 'annotation-insights') {
+      return 'annotation-insights';
+    }
+    if (view === 'annotations') {
+      return 'annotations';
+    }
+    
+    // Fall back to pathname-based routing
     if (path === '/preview') {
       return 'preview';
     }
@@ -136,7 +171,7 @@ function App() {
           />
         ) : currentPage === 'llm-audit-survey' ? (
           <LLMAuditViewer 
-            surveyId={window.location.pathname.split('/')[3]}
+            surveyId={new URLSearchParams(window.location.search).get('surveyId') || undefined}
             title="Survey LLM Audit"
             showSummary={true}
             onClose={() => window.history.back()}

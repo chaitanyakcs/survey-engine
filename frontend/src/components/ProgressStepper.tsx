@@ -1065,7 +1065,8 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                                 <button
                                   onClick={() => {
                                     if (currentSurvey?.survey_id) {
-                                      window.location.href = `/surveys?id=${currentSurvey.survey_id}`;
+                                      // Navigate to the dedicated survey view route
+                                      window.location.href = `/surveys/${currentSurvey.survey_id}`;
                                     }
                                   }}
                                   className="btn-primary flex items-center text-sm"

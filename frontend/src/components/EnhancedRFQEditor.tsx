@@ -750,7 +750,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
         <div className="mb-8">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Enhanced RFQ Builder</h1>
+              <h1 className="text-3xl font-bold text-gray-900">RFQ Builder</h1>
               <p className="text-gray-600">Create comprehensive research requirements with AI assistance</p>
             </div>
             <div className="flex items-center space-x-3">
@@ -768,68 +768,98 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
             </div>
           </div>
 
-          {/* Progress Bar */}
-          <div className="bg-gray-100 rounded-2xl p-4 shadow-sm border border-gray-200">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-medium text-gray-800">
-                {isDocumentProcessing ? 'Document Processing...' : 'Progress'}
-              </span>
-              <span className="text-sm text-gray-600">
-                {isDocumentProcessing ? 'Processing' : `${sections.findIndex(s => s.id === currentSection) + 1} of ${sections.length}`}
-              </span>
-            </div>
-            <div className="w-full bg-gray-300 rounded-full h-2">
-              <div
-                className={`h-2 rounded-full transition-all duration-300 ${
-                  isDocumentProcessing ? 'bg-blue-500 animate-pulse' : 'bg-yellow-500'
-                }`}
-                style={{ 
-                  width: isDocumentProcessing 
-                    ? '25%' // Show 25% progress during document processing
-                    : `${((sections.findIndex(s => s.id === currentSection) + 1) / sections.length) * 100}%`
-                }}
-              ></div>
-            </div>
-            <div className="flex justify-between mt-2">
-              {sections.map((section, index) => (
-                <button
-                  key={section.id}
-                  onClick={() => !isDocumentProcessing && setCurrentSectionWithPersistence(section.id)}
-                  disabled={isDocumentProcessing && section.id !== 'document'}
-                  className={`flex flex-col items-center space-y-1 p-2 rounded-lg transition-all duration-200 ${
-                    currentSection === section.id
-                      ? 'bg-yellow-50 text-yellow-700 border border-yellow-200'
-                      : isDocumentProcessing && section.id !== 'document'
-                      ? 'text-gray-400 cursor-not-allowed opacity-50'
-                      : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
-                  }`}
-                >
-                  <span className="text-lg">{section.icon}</span>
-                  <span className="text-xs font-medium">{section.title}</span>
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
-        <div className="w-full">
+        {/* Layout: Left stepper (20%) and right content (80%) */}
+          <div className="flex gap-6">
+            {/* Left sidebar - Vertical Stepper */}
+            <aside className="w-1/5 min-w-[220px]">
+              <div className="bg-gray-100 rounded-2xl p-4 shadow-sm border border-gray-200">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-medium text-gray-800">
+                    {isDocumentProcessing ? 'Document Processing...' : 'Progress'}
+                  </span>
+                  <span className="text-sm text-gray-600">
+                    {isDocumentProcessing ? 'Processing' : `${sections.findIndex(s => s.id === currentSection) + 1} of ${sections.length}`}
+                  </span>
+                </div>
+                <div className="flex">
+                  {/* Vertical progress rail */}
+                  <div className="relative w-10">
+                    <div className="absolute left-1/2 -translate-x-1/2 top-2 bottom-2 w-1 bg-gray-300 rounded"></div>
+                    <div
+                      className={`absolute left-1/2 -translate-x-1/2 top-2 w-1 rounded ${
+                        isDocumentProcessing ? 'bg-blue-500 animate-pulse' : 'bg-yellow-500'
+                      }`}
+                      style={{
+                        height: isDocumentProcessing
+                          ? '25%'
+                          : `${((sections.findIndex(s => s.id === currentSection) + 1) / sections.length) * 100}%`
+                      }}
+                    ></div>
+                  </div>
+                  {/* Steps list */}
+                  <div className="flex-1 ml-2">
+                    <div className="space-y-3">
+                      {sections.map((section) => {
+                        const index = sections.findIndex(s => s.id === section.id);
+                        const currentIndex = sections.findIndex(s => s.id === currentSection);
+                        const isCompleted = index < currentIndex;
+                        const isActive = section.id === currentSection;
+                        return (
+                          <button
+                            key={section.id}
+                            onClick={() => !isDocumentProcessing && setCurrentSectionWithPersistence(section.id)}
+                            disabled={isDocumentProcessing && section.id !== 'document'}
+                            className={`w-full flex items-center text-left space-x-3 px-3 py-3 rounded-lg transition-all duration-200 ${
+                              isActive
+                                ? 'bg-yellow-50 text-yellow-700 border border-yellow-200'
+                                : isCompleted
+                                ? 'text-gray-700'
+                                : isDocumentProcessing && section.id !== 'document'
+                                ? 'text-gray-400 cursor-not-allowed opacity-50'
+                                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                            }`}
+                          >
+                            <div
+                              className={`flex items-center justify-center w-7 h-7 rounded-full text-sm ${
+                                isActive ? 'bg-yellow-500 text-white' : isCompleted ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-800'
+                              }`}
+                            >
+                              <span>{section.icon}</span>
+                            </div>
+                            <div className="flex-1">
+                              <div className="text-sm font-medium">{section.title}</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </aside>
+
+            {/* Right content container start */}
+            <div className="flex-1">
+              <div className="w-full">
           {/* Main Content */}
           <div className="w-full">
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-8">
+            <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6 text-[15px]">
 
                 {/* Document Upload Section */}
                 {currentSection === 'document' && !isDocumentProcessing && (
                   <div className="space-y-6">
-                    <h2 className="text-2xl font-bold text-gray-900 flex items-center">
-                      <span className="text-3xl mr-3">📄</span>
+                    <h2 className="text-xl font-semibold text-gray-900 flex items-center">
+                      <span className="text-2xl mr-3">📄</span>
                       Document Upload
                     </h2>
                     <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6">
                       <div className="flex items-start space-x-3">
                         <div className="text-yellow-600 text-2xl">💡</div>
                         <div>
-                          <h3 className="font-semibold text-yellow-900 mb-2">Smart Auto-fill</h3>
-                          <p className="text-yellow-800 text-sm">
+                          <h3 className="font-medium text-yellow-900 mb-1">Smart Auto-fill</h3>
+                          <p className="text-yellow-800 text-xs">
                             Upload your RFQ document to automatically extract business context, research objectives,
                             methodology requirements, and survey specifications using AI-powered analysis.
                           </p>
@@ -859,7 +889,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                 {/* Document Processing State */}
                 {isDocumentProcessing && (
                   <div className="space-y-6">
-                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-8">
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
                       <div className="flex items-center space-x-3 mb-6">
                         <div className="flex-shrink-0">
                           <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
@@ -867,8 +897,8 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                           </div>
                         </div>
                         <div className="flex-1">
-                          <h3 className="text-xl font-medium text-blue-900">Analyzing Your Document</h3>
-                          <p className="text-blue-700 mt-1">
+                          <h3 className="text-lg font-medium text-blue-900">Analyzing Your Document</h3>
+                          <p className="text-blue-700 mt-1 text-sm">
                             Our AI is extracting key information from your RFQ document...
                           </p>
                         </div>
@@ -1001,7 +1031,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                 {currentSection === 'business_context' && (
                   <div className="space-y-6">
                     <div className="flex items-center justify-between">
-                      <h2 className="text-2xl font-bold text-gray-900 flex items-center">
+                      <h2 className="text-xl font-semibold text-gray-900 flex items-center">
                         <span className="text-3xl mr-3">🏢</span>
                         Business Context
                       </h2>
@@ -1189,7 +1219,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                 {/* Research Objectives Section */}
                 {currentSection === 'research_objectives' && (
                   <div className="space-y-6">
-                    <h2 className="text-2xl font-bold text-gray-900 flex items-center">
+                    <h2 className="text-xl font-semibold text-gray-900 flex items-center">
                       <span className="text-3xl mr-3">🎯</span>
                       Research Objectives
                     </h2>
@@ -1343,7 +1373,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                 {/* Methodology Section */}
                 {currentSection === 'methodology' && (
                   <div className="space-y-6">
-                    <h2 className="text-2xl font-bold text-gray-900 flex items-center">
+                    <h2 className="text-xl font-semibold text-gray-900 flex items-center">
                       <span className="text-3xl mr-3">🔬</span>
                       Research Methodology
                     </h2>
@@ -1466,7 +1496,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                 {/* Survey Requirements Section */}
                 {currentSection === 'survey_requirements' && (
                   <div className="space-y-6">
-                    <h2 className="text-2xl font-bold text-gray-900 flex items-center">
+                    <h2 className="text-xl font-semibold text-gray-900 flex items-center">
                       <span className="text-3xl mr-3">📋</span>
                       Survey Requirements
                     </h2>
@@ -1637,7 +1667,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                 {/* Survey Structure Section */}
                 {currentSection === 'survey_structure' && (
                   <div className="space-y-6">
-                    <h2 className="text-2xl font-bold text-gray-900 flex items-center">
+                    <h2 className="text-xl font-semibold text-gray-900 flex items-center">
                       <span className="text-3xl mr-3">🏗️</span>
                       Survey Structure
                     </h2>
@@ -2379,6 +2409,8 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
               </div>
             </div>
           </div>
+        </div>
+        </div>
         </div>
 
       {/* Reset Confirmation Modal */}

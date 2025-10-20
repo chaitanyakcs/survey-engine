@@ -1,0 +1,104 @@
+{
+  "golden_pairs_processed": 16,
+  "sections_created": 64,
+  "questions_created": 444,
+  "errors": [],
+  "processed_pairs": [
+    {
+      "golden_pair_id": "eaa67fe0-157d-42f1-a8fe-2dd241f155d5",
+      "title": null,
+      "sections_created": 0,
+      "questions_created": 0
+    },
+    {
+      "golden_pair_id": "8e59efd9-9de0-4dd7-a6c2-aadf2a868d28",
+      "title": null,
+      "sections_created": 0,
+      "questions_created": 0
+    },
+    {
+      "golden_pair_id": "19a9379c-63f3-4646-8084-5a79b40b4e8f",
+      "title": "Mevo Concept Testing & Price Elasticity (Strategic Targets)",
+      "sections_created": 7,
+      "questions_created": 57
+    },
+    {
+      "golden_pair_id": "e879372e-681b-405c-aaa5-262d29d13287",
+      "title": "Healthcare Technology Market Research Study",
+      "sections_created": 5,
+      "questions_created": 30
+    },
+    {
+      "golden_pair_id": "9cd5854a-2cbd-46c9-92d5-9963a7bbfee0",
+      "title": "Test Survey Generation - Technology Product Development Study",
+      "sections_created": 5,
+      "questions_created": 27
+    },
+    {
+      "golden_pair_id": "1777f381-973a-4ca2-890f-13a7a66a79b6",
+      "title": "Test Survey Generation After Migration",
+      "sections_created": 5,
+      "questions_created": 25
+    },
+    {
+      "golden_pair_id": "08b95ffc-324d-4930-9c5a-eb6d7453fc3b",
+      "title": "Mevo Concept Testing & Price Elasticity (Strategic Targets)",
+      "sections_created": 5,
+      "questions_created": 34
+    },
+    {
+      "golden_pair_id": "70e85cb0-3507-4b01-a26e-e3f096b58b32",
+      "title": "AIR OPTIX plus HydraGlyde Pricing and Market Acceptance Survey",
+      "sections_created": 5,
+      "questions_created": 29
+    },
+    {
+      "golden_pair_id": "4b49aae4-e344-4138-973b-0a7c958a9ecc",
+      "title": "Mevo Concept Testing & Price Elasticity (Strategic Targets)",
+      "sections_created": 7,
+      "questions_created": 75
+    },
+    {
+      "golden_pair_id": "855ea543-8992-4b2a-b286-1e9897fcbf3e",
+      "title": "Mevo Concept Testing & Price Elasticity (Strategic Targets)",
+      "sections_created": 6,
+      "questions_created": 40
+    },
+    {
+      "golden_pair_id": "f15656fa-7496-4650-9127-bd1e0826802c",
+      "title": "Mevo Concept Testing & Price Elasticity (Strategic Targets)",
+      "sections_created": 5,
+      "questions_created": 32
+    },
+    {
+      "golden_pair_id": "094a933b-b037-456d-8bde-9565d26e71bf",
+      "title": "Untitled Golden Example",
+      "sections_created": 0,
+      "questions_created": 0
+    },
+    {
+      "golden_pair_id": "92256898-8f36-4abb-9c38-e82682f1cd30",
+      "title": "Mevo Concept Testing & Price Elasticity (Strategic Targets)",
+      "sections_created": 7,
+      "questions_created": 47
+    },
+    {
+      "golden_pair_id": "7148a433-d3ab-4db1-a923-4bb4c3b03e53",
+      "title": "Mevo Concept Testing & Price Elasticity (Strategic Targets)",
+      "sections_created": 7,
+      "questions_created": 48
+    },
+    {
+      "golden_pair_id": "88ab2a67-512e-4c55-86a7-b24ba568b9d7",
+      "title": null,
+      "sections_created": 0,
+      "questions_created": 0
+    },
+    {
+      "golden_pair_id": "7ec7162c-fc33-4b2a-9655-8d8a16973b7d",
+      "title": null,
+      "sections_created": 0,
+      "questions_created": 0
+    }
+  ]
+}

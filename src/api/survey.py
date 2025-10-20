@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 from src.database import get_db, Survey
+from src.database.models import LLMAudit
 from src.services.survey_service import SurveyService
 from src.services.survey_structure_validator import SurveyStructureValidator
 from src.utils.survey_utils import get_questions_count
@@ -1027,3 +1028,88 @@ async def get_survey_structure_validation(
     except Exception as e:
         logger.error(f"❌ [Survey API] Failed to get structure validation: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get structure validation: {str(e)}")
+
+
+@router.get("/{survey_id}/llm-audits")
+async def get_survey_llm_audits(
+    survey_id: UUID,
+    db: Session = Depends(get_db)
+) -> List[Dict[str, Any]]:
+    """
+    Get all LLM audit records for a specific survey.
+    Returns chronologically ordered list of all AI interactions including generation and evaluations.
+    """
+    logger.info(f"🔍 [Survey API] Fetching LLM audits for survey: {survey_id}")
+    
+    try:
+        # Verify survey exists
+        survey = db.query(Survey).filter(Survey.id == survey_id).first()
+        if not survey:
+            raise HTTPException(status_code=404, detail="Survey not found")
+        
+        # Query all LLM audit records for this survey
+        audit_records = db.query(LLMAudit).filter(
+            LLMAudit.parent_survey_id == str(survey_id)
+        ).order_by(LLMAudit.created_at.asc()).all()
+        
+        logger.info(f"📊 [Survey API] Found {len(audit_records)} LLM audit records for survey {survey_id}")
+        
+        # Helper function to parse raw_response
+        def parse_raw_response(raw_response: str) -> Any:
+            """Parse raw_response from string to appropriate type"""
+            if not raw_response:
+                return None
+            try:
+                # If it's already a dict/list, return it
+                if isinstance(raw_response, (dict, list)):
+                    return raw_response
+                # Try to parse as JSON
+                return json.loads(raw_response)
+            except (json.JSONDecodeError, TypeError):
+                # If not JSON, return as string
+                return raw_response
+        
+        # Convert to response format
+        audit_responses = []
+        for record in audit_records:
+            audit_responses.append({
+                "id": str(record.id),
+                "interaction_id": record.interaction_id,
+                "parent_workflow_id": record.parent_workflow_id,
+                "parent_survey_id": record.parent_survey_id,
+                "parent_rfq_id": str(record.parent_rfq_id) if record.parent_rfq_id else None,
+                "model_name": record.model_name,
+                "model_provider": record.model_provider,
+                "model_version": record.model_version,
+                "purpose": record.purpose,
+                "sub_purpose": record.sub_purpose,
+                "context_type": record.context_type,
+                "input_prompt": record.input_prompt,
+                "input_tokens": record.input_tokens,
+                "output_content": record.output_content,
+                "output_tokens": record.output_tokens,
+                "raw_response": parse_raw_response(record.raw_response),
+                "temperature": float(record.temperature) if record.temperature else None,
+                "top_p": float(record.top_p) if record.top_p else None,
+                "max_tokens": record.max_tokens,
+                "frequency_penalty": float(record.frequency_penalty) if record.frequency_penalty else None,
+                "presence_penalty": float(record.presence_penalty) if record.presence_penalty else None,
+                "stop_sequences": record.stop_sequences,
+                "response_time_ms": record.response_time_ms,
+                "cost_usd": float(record.cost_usd) if record.cost_usd else None,
+                "success": record.success,
+                "error_message": record.error_message,
+                "interaction_metadata": record.interaction_metadata,
+                "tags": record.tags,
+                "created_at": record.created_at.isoformat() if record.created_at else "",
+                "updated_at": record.updated_at.isoformat() if record.updated_at else ""
+            })
+        
+        logger.info(f"✅ [Survey API] Returning {len(audit_responses)} LLM audit records")
+        return audit_responses
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [Survey API] Failed to fetch LLM audits: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch LLM audits: {str(e)}")

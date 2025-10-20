@@ -212,8 +212,61 @@ run_migrations() {
 
 # Function to seed the database
 seed_database() {
-    echo -e "${GREEN}✅ Rules are managed via database migrations${NC}"
-    echo -e "${BLUE}💡 No separate seeding needed - migrations handle rule creation${NC}"
+    echo -e "${YELLOW}🌱 Seeding database with golden pairs...${NC}"
+    
+    # Check if golden pairs already exist
+    local golden_count
+    golden_count=$(DATABASE_URL="$DATABASE_URL" uv run python3 -c "
+import os
+import psycopg2
+from urllib.parse import urlparse
+
+try:
+    url = os.getenv('DATABASE_URL')
+    parsed = urlparse(url)
+    conn = psycopg2.connect(
+        host=parsed.hostname,
+        port=parsed.port,
+        database=parsed.path[1:],
+        user=parsed.username,
+        password=parsed.password
+    )
+    cur = conn.cursor()
+    cur.execute('SELECT COUNT(*) FROM golden_rfq_survey_pairs')
+    count = cur.fetchone()[0]
+    print(count)
+    conn.close()
+except Exception as e:
+    print('0')
+" 2>/dev/null || echo "0")
+    
+    if [ "$golden_count" -gt 0 ]; then
+        echo -e "${GREEN}✅ Found $golden_count existing golden pairs${NC}"
+    else
+        echo -e "${YELLOW}📝 No golden pairs found, seeding database...${NC}"
+        
+        # Run golden pairs seeding
+        if DATABASE_URL="$DATABASE_URL" uv run python3 seed_golden_pairs.py; then
+            echo -e "${GREEN}✅ Golden pairs seeded successfully${NC}"
+        else
+            echo -e "${RED}❌ Failed to seed golden pairs${NC}"
+            echo -e "${YELLOW}💡 Continuing without golden pairs - retrieval may be limited${NC}"
+        fi
+    fi
+    
+    echo -e "${GREEN}✅ Database seeding completed${NC}"
+    
+    # Collect baseline metrics if not already collected
+    if [ ! -f "baseline_metrics.json" ]; then
+        echo -e "${YELLOW}📊 Collecting baseline metrics...${NC}"
+        if DATABASE_URL="$DATABASE_URL" uv run python3 scripts/collect_baseline_metrics.py; then
+            echo -e "${GREEN}✅ Baseline metrics collected${NC}"
+        else
+            echo -e "${YELLOW}⚠️  Failed to collect baseline metrics - continuing anyway${NC}"
+        fi
+    else
+        echo -e "${GREEN}✅ Baseline metrics already exist${NC}"
+    fi
 }
 
 # Function to start the application

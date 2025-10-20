@@ -396,6 +396,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
   },
 
+
   loadPillarScoresAsync: async (surveyId: string) => {
     try {
       console.log('🏛️ [Store] Loading pillar scores asynchronously:', surveyId);

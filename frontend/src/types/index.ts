@@ -436,6 +436,40 @@ export interface WorkflowState {
   streamingStats?: StreamingStats; // Real-time generation progress
 }
 
+// LLM Audit Types
+export interface LLMAuditRecord {
+  id: string;
+  interaction_id: string;
+  parent_workflow_id?: string;
+  parent_survey_id?: string;
+  parent_rfq_id?: string;
+  model_name: string;
+  model_provider: string;
+  model_version?: string;
+  purpose: string;
+  sub_purpose?: string;
+  context_type?: string;
+  input_prompt: string;
+  input_tokens?: number;
+  output_content?: string;
+  output_tokens?: number;
+  raw_response?: any;
+  temperature?: number;
+  top_p?: number;
+  max_tokens?: number;
+  frequency_penalty?: number;
+  presence_penalty?: number;
+  stop_sequences?: string[];
+  response_time_ms?: number;
+  cost_usd?: number;
+  success: boolean;
+  error_message?: string;
+  interaction_metadata?: Record<string, any>;
+  tags?: string[];
+  created_at: string;
+  updated_at: string;
+}
+
 export interface StreamingStats {
   questionCount: number;
   sectionCount: number;

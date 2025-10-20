@@ -10,6 +10,7 @@ import logging
 
 from src.services.export.base import export_registry
 from src.services.export.docx_renderer import DocxSurveyRenderer
+from src.services.export.pdf_renderer import PdfSurveyRenderer
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,12 @@ async def get_export_formats():
             description="Microsoft Word Document",
             mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             file_extension=".docx"
+        ),
+        ExportFormatInfo(
+            format="pdf",
+            description="Portable Document Format",
+            mime_type="application/pdf",
+            file_extension=".pdf"
         )
     ]
     return formats
@@ -135,7 +142,8 @@ async def export_survey(request: SurveyExportRequest):
 
         # Set appropriate content type
         content_type_map = {
-            "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "pdf": "application/pdf"
         }
         content_type = content_type_map.get(request.format, "application/octet-stream")
 

@@ -33,6 +33,9 @@ class SurveyGenerationState(BaseModel):
     golden_examples: List[Dict[str, Any]] = []
     methodology_blocks: List[Dict[str, Any]] = []
     template_questions: List[Dict[str, Any]] = []
+    # Multi-level RAG
+    golden_sections: List[Dict[str, Any]] = []
+    golden_questions: List[Dict[str, Any]] = []
     
     context: Dict[str, Any] = {}
     

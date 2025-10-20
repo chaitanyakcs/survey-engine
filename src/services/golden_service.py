@@ -194,7 +194,8 @@ We need a comprehensive survey with approximately {len(questions)} questions to 
                 methodology_tags=methodology_tags,
                 industry_category=industry_category,
                 research_goal=research_goal,
-                quality_score=final_quality_score
+                quality_score=final_quality_score,
+                human_verified=True  # Manually created examples are human-verified
             )
             
             logger.info(f"💾 [GoldenService] Adding golden pair to database")

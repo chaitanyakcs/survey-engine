@@ -292,6 +292,48 @@ if [ $? -eq 0 ]; then
                 echo "   Please run manually: curl -X POST $MIGRATION_URL"
             fi
             
+            # Run bootstrap script to seed golden pairs if needed
+            echo "🌱 Running golden pairs bootstrap..."
+            BOOTSTRAP_URL="https://survey-engine-production.up.railway.app/api/v1/admin/bootstrap-golden-pairs"
+            BOOTSTRAP_RETRY_COUNT=0
+            BOOTSTRAP_MAX_RETRIES=3
+            
+            while [ $BOOTSTRAP_RETRY_COUNT -lt $BOOTSTRAP_MAX_RETRIES ]; do
+                if curl -s -X POST "$BOOTSTRAP_URL" | grep -q '"status":"success"'; then
+                    echo "✅ Golden pairs bootstrap completed successfully!"
+                    break
+                else
+                    sleep 10
+                    BOOTSTRAP_RETRY_COUNT=$((BOOTSTRAP_RETRY_COUNT + 1))
+                fi
+            done
+            
+       if [ $BOOTSTRAP_RETRY_COUNT -eq $BOOTSTRAP_MAX_RETRIES ]; then
+           echo "⚠️  Golden pairs bootstrap failed after $BOOTSTRAP_MAX_RETRIES attempts."
+           echo "   This is not critical - golden pairs can be created manually via UI"
+       fi
+       
+       # Run multi-level RAG population
+       echo "🔍 Running multi-level RAG population..."
+       RAG_URL="https://survey-engine-production.up.railway.app/api/v1/admin/populate-multi-level-rag"
+       RAG_RETRY_COUNT=0
+       RAG_MAX_RETRIES=3
+       
+       while [ $RAG_RETRY_COUNT -lt $RAG_MAX_RETRIES ]; do
+           if curl -s -X POST "$RAG_URL" | grep -q '"status":"success"'; then
+               echo "✅ Multi-level RAG population completed successfully!"
+               break
+           else
+               sleep 10
+               RAG_RETRY_COUNT=$((RAG_RETRY_COUNT + 1))
+           fi
+       done
+       
+       if [ $RAG_RETRY_COUNT -eq $RAG_MAX_RETRIES ]; then
+           echo "⚠️  Multi-level RAG population failed after $RAG_MAX_RETRIES attempts."
+           echo "   This is not critical - multi-level RAG can be populated manually"
+       fi
+            
             # Post-deployment smoke tests
             echo "🧪 Running post-deployment smoke tests..."
             PROD_URL="https://survey-engine-production.up.railway.app"
@@ -331,10 +373,16 @@ if [ $? -eq 0 ]; then
         echo "   After deployment completes, run database migrations:"
         echo "   curl -X POST https://survey-engine-production.up.railway.app/api/v1/admin/migrate-all"
         echo ""
+        echo "   Bootstrap golden pairs (if needed):"
+        echo "   curl -X POST https://survey-engine-production.up.railway.app/api/v1/admin/bootstrap-golden-pairs"
+        echo ""
+        echo "   Populate multi-level RAG (if needed):"
+        echo "   curl -X POST https://survey-engine-production.up.railway.app/api/v1/admin/populate-multi-level-rag"
+        echo ""
         echo "   Verify migration status:"
         echo "   curl https://survey-engine-production.up.railway.app/api/v1/admin/check-migration-status"
         echo ""
-        echo "   💡 Tip: Use --auto-migrate flag to automatically run migrations"
+        echo "   💡 Tip: Use --auto-migrate flag to automatically run migrations and bootstrap"
     fi
     echo ""
     echo "🔍 To check logs:"

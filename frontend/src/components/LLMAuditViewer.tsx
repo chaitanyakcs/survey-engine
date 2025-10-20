@@ -68,7 +68,7 @@ export const LLMAuditViewer: React.FC<LLMAuditViewerProps> = ({
   onClose, 
   surveyId, 
   title = "LLM Audit Viewer",
-  showSummary = true 
+  showSummary = true
 }) => {
   const [auditRecords, setAuditRecords] = useState<LLMAuditRecord[]>([]);
   const [summary, setSummary] = useState<LLMAuditSummary | null>(null);

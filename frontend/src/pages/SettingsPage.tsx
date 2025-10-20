@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from '../components/Sidebar';
 import { useSidebarLayout } from '../hooks/useSidebarLayout';
 import { ToastContainer } from '../components/Toast';
 import { useAppStore } from '../store/useAppStore';
+import { RetrievalWeightsAccordion } from '../components/RetrievalWeightsAccordion';
 import { 
   CogIcon, 
   ClockIcon,
@@ -35,6 +36,18 @@ interface EvaluationSettings {
 
 interface RFQParsingSettings {
   parsing_model: string;
+}
+
+interface RetrievalWeights {
+  id: string;
+  context_type: 'global' | 'methodology' | 'industry';
+  context_value: string;
+  semantic_weight: number;
+  methodology_weight: number;
+  industry_weight: number;
+  quality_weight: number;
+  annotation_weight: number;
+  enabled: boolean;
 }
 
 export const SettingsPage: React.FC = () => {
@@ -72,17 +85,9 @@ export const SettingsPage: React.FC = () => {
   const [generationModels, setGenerationModels] = useState<string[]>([]);
   const [evaluationModels, setEvaluationModels] = useState<string[]>([]);
   const [embeddingModels, setEmbeddingModels] = useState<string[]>([]);
+  const [retrievalWeights, setRetrievalWeights] = useState<RetrievalWeights[]>([]);
 
-  useEffect(() => {
-    fetchSettings();
-    fetchRfqParsingSettings();
-    fetchRfqModels();
-    fetchGenerationModels();
-    fetchEvaluationModels();
-    fetchEmbeddingModels();
-  }, []);
-
-  const fetchSettings = async () => {
+  const fetchSettings = useCallback(async () => {
     try {
       const response = await fetch('/api/v1/settings/evaluation');
       if (response.ok) {
@@ -100,7 +105,7 @@ export const SettingsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [addToast]);
 
   const saveSettings = async () => {
     setSaving(true);
@@ -178,19 +183,6 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
-  const saveRfqParsingSettings = async () => {
-    try {
-      const response = await fetch('/api/v1/settings/rfq-parsing', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(rfqParsing)
-      });
-      if (!response.ok) throw new Error('Failed to save RFQ parsing settings');
-      addToast({ type: 'success', title: 'Settings Saved', message: 'RFQ parsing settings updated', duration: 3000 });
-    } catch (error) {
-      addToast({ type: 'error', title: 'Save Failed', message: 'Failed to save RFQ parsing settings', duration: 5000 });
-    }
-  };
 
   const fetchRfqModels = async () => {
     try {
@@ -241,6 +233,56 @@ export const SettingsPage: React.FC = () => {
       console.error('Failed to fetch embedding models:', error);
     }
   };
+
+  const fetchRetrievalWeights = useCallback(async () => {
+    try {
+      const response = await fetch('/api/v1/retrieval-weights/');
+      if (response.ok) {
+        const data = await response.json();
+        setRetrievalWeights(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch retrieval weights:', error);
+      addToast({
+        type: 'error',
+        title: 'Settings Error',
+        message: 'Failed to load retrieval weights',
+        duration: 5000
+      });
+    }
+  }, [addToast]);
+
+  const updateRetrievalWeight = async (weightId: string, updates: Partial<RetrievalWeights>) => {
+    try {
+      const response = await fetch(`/api/v1/retrieval-weights/${weightId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+      });
+
+      if (response.ok) {
+        // Update local state
+        setRetrievalWeights(prev => 
+          prev.map(w => w.id === weightId ? { ...w, ...updates } : w)
+        );
+      } else {
+        throw new Error('Failed to update weights');
+      }
+    } catch (error) {
+      console.error('Failed to update retrieval weights:', error);
+      throw error; // Re-throw to let the carousel handle the error
+    }
+  };
+
+  useEffect(() => {
+    fetchSettings();
+    fetchRfqParsingSettings();
+    fetchRfqModels();
+    fetchGenerationModels();
+    fetchEvaluationModels();
+    fetchEmbeddingModels();
+    fetchRetrievalWeights();
+  }, [fetchSettings, fetchRetrievalWeights]);
 
   const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings') => {
     if (view === 'survey') {
@@ -531,6 +573,31 @@ export const SettingsPage: React.FC = () => {
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Retrieval Weights Configuration */}
+            <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6">
+              <div className="flex items-center space-x-3 mb-6">
+                <CogIcon className="w-6 h-6 text-blue-600" />
+                <h2 className="text-xl font-semibold text-gray-900">Retrieval Weights Configuration</h2>
+              </div>
+              
+              <RetrievalWeightsAccordion
+                weights={retrievalWeights}
+                onUpdateWeight={updateRetrievalWeight}
+                onError={(message) => addToast({
+                  type: 'error',
+                  title: 'Update Failed',
+                  message,
+                  duration: 5000
+                })}
+                onSuccess={(message) => addToast({
+                  type: 'success',
+                  title: 'Weights Updated',
+                  message,
+                  duration: 3000
+                })}
+              />
             </div>
 
           </div>

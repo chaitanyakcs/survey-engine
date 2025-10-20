@@ -50,9 +50,13 @@ class DatabaseSessionManager:
             db.rollback()
             logger.info("🔄 [DatabaseSessionManager] Rolled back failed transaction")
             
-            # Test if session is now healthy
-            db.execute(text("SELECT 1"))
-            logger.info("✅ [DatabaseSessionManager] Session recovered after rollback")
+            # Close the current session to force a new connection
+            db.close()
+            logger.info("🔄 [DatabaseSessionManager] Closed failed session")
+            
+            # Note: We can't test the session here since it's closed
+            # The caller should create a new session if recovery is needed
+            logger.info("✅ [DatabaseSessionManager] Session recovery completed - new session needed")
             return True
         except Exception as e:
             logger.error(f"❌ [DatabaseSessionManager] Session recovery failed: {str(e)}")

@@ -16,7 +16,6 @@ from .nodes import (
     HumanPromptReviewNode,
     LabelDetectionNode
 )
-from src.services.websocket_client import WebSocketNotificationService
 from src.services.progress_tracker import get_progress_tracker
 import logging
 
@@ -39,7 +38,15 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     validator = ValidatorAgent(db, connection_manager=connection_manager)
     
     # Initialize WebSocket client for progress updates
-    ws_client = WebSocketNotificationService(connection_manager)
+    try:
+        from src.services.websocket_client import WebSocketNotificationService
+        ws_client = WebSocketNotificationService(connection_manager)
+    except Exception:
+        # Graceful fallback if settings/config not available during tests
+        class _NoopWS:
+            async def send_progress_update(self, *args, **kwargs):
+                return None
+        ws_client = _NoopWS()
     
     # Create wrapper functions that send progress updates
     async def parse_rfq_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:

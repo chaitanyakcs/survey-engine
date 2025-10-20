@@ -6,6 +6,7 @@ Extracts quality patterns from annotation data to improve survey generation
 
 import logging
 from typing import Dict, List, Any, Optional, Tuple
+import uuid
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func
 from src.database.models import QuestionAnnotation, SectionAnnotation, SurveyAnnotation, GoldenRFQSurveyPair
@@ -34,6 +35,13 @@ class AnnotationInsightsService:
         logger.info("🔍 [AnnotationInsights] Starting quality pattern extraction")
         
         try:
+            # Ensure session is healthy before heavy read operations
+            if not DatabaseSessionManager.ensure_healthy_session(self.db):
+                DatabaseSessionManager.recover_session(self.db)
+                if not DatabaseSessionManager.ensure_healthy_session(self.db):
+                    logger.warning("⚠️ [AnnotationInsights] DB session unhealthy after recovery; returning empty insights")
+                    return {"high_quality_patterns": {}, "low_quality_patterns": {}, "common_issues": [], "summary": {"total_annotations": 0, "high_quality_count": 0, "low_quality_count": 0}}
+
             # Get all annotations with proper session management
             question_annotations = DatabaseSessionManager.safe_query(
                 self.db,
@@ -274,13 +282,29 @@ class AnnotationInsightsService:
             return sum(scores) / len(scores)
         return 3.0
     
+    def _is_valid_uuid(self, value: Any) -> bool:
+        try:
+            uuid.UUID(str(value))
+            return True
+        except Exception:
+            return False
+
     async def _get_question_text(self, question_id: str, survey_id: str) -> Optional[str]:
         """Get question text from survey JSON"""
         try:
-            # Get the survey JSON from golden pairs
-            golden_pair = self.db.query(GoldenRFQSurveyPair).filter(
-                GoldenRFQSurveyPair.id == survey_id
-            ).first()
+            # Skip if survey_id isn't a UUID (legacy annotations)
+            if not self._is_valid_uuid(survey_id):
+                logger.debug(f"[AnnotationInsights] Skipping question lookup for non-UUID survey_id={survey_id}")
+                return None
+            # Get the survey JSON from golden pairs using safe query
+            golden_pair = DatabaseSessionManager.safe_query(
+                self.db,
+                lambda: self.db.query(GoldenRFQSurveyPair).filter(
+                    GoldenRFQSurveyPair.id == survey_id
+                ).first(),
+                fallback_value=None,
+                operation_name=f"get question text for {question_id}"
+            )
             
             if golden_pair and golden_pair.survey_json:
                 survey_data = golden_pair.survey_json
@@ -308,9 +332,18 @@ class AnnotationInsightsService:
     async def _get_section_structure(self, section_id: int, survey_id: str) -> Optional[Dict[str, Any]]:
         """Get section structure from survey JSON"""
         try:
-            golden_pair = self.db.query(GoldenRFQSurveyPair).filter(
-                GoldenRFQSurveyPair.id == survey_id
-            ).first()
+            # Skip if survey_id isn't a UUID (legacy annotations)
+            if not self._is_valid_uuid(survey_id):
+                logger.debug(f"[AnnotationInsights] Skipping section lookup for non-UUID survey_id={survey_id}")
+                return None
+            golden_pair = DatabaseSessionManager.safe_query(
+                self.db,
+                lambda: self.db.query(GoldenRFQSurveyPair).filter(
+                    GoldenRFQSurveyPair.id == survey_id
+                ).first(),
+                fallback_value=None,
+                operation_name=f"get section structure for {section_id}"
+            )
             
             if golden_pair and golden_pair.survey_json:
                 survey_data = golden_pair.survey_json

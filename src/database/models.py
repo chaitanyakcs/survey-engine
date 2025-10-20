@@ -29,7 +29,79 @@ class GoldenRFQSurveyPair(Base):
     research_goal: Any = Column(Text)
     quality_score: Any = Column(DECIMAL(3, 2))
     usage_count = Column(Integer, default=0)
+    human_verified = Column(Boolean, default=False)  # True for manually created, False for auto-migrated
     created_at = Column(DateTime, default=func.now())
+
+
+class GoldenSection(Base):
+    """Model for storing individual sections from golden surveys for section-level retrieval"""
+    __tablename__ = "golden_sections"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    section_id = Column(String(255), nullable=False)
+    survey_id = Column(String(255), nullable=False)
+    golden_pair_id = Column(UUID(as_uuid=True), ForeignKey('golden_rfq_survey_pairs.id', ondelete='CASCADE'))
+    section_title = Column(String(500))
+    section_text = Column(Text, nullable=False)
+    section_embedding = Column(Vector(384))
+    section_type = Column(String(100))  # e.g., 'demographics', 'pricing', 'satisfaction'
+    methodology_tags: Any = Column(ARRAY(Text))
+    quality_score: Any = Column(DECIMAL(3, 2))
+    usage_count = Column(Integer, default=0)
+    human_verified = Column(Boolean, default=False)
+    labels = Column(JSONB)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class GoldenQuestion(Base):
+    """Model for storing individual questions from golden surveys for question-level retrieval"""
+    __tablename__ = "golden_questions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    question_id = Column(String(255), nullable=False)
+    survey_id = Column(String(255), nullable=False)
+    golden_pair_id = Column(UUID(as_uuid=True), ForeignKey('golden_rfq_survey_pairs.id', ondelete='CASCADE'))
+    section_id = Column(String(255))  # Reference to section this question belongs to
+    question_text = Column(Text, nullable=False)
+    question_embedding = Column(Vector(384))
+    question_type = Column(String(100))  # e.g., 'multiple_choice', 'rating_scale', 'open_text'
+    methodology_tags: Any = Column(ARRAY(Text))
+    quality_score: Any = Column(DECIMAL(3, 2))
+    usage_count = Column(Integer, default=0)
+    human_verified = Column(Boolean, default=False)
+    labels = Column(JSONB)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class RetrievalWeights(Base):
+    """Configurable weights for multi-factor golden example retrieval scoring"""
+    __tablename__ = "retrieval_weights"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    context_type = Column(String(50), nullable=False)  # 'global', 'methodology', 'industry'
+    context_value = Column(String(100))  # e.g., 'van_westendorp', 'healthcare'
+    semantic_weight = Column(DECIMAL(3, 2), default=0.40)
+    methodology_weight = Column(DECIMAL(3, 2), default=0.25)
+    industry_weight = Column(DECIMAL(3, 2), default=0.15)
+    quality_weight = Column(DECIMAL(3, 2), default=0.10)
+    annotation_weight = Column(DECIMAL(3, 2), default=0.10)
+    enabled = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class MethodologyCompatibility(Base):
+    """Compatibility matrix for methodology-based retrieval scoring"""
+    __tablename__ = "methodology_compatibility"
+
+    methodology_a = Column(String(50), primary_key=True)
+    methodology_b = Column(String(50), primary_key=True)
+    compatibility_score = Column(DECIMAL(3, 2), nullable=False)
+    notes = Column(Text)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
 
 class RFQ(Base):

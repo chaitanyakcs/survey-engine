@@ -1,9 +1,12 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from src.database.models import GoldenRFQSurveyPair, QuestionAnnotation, SectionAnnotation, SurveyAnnotation
+import uuid
+from src.database.models import GoldenRFQSurveyPair, QuestionAnnotation, SectionAnnotation, SurveyAnnotation, RetrievalWeights, MethodologyCompatibility
+from src.utils.database_session_manager import DatabaseSessionManager
 from typing import List, Dict, Any, Optional
 import numpy as np
 import logging
+from difflib import SequenceMatcher
 
 logger = logging.getLogger(__name__)
 
@@ -11,30 +14,37 @@ logger = logging.getLogger(__name__)
 class RetrievalService:
     def __init__(self, db: Session):
         self.db = db
+        self._weights_cache = {}  # Cache for retrieval weights
     
     async def retrieve_golden_pairs(
         self,
         embedding: List[float],
         methodology_tags: Optional[List[str]] = None,
+        industry: Optional[str] = None,
         limit: int = 3
     ) -> List[Dict[str, Any]]:
         """
-        Tier 1: Retrieve exact golden RFQ-survey pairs using semantic similarity
-        Enhanced with annotation score weighting
+        Tier 1: Retrieve exact golden RFQ-survey pairs using multi-factor scoring
+        Enhanced with configurable weights, methodology matching, and industry relevance
         """
         import logging
         logger = logging.getLogger(__name__)
         
-        logger.info(f"🔍 [RetrievalService] Starting annotation-weighted golden pairs retrieval with embedding dimension: {len(embedding)}")
-        logger.info(f"🔍 [RetrievalService] Methodology tags filter: {methodology_tags}")
+        logger.info(f"🔍 [RetrievalService] Starting multi-factor golden pairs retrieval")
+        logger.info(f"🔍 [RetrievalService] Embedding dimension: {len(embedding)}")
+        logger.info(f"🔍 [RetrievalService] Methodology tags: {methodology_tags}")
+        logger.info(f"🔍 [RetrievalService] Industry: {industry}")
         logger.info(f"🔍 [RetrievalService] Limit: {limit}")
         
         try:
+            # Load configurable weights
+            weights = self._load_retrieval_weights(methodology_tags, industry)
+            logger.info(f"🔍 [RetrievalService] Using weights: {weights}")
+            
             # Use ORM query with proper pgvector operations
             from pgvector.sqlalchemy import Vector
             
             # Base query with cosine distance (smaller is more similar)
-            # Use l2_distance as fallback if cosine_distance is not available
             try:
                 similarity_expr = GoldenRFQSurveyPair.rfq_embedding.cosine_distance(embedding)
             except Exception as e:
@@ -43,21 +53,24 @@ class RetrievalService:
             
             query = self.db.query(
                 GoldenRFQSurveyPair.id,
+                GoldenRFQSurveyPair.title,
                 GoldenRFQSurveyPair.rfq_text,
                 GoldenRFQSurveyPair.survey_json,
                 GoldenRFQSurveyPair.methodology_tags,
                 GoldenRFQSurveyPair.industry_category,
                 GoldenRFQSurveyPair.research_goal,
                 GoldenRFQSurveyPair.quality_score,
+                GoldenRFQSurveyPair.human_verified,
                 similarity_expr.label('similarity')
             ).filter(GoldenRFQSurveyPair.rfq_embedding.is_not(None))
             
-            # Add methodology filter if provided
-            if methodology_tags:
-                query = query.filter(GoldenRFQSurveyPair.methodology_tags.overlap(methodology_tags))
-            
-            # Order by similarity (cosine distance - smaller is more similar)
-            query = query.order_by('similarity').limit(limit * 2)  # Get more candidates for annotation weighting
+            # PRIORITIZE HUMAN-VERIFIED EXAMPLES
+            # Human-verified examples (created via UI) get priority over auto-migrated ones
+            query = query.order_by(
+                # Human-verified examples first (human_verified = True), then by similarity
+                GoldenRFQSurveyPair.human_verified.desc(),  # True first (human-verified)
+                'similarity'
+            ).limit(limit * 3)  # Get more candidates for scoring
             
             rows = query.all()
             logger.info(f"🔍 [RetrievalService] Database query executed. Found {len(rows)} golden pairs")
@@ -67,26 +80,61 @@ class RetrievalService:
                 # Calculate annotation score for this survey
                 annotation_score = await self._calculate_annotation_score(str(row.id))
                 
-                # Apply annotation-based weighting to similarity score
-                weighted_similarity = self._apply_annotation_weighting(row.similarity, annotation_score)
+                # Calculate methodology match score
+                methodology_match_score = self._calculate_methodology_match_score(
+                    row.methodology_tags or [], 
+                    methodology_tags or []
+                )
                 
-                logger.info(f"📋 [RetrievalService] Golden pair {i+1}: ID={row.id}, Similarity={row.similarity:.4f}, Annotation={annotation_score:.2f}, Weighted={weighted_similarity:.4f}")
+                # Calculate industry relevance score
+                industry_relevance_score = self._calculate_industry_relevance_score(
+                    row.industry_category or "", 
+                    industry or ""
+                )
+                
+                # Apply human verification boost
+                human_verification_boost = 0.0
+                if hasattr(row, 'human_verified') and row.human_verified:
+                    human_verification_boost = 0.5  # 50% boost for human-verified examples to ensure priority
+                    logger.info(f"   🏆 Human-verified example: +{human_verification_boost:.2f} boost")
+                
+                # Calculate multi-factor score
+                multi_factor_score = self._calculate_multi_factor_score(
+                    semantic_similarity=float(row.similarity),
+                    methodology_match_score=methodology_match_score,
+                    industry_relevance_score=industry_relevance_score,
+                    quality_score=row.quality_score,
+                    annotation_score=annotation_score,
+                    weights=weights
+                )
+                
+                # Apply human verification boost to final score
+                multi_factor_score += human_verification_boost
+                
+                logger.info(f"📋 [RetrievalService] Golden pair {i+1}: ID={row.id}")
+                logger.info(f"   Similarity: {row.similarity:.4f}, Methodology: {methodology_match_score:.4f}")
+                logger.info(f"   Industry: {industry_relevance_score:.4f}, Quality: {row.quality_score or 0:.2f}")
+                logger.info(f"   Annotation: {annotation_score:.2f}, Multi-factor: {multi_factor_score:.4f}")
                 
                 golden_examples.append({
                     "id": str(row.id),
+                    "title": row.title,
                     "rfq_text": row.rfq_text,
                     "survey_json": row.survey_json,
                     "methodology_tags": row.methodology_tags,
                     "industry_category": row.industry_category,
                     "research_goal": row.research_goal,
                     "quality_score": float(row.quality_score) if row.quality_score else None,
+                    "human_verified": row.human_verified,
                     "similarity": float(row.similarity),
                     "annotation_score": annotation_score,
-                    "weighted_similarity": weighted_similarity
+                    "methodology_match_score": methodology_match_score,
+                    "industry_relevance_score": industry_relevance_score,
+                    "multi_factor_score": multi_factor_score
                 })
             
-            # Sort by weighted similarity (lower is better for cosine distance)
-            golden_examples.sort(key=lambda x: x['weighted_similarity'])
+            # Sort by multi-factor score (higher is better)
+            golden_examples.sort(key=lambda x: x['multi_factor_score'], reverse=True)
             
             # Take top results
             final_examples = golden_examples[:limit]
@@ -105,9 +153,16 @@ class RetrievalService:
                 logger.info(f"📊 [RetrievalService] Update result: {result.rowcount} rows affected")
             
             self.db.commit()
+            
+            # Log final results
+            logger.info(f"✅ [RetrievalService] Retrieved {len(final_examples)} golden examples")
+            for i, example in enumerate(final_examples):
+                logger.info(f"   {i+1}. {example['industry_category']} - Score: {example['multi_factor_score']:.4f}")
+            
             return final_examples
             
         except Exception as e:
+            logger.error(f"❌ [RetrievalService] Golden pair retrieval failed: {str(e)}")
             raise Exception(f"Golden pair retrieval failed: {str(e)}")
     
     async def retrieve_methodology_blocks(
@@ -223,6 +278,169 @@ class RetrievalService:
             
         except Exception as e:
             raise Exception(f"Template question retrieval failed: {str(e)}")
+
+    async def retrieve_golden_sections(
+        self,
+        embedding: List[float],
+        methodology_tags: Optional[List[str]] = None,
+        industry: Optional[str] = None,
+        limit: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieve top golden sections using vector similarity and multi-factor scoring
+        """
+        try:
+            # Load configurable weights
+            weights = self._load_retrieval_weights(methodology_tags, industry)
+
+            # Build similarity expression
+            from src.database.models import GoldenSection
+            try:
+                similarity_expr = GoldenSection.section_embedding.cosine_distance(embedding)
+            except Exception:
+                similarity_expr = GoldenSection.section_embedding.l2_distance(embedding)
+
+            # Base query
+            rows = self.db.query(
+                GoldenSection.id,
+                GoldenSection.golden_pair_id,
+                GoldenSection.section_title,
+                GoldenSection.section_text,
+                GoldenSection.methodology_tags,
+                GoldenSection.quality_score,
+                GoldenSection.human_verified,
+                similarity_expr.label('similarity')
+            ).filter(GoldenSection.section_embedding.is_not(None)) \
+             .order_by(GoldenSection.human_verified.desc(), 'similarity') \
+             .limit(limit * 3).all()
+
+            results: List[Dict[str, Any]] = []
+            for row in rows:
+                # Annotation score at survey level (parent golden_pair_id)
+                annotation_score = await self._calculate_annotation_score(str(row.golden_pair_id))
+
+                methodology_match_score = self._calculate_methodology_match_score(
+                    row.methodology_tags or [], methodology_tags or []
+                )
+
+                # Industry relevance via parent pair (best-effort)
+                # Fetch once cheaply; if fails, use 0.0
+                try:
+                    parent = self.db.query(GoldenRFQSurveyPair).filter(
+                        GoldenRFQSurveyPair.id == row.golden_pair_id
+                    ).first()
+                    industry_relevance = self._calculate_industry_relevance_score(
+                        parent.industry_category or "", industry or ""
+                    ) if parent else 0.0
+                except Exception:
+                    industry_relevance = 0.0
+
+                human_boost = 0.5 if getattr(row, 'human_verified', False) else 0.0
+
+                score = self._calculate_multi_factor_score(
+                    semantic_similarity=float(row.similarity),
+                    methodology_match_score=methodology_match_score,
+                    industry_relevance_score=industry_relevance,
+                    quality_score=float(row.quality_score) if row.quality_score else 0.5,
+                    annotation_score=annotation_score,
+                    weights=weights
+                ) + human_boost
+
+                results.append({
+                    "id": str(row.id),
+                    "golden_pair_id": str(row.golden_pair_id),
+                    "section_title": row.section_title,
+                    "section_text": row.section_text,
+                    "methodology_tags": row.methodology_tags,
+                    "quality_score": float(row.quality_score) if row.quality_score else None,
+                    "human_verified": row.human_verified,
+                    "similarity": float(row.similarity),
+                    "multi_factor_score": score
+                })
+
+            results.sort(key=lambda x: x['multi_factor_score'], reverse=True)
+            return results[:limit]
+
+        except Exception as e:
+            raise Exception(f"Golden section retrieval failed: {str(e)}")
+
+    async def retrieve_golden_questions(
+        self,
+        embedding: List[float],
+        methodology_tags: Optional[List[str]] = None,
+        industry: Optional[str] = None,
+        limit: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieve top golden questions using vector similarity and multi-factor scoring
+        """
+        try:
+            weights = self._load_retrieval_weights(methodology_tags, industry)
+
+            from src.database.models import GoldenQuestion
+            try:
+                similarity_expr = GoldenQuestion.question_embedding.cosine_distance(embedding)
+            except Exception:
+                similarity_expr = GoldenQuestion.question_embedding.l2_distance(embedding)
+
+            rows = self.db.query(
+                GoldenQuestion.id,
+                GoldenQuestion.golden_pair_id,
+                GoldenQuestion.section_id,
+                GoldenQuestion.question_text,
+                GoldenQuestion.question_type,
+                GoldenQuestion.methodology_tags,
+                GoldenQuestion.quality_score,
+                GoldenQuestion.human_verified,
+                similarity_expr.label('similarity')
+            ).filter(GoldenQuestion.question_embedding.is_not(None)) \
+             .order_by(GoldenQuestion.human_verified.desc(), 'similarity') \
+             .limit(limit * 3).all()
+
+            results: List[Dict[str, Any]] = []
+            for row in rows:
+                annotation_score = await self._calculate_annotation_score(str(row.golden_pair_id))
+                methodology_match_score = self._calculate_methodology_match_score(
+                    row.methodology_tags or [], methodology_tags or []
+                )
+                try:
+                    parent = self.db.query(GoldenRFQSurveyPair).filter(
+                        GoldenRFQSurveyPair.id == row.golden_pair_id
+                    ).first()
+                    industry_relevance = self._calculate_industry_relevance_score(
+                        parent.industry_category or "", industry or ""
+                    ) if parent else 0.0
+                except Exception:
+                    industry_relevance = 0.0
+
+                human_boost = 0.5 if getattr(row, 'human_verified', False) else 0.0
+                score = self._calculate_multi_factor_score(
+                    semantic_similarity=float(row.similarity),
+                    methodology_match_score=methodology_match_score,
+                    industry_relevance_score=industry_relevance,
+                    quality_score=float(row.quality_score) if row.quality_score else 0.5,
+                    annotation_score=annotation_score,
+                    weights=weights
+                ) + human_boost
+
+                results.append({
+                    "id": str(row.id),
+                    "golden_pair_id": str(row.golden_pair_id),
+                    "section_id": row.section_id,
+                    "question_text": row.question_text,
+                    "question_type": row.question_type,
+                    "methodology_tags": row.methodology_tags,
+                    "quality_score": float(row.quality_score) if row.quality_score else None,
+                    "human_verified": row.human_verified,
+                    "similarity": float(row.similarity),
+                    "multi_factor_score": score
+                })
+
+            results.sort(key=lambda x: x['multi_factor_score'], reverse=True)
+            return results[:limit]
+
+        except Exception as e:
+            raise Exception(f"Golden question retrieval failed: {str(e)}")
     
     def _extract_methodology_structure(self, survey_json: Dict[str, Any], methodology: str) -> Dict[str, Any]:
         """
@@ -715,15 +933,31 @@ class RetrievalService:
         Returns 3.0 (neutral) if no annotations exist
         """
         try:
-            # Get question-level annotations
-            question_annotations = self.db.query(QuestionAnnotation).filter(
-                QuestionAnnotation.survey_id == survey_id
-            ).all()
+            # Skip invalid survey ids to avoid UUID casting errors
+            try:
+                uuid.UUID(str(survey_id))
+            except Exception:
+                logger.debug(f"[RetrievalService] Skipping annotation score for non-UUID survey_id={survey_id}")
+                return 3.0
+            # Get question-level annotations using safe query
+            question_annotations = DatabaseSessionManager.safe_query(
+                self.db,
+                lambda: self.db.query(QuestionAnnotation).filter(
+                    QuestionAnnotation.survey_id == survey_id
+                ).all(),
+                fallback_value=[],
+                operation_name=f"get question annotations for {survey_id}"
+            )
             
-            # Get section-level annotations  
-            section_annotations = self.db.query(SectionAnnotation).filter(
-                SectionAnnotation.survey_id == survey_id
-            ).all()
+            # Get section-level annotations using safe query
+            section_annotations = DatabaseSessionManager.safe_query(
+                self.db,
+                lambda: self.db.query(SectionAnnotation).filter(
+                    SectionAnnotation.survey_id == survey_id
+                ).all(),
+                fallback_value=[],
+                operation_name=f"get section annotations for {survey_id}"
+            )
             
             all_scores = []
             
@@ -798,3 +1032,249 @@ class RetrievalService:
         except Exception as e:
             logger.warning(f"⚠️ [RetrievalService] Failed to apply annotation weighting: {e}")
             return similarity
+
+    def _load_retrieval_weights(self, methodology_tags: Optional[List[str]] = None, industry: Optional[str] = None) -> Dict[str, float]:
+        """
+        Load retrieval weights from database with caching
+        Priority: methodology-specific → industry-specific → global
+        """
+        try:
+            # Create cache key
+            cache_key = f"{methodology_tags or []}_{industry or 'none'}"
+            
+            if cache_key in self._weights_cache:
+                return self._weights_cache[cache_key]
+            
+            # Try methodology-specific weights first
+            if methodology_tags:
+                for methodology in methodology_tags:
+                    methodology_weights = DatabaseSessionManager.safe_query(
+                        self.db,
+                        lambda: self.db.query(RetrievalWeights).filter(
+                            RetrievalWeights.context_type == 'methodology',
+                            RetrievalWeights.context_value == methodology.lower(),
+                            RetrievalWeights.enabled == True
+                        ).first(),
+                        fallback_value=None,
+                        operation_name=f"get methodology weights for {methodology}"
+                    )
+                    
+                    if methodology_weights:
+                        weights = {
+                            'semantic': float(methodology_weights.semantic_weight),
+                            'methodology': float(methodology_weights.methodology_weight),
+                            'industry': float(methodology_weights.industry_weight),
+                            'quality': float(methodology_weights.quality_weight),
+                            'annotation': float(methodology_weights.annotation_weight)
+                        }
+                        self._weights_cache[cache_key] = weights
+                        logger.debug(f"Using methodology-specific weights for {methodology}: {weights}")
+                        return weights
+            
+            # Try industry-specific weights
+            if industry:
+                industry_weights = DatabaseSessionManager.safe_query(
+                    self.db,
+                    lambda: self.db.query(RetrievalWeights).filter(
+                        RetrievalWeights.context_type == 'industry',
+                        RetrievalWeights.context_value == industry.lower(),
+                        RetrievalWeights.enabled == True
+                    ).first(),
+                    fallback_value=None,
+                    operation_name=f"get industry weights for {industry}"
+                )
+                
+                if industry_weights:
+                    weights = {
+                        'semantic': float(industry_weights.semantic_weight),
+                        'methodology': float(industry_weights.methodology_weight),
+                        'industry': float(industry_weights.industry_weight),
+                        'quality': float(industry_weights.quality_weight),
+                        'annotation': float(industry_weights.annotation_weight)
+                    }
+                    self._weights_cache[cache_key] = weights
+                    logger.debug(f"Using industry-specific weights for {industry}: {weights}")
+                    return weights
+            
+            # Fall back to global weights
+            global_weights = DatabaseSessionManager.safe_query(
+                self.db,
+                lambda: self.db.query(RetrievalWeights).filter(
+                    RetrievalWeights.context_type == 'global',
+                    RetrievalWeights.context_value == 'default',
+                    RetrievalWeights.enabled == True
+                ).first(),
+                fallback_value=None,
+                operation_name="get global weights"
+            )
+            
+            if global_weights:
+                weights = {
+                    'semantic': float(global_weights.semantic_weight),
+                    'methodology': float(global_weights.methodology_weight),
+                    'industry': float(global_weights.industry_weight),
+                    'quality': float(global_weights.quality_weight),
+                    'annotation': float(global_weights.annotation_weight)
+                }
+            else:
+                # Default weights if no configuration found
+                weights = {
+                    'semantic': 0.40,
+                    'methodology': 0.25,
+                    'industry': 0.15,
+                    'quality': 0.10,
+                    'annotation': 0.10
+                }
+                logger.warning("No retrieval weights found in database, using defaults")
+            
+            self._weights_cache[cache_key] = weights
+            logger.debug(f"Using weights: {weights}")
+            return weights
+            
+        except Exception as e:
+            logger.error(f"Failed to load retrieval weights: {e}")
+            # Return default weights on error
+            return {
+                'semantic': 0.40,
+                'methodology': 0.25,
+                'industry': 0.15,
+                'quality': 0.10,
+                'annotation': 0.10
+            }
+
+    def _calculate_methodology_match_score(self, golden_methodologies: List[str], target_methodologies: List[str]) -> float:
+        """
+        Calculate methodology match score using compatibility matrix
+        """
+        if not golden_methodologies or not target_methodologies:
+            return 0.0
+        
+        try:
+            # Get compatibility matrix using safe query
+            compatibilities = DatabaseSessionManager.safe_query(
+                self.db,
+                lambda: self.db.query(MethodologyCompatibility).all(),
+                fallback_value=[],
+                operation_name="get methodology compatibility matrix"
+            )
+            compatibility_map = {}
+            for comp in compatibilities:
+                compatibility_map[(comp.methodology_a, comp.methodology_b)] = float(comp.compatibility_score)
+            
+            max_compatibility = 0.0
+            
+            for target_methodology in target_methodologies:
+                for golden_methodology in golden_methodologies:
+                    # Check exact match
+                    if target_methodology.lower() == golden_methodology.lower():
+                        max_compatibility = max(max_compatibility, 1.0)
+                        continue
+                    
+                    # Check compatibility matrix
+                    key1 = (target_methodology.lower(), golden_methodology.lower())
+                    key2 = (golden_methodology.lower(), target_methodology.lower())
+                    
+                    if key1 in compatibility_map:
+                        max_compatibility = max(max_compatibility, compatibility_map[key1])
+                    elif key2 in compatibility_map:
+                        max_compatibility = max(max_compatibility, compatibility_map[key2])
+                    else:
+                        # No compatibility data - use fuzzy string matching
+                        similarity = SequenceMatcher(None, target_methodology.lower(), golden_methodology.lower()).ratio()
+                        if similarity > 0.7:  # Threshold for fuzzy match
+                            max_compatibility = max(max_compatibility, similarity * 0.5)  # Penalty for fuzzy match
+            
+            return max_compatibility
+            
+        except Exception as e:
+            logger.warning(f"Failed to calculate methodology match score: {e}")
+            # Fallback to simple string matching
+            for target_methodology in target_methodologies:
+                for golden_methodology in golden_methodologies:
+                    if target_methodology.lower() in golden_methodology.lower() or golden_methodology.lower() in target_methodology.lower():
+                        return 0.8  # Partial match
+            return 0.0
+
+    def _calculate_industry_relevance_score(self, golden_industry: str, target_industry: str) -> float:
+        """
+        Calculate industry relevance score with fuzzy matching
+        """
+        if not golden_industry or not target_industry:
+            return 0.0
+        
+        try:
+            golden_lower = golden_industry.lower()
+            target_lower = target_industry.lower()
+            
+            # Exact match
+            if golden_lower == target_lower:
+                return 1.0
+            
+            # Fuzzy match
+            similarity = SequenceMatcher(None, target_lower, golden_lower).ratio()
+            
+            # Industry-specific mappings
+            industry_mappings = {
+                'consumer_electronics': ['electronics', 'tech', 'technology'],
+                'fitness_technology': ['fitness', 'health', 'wellness'],
+                'food_service': ['food', 'restaurant', 'dining'],
+                'cloud_services': ['cloud', 'saas', 'software'],
+                'e_commerce': ['retail', 'shopping', 'commerce'],
+                'healthcare': ['health', 'medical', 'pharma'],
+                'automotive': ['auto', 'car', 'vehicle'],
+                'financial_services': ['finance', 'banking', 'fintech'],
+                'education': ['edtech', 'learning', 'training'],
+                'retail': ['commerce', 'shopping', 'ecommerce']
+            }
+            
+            # Check if industries are related
+            for industry, related_terms in industry_mappings.items():
+                if (target_lower == industry or target_lower in related_terms) and \
+                   (golden_lower == industry or golden_lower in related_terms):
+                    return 0.8  # Related industries
+            
+            # Return fuzzy similarity if above threshold
+            if similarity > 0.6:
+                return similarity * 0.7  # Penalty for fuzzy match
+            
+            return 0.0
+            
+        except Exception as e:
+            logger.warning(f"Failed to calculate industry relevance score: {e}")
+            return 0.0
+
+    def _calculate_multi_factor_score(
+        self,
+        semantic_similarity: float,
+        methodology_match_score: float,
+        industry_relevance_score: float,
+        quality_score: float,
+        annotation_score: float,
+        weights: Dict[str, float]
+    ) -> float:
+        """
+        Calculate final multi-factor score using configurable weights
+        """
+        try:
+            # Normalize scores to 0-1 range
+            normalized_semantic = 1 - semantic_similarity  # Convert distance to similarity
+            normalized_methodology = methodology_match_score
+            normalized_industry = industry_relevance_score
+            normalized_quality = float(quality_score) if quality_score else 0.5
+            normalized_annotation = (annotation_score - 1) / 4  # Convert 1-5 scale to 0-1
+            
+            # Calculate weighted score
+            final_score = (
+                weights['semantic'] * normalized_semantic +
+                weights['methodology'] * normalized_methodology +
+                weights['industry'] * normalized_industry +
+                weights['quality'] * normalized_quality +
+                weights['annotation'] * normalized_annotation
+            )
+            
+            return final_score
+            
+        except Exception as e:
+            logger.error(f"Failed to calculate multi-factor score: {e}")
+            # Fallback to semantic similarity only
+            return 1 - semantic_similarity
