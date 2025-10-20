@@ -265,7 +265,22 @@ async def migrate_all(db: Session = Depends(get_db)):
                 "message": f"Retrieval configuration migration failed: {str(e)}"
             })
 
-        # Step 7: Fix SurveyAnnotation constraint
+        # Step 7: Add human_verified field to golden pairs
+        try:
+            await _migrate_human_verified_field(db)
+            migration_results.append({
+                "step": "human_verified_field",
+                "status": "success",
+                "message": "Human verified field migration completed"
+            })
+        except Exception as e:
+            migration_results.append({
+                "step": "human_verified_field",
+                "status": "failed",
+                "message": f"Human verified field migration failed: {str(e)}"
+            })
+
+        # Step 8: Fix SurveyAnnotation constraint
         try:
             await _fix_survey_annotation_constraint(db)
             migration_results.append({
@@ -1406,5 +1421,35 @@ async def _migrate_retrieval_configuration(db: Session):
         # Do not raise; allow environments without this migration file
     except Exception as e:
         logger.error(f"❌ Error migrating retrieval configuration: {e}")
+        db.rollback()
+        raise
+
+
+async def _migrate_human_verified_field(db: Session):
+    """Add human_verified field to golden_rfq_survey_pairs table"""
+    logger.info("👤 Adding human_verified field to golden pairs...")
+    try:
+        migration_file = 'migrations/add_human_verified_field.sql'
+        with open(migration_file, 'r') as f:
+            migration_sql = f.read()
+
+        # Execute statements individually to tolerate partial failures
+        statements = [stmt.strip() for stmt in migration_sql.split(';') if stmt.strip()]
+        for statement in statements:
+            try:
+                db.execute(text(statement))
+            except Exception as stmt_err:
+                # Log and rethrow to surface meaningful failure in migrate-all
+                logger.error(f"❌ Human verified field statement failed: {stmt_err}")
+                raise
+
+        db.commit()
+        logger.info("✅ Human verified field migration completed")
+    except FileNotFoundError:
+        logger.warning("⚠️ Human verified field migration file not found, skipping")
+        db.rollback()
+        # Do not raise; allow environments without this migration file
+    except Exception as e:
+        logger.error(f"❌ Error migrating human verified field: {e}")
         db.rollback()
         raise
