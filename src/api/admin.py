@@ -144,6 +144,21 @@ async def migrate_all(db: Session = Depends(get_db)):
         logger.info("🚀 [Admin] Starting comprehensive database migration")
         
         migration_results = []
+
+        # Step 0: Ensure required extensions (pgcrypto, vector)
+        try:
+            await _enable_required_extensions(db)
+            migration_results.append({
+                "step": "enable_extensions",
+                "status": "success",
+                "message": "Required extensions enabled (pgcrypto, vector)"
+            })
+        except Exception as e:
+            migration_results.append({
+                "step": "enable_extensions",
+                "status": "failed",
+                "message": f"Failed to enable extensions: {str(e)}"
+            })
         
         # Step 1: Core table migrations
         try:
@@ -235,7 +250,22 @@ async def migrate_all(db: Session = Depends(get_db)):
                 "message": f"Performance indexes migration failed: {str(e)}"
             })
         
-        # Step 6: Fix SurveyAnnotation constraint
+        # Step 6: Retrieval configuration tables (weights, methodology compatibility)
+        try:
+            await _migrate_retrieval_configuration(db)
+            migration_results.append({
+                "step": "retrieval_configuration",
+                "status": "success",
+                "message": "Retrieval configuration tables migration completed"
+            })
+        except Exception as e:
+            migration_results.append({
+                "step": "retrieval_configuration",
+                "status": "failed",
+                "message": f"Retrieval configuration migration failed: {str(e)}"
+            })
+
+        # Step 7: Fix SurveyAnnotation constraint
         try:
             await _fix_survey_annotation_constraint(db)
             migration_results.append({
@@ -250,7 +280,7 @@ async def migrate_all(db: Session = Depends(get_db)):
                 "message": f"SurveyAnnotation constraint fix failed: {str(e)}"
             })
         
-        # Step 7: Update survey status constraint
+        # Step 8: Update survey status constraint
         try:
             await _migrate_survey_status_constraint(db)
             migration_results.append({
@@ -265,7 +295,7 @@ async def migrate_all(db: Session = Depends(get_db)):
                 "message": f"Survey status constraint update failed: {str(e)}"
             })
         
-        # Step 8: Clean up Alembic version table
+        # Step 9: Clean up Alembic version table
         try:
             await _migrate_drop_alembic_version(db)
             migration_results.append({
@@ -280,7 +310,7 @@ async def migrate_all(db: Session = Depends(get_db)):
                 "message": f"Alembic version table cleanup failed: {str(e)}"
             })
         
-        # Step 9: Seed generation rules
+        # Step 10: Seed generation rules
         try:
             await _seed_generation_rules(db)
             migration_results.append({
@@ -295,7 +325,7 @@ async def migrate_all(db: Session = Depends(get_db)):
                 "message": f"Generation rules seeding failed: {str(e)}"
             })
         
-        # Step 10: Multi-level RAG tables
+        # Step 11: Multi-level RAG tables
         try:
             await _migrate_multi_level_rag_tables(db)
             migration_results.append({
@@ -420,7 +450,7 @@ async def populate_multi_level_rag(db: Session = Depends(get_db)):
         import os
         sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
         
-        from scripts.populate_multi_level_rag import populate_multi_level_rag
+        from scripts.populate_rule_based_multi_level_rag import populate_multi_level_rag
         
         stats = await populate_multi_level_rag(dry_run=False)
         
@@ -1281,13 +1311,14 @@ async def _seed_generation_rules(db: Session):
 
 async def _migrate_multi_level_rag_tables(db: Session):
     """
-    Add multi-level RAG tables (golden_sections and golden_questions)
+    Add rule-based multi-level RAG tables (golden_sections and golden_questions)
+    Uses rule-based matching instead of vector embeddings for Railway compatibility
     """
-    logger.info("📝 Migrating multi-level RAG tables...")
+    logger.info("📝 Migrating rule-based multi-level RAG tables...")
     
     try:
-        # Read the migration SQL file
-        with open('migrations/add_golden_sections_questions_tables.sql', 'r') as f:
+        # Read the rule-based migration SQL file
+        with open('migrations/add_rule_based_multi_level_rag_tables.sql', 'r') as f:
             migration_sql = f.read()
         
         # Split by semicolon and execute each statement
@@ -1298,9 +1329,60 @@ async def _migrate_multi_level_rag_tables(db: Session):
                 db.execute(text(statement))
         
         db.commit()
-        logger.info("✅ Multi-level RAG tables migration completed")
+        logger.info("✅ Rule-based multi-level RAG tables migration completed")
         
     except Exception as e:
-        logger.error(f"❌ Error migrating multi-level RAG tables: {e}")
+        logger.error(f"❌ Error migrating rule-based multi-level RAG tables: {e}")
+        db.rollback()
+        raise
+
+
+async def _enable_required_extensions(db: Session):
+    """
+    Ensure required PostgreSQL extensions are enabled (pgcrypto, vector)
+    """
+    logger.info("🧩 Enabling required PostgreSQL extensions (pgcrypto, vector)...")
+    try:
+        # pgcrypto for gen_random_uuid()
+        db.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
+        # pgvector for VECTOR columns
+        db.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        db.commit()
+        logger.info("✅ Extensions enabled (pgcrypto, vector)")
+    except Exception as e:
+        logger.error(f"❌ Failed to enable extensions: {e}")
+        db.rollback()
+        raise
+
+
+async def _migrate_retrieval_configuration(db: Session):
+    """
+    Create retrieval configuration tables (retrieval_weights, methodology_compatibility)
+    from SQL file migrations/add_retrieval_configuration_tables.sql
+    """
+    logger.info("📝 Migrating retrieval configuration tables (weights, compatibility)...")
+    try:
+        migration_file = 'migrations/add_retrieval_configuration_tables.sql'
+        with open(migration_file, 'r') as f:
+            migration_sql = f.read()
+
+        # Execute statements individually to tolerate partial failures
+        statements = [stmt.strip() for stmt in migration_sql.split(';') if stmt.strip()]
+        for statement in statements:
+            try:
+                db.execute(text(statement))
+            except Exception as stmt_err:
+                # Log and rethrow to surface meaningful failure in migrate-all
+                logger.error(f"❌ Retrieval config statement failed: {stmt_err}")
+                raise
+
+        db.commit()
+        logger.info("✅ Retrieval configuration migration completed")
+    except FileNotFoundError:
+        logger.warning("⚠️ Retrieval configuration migration file not found, skipping")
+        db.rollback()
+        # Do not raise; allow environments without this migration file
+    except Exception as e:
+        logger.error(f"❌ Error migrating retrieval configuration: {e}")
         db.rollback()
         raise

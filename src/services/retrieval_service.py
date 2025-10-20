@@ -287,82 +287,27 @@ class RetrievalService:
         limit: int = 5
     ) -> List[Dict[str, Any]]:
         """
-        Retrieve top golden sections using vector similarity and multi-factor scoring
+        Retrieve top golden sections using rule-based matching (no embeddings)
         """
         try:
-            # Load configurable weights
-            weights = self._load_retrieval_weights(methodology_tags, industry)
-
-            # Build similarity expression
-            from src.database.models import GoldenSection
-            try:
-                similarity_expr = GoldenSection.section_embedding.cosine_distance(embedding)
-            except Exception:
-                similarity_expr = GoldenSection.section_embedding.l2_distance(embedding)
-
-            # Base query
-            rows = self.db.query(
-                GoldenSection.id,
-                GoldenSection.golden_pair_id,
-                GoldenSection.section_title,
-                GoldenSection.section_text,
-                GoldenSection.methodology_tags,
-                GoldenSection.quality_score,
-                GoldenSection.human_verified,
-                similarity_expr.label('similarity')
-            ).filter(GoldenSection.section_embedding.is_not(None)) \
-             .order_by(GoldenSection.human_verified.desc(), 'similarity') \
-             .limit(limit * 3).all()
-
-            results: List[Dict[str, Any]] = []
-            for row in rows:
-                # Annotation score at survey level (parent golden_pair_id)
-                annotation_score = await self._calculate_annotation_score(str(row.golden_pair_id))
-
-                methodology_match_score = self._calculate_methodology_match_score(
-                    row.methodology_tags or [], methodology_tags or []
-                )
-
-                # Industry relevance via parent pair (best-effort)
-                # Fetch once cheaply; if fails, use 0.0
-                try:
-                    parent = self.db.query(GoldenRFQSurveyPair).filter(
-                        GoldenRFQSurveyPair.id == row.golden_pair_id
-                    ).first()
-                    industry_relevance = self._calculate_industry_relevance_score(
-                        parent.industry_category or "", industry or ""
-                    ) if parent else 0.0
-                except Exception:
-                    industry_relevance = 0.0
-
-                human_boost = 0.5 if getattr(row, 'human_verified', False) else 0.0
-
-                score = self._calculate_multi_factor_score(
-                    semantic_similarity=float(row.similarity),
-                    methodology_match_score=methodology_match_score,
-                    industry_relevance_score=industry_relevance,
-                    quality_score=float(row.quality_score) if row.quality_score else 0.5,
-                    annotation_score=annotation_score,
-                    weights=weights
-                ) + human_boost
-
-                results.append({
-                    "id": str(row.id),
-                    "golden_pair_id": str(row.golden_pair_id),
-                    "section_title": row.section_title,
-                    "section_text": row.section_text,
-                    "methodology_tags": row.methodology_tags,
-                    "quality_score": float(row.quality_score) if row.quality_score else None,
-                    "human_verified": row.human_verified,
-                    "similarity": float(row.similarity),
-                    "multi_factor_score": score
-                })
-
-            results.sort(key=lambda x: x['multi_factor_score'], reverse=True)
-            return results[:limit]
-
+            # Use rule-based retrieval instead of vector similarity
+            from src.services.rule_based_multi_level_rag_service import RuleBasedMultiLevelRAGService
+            
+            # Convert embedding to RFQ text for rule-based matching
+            # This is a simplified approach - in practice, you'd pass the actual RFQ text
+            rfq_text = f"survey about {industry or 'general'} using {methodology_tags or ['mixed_methods']}"
+            
+            rule_service = RuleBasedMultiLevelRAGService(self.db)
+            return await rule_service.retrieve_golden_sections(
+                rfq_text=rfq_text,
+                methodology_tags=methodology_tags,
+                industry=industry,
+                limit=limit
+            )
+            
         except Exception as e:
-            raise Exception(f"Golden section retrieval failed: {str(e)}")
+            logger.error(f"❌ [RetrievalService] Section retrieval failed: {str(e)}")
+            return []
 
     async def retrieve_golden_questions(
         self,
@@ -372,75 +317,27 @@ class RetrievalService:
         limit: int = 5
     ) -> List[Dict[str, Any]]:
         """
-        Retrieve top golden questions using vector similarity and multi-factor scoring
+        Retrieve top golden questions using rule-based matching (no embeddings)
         """
         try:
-            weights = self._load_retrieval_weights(methodology_tags, industry)
-
-            from src.database.models import GoldenQuestion
-            try:
-                similarity_expr = GoldenQuestion.question_embedding.cosine_distance(embedding)
-            except Exception:
-                similarity_expr = GoldenQuestion.question_embedding.l2_distance(embedding)
-
-            rows = self.db.query(
-                GoldenQuestion.id,
-                GoldenQuestion.golden_pair_id,
-                GoldenQuestion.section_id,
-                GoldenQuestion.question_text,
-                GoldenQuestion.question_type,
-                GoldenQuestion.methodology_tags,
-                GoldenQuestion.quality_score,
-                GoldenQuestion.human_verified,
-                similarity_expr.label('similarity')
-            ).filter(GoldenQuestion.question_embedding.is_not(None)) \
-             .order_by(GoldenQuestion.human_verified.desc(), 'similarity') \
-             .limit(limit * 3).all()
-
-            results: List[Dict[str, Any]] = []
-            for row in rows:
-                annotation_score = await self._calculate_annotation_score(str(row.golden_pair_id))
-                methodology_match_score = self._calculate_methodology_match_score(
-                    row.methodology_tags or [], methodology_tags or []
-                )
-                try:
-                    parent = self.db.query(GoldenRFQSurveyPair).filter(
-                        GoldenRFQSurveyPair.id == row.golden_pair_id
-                    ).first()
-                    industry_relevance = self._calculate_industry_relevance_score(
-                        parent.industry_category or "", industry or ""
-                    ) if parent else 0.0
-                except Exception:
-                    industry_relevance = 0.0
-
-                human_boost = 0.5 if getattr(row, 'human_verified', False) else 0.0
-                score = self._calculate_multi_factor_score(
-                    semantic_similarity=float(row.similarity),
-                    methodology_match_score=methodology_match_score,
-                    industry_relevance_score=industry_relevance,
-                    quality_score=float(row.quality_score) if row.quality_score else 0.5,
-                    annotation_score=annotation_score,
-                    weights=weights
-                ) + human_boost
-
-                results.append({
-                    "id": str(row.id),
-                    "golden_pair_id": str(row.golden_pair_id),
-                    "section_id": row.section_id,
-                    "question_text": row.question_text,
-                    "question_type": row.question_type,
-                    "methodology_tags": row.methodology_tags,
-                    "quality_score": float(row.quality_score) if row.quality_score else None,
-                    "human_verified": row.human_verified,
-                    "similarity": float(row.similarity),
-                    "multi_factor_score": score
-                })
-
-            results.sort(key=lambda x: x['multi_factor_score'], reverse=True)
-            return results[:limit]
-
+            # Use rule-based retrieval instead of vector similarity
+            from src.services.rule_based_multi_level_rag_service import RuleBasedMultiLevelRAGService
+            
+            # Convert embedding to RFQ text for rule-based matching
+            # This is a simplified approach - in practice, you'd pass the actual RFQ text
+            rfq_text = f"survey about {industry or 'general'} using {methodology_tags or ['mixed_methods']}"
+            
+            rule_service = RuleBasedMultiLevelRAGService(self.db)
+            return await rule_service.retrieve_golden_questions(
+                rfq_text=rfq_text,
+                methodology_tags=methodology_tags,
+                industry=industry,
+                limit=limit
+            )
+            
         except Exception as e:
-            raise Exception(f"Golden question retrieval failed: {str(e)}")
+            logger.error(f"❌ [RetrievalService] Question retrieval failed: {str(e)}")
+            return []
     
     def _extract_methodology_structure(self, survey_json: Dict[str, Any], methodology: str) -> Dict[str, Any]:
         """

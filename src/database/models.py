@@ -34,7 +34,7 @@ class GoldenRFQSurveyPair(Base):
 
 
 class GoldenSection(Base):
-    """Model for storing individual sections from golden surveys for section-level retrieval"""
+    """Model for storing individual sections from golden surveys for rule-based retrieval"""
     __tablename__ = "golden_sections"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -43,34 +43,36 @@ class GoldenSection(Base):
     golden_pair_id = Column(UUID(as_uuid=True), ForeignKey('golden_rfq_survey_pairs.id', ondelete='CASCADE'))
     section_title = Column(String(500))
     section_text = Column(Text, nullable=False)
-    section_embedding = Column(Vector(384))
-    section_type = Column(String(100))  # e.g., 'demographics', 'pricing', 'satisfaction'
-    methodology_tags: Any = Column(ARRAY(Text))
-    quality_score: Any = Column(DECIMAL(3, 2))
+    section_type = Column(String(100))  # e.g., 'demographics', 'pricing', 'satisfaction', 'behavioral'
+    methodology_tags: Any = Column(ARRAY(Text))  # Array of methodology tags for this section
+    industry_keywords: Any = Column(ARRAY(Text))  # Array of industry-specific keywords
+    question_patterns: Any = Column(ARRAY(Text))  # Array of question patterns found in this section
+    quality_score: Any = Column(DECIMAL(3, 2))  # Average quality from annotations
     usage_count = Column(Integer, default=0)
-    human_verified = Column(Boolean, default=False)
-    labels = Column(JSONB)
+    human_verified = Column(Boolean, default=False)  # True if manually created/verified
+    labels = Column(JSONB)  # Labels from annotations
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
 
 class GoldenQuestion(Base):
-    """Model for storing individual questions from golden surveys for question-level retrieval"""
+    """Model for storing individual questions from golden surveys for rule-based retrieval"""
     __tablename__ = "golden_questions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     question_id = Column(String(255), nullable=False)
     survey_id = Column(String(255), nullable=False)
     golden_pair_id = Column(UUID(as_uuid=True), ForeignKey('golden_rfq_survey_pairs.id', ondelete='CASCADE'))
-    section_id = Column(String(255))  # Reference to section this question belongs to
     question_text = Column(Text, nullable=False)
-    question_embedding = Column(Vector(384))
-    question_type = Column(String(100))  # e.g., 'multiple_choice', 'rating_scale', 'open_text'
-    methodology_tags: Any = Column(ARRAY(Text))
-    quality_score: Any = Column(DECIMAL(3, 2))
+    question_type = Column(String(100))  # e.g., 'multiple_choice', 'rating_scale', 'open_text', 'yes_no'
+    question_subtype = Column(String(100))  # e.g., 'likert_5', 'likert_7', 'binary', 'text_input'
+    methodology_tags: Any = Column(ARRAY(Text))  # Array of methodology tags for this question
+    industry_keywords: Any = Column(ARRAY(Text))  # Array of industry-specific keywords
+    question_patterns: Any = Column(ARRAY(Text))  # Array of question patterns/templates
+    quality_score: Any = Column(DECIMAL(3, 2))  # Average quality from annotations
     usage_count = Column(Integer, default=0)
-    human_verified = Column(Boolean, default=False)
-    labels = Column(JSONB)
+    human_verified = Column(Boolean, default=False)  # True if manually created/verified
+    labels = Column(JSONB)  # Labels from annotations
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
