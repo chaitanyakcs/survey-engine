@@ -448,9 +448,31 @@ async def populate_multi_level_rag(db: Session = Depends(get_db)):
         import asyncio
         import sys
         import os
-        sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
         
-        from scripts.populate_rule_based_multi_level_rag import populate_multi_level_rag
+        # Add project root to Python path
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        if project_root not in sys.path:
+            sys.path.append(project_root)
+        
+        # Try different import paths for the population script
+        try:
+            from scripts.populate_rule_based_multi_level_rag import populate_multi_level_rag
+        except ImportError:
+            # Fallback: try importing from the current directory structure
+            try:
+                import populate_rule_based_multi_level_rag
+                populate_multi_level_rag = populate_rule_based_multi_level_rag.populate_multi_level_rag
+            except ImportError:
+                # Last resort: try to find and import the script dynamically
+                script_path = os.path.join(project_root, 'scripts', 'populate_rule_based_multi_level_rag.py')
+                if os.path.exists(script_path):
+                    import importlib.util
+                    spec = importlib.util.spec_from_file_location("populate_script", script_path)
+                    populate_script = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(populate_script)
+                    populate_multi_level_rag = populate_script.populate_multi_level_rag
+                else:
+                    raise ImportError(f"Could not find population script at {script_path}")
         
         stats = await populate_multi_level_rag(dry_run=False)
         
@@ -1311,14 +1333,14 @@ async def _seed_generation_rules(db: Session):
 
 async def _migrate_multi_level_rag_tables(db: Session):
     """
-    Add rule-based multi-level RAG tables (golden_sections and golden_questions)
-    Uses rule-based matching instead of vector embeddings for Railway compatibility
+    Update existing multi-level RAG tables to rule-based schema
+    Handles existing tables by adding missing columns and removing vector dependencies
     """
-    logger.info("📝 Migrating rule-based multi-level RAG tables...")
+    logger.info("📝 Updating existing multi-level RAG tables to rule-based schema...")
     
     try:
-        # Read the rule-based migration SQL file
-        with open('migrations/add_rule_based_multi_level_rag_tables.sql', 'r') as f:
+        # Read the update migration SQL file
+        with open('migrations/update_existing_multi_level_rag_tables.sql', 'r') as f:
             migration_sql = f.read()
         
         # Split by semicolon and execute each statement
