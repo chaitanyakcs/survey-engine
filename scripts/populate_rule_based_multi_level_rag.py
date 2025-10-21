@@ -9,13 +9,14 @@ import sys
 import os
 import json
 import logging
+from datetime import datetime
 from typing import Dict, List, Any, Optional
 
 # Add src to path
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from src.database.connection import SessionLocal
-from src.database.models import GoldenRFQSurveyPair, GoldenSection, GoldenQuestion
+from src.database.models import GoldenRFQSurveyPair, GoldenSection, GoldenQuestion, Survey, QuestionAnnotation, SectionAnnotation
 from src.utils.database_session_manager import DatabaseSessionManager
 
 logging.basicConfig(level=logging.INFO)
@@ -60,19 +61,26 @@ class RuleBasedRAGPopulator:
     
     async def populate_multi_level_rag(self, dry_run: bool = False) -> Dict[str, Any]:
         """
-        Populate golden_sections and golden_questions from existing golden pairs
+        Populate golden_sections and golden_questions from multiple sources:
+        1. Golden pairs (highest priority)
+        2. Surveys with annotations (high priority)
+        3. Surveys with quality scores (medium priority)
+        4. All other surveys (low priority)
         """
-        logger.info("🔍 [RuleBasedRAGPopulator] Starting rule-based multi-level RAG population")
+        logger.info("🔍 [RuleBasedRAGPopulator] Starting comprehensive multi-level RAG population")
         
         stats = {
             'golden_pairs_processed': 0,
+            'annotated_surveys_processed': 0,
+            'quality_surveys_processed': 0,
+            'other_surveys_processed': 0,
             'sections_created': 0,
             'questions_created': 0,
             'errors': []
         }
         
         try:
-            # Get all golden pairs
+            # 1. Process golden pairs (highest priority)
             golden_pairs = DatabaseSessionManager.safe_query(
                 self.db,
                 lambda: self.db.query(GoldenRFQSurveyPair).all(),
@@ -104,6 +112,111 @@ class RuleBasedRAGPopulator:
                     logger.error(f"❌ {error_msg}")
                     stats['errors'].append(error_msg)
             
+            # 2. Process surveys with annotations (high priority)
+            annotated_surveys = DatabaseSessionManager.safe_query(
+                self.db,
+                lambda: self.db.query(Survey).join(QuestionAnnotation).distinct().all(),
+                fallback_value=[],
+                operation_name="get surveys with annotations"
+            )
+            
+            logger.info(f"📊 Found {len(annotated_surveys)} surveys with annotations to process")
+            
+            for survey in annotated_surveys:
+                try:
+                    stats['annotated_surveys_processed'] += 1
+                    
+                    if not survey.survey_json:
+                        logger.warning(f"⚠️ Survey {survey.id} has no survey_json, skipping")
+                        continue
+                    
+                    # Extract sections and questions from survey
+                    sections_created = await self._extract_sections_from_survey(survey, dry_run, priority='high')
+                    questions_created = await self._extract_questions_from_survey(survey, dry_run, priority='high')
+                    
+                    stats['sections_created'] += sections_created
+                    stats['questions_created'] += questions_created
+                    
+                    logger.info(f"✅ Processed annotated survey {survey.id}: {sections_created} sections, {questions_created} questions")
+                    
+                except Exception as e:
+                    error_msg = f"Error processing annotated survey {survey.id}: {str(e)}"
+                    logger.error(f"❌ {error_msg}")
+                    stats['errors'].append(error_msg)
+            
+            # 3. Process surveys with quality scores (medium priority)
+            quality_surveys = DatabaseSessionManager.safe_query(
+                self.db,
+                lambda: self.db.query(Survey).filter(
+                    Survey.quality_score.isnot(None),
+                    Survey.quality_score > 0.7  # Only high-quality surveys
+                ).all(),
+                fallback_value=[],
+                operation_name="get high-quality surveys"
+            )
+            
+            logger.info(f"📊 Found {len(quality_surveys)} high-quality surveys to process")
+            
+            for survey in quality_surveys:
+                try:
+                    stats['quality_surveys_processed'] += 1
+                    
+                    if not survey.survey_json:
+                        logger.warning(f"⚠️ Survey {survey.id} has no survey_json, skipping")
+                        continue
+                    
+                    # Extract sections and questions from survey
+                    sections_created = await self._extract_sections_from_survey(survey, dry_run, priority='medium')
+                    questions_created = await self._extract_questions_from_survey(survey, dry_run, priority='medium')
+                    
+                    stats['sections_created'] += sections_created
+                    stats['questions_created'] += questions_created
+                    
+                    logger.info(f"✅ Processed quality survey {survey.id}: {sections_created} sections, {questions_created} questions")
+                    
+                except Exception as e:
+                    error_msg = f"Error processing quality survey {survey.id}: {str(e)}"
+                    logger.error(f"❌ {error_msg}")
+                    stats['errors'].append(error_msg)
+            
+            # 4. Process all other surveys (low priority)
+            all_surveys = DatabaseSessionManager.safe_query(
+                self.db,
+                lambda: self.db.query(Survey).filter(
+                    Survey.survey_json.isnot(None)
+                ).all(),
+                fallback_value=[],
+                operation_name="get all surveys"
+            )
+            
+            # Filter out already processed surveys
+            processed_survey_ids = {s.id for s in annotated_surveys + quality_surveys}
+            other_surveys = [s for s in all_surveys if s.id not in processed_survey_ids]
+            
+            logger.info(f"📊 Found {len(other_surveys)} other surveys to process")
+            
+            for survey in other_surveys:
+                try:
+                    stats['other_surveys_processed'] += 1
+                    
+                    if not survey.survey_json:
+                        logger.warning(f"⚠️ Survey {survey.id} has no survey_json, skipping")
+                        continue
+                    
+                    # Extract sections and questions from survey
+                    sections_created = await self._extract_sections_from_survey(survey, dry_run, priority='low')
+                    questions_created = await self._extract_questions_from_survey(survey, dry_run, priority='low')
+                    
+                    stats['sections_created'] += sections_created
+                    stats['questions_created'] += questions_created
+                    
+                    logger.info(f"✅ Processed other survey {survey.id}: {sections_created} sections, {questions_created} questions")
+                    
+                except Exception as e:
+                    error_msg = f"Error processing other survey {survey.id}: {str(e)}"
+                    logger.error(f"❌ {error_msg}")
+                    stats['errors'].append(error_msg)
+            
             if not dry_run:
                 self.db.commit()
                 logger.info("💾 Changes committed to database")
@@ -129,7 +242,11 @@ class RuleBasedRAGPopulator:
         
         try:
             survey_data = golden_pair.survey_json
-            sections = survey_data.get('sections', [])
+            # Handle both old and new JSON structures
+            if 'final_output' in survey_data:
+                sections = survey_data['final_output'].get('sections', [])
+            else:
+                sections = survey_data.get('sections', [])
             
             for section_data in sections:
                 try:
@@ -184,7 +301,11 @@ class RuleBasedRAGPopulator:
         
         try:
             survey_data = golden_pair.survey_json
-            questions = survey_data.get('questions', [])
+            # Handle both old and new JSON structures
+            if 'final_output' in survey_data:
+                questions = survey_data['final_output'].get('questions', [])
+            else:
+                questions = survey_data.get('questions', [])
             
             for question_data in questions:
                 try:
@@ -275,6 +396,137 @@ class RuleBasedRAGPopulator:
                 tags.append(methodology)
         
         return tags if tags else ['mixed_methods']
+    
+    def _extract_question_patterns(self, text: str) -> List[str]:
+        """Extract question patterns from text"""
+        text_lower = text.lower()
+        patterns = []
+        
+        # Common question patterns
+        if 'how often' in text_lower or 'frequency' in text_lower:
+            patterns.append('frequency')
+        if 'how much' in text_lower or 'how many' in text_lower:
+            patterns.append('quantity')
+        if 'how likely' in text_lower or 'probability' in text_lower:
+            patterns.append('likelihood')
+        if 'how important' in text_lower or 'priority' in text_lower:
+            patterns.append('importance')
+        if 'how satisfied' in text_lower or 'satisfaction' in text_lower:
+            patterns.append('satisfaction')
+        if 'how would you' in text_lower or 'preference' in text_lower:
+            patterns.append('preference')
+        if 'why' in text_lower or 'reason' in text_lower:
+            patterns.append('reasoning')
+        if 'when' in text_lower or 'timing' in text_lower:
+            patterns.append('timing')
+        if 'where' in text_lower or 'location' in text_lower:
+            patterns.append('location')
+        
+        return patterns if patterns else ['general']
+    
+    async def _extract_sections_from_survey(self, survey: Survey, dry_run: bool = False, priority: str = 'medium') -> int:
+        """Extract sections from a survey (not golden pair)"""
+        try:
+            survey_data = survey.survey_json
+            # Handle both old and new JSON structures
+            if 'final_output' in survey_data:
+                sections = survey_data['final_output'].get('sections', [])
+            else:
+                sections = survey_data.get('sections', [])
+            
+            sections_created = 0
+            
+            for i, section in enumerate(sections):
+                if not isinstance(section, dict):
+                    continue
+                
+                section_text = section.get('title', '') + ' ' + section.get('description', '')
+                if not section_text.strip():
+                    continue
+                
+                # Calculate quality score based on priority and survey quality
+                base_quality = survey.quality_score or 0.5
+                priority_multiplier = {'high': 1.2, 'medium': 1.0, 'low': 0.8}.get(priority, 1.0)
+                quality_score = min(1.0, base_quality * priority_multiplier)
+                
+                if not dry_run:
+                    golden_section = GoldenSection(
+                        survey_id=str(survey.id),
+                        section_index=i,
+                        section_title=section.get('title', ''),
+                        section_text=section_text,
+                        section_type=self._detect_section_type(section_text),
+                        methodology_tags=self._extract_methodology_tags(section_text),
+                        industry_keywords=self._extract_industry_keywords(section_text),
+                        quality_score=quality_score,
+                        usage_count=0,
+                        created_at=survey.created_at or datetime.now()
+                    )
+                    
+                    self.db.add(golden_section)
+                
+                sections_created += 1
+            
+            return sections_created
+            
+        except Exception as e:
+            logger.error(f"❌ Error extracting sections from survey {survey.id}: {str(e)}")
+            return 0
+    
+    async def _extract_questions_from_survey(self, survey: Survey, dry_run: bool = False, priority: str = 'medium') -> int:
+        """Extract questions from a survey (not golden pair)"""
+        try:
+            survey_data = survey.survey_json
+            # Handle both old and new JSON structures
+            if 'final_output' in survey_data:
+                questions = survey_data['final_output'].get('questions', [])
+            else:
+                questions = survey_data.get('questions', [])
+            
+            questions_created = 0
+            
+            for i, question in enumerate(questions):
+                if not isinstance(question, dict):
+                    continue
+                
+                question_text = question.get('text', '') or question.get('question', '')
+                if not question_text.strip():
+                    continue
+                
+                # Calculate quality score based on priority and survey quality
+                base_quality = survey.quality_score or 0.5
+                priority_multiplier = {'high': 1.2, 'medium': 1.0, 'low': 0.8}.get(priority, 1.0)
+                quality_score = min(1.0, base_quality * priority_multiplier)
+                
+                if not dry_run:
+                    question_type, question_subtype = self._detect_question_type(
+                        question_text, 
+                        question.get('type', '')
+                    )
+                    
+                    golden_question = GoldenQuestion(
+                        survey_id=str(survey.id),
+                        question_index=i,
+                        question_text=question_text,
+                        question_type=question_type,
+                        question_subtype=question_subtype,
+                        methodology_tags=self._extract_methodology_tags(question_text),
+                        industry_keywords=self._extract_industry_keywords(question_text),
+                        question_patterns=self._extract_question_patterns(question_text),
+                        quality_score=quality_score,
+                        usage_count=0,
+                        created_at=survey.created_at or datetime.now()
+                    )
+                    
+                    self.db.add(golden_question)
+                
+                questions_created += 1
+            
+            return questions_created
+            
+        except Exception as e:
+            logger.error(f"❌ Error extracting questions from survey {survey.id}: {str(e)}")
+            return 0
     
     def _extract_industry_keywords(self, text: str) -> List[str]:
         """Extract industry keywords from text"""
