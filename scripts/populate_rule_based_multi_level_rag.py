@@ -486,7 +486,16 @@ class RuleBasedRAGPopulator:
                 logger.warning(f"⚠️ Survey {survey.id} has no final_output, skipping")
                 return 0
             
-            questions = survey_data.get('questions', [])
+            # Questions are nested within sections in survey structure
+            all_questions = []
+            sections = survey_data.get('sections', [])
+            for section in sections:
+                if isinstance(section, dict) and 'questions' in section:
+                    section_questions = section['questions']
+                    if isinstance(section_questions, list):
+                        all_questions.extend(section_questions)
+            
+            questions = all_questions
             
             questions_created = 0
             
