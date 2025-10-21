@@ -41,6 +41,7 @@ class GoldenSection(Base):
     section_id = Column(String(255), nullable=False)
     survey_id = Column(String(255), nullable=False)
     golden_pair_id = Column(UUID(as_uuid=True), ForeignKey('golden_rfq_survey_pairs.id', ondelete='CASCADE'))
+    annotation_id = Column(Integer, ForeignKey('section_annotations.id', ondelete='SET NULL'), nullable=True)  # Link to source annotation
     section_title = Column(String(500))
     section_text = Column(Text, nullable=False)
     section_type = Column(String(100))  # e.g., 'demographics', 'pricing', 'satisfaction', 'behavioral'
@@ -63,6 +64,7 @@ class GoldenQuestion(Base):
     question_id = Column(String(255), nullable=False)
     survey_id = Column(String(255), nullable=False)
     golden_pair_id = Column(UUID(as_uuid=True), ForeignKey('golden_rfq_survey_pairs.id', ondelete='CASCADE'))
+    annotation_id = Column(Integer, ForeignKey('question_annotations.id', ondelete='SET NULL'), nullable=True)  # Link to source annotation
     question_text = Column(Text, nullable=False)
     question_type = Column(String(100))  # e.g., 'multiple_choice', 'rating_scale', 'open_text', 'yes_no'
     question_subtype = Column(String(100))  # e.g., 'likert_5', 'likert_7', 'binary', 'text_input'

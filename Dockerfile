@@ -39,6 +39,8 @@ RUN python3 -c "from sentence_transformers import SentenceTransformer; print('Pr
 COPY src/ ./src/
 COPY evaluations/ ./evaluations/
 COPY scripts/ ./scripts/
+# Force rebuild - scripts directory now included
+# Build timestamp: 2025-10-20-22:30:00
 COPY start.sh ./
 COPY start-local.sh ./
 COPY preload_models.py ./

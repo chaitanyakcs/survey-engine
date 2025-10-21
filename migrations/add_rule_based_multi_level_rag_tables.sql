@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS golden_sections (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     section_id VARCHAR(255) NOT NULL,
     survey_id VARCHAR(255) NOT NULL,
-    golden_pair_id UUID REFERENCES golden_rfq_survey_pairs(id) ON DELETE CASCADE,
+    golden_pair_id UUID, -- Reference to golden pair (FK added later if needed)
     section_title VARCHAR(500),
     section_text TEXT NOT NULL,
     section_type VARCHAR(100), -- e.g., 'demographics', 'pricing', 'satisfaction', 'behavioral'
@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS golden_questions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     question_id VARCHAR(255) NOT NULL,
     survey_id VARCHAR(255) NOT NULL,
-    golden_pair_id UUID REFERENCES golden_rfq_survey_pairs(id) ON DELETE CASCADE,
+    golden_pair_id UUID, -- Reference to golden pair (FK added later if needed)
     question_text TEXT NOT NULL,
     question_type VARCHAR(100), -- e.g., 'multiple_choice', 'rating_scale', 'open_text', 'yes_no'
     question_subtype VARCHAR(100), -- e.g., 'likert_5', 'likert_7', 'binary', 'text_input'

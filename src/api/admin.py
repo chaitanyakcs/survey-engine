@@ -3,6 +3,7 @@ Admin API endpoints for database management - No Alembic dependency
 All migrations handled directly via SQL
 """
 
+from typing import Dict, Any
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -355,6 +356,21 @@ async def migrate_all(db: Session = Depends(get_db)):
                 "message": f"Multi-level RAG tables migration failed: {str(e)}"
             })
         
+        # Step 12: Annotation ID fields in golden tables
+        try:
+            await _migrate_annotation_id_fields(db)
+            migration_results.append({
+                "step": "annotation_id_fields",
+                "status": "success",
+                "message": "Annotation ID fields migration completed"
+            })
+        except Exception as e:
+            migration_results.append({
+                "step": "annotation_id_fields",
+                "status": "failed",
+                "message": f"Annotation ID fields migration failed: {str(e)}"
+            })
+        
         # Determine overall success
         successful_migrations = len([r for r in migration_results if r["status"] == "success"])
         failed_migrations = len([r for r in migration_results if r["status"] == "failed"])
@@ -517,6 +533,104 @@ async def populate_multi_level_rag(db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=500,
             detail=f"Multi-level RAG population failed: {str(e)}"
+        )
+
+
+@router.post("/sync-annotations-to-rag")
+async def sync_annotations_to_rag(db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """
+    Admin endpoint to sync all existing annotations to RAG tables.
+    This is a one-time batch operation for migrating existing annotations.
+    New annotations will be synced automatically in real-time.
+    """
+    logger.info("🔗 [Admin] Starting batch sync of annotations to RAG")
+    
+    stats = {
+        'question_annotations_processed': 0,
+        'section_annotations_processed': 0,
+        'questions_synced': 0,
+        'sections_synced': 0,
+        'errors': []
+    }
+    
+    try:
+        from src.services.annotation_rag_sync_service import AnnotationRAGSyncService
+        from src.database.models import QuestionAnnotation, SectionAnnotation
+        
+        sync_service = AnnotationRAGSyncService(db)
+        
+        # Sync all question annotations
+        logger.info("📝 [Admin] Syncing question annotations...")
+        question_annotations = db.query(QuestionAnnotation).filter(
+            QuestionAnnotation.annotator_id == "current-user"  # Only human annotations
+        ).all()
+        
+        logger.info(f"📊 Found {len(question_annotations)} question annotations to sync")
+        
+        for qa in question_annotations:
+            try:
+                stats['question_annotations_processed'] += 1
+                # Pass only the ID to avoid session binding issues
+                annotation_id = qa.id
+                result = await sync_service.sync_question_annotation(annotation_id)
+                
+                if result.get("success"):
+                    stats['questions_synced'] += 1
+                    logger.info(f"✅ Synced question annotation {annotation_id}: {result.get('action')}")
+                else:
+                    error_msg = f"Failed to sync question annotation {annotation_id}: {result.get('error')}"
+                    logger.warning(f"⚠️ {error_msg}")
+                    stats['errors'].append(error_msg)
+                    
+            except Exception as e:
+                error_msg = f"Error syncing question annotation {qa.id}: {str(e)}"
+                logger.error(f"❌ {error_msg}")
+                stats['errors'].append(error_msg)
+        
+        # Sync all section annotations
+        logger.info("📝 [Admin] Syncing section annotations...")
+        section_annotations = db.query(SectionAnnotation).filter(
+            SectionAnnotation.annotator_id == "current-user"  # Only human annotations
+        ).all()
+        
+        logger.info(f"📊 Found {len(section_annotations)} section annotations to sync")
+        
+        for sa in section_annotations:
+            try:
+                stats['section_annotations_processed'] += 1
+                # Pass only the ID to avoid session binding issues
+                annotation_id = sa.id
+                result = await sync_service.sync_section_annotation(annotation_id)
+                
+                if result.get("success"):
+                    stats['sections_synced'] += 1
+                    logger.info(f"✅ Synced section annotation {annotation_id}: {result.get('action')}")
+                else:
+                    error_msg = f"Failed to sync section annotation {annotation_id}: {result.get('error')}"
+                    logger.warning(f"⚠️ {error_msg}")
+                    stats['errors'].append(error_msg)
+                    
+            except Exception as e:
+                error_msg = f"Error syncing section annotation {sa.id}: {str(e)}"
+                logger.error(f"❌ {error_msg}")
+                stats['errors'].append(error_msg)
+        
+        db.commit()
+        
+        logger.info(f"✅ [Admin] Annotation sync completed: {stats['questions_synced']} questions, {stats['sections_synced']} sections")
+        
+        return {
+            "status": "success",
+            "message": f"Synced {stats['questions_synced']} questions and {stats['sections_synced']} sections to RAG",
+            **stats
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ [Admin] Annotation sync error: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Annotation sync failed: {str(e)}"
         )
 
 
@@ -1421,6 +1535,34 @@ async def _migrate_retrieval_configuration(db: Session):
         # Do not raise; allow environments without this migration file
     except Exception as e:
         logger.error(f"❌ Error migrating retrieval configuration: {e}")
+        db.rollback()
+        raise
+
+
+async def _migrate_annotation_id_fields(db: Session):
+    """Add annotation_id fields to golden_questions and golden_sections tables"""
+    logger.info("🔗 Adding annotation_id fields to golden tables...")
+    try:
+        migration_file = 'migrations/add_annotation_id_to_golden_tables.sql'
+        with open(migration_file, 'r') as f:
+            migration_sql = f.read()
+
+        # Execute statements individually to tolerate partial failures
+        statements = [stmt.strip() for stmt in migration_sql.split(';') if stmt.strip()]
+        for statement in statements:
+            try:
+                db.execute(text(statement))
+            except Exception as stmt_err:
+                # Log error but continue - some statements may already be applied
+                logger.warning(f"⚠️ Statement failed (may already exist): {stmt_err}")
+
+        db.commit()
+        logger.info("✅ Annotation ID fields migration completed")
+    except FileNotFoundError:
+        logger.warning("⚠️ Annotation ID migration file not found, skipping")
+        db.rollback()
+    except Exception as e:
+        logger.error(f"❌ Error migrating annotation ID fields: {e}")
         db.rollback()
         raise
 

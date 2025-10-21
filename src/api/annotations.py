@@ -361,7 +361,7 @@ def get_survey_annotations(
     )
 
 @router.post("/annotations/survey/{survey_id}/bulk")
-def save_bulk_annotations(
+async def save_bulk_annotations(
     survey_id: str,
     annotations: BulkAnnotationRequest,
     db: Session = Depends(get_db)
@@ -563,6 +563,57 @@ def save_bulk_annotations(
         logger.info("💾 [API] Committing all changes to database...")
         db.commit()
         logger.info("✅ [API] Successfully committed all changes")
+        
+        # Sync annotations to RAG tables (real-time hook)
+        logger.info("🔗 [API] Syncing annotations to RAG tables...")
+        try:
+            from src.services.annotation_rag_sync_service import AnnotationRAGSyncService
+            sync_service = AnnotationRAGSyncService(db)
+            
+            # Sync question annotations
+            for qa_req in annotations.question_annotations:
+                # Find the saved annotation ID
+                qa = db.query(QuestionAnnotation).filter(
+                    and_(
+                        QuestionAnnotation.question_id == qa_req.question_id,
+                        QuestionAnnotation.annotator_id == qa_req.annotator_id,
+                        QuestionAnnotation.survey_id == survey_id
+                    )
+                ).first()
+                
+                if qa and qa.annotator_id == "current-user":  # Only sync human annotations
+                    logger.info(f"🔗 Syncing question annotation {qa.id} to RAG")
+                    result = await sync_service.sync_question_annotation(qa.id)
+                    if result.get("success"):
+                        logger.info(f"✅ Synced question {qa.question_id}: {result.get('action')}")
+                    else:
+                        logger.warning(f"⚠️ Failed to sync question {qa.question_id}: {result.get('error')}")
+            
+            # Sync section annotations
+            for sa_req in annotations.section_annotations:
+                # Find the saved annotation ID
+                sa = db.query(SectionAnnotation).filter(
+                    and_(
+                        SectionAnnotation.section_id == sa_req.section_id,
+                        SectionAnnotation.annotator_id == sa_req.annotator_id,
+                        SectionAnnotation.survey_id == survey_id
+                    )
+                ).first()
+                
+                if sa and sa.annotator_id == "current-user":  # Only sync human annotations
+                    logger.info(f"🔗 Syncing section annotation {sa.id} to RAG")
+                    result = await sync_service.sync_section_annotation(sa.id)
+                    if result.get("success"):
+                        logger.info(f"✅ Synced section {sa.section_id}: {result.get('action')}")
+                    else:
+                        logger.warning(f"⚠️ Failed to sync section {sa.section_id}: {result.get('error')}")
+            
+            db.commit()  # Commit RAG sync changes
+            logger.info("✅ [API] RAG sync completed")
+        except Exception as sync_error:
+            logger.error(f"⚠️ [API] RAG sync failed (non-fatal): {str(sync_error)}")
+            # Don't fail the entire request if RAG sync fails
+            db.rollback()  # Rollback RAG changes but keep annotations
         
         logger.info(f"🎉 [API] Bulk annotation save completed successfully for survey_id={survey_id}")
         return {"message": "Annotations saved successfully", "survey_id": survey_id}

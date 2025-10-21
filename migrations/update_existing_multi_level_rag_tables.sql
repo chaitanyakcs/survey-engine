@@ -48,3 +48,4 @@ COMMENT ON COLUMN golden_questions.question_subtype IS 'Question subtype for mor
 COMMENT ON COLUMN golden_questions.methodology_tags IS 'Methodology tags for rule-based filtering';
 COMMENT ON COLUMN golden_questions.industry_keywords IS 'Industry keywords for rule-based matching';
 COMMENT ON COLUMN golden_questions.question_patterns IS 'Question patterns/templates for pattern matching';
+
