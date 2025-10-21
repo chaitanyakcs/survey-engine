@@ -115,7 +115,9 @@ class RuleBasedRAGPopulator:
             # 2. Process surveys with annotations (high priority)
             annotated_surveys = DatabaseSessionManager.safe_query(
                 self.db,
-                lambda: self.db.query(Survey).join(QuestionAnnotation).distinct().all(),
+                lambda: self.db.query(Survey).join(QuestionAnnotation).filter(
+                    Survey.final_output.isnot(None)
+                ).distinct().all(),
                 fallback_value=[],
                 operation_name="get surveys with annotations"
             )
@@ -148,8 +150,9 @@ class RuleBasedRAGPopulator:
             quality_surveys = DatabaseSessionManager.safe_query(
                 self.db,
                 lambda: self.db.query(Survey).filter(
-                    Survey.quality_score.isnot(None),
-                    Survey.quality_score > 0.7  # Only high-quality surveys
+                    Survey.final_output.isnot(None),
+                    Survey.golden_similarity_score.isnot(None),
+                    Survey.golden_similarity_score > 0.7  # Only high-quality surveys
                 ).all(),
                 fallback_value=[],
                 operation_name="get high-quality surveys"
@@ -183,7 +186,7 @@ class RuleBasedRAGPopulator:
             all_surveys = DatabaseSessionManager.safe_query(
                 self.db,
                 lambda: self.db.query(Survey).filter(
-                    Survey.survey_json.isnot(None)
+                    Survey.final_output.isnot(None)
                 ).all(),
                 fallback_value=[],
                 operation_name="get all surveys"
@@ -427,12 +430,13 @@ class RuleBasedRAGPopulator:
     async def _extract_sections_from_survey(self, survey: Survey, dry_run: bool = False, priority: str = 'medium') -> int:
         """Extract sections from a survey (not golden pair)"""
         try:
-            survey_data = survey.survey_json
-            # Handle both old and new JSON structures
-            if 'final_output' in survey_data:
-                sections = survey_data['final_output'].get('sections', [])
-            else:
-                sections = survey_data.get('sections', [])
+            # Surveys use final_output field, not survey_json
+            survey_data = survey.final_output
+            if not survey_data:
+                logger.warning(f"⚠️ Survey {survey.id} has no final_output, skipping")
+                return 0
+            
+            sections = survey_data.get('sections', [])
             
             sections_created = 0
             
@@ -445,7 +449,7 @@ class RuleBasedRAGPopulator:
                     continue
                 
                 # Calculate quality score based on priority and survey quality
-                base_quality = survey.quality_score or 0.5
+                base_quality = survey.golden_similarity_score or 0.5
                 priority_multiplier = {'high': 1.2, 'medium': 1.0, 'low': 0.8}.get(priority, 1.0)
                 quality_score = min(1.0, base_quality * priority_multiplier)
                 
@@ -476,12 +480,13 @@ class RuleBasedRAGPopulator:
     async def _extract_questions_from_survey(self, survey: Survey, dry_run: bool = False, priority: str = 'medium') -> int:
         """Extract questions from a survey (not golden pair)"""
         try:
-            survey_data = survey.survey_json
-            # Handle both old and new JSON structures
-            if 'final_output' in survey_data:
-                questions = survey_data['final_output'].get('questions', [])
-            else:
-                questions = survey_data.get('questions', [])
+            # Surveys use final_output field, not survey_json
+            survey_data = survey.final_output
+            if not survey_data:
+                logger.warning(f"⚠️ Survey {survey.id} has no final_output, skipping")
+                return 0
+            
+            questions = survey_data.get('questions', [])
             
             questions_created = 0
             
@@ -494,7 +499,7 @@ class RuleBasedRAGPopulator:
                     continue
                 
                 # Calculate quality score based on priority and survey quality
-                base_quality = survey.quality_score or 0.5
+                base_quality = survey.golden_similarity_score or 0.5
                 priority_multiplier = {'high': 1.2, 'medium': 1.0, 'low': 0.8}.get(priority, 1.0)
                 quality_score = min(1.0, base_quality * priority_multiplier)
                 
