@@ -198,6 +198,8 @@ class EmbeddingService:
         else:
             return await self._get_sentence_transformer_embeddings_batch(texts)
     
+# Embedding conversion methods removed - using pgvector directly
+    
     async def _get_replicate_embedding(self, text: str) -> List[float]:
         """
         Get embedding from Replicate API

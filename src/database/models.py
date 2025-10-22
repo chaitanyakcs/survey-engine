@@ -8,12 +8,12 @@ import uuid
 
 # Import proper pgvector SQLAlchemy type
 try:
-    from pgvector.sqlalchemy import Vector
+    from pgvector.sqlalchemy.vector import VECTOR
 except ImportError:
     # Handle import error gracefully for testing
     import warnings
-    warnings.warn("pgvector.sqlalchemy not available, using fallback")
-    from sqlalchemy import Text as Vector  # Fallback for testing
+    warnings.warn("pgvector not available, using fallback")
+    from sqlalchemy import Text as VECTOR  # Fallback for testing
 
 
 class GoldenRFQSurveyPair(Base):
@@ -22,7 +22,7 @@ class GoldenRFQSurveyPair(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     title = Column(Text)
     rfq_text = Column(Text, nullable=False)
-    rfq_embedding = Column(Vector(384))
+    rfq_embedding = Column(VECTOR(384))
     survey_json = Column(JSONB, nullable=False)
     methodology_tags: Any = Column(ARRAY(Text))
     industry_category: Any = Column(Text)
@@ -117,7 +117,7 @@ class RFQ(Base):
     product_category = Column(Text)
     target_segment = Column(Text)
     research_goal = Column(Text)
-    embedding = Column(Vector(384))
+    embedding = Column(VECTOR(384))
     enhanced_rfq_data = Column(JSONB)  # Store structured Enhanced RFQ data for analytics and future features
     document_upload_id = Column(UUID(as_uuid=True), ForeignKey("document_uploads.id"))  # Optional reference to source document
     created_at = Column(DateTime, default=func.now())

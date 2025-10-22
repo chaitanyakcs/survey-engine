@@ -9,6 +9,7 @@ from datetime import datetime
 import replicate
 import json
 import logging
+from scripts.populate_rule_based_multi_level_rag import RuleBasedRAGPopulator
 
 logger = logging.getLogger(__name__)
 
@@ -239,6 +240,18 @@ We need a comprehensive survey with approximately {len(questions)} questions to 
             logger.info(f"✅ [GoldenService] Golden pair created successfully with ID: {golden_pair.id}")
             logger.info(f"✅ [GoldenService] Survey record created with ID: {survey_id}")
             logger.info(f"📋 [GoldenService] Created pair details - title: {golden_pair.title}, quality_score: {golden_pair.quality_score}")
+            
+            # Automatically populate multi-level RAG for this golden pair
+            logger.info(f"🔍 [GoldenService] Populating multi-level RAG for golden pair {golden_pair.id}")
+            try:
+                populator = RuleBasedRAGPopulator(self.db)
+                sections_created = await populator._extract_sections(golden_pair, dry_run=False)
+                questions_created = await populator._extract_questions(golden_pair, dry_run=False)
+                self.db.commit()
+                logger.info(f"✅ [GoldenService] Multi-level RAG populated: {sections_created} sections, {questions_created} questions")
+            except Exception as e:
+                logger.warning(f"⚠️ [GoldenService] Multi-level RAG population failed (non-critical): {str(e)}")
+                # Don't fail golden pair creation if RAG population fails
             
             return golden_pair
             

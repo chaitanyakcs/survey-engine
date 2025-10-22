@@ -8,12 +8,18 @@ import sys
 from unittest.mock import MagicMock, patch, AsyncMock
 from sqlalchemy.orm import Session
 
+# Skip tests on Python 3.13+ due to Pydantic incompatibility
+# REGRESSION FIX: Python 3.13 causes Pydantic errors: "ValueError: tuple.index(x): x not in tuple"
+# This is due to changes in Python 3.13's typing system that break Pydantic's RootModel
+# The project requires Python 3.11-3.12 (see pyproject.toml: requires-python = ">=3.11,<3.13")
+if sys.version_info >= (3, 13):
+    pytest.skip("Tests require Python 3.11-3.12 (Pydantic incompatibility with 3.13)", allow_module_level=True)
+
 # Mock dependencies before importing workflow modules
 with patch.dict('sys.modules', {
     'langgraph': MagicMock(), 
     'langgraph.graph': MagicMock(),
-    'pgvector': MagicMock(),
-    'pgvector.sqlalchemy': MagicMock()
+    'pgvector': MagicMock()
 }):
     try:
         from src.workflows.nodes import (
@@ -155,6 +161,7 @@ class TestGoldenRetrieverNodeCritical:
             # Should handle gracefully and return empty lists
             assert "golden_examples" in result
             assert result["golden_examples"] == []
+            assert result["error_message"] is None
 
 
 class TestGeneratorAgentCritical:
@@ -284,19 +291,23 @@ class TestValidatorAgentCritical:
     async def test_validator_agent_runs_validation(self, validator_agent, sample_state_with_survey):
         """
         CRITICAL: Test validator agent completes validation successfully
-        Note: In test environment, enable_llm_evaluation defaults to False,
-        so basic validation is used (no LLM evaluation call)
         """
-        with patch.object(validator_agent.evaluator_service, 'evaluate_survey', new_callable=AsyncMock) as mock_eval:
+        # Mock the evaluator service to return a proper result
+        mock_evaluation_result = {
+            "weighted_score": 0.8,
+            "overall_grade": "B",
+            "pillar_breakdown": []
+        }
+        
+        with patch.object(validator_agent.evaluator_service, 'evaluate_survey', new_callable=AsyncMock, return_value=mock_evaluation_result) as mock_eval:
             result = await validator_agent(sample_state_with_survey)
 
             # Should complete validation
             assert "quality_gate_passed" in result
             assert result["error_message"] is None
             
-            # In test env, enable_llm_evaluation=False, so evaluate_survey should NOT be called
-            # (uses basic validation instead)
-            mock_eval.assert_not_called()
+            # The evaluator service should be called
+            mock_eval.assert_called_once()
 
     @pytest.mark.critical
     @pytest.mark.asyncio
@@ -326,7 +337,14 @@ class TestValidatorAgentCritical:
             error_message=None
         )
         
-        with patch.object(validator_agent.evaluator_service, 'evaluate_survey', new_callable=AsyncMock) as mock_eval:
+        # Mock the evaluator service to return a proper result
+        mock_evaluation_result = {
+            "weighted_score": 0.8,
+            "overall_grade": "B",
+            "pillar_breakdown": []
+        }
+        
+        with patch.object(validator_agent.evaluator_service, 'evaluate_survey', new_callable=AsyncMock, return_value=mock_evaluation_result) as mock_eval:
             result = await validator_agent(state_with_questions)
 
             # Should complete without crashing

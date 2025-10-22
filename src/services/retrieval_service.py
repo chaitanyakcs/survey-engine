@@ -3,6 +3,7 @@ from sqlalchemy import text
 import uuid
 from src.database.models import GoldenRFQSurveyPair, QuestionAnnotation, SectionAnnotation, SurveyAnnotation, RetrievalWeights, MethodologyCompatibility
 from src.utils.database_session_manager import DatabaseSessionManager
+from pgvector import Vector
 from typing import List, Dict, Any, Optional
 import numpy as np
 import logging
@@ -15,6 +16,7 @@ class RetrievalService:
     def __init__(self, db: Session):
         self.db = db
         self._weights_cache = {}  # Cache for retrieval weights
+        self._faiss_service = None  # Lazy initialization
     
     async def retrieve_golden_pairs(
         self,
@@ -42,14 +44,18 @@ class RetrievalService:
             logger.info(f"🔍 [RetrievalService] Using weights: {weights}")
             
             # Use ORM query with proper pgvector operations
-            from pgvector.sqlalchemy import Vector
-            
             # Base query with cosine distance (smaller is more similar)
             try:
                 similarity_expr = GoldenRFQSurveyPair.rfq_embedding.cosine_distance(embedding)
             except Exception as e:
-                logger.warning(f"⚠️ [RetrievalService] cosine_distance not available, using l2_distance: {e}")
-                similarity_expr = GoldenRFQSurveyPair.rfq_embedding.l2_distance(embedding)
+                logger.warning(f"⚠️ [RetrievalService] cosine_distance not available, trying l2_distance: {e}")
+                try:
+                    similarity_expr = GoldenRFQSurveyPair.rfq_embedding.l2_distance(embedding)
+                except Exception as e2:
+                    logger.error(f"❌ [RetrievalService] Both cosine_distance and l2_distance failed: {e2}")
+                    # Fallback: return empty results if vector operations fail
+                    logger.warning("⚠️ [RetrievalService] Falling back to empty results due to vector operation failure")
+                    return []
             
             query = self.db.query(
                 GoldenRFQSurveyPair.id,
@@ -163,7 +169,17 @@ class RetrievalService:
             
         except Exception as e:
             logger.error(f"❌ [RetrievalService] Golden pair retrieval failed: {str(e)}")
-            raise Exception(f"Golden pair retrieval failed: {str(e)}")
+            # Check if this is a transaction error that needs rollback
+            if "current transaction is aborted" in str(e).lower():
+                logger.warning("⚠️ [RetrievalService] Database transaction aborted, attempting rollback")
+                try:
+                    self.db.rollback()
+                    logger.info("✅ [RetrievalService] Transaction rollback successful")
+                except Exception as rollback_error:
+                    logger.error(f"❌ [RetrievalService] Rollback failed: {rollback_error}")
+            # Return empty results instead of raising exception to prevent cascading failures
+            logger.warning("⚠️ [RetrievalService] Returning empty results due to retrieval failure")
+            return []
     
     async def retrieve_methodology_blocks(
         self,

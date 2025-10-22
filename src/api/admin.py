@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from src.database.connection import get_db
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,51 @@ async def admin_health_check(db: Session = Depends(get_db)):
             "message": f"Database connection failed: {str(e)}",
             "database_connected": False
         }
+
+
+@router.get("/safety-info")
+async def get_safety_info():
+    """
+    Get information about safety requirements for dangerous operations
+    """
+    return {
+        "message": "Survey Engine Admin API Safety Information",
+        "dangerous_operations": {
+            "reset_database": {
+                "endpoint": "/api/v1/admin/reset-database",
+                "method": "POST",
+                "safety_requirements": {
+                    "confirmation_code": "DANGER_DELETE_ALL_DATA",
+                    "force": True,
+                    "description": "Completely wipes all database data"
+                },
+                "example_usage": "POST /api/v1/admin/reset-database?confirmation_code=DANGER_DELETE_ALL_DATA&force=true"
+            },
+            "bootstrap_complete": {
+                "endpoint": "/api/v1/admin/bootstrap-complete",
+                "method": "POST",
+                "safety_requirements": {
+                    "confirmation_code": "BOOTSTRAP_DATABASE",
+                    "force": True,
+                    "description": "Creates complete database schema"
+                },
+                "example_usage": "POST /api/v1/admin/bootstrap-complete?confirmation_code=BOOTSTRAP_DATABASE&force=true"
+            }
+        },
+        "safe_operations": {
+            "health_check": "/api/v1/admin/health",
+            "migration_status": "/api/v1/admin/check-migration-status",
+            "seed_retrieval_weights": "/api/v1/admin/seed-retrieval-weights",
+            "seed_methodology_compatibility": "/api/v1/admin/seed-methodology-compatibility",
+            "seed_methodology_rules": "/api/v1/admin/seed-methodology-rules",
+            "migrate_all": "/api/v1/admin/migrate-all"
+        },
+        "environment_protection": {
+            "production_blocked": "Dangerous operations are blocked in production unless ALLOW_DANGEROUS_OPERATIONS=true",
+            "llm_protection": "All dangerous operations require explicit confirmation codes and force flags"
+        },
+        "warning": "These operations can cause data loss. Use with extreme caution!"
+    }
 
 
 @router.get("/debug/check-removed-labels-column")
@@ -326,7 +372,52 @@ async def migrate_all(db: Session = Depends(get_db)):
                 "message": f"Alembic version table cleanup failed: {str(e)}"
             })
         
-        # Step 10: Seed generation rules
+        # Step 10: Seed retrieval weights
+        try:
+            await _seed_retrieval_weights(db)
+            migration_results.append({
+                "step": "seed_retrieval_weights",
+                "status": "success",
+                "message": "Retrieval weights seeding completed"
+            })
+        except Exception as e:
+            migration_results.append({
+                "step": "seed_retrieval_weights",
+                "status": "failed",
+                "message": f"Retrieval weights seeding failed: {str(e)}"
+            })
+        
+        # Step 11: Seed methodology compatibility
+        try:
+            await _seed_methodology_compatibility(db)
+            migration_results.append({
+                "step": "seed_methodology_compatibility",
+                "status": "success",
+                "message": "Methodology compatibility seeding completed"
+            })
+        except Exception as e:
+            migration_results.append({
+                "step": "seed_methodology_compatibility",
+                "status": "failed",
+                "message": f"Methodology compatibility seeding failed: {str(e)}"
+            })
+        
+        # Step 12: Seed methodology rules
+        try:
+            await _seed_methodology_rules(db)
+            migration_results.append({
+                "step": "seed_methodology_rules",
+                "status": "success",
+                "message": "Methodology rules seeding completed"
+            })
+        except Exception as e:
+            migration_results.append({
+                "step": "seed_methodology_rules",
+                "status": "failed",
+                "message": f"Methodology rules seeding failed: {str(e)}"
+            })
+        
+        # Step 13: Seed generation rules
         try:
             await _seed_generation_rules(db)
             migration_results.append({
@@ -341,7 +432,7 @@ async def migrate_all(db: Session = Depends(get_db)):
                 "message": f"Generation rules seeding failed: {str(e)}"
             })
         
-        # Step 11: Multi-level RAG tables
+        # Step 14: Multi-level RAG tables
         try:
             await _migrate_multi_level_rag_tables(db)
             migration_results.append({
@@ -476,57 +567,21 @@ async def populate_multi_level_rag(db: Session = Depends(get_db)):
     try:
         logger.info("🔍 [Admin] Starting multi-level RAG population")
         
-        import asyncio
-        import sys
-        import os
+        from scripts.populate_rule_based_multi_level_rag import RuleBasedRAGPopulator
         
-        # Add project root to Python path
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-        if project_root not in sys.path:
-            sys.path.append(project_root)
+        populator = RuleBasedRAGPopulator(db)
+        stats = await populator.populate_multi_level_rag(dry_run=False)
         
-        # Try different import paths for the population script
-        try:
-            from scripts.populate_rule_based_multi_level_rag import populate_multi_level_rag
-        except ImportError:
-            # Fallback: try importing from the current directory structure
-            try:
-                import populate_rule_based_multi_level_rag
-                populate_multi_level_rag = populate_rule_based_multi_level_rag.populate_multi_level_rag
-            except ImportError:
-                # Last resort: try to find and import the script dynamically
-                script_path = os.path.join(project_root, 'scripts', 'populate_rule_based_multi_level_rag.py')
-                if os.path.exists(script_path):
-                    import importlib.util
-                    spec = importlib.util.spec_from_file_location("populate_script", script_path)
-                    populate_script = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(populate_script)
-                    populate_multi_level_rag = populate_script.populate_multi_level_rag
-                else:
-                    raise ImportError(f"Could not find population script at {script_path}")
-        
-        stats = await populate_multi_level_rag(dry_run=False)
-        
-        if stats['sections_created'] > 0 or stats['questions_created'] > 0:
-            logger.info(f"✅ [Admin] Multi-level RAG population completed - created {stats['sections_created']} sections and {stats['questions_created']} questions")
-            return {
-                "status": "success",
-                "message": f"Multi-level RAG population completed - created {stats['sections_created']} sections and {stats['questions_created']} questions",
-                "sections_created": stats['sections_created'],
-                "questions_created": stats['questions_created'],
-                "golden_pairs_processed": stats['golden_pairs_processed'],
-                "errors": stats['errors']
-            }
-        else:
-            logger.warning("⚠️ [Admin] Multi-level RAG population completed but no sections/questions created")
-            return {
-                "status": "success",
-                "message": "Multi-level RAG population completed but no sections/questions created",
-                "sections_created": 0,
-                "questions_created": 0,
-                "golden_pairs_processed": stats['golden_pairs_processed'],
-                "errors": stats['errors']
-            }
+        logger.info(f"✅ [Admin] Multi-level RAG population completed")
+        return {
+            "status": "success",
+            "message": f"Multi-level RAG population completed - created {stats.get('sections_created', 0)} sections and {stats.get('questions_created', 0)} questions",
+            "sections_created": stats.get('sections_created', 0),
+            "questions_created": stats.get('questions_created', 0),
+            "golden_pairs_processed": stats.get('golden_pairs_processed', 0),
+            "annotated_surveys_processed": stats.get('annotated_surveys_processed', 0),
+            "errors": stats.get('errors', [])
+        }
             
     except Exception as e:
         logger.error(f"❌ [Admin] Multi-level RAG population error: {str(e)}")
@@ -1400,6 +1455,307 @@ async def _migrate_survey_status_constraint(db: Session):
         raise
 
 
+async def _seed_retrieval_weights(db: Session):
+    """
+    Seed comprehensive retrieval weights configuration
+    """
+    logger.info("🌱 Seeding retrieval weights...")
+    
+    # Clear existing weights (except global default)
+    db.execute(text("""
+        DELETE FROM retrieval_weights
+        WHERE context_type != 'global' OR context_value != 'default'
+    """))
+    
+    # Insert methodology-specific weights
+    methodology_weights = [
+        ('methodology', 'van_westendorp', 0.35, 0.40, 0.10, 0.10, 0.05),
+        ('methodology', 'gabor_granger', 0.35, 0.40, 0.10, 0.10, 0.05),
+        ('methodology', 'conjoint', 0.30, 0.35, 0.15, 0.15, 0.05),
+        ('methodology', 'maxdiff', 0.30, 0.35, 0.15, 0.15, 0.05),
+        ('methodology', 'nps', 0.40, 0.20, 0.20, 0.15, 0.05),
+        ('methodology', 'csat', 0.40, 0.20, 0.20, 0.15, 0.05),
+        ('methodology', 'brand_tracking', 0.35, 0.25, 0.25, 0.10, 0.05),
+        ('methodology', 'pricing_research', 0.30, 0.30, 0.20, 0.15, 0.05)
+    ]
+    
+    for context_type, context_value, semantic, methodology, industry, quality, annotation in methodology_weights:
+        db.execute(text("""
+            INSERT INTO retrieval_weights (id, weight_name, context_type, context_value, semantic_weight, methodology_weight, industry_weight, quality_weight, annotation_weight, enabled)
+            VALUES (gen_random_uuid(), :weight_name, :context_type, :context_value, :semantic, :methodology, :industry, :quality, :annotation, true)
+        """), {
+            'weight_name': f"{context_type}_{context_value}",
+            'context_type': context_type,
+            'context_value': context_value,
+            'semantic': semantic,
+            'methodology': methodology,
+            'industry': industry,
+            'quality': quality,
+            'annotation': annotation
+        })
+    
+    # Insert industry-specific weights
+    industry_weights = [
+        ('industry', 'healthcare', 0.30, 0.20, 0.30, 0.15, 0.05),
+        ('industry', 'technology', 0.35, 0.25, 0.25, 0.10, 0.05),
+        ('industry', 'finance', 0.30, 0.25, 0.25, 0.15, 0.05),
+        ('industry', 'retail', 0.40, 0.20, 0.20, 0.15, 0.05),
+        ('industry', 'manufacturing', 0.35, 0.25, 0.25, 0.10, 0.05),
+        ('industry', 'education', 0.40, 0.20, 0.20, 0.15, 0.05)
+    ]
+    
+    for context_type, context_value, semantic, methodology, industry, quality, annotation in industry_weights:
+        db.execute(text("""
+            INSERT INTO retrieval_weights (id, weight_name, context_type, context_value, semantic_weight, methodology_weight, industry_weight, quality_weight, annotation_weight, enabled)
+            VALUES (gen_random_uuid(), :weight_name, :context_type, :context_value, :semantic, :methodology, :industry, :quality, :annotation, true)
+        """), {
+            'weight_name': f"{context_type}_{context_value}",
+            'context_type': context_type,
+            'context_value': context_value,
+            'semantic': semantic,
+            'methodology': methodology,
+            'industry': industry,
+            'quality': quality,
+            'annotation': annotation
+        })
+    
+    db.commit()
+    logger.info(f"✅ Seeded {len(methodology_weights)} methodology weights and {len(industry_weights)} industry weights")
+
+
+async def _seed_methodology_compatibility(db: Session):
+    """
+    Seed methodology compatibility matrix
+    """
+    logger.info("🌱 Seeding methodology compatibility...")
+    
+    # Clear existing compatibility data
+    db.execute(text("DELETE FROM methodology_compatibility"))
+    
+    # Insert methodology compatibility pairs
+    compatibility_pairs = [
+        ('van_westendorp', 'gabor_granger', 0.70, 'Both pricing methodologies'),
+        ('gabor_granger', 'van_westendorp', 0.70, 'Both pricing methodologies'),
+        ('conjoint', 'maxdiff', 0.60, 'Both choice-based methodologies'),
+        ('maxdiff', 'conjoint', 0.60, 'Both choice-based methodologies'),
+        ('nps', 'csat', 0.80, 'Both customer experience methodologies'),
+        ('csat', 'nps', 0.80, 'Both customer experience methodologies'),
+        ('brand_tracking', 'nps', 0.50, 'Brand awareness and customer loyalty'),
+        ('nps', 'brand_tracking', 0.50, 'Customer loyalty and brand awareness'),
+        ('pricing_research', 'van_westendorp', 0.75, 'Both pricing-focused methodologies'),
+        ('van_westendorp', 'pricing_research', 0.75, 'Both pricing-focused methodologies'),
+        ('pricing_research', 'gabor_granger', 0.75, 'Both pricing-focused methodologies'),
+        ('gabor_granger', 'pricing_research', 0.75, 'Both pricing-focused methodologies')
+    ]
+    
+    for methodology_a, methodology_b, score, notes in compatibility_pairs:
+        db.execute(text("""
+            INSERT INTO methodology_compatibility (methodology_a, methodology_b, compatibility_score, notes)
+            VALUES (:methodology_a, :methodology_b, :score, :notes)
+        """), {
+            'methodology_a': methodology_a,
+            'methodology_b': methodology_b,
+            'score': score,
+            'notes': notes
+        })
+    
+    db.commit()
+    logger.info(f"✅ Seeded {len(compatibility_pairs)} methodology compatibility pairs")
+
+
+async def _seed_methodology_rules(db: Session):
+    """
+    Seed comprehensive methodology rules for survey generation
+    """
+    logger.info("🌱 Seeding methodology rules...")
+    
+    methodology_rules = {
+        "van_westendorp": {
+            "description": "Van Westendorp Price Sensitivity Meter - Measures price sensitivity through four key questions",
+            "required_questions": 4,
+            "question_flow": [
+                "At what price would you consider this product to be so expensive that you would not consider buying it?",
+                "At what price would you consider this product to be priced so low that you would feel the quality couldn't be very good?",
+                "At what price would you consider this product starting to get expensive, so that it is not out of the question, but you would have to give some thought to buying it?",
+                "At what price would you consider this product to be a bargain - a great buy for the money?"
+            ],
+            "validation_rules": [
+                "Must have exactly 4 price questions",
+                "Questions must follow the exact Van Westendorp format",
+                "Price ranges should be logical and sequential",
+                "Include open-ended follow-up for reasoning",
+                "Use currency-appropriate formatting"
+            ],
+            "best_practices": [
+                "Present questions in random order to avoid bias",
+                "Include product description before price questions",
+                "Use realistic price ranges based on market research",
+                "Add demographic questions for segmentation"
+            ]
+        },
+        "conjoint": {
+            "description": "Conjoint Analysis / Choice Modeling - Measures preferences for product attributes",
+            "required_questions": 3,
+            "question_flow": [
+                "Screening questions for product familiarity",
+                "Attribute importance ranking",
+                "Choice sets with different combinations",
+                "Demographic and behavioral questions"
+            ],
+            "validation_rules": [
+                "Must have balanced choice sets",
+                "Attributes must be orthogonal (independent)",
+                "Include appropriate sample size calculations",
+                "Use realistic attribute levels",
+                "Include 'None of the above' option"
+            ],
+            "best_practices": [
+                "Limit to 3-6 attributes to avoid cognitive overload",
+                "Use 2-4 levels per attribute",
+                "Include 8-12 choice tasks per respondent",
+                "Randomize choice set presentation"
+            ]
+        },
+        "maxdiff": {
+            "description": "MaxDiff (Maximum Difference Scaling) - Ranks items by importance",
+            "required_questions": 8,
+            "question_flow": [
+                "Item familiarity screening",
+                "Multiple choice sets showing 3-5 items",
+                "Best/worst selection within each set",
+                "Demographic questions"
+            ],
+            "validation_rules": [
+                "Items must be balanced across choice sets",
+                "Include appropriate number of choice tasks (typically 12-15)",
+                "Ensure statistical power for analysis",
+                "Use clear, distinct item descriptions"
+            ],
+            "best_practices": [
+                "Keep items concise and mutually exclusive",
+                "Use 3-5 items per choice set",
+                "Include 12-15 choice tasks total",
+                "Randomize item order within sets"
+            ]
+        },
+        "nps": {
+            "description": "Net Promoter Score - Measures customer loyalty and satisfaction",
+            "required_questions": 2,
+            "question_flow": [
+                "How likely are you to recommend [product/service] to a friend or colleague? (0-10 scale)",
+                "What is the primary reason for your score? (open text)"
+            ],
+            "validation_rules": [
+                "Must use 0-10 scale",
+                "Include follow-up question for reasoning",
+                "Properly categorize promoters (9-10), passives (7-8), detractors (0-6)",
+                "Use consistent wording across surveys"
+            ],
+            "best_practices": [
+                "Ask NPS question early in survey",
+                "Include context about the product/service",
+                "Add behavioral questions for segmentation",
+                "Use consistent timeframes (e.g., 'in the past 6 months')"
+            ]
+        },
+        "csat": {
+            "description": "Customer Satisfaction - Measures satisfaction with products/services",
+            "required_questions": 3,
+            "question_flow": [
+                "Overall satisfaction rating (1-5 or 1-10 scale)",
+                "Satisfaction with specific aspects",
+                "Likelihood to continue using/recommend"
+            ],
+            "validation_rules": [
+                "Use consistent scale (1-5 or 1-10)",
+                "Include multiple satisfaction dimensions",
+                "Add open-ended feedback question",
+                "Include behavioral intent questions"
+            ],
+            "best_practices": [
+                "Ask about recent experience (within 30 days)",
+                "Include both overall and specific satisfaction",
+                "Add demographic questions for analysis",
+                "Use clear, specific question wording"
+            ]
+        },
+        "brand_tracking": {
+            "description": "Brand Tracking - Measures brand awareness, perception, and equity",
+            "required_questions": 8,
+            "question_flow": [
+                "Unaided brand awareness (open text)",
+                "Aided brand awareness (multiple choice)",
+                "Brand perception attributes (rating scales)",
+                "Purchase intent and preference",
+                "Demographic and psychographic questions"
+            ],
+            "validation_rules": [
+                "Include both unaided and aided awareness",
+                "Use consistent attribute lists across waves",
+                "Include competitive brands",
+                "Add behavioral and demographic questions"
+            ],
+            "best_practices": [
+                "Ask awareness questions first",
+                "Use consistent attribute scales",
+                "Include both functional and emotional attributes",
+                "Add purchase behavior questions"
+            ]
+        },
+        "pricing_research": {
+            "description": "Pricing Research - Determines optimal pricing strategies",
+            "required_questions": 6,
+            "question_flow": [
+                "Price sensitivity questions",
+                "Willingness to pay at different price points",
+                "Price vs. value perception",
+                "Competitive pricing awareness",
+                "Purchase behavior at different prices"
+            ],
+            "validation_rules": [
+                "Include multiple price points",
+                "Test different price presentations",
+                "Include competitive context",
+                "Add purchase behavior questions"
+            ],
+            "best_practices": [
+                "Use realistic price ranges",
+                "Test different price formats",
+                "Include value proposition context",
+                "Add demographic questions for segmentation"
+            ]
+        }
+    }
+    
+    # Clear existing methodology rules
+    db.execute(text("""
+        DELETE FROM survey_rules
+        WHERE rule_type = 'methodology'
+    """))
+    
+    # Insert all methodology rules
+    for method_name, method_data in methodology_rules.items():
+        rule_content = {
+            "required_questions": method_data["required_questions"],
+            "validation_rules": method_data["validation_rules"],
+            "question_flow": method_data["question_flow"],
+            "best_practices": method_data["best_practices"]
+        }
+        
+        db.execute(text("""
+            INSERT INTO survey_rules (id, rule_type, category, rule_name, rule_description, rule_content, is_active, priority, created_by)
+            VALUES (gen_random_uuid(), 'methodology', :methodology_name, :rule_name, :description, :rule_content, true, 10, 'system')
+        """), {
+            'methodology_name': method_name,
+            'rule_name': f"{method_name} methodology",
+            'description': method_data["description"],
+            'rule_content': json.dumps(rule_content)
+        })
+    
+    db.commit()
+    logger.info(f"✅ Seeded {len(methodology_rules)} methodology rules")
+
+
 async def _seed_generation_rules(db: Session):
     """
     Seed 58 core generation rules from AiRA v1 framework
@@ -1595,3 +1951,667 @@ async def _migrate_human_verified_field(db: Session):
         logger.error(f"❌ Error migrating human verified field: {e}")
         db.rollback()
         raise
+
+
+@router.post("/reset-database")
+async def reset_database(
+    confirmation_code: str = None,
+    force: bool = False,
+    db: Session = Depends(get_db)
+):
+    """
+    Reset the entire database - DANGER: This will delete all data!
+    
+    SAFETY REQUIREMENTS:
+    - confirmation_code: Must be "DANGER_DELETE_ALL_DATA" to proceed
+    - force: Must be True to bypass additional checks
+    - This endpoint is protected against accidental LLM execution
+    """
+    # SAFETY CHECK 1: Require explicit confirmation code
+    if confirmation_code != "DANGER_DELETE_ALL_DATA":
+        logger.error("❌ RESET DATABASE BLOCKED - Invalid confirmation code")
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "Invalid confirmation code",
+                "message": "To reset the database, you must provide confirmation_code='DANGER_DELETE_ALL_DATA'",
+                "safety_required": True,
+                "example_usage": "POST /api/v1/admin/reset-database?confirmation_code=DANGER_DELETE_ALL_DATA&force=true"
+            }
+        )
+    
+    # SAFETY CHECK 2: Require force flag
+    if not force:
+        logger.error("❌ RESET DATABASE BLOCKED - Force flag not set")
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "Force flag required",
+                "message": "To reset the database, you must set force=true",
+                "safety_required": True,
+                "example_usage": "POST /api/v1/admin/reset-database?confirmation_code=DANGER_DELETE_ALL_DATA&force=true"
+            }
+        )
+    
+    # SAFETY CHECK 3: Additional environment check
+    import os
+    if os.getenv("ENVIRONMENT") == "production" and not os.getenv("ALLOW_DANGEROUS_OPERATIONS"):
+        logger.error("❌ RESET DATABASE BLOCKED - Production environment protection")
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "Production environment protection",
+                "message": "Database reset is blocked in production environment",
+                "safety_required": True,
+                "environment": "production"
+            }
+        )
+    
+    try:
+        logger.warning("🚨 RESET DATABASE REQUESTED - This will delete all data!")
+        logger.warning(f"🚨 Confirmation code: {confirmation_code}")
+        logger.warning(f"🚨 Force flag: {force}")
+        
+        # Drop all tables in the correct order (respecting foreign key constraints)
+        reset_sql = """
+        -- Drop all tables in the correct order
+        DROP TABLE IF EXISTS question_annotations CASCADE;
+        DROP TABLE IF EXISTS section_annotations CASCADE;
+        DROP TABLE IF EXISTS survey_annotations CASCADE;
+        DROP TABLE IF EXISTS llm_audit CASCADE;
+        DROP TABLE IF EXISTS llm_hyperparameter_configs CASCADE;
+        DROP TABLE IF EXISTS llm_prompt_templates CASCADE;
+        DROP TABLE IF EXISTS retrieval_weights CASCADE;
+        DROP TABLE IF EXISTS methodology_compatibility CASCADE;
+        DROP TABLE IF EXISTS golden_rfq_survey_pairs CASCADE;
+        DROP TABLE IF EXISTS surveys CASCADE;
+        DROP TABLE IF EXISTS rfqs CASCADE;
+        DROP TABLE IF EXISTS survey_rules CASCADE;
+        DROP TABLE IF EXISTS golden_sections CASCADE;
+        DROP TABLE IF EXISTS golden_questions CASCADE;
+        
+        -- Drop any remaining tables
+        DO $$ 
+        DECLARE 
+            r RECORD;
+        BEGIN
+            FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') 
+            LOOP
+                EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
+            END LOOP;
+        END $$;
+        
+        -- Reset sequences
+        DO $$ 
+        DECLARE 
+            r RECORD;
+        BEGIN
+            FOR r IN (SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public') 
+            LOOP
+                EXECUTE 'DROP SEQUENCE IF EXISTS ' || quote_ident(r.sequence_name) || ' CASCADE';
+            END LOOP;
+        END $$;
+        """
+        
+        db.execute(text(reset_sql))
+        db.commit()
+        
+        logger.info("✅ Database reset completed successfully")
+        return {
+            "status": "success",
+            "message": "Database reset completed - all tables and data deleted",
+            "reset_completed": True
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Database reset failed: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database reset failed: {str(e)}"
+        )
+
+
+@router.post("/seed-retrieval-weights")
+async def seed_retrieval_weights(db: Session = Depends(get_db)):
+    """
+    Seed retrieval weights configuration
+    """
+    try:
+        logger.info("🌱 Starting retrieval weights seeding...")
+        
+        await _seed_retrieval_weights(db)
+        
+        logger.info("✅ Retrieval weights seeding completed successfully")
+        return {
+            "status": "success",
+            "message": "Retrieval weights seeding completed - methodology and industry weights added",
+            "weights_seeded": {
+                "methodology_weights": 8,
+                "industry_weights": 6,
+                "total_weights": 14
+            },
+            "seeding_completed": True
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Retrieval weights seeding failed: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Retrieval weights seeding failed: {str(e)}"
+        )
+
+
+@router.post("/seed-methodology-compatibility")
+async def seed_methodology_compatibility(db: Session = Depends(get_db)):
+    """
+    Seed methodology compatibility matrix
+    """
+    try:
+        logger.info("🌱 Starting methodology compatibility seeding...")
+        
+        await _seed_methodology_compatibility(db)
+        
+        logger.info("✅ Methodology compatibility seeding completed successfully")
+        return {
+            "status": "success",
+            "message": "Methodology compatibility seeding completed - compatibility pairs added",
+            "compatibility_pairs_seeded": 12,
+            "seeding_completed": True
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Methodology compatibility seeding failed: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Methodology compatibility seeding failed: {str(e)}"
+        )
+
+
+@router.post("/seed-methodology-rules")
+async def seed_methodology_rules(db: Session = Depends(get_db)):
+    """
+    Seed methodology rules for survey generation
+    """
+    try:
+        logger.info("🌱 Starting methodology rules seeding...")
+        
+        await _seed_methodology_rules(db)
+        
+        logger.info("✅ Methodology rules seeding completed successfully")
+        return {
+            "status": "success",
+            "message": "Methodology rules seeding completed - 7 methodology types added",
+            "methodologies_seeded": [
+                "van_westendorp", "conjoint", "maxdiff", "nps", 
+                "csat", "brand_tracking", "pricing_research"
+            ],
+            "seeding_completed": True
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Methodology rules seeding failed: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Methodology rules seeding failed: {str(e)}"
+        )
+
+
+@router.post("/bootstrap-complete")
+async def bootstrap_complete_database(
+    confirmation_code: str = None,
+    force: bool = False,
+    db: Session = Depends(get_db)
+):
+    """
+    Bootstrap the complete database structure including all tables and vectors
+    
+    SAFETY REQUIREMENTS:
+    - confirmation_code: Must be "BOOTSTRAP_DATABASE" to proceed
+    - force: Must be True to bypass additional checks
+    - This endpoint is protected against accidental LLM execution
+    """
+    # SAFETY CHECK 1: Require explicit confirmation code
+    if confirmation_code != "BOOTSTRAP_DATABASE":
+        logger.error("❌ BOOTSTRAP DATABASE BLOCKED - Invalid confirmation code")
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "Invalid confirmation code",
+                "message": "To bootstrap the database, you must provide confirmation_code='BOOTSTRAP_DATABASE'",
+                "safety_required": True,
+                "example_usage": "POST /api/v1/admin/bootstrap-complete?confirmation_code=BOOTSTRAP_DATABASE&force=true"
+            }
+        )
+    
+    # SAFETY CHECK 2: Require force flag
+    if not force:
+        logger.error("❌ BOOTSTRAP DATABASE BLOCKED - Force flag not set")
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "Force flag required",
+                "message": "To bootstrap the database, you must set force=true",
+                "safety_required": True,
+                "example_usage": "POST /api/v1/admin/bootstrap-complete?confirmation_code=BOOTSTRAP_DATABASE&force=true"
+            }
+        )
+    
+    # SAFETY CHECK 3: Additional environment check
+    import os
+    if os.getenv("ENVIRONMENT") == "production" and not os.getenv("ALLOW_DANGEROUS_OPERATIONS"):
+        logger.error("❌ BOOTSTRAP DATABASE BLOCKED - Production environment protection")
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "Production environment protection",
+                "message": "Database bootstrap is blocked in production environment",
+                "safety_required": True,
+                "environment": "production"
+            }
+        )
+    
+    try:
+        logger.info("🚀 Starting complete database bootstrap...")
+        logger.warning(f"🚀 Confirmation code: {confirmation_code}")
+        logger.warning(f"🚀 Force flag: {force}")
+        
+        # Step 1: Ensure extensions are available
+        db.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+        db.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto;"))
+        
+        # Step 2: Create all main application tables
+        main_tables_sql = """
+        -- RFQs table
+        CREATE TABLE IF NOT EXISTS rfqs (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            title TEXT,
+            content TEXT NOT NULL,
+            embedding VECTOR(384),
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        
+        -- Surveys table
+        CREATE TABLE IF NOT EXISTS surveys (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            rfq_id UUID REFERENCES rfqs(id),
+            status VARCHAR(50) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','validated','edited','final','reference')),
+            raw_output TEXT,
+            final_output TEXT,
+            golden_similarity_score DECIMAL(5,4),
+            used_golden_examples TEXT[],
+            cleanup_minutes_actual INTEGER,
+            model_version VARCHAR(100),
+            pillar_scores JSONB,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        
+        -- Golden RFQ Survey Pairs table
+        CREATE TABLE IF NOT EXISTS golden_rfq_survey_pairs (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            title TEXT,
+            rfq_text TEXT NOT NULL,
+            rfq_embedding VECTOR(384),
+            survey_json JSONB NOT NULL,
+            methodology_tags TEXT[],
+            industry_category VARCHAR(100),
+            research_goal TEXT,
+            quality_score DECIMAL(3,2) DEFAULT 0.0,
+            usage_count INTEGER DEFAULT 0,
+            human_verified BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        
+        -- Survey Rules table
+        CREATE TABLE IF NOT EXISTS survey_rules (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            rule_type VARCHAR(50) NOT NULL,
+            category VARCHAR(100),
+            rule_name VARCHAR(200),
+            rule_description TEXT,
+            rule_content JSONB NOT NULL,
+            is_active BOOLEAN DEFAULT TRUE,
+            priority INTEGER DEFAULT 0,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            created_by VARCHAR(100)
+        );
+        
+        -- Golden Sections table
+        CREATE TABLE IF NOT EXISTS golden_sections (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            section_type VARCHAR(100),
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            methodology_tags TEXT[],
+            industry_keywords TEXT[],
+            question_patterns TEXT[],
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        
+        -- Golden Questions table
+        CREATE TABLE IF NOT EXISTS golden_questions (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            question_text TEXT NOT NULL,
+            question_type VARCHAR(50),
+            methodology_tags TEXT[],
+            industry_keywords TEXT[],
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        
+        -- LLM Audit table
+        CREATE TABLE IF NOT EXISTS llm_audit (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            interaction_id VARCHAR(255) NOT NULL,
+            parent_workflow_id VARCHAR(255),
+            parent_survey_id VARCHAR(255),
+            parent_rfq_id UUID,
+            model_name VARCHAR(100) NOT NULL,
+            model_provider VARCHAR(50) NOT NULL,
+            model_version VARCHAR(50),
+            purpose VARCHAR(100) NOT NULL,
+            sub_purpose VARCHAR(100),
+            context_type VARCHAR(50),
+            input_prompt TEXT NOT NULL,
+            input_tokens INTEGER,
+            output_content TEXT,
+            output_tokens INTEGER,
+            temperature DECIMAL(3,2),
+            top_p DECIMAL(3,2),
+            max_tokens INTEGER,
+            frequency_penalty DECIMAL(3,2),
+            presence_penalty DECIMAL(3,2),
+            stop_sequences JSONB,
+            response_time_ms INTEGER,
+            cost_usd DECIMAL(10,6),
+            success BOOLEAN NOT NULL DEFAULT true,
+            error_message TEXT,
+            interaction_metadata JSONB,
+            tags JSONB,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            old_fields JSONB,
+            new_fields JSONB
+        );
+        
+        -- LLM Hyperparameter Configs table
+        CREATE TABLE IF NOT EXISTS llm_hyperparameter_configs (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            config_name VARCHAR(100) NOT NULL UNIQUE,
+            model_name VARCHAR(100) NOT NULL,
+            temperature DECIMAL(3,2),
+            top_p DECIMAL(3,2),
+            max_tokens INTEGER,
+            frequency_penalty DECIMAL(3,2),
+            presence_penalty DECIMAL(3,2),
+            stop_sequences JSONB,
+            is_default BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        
+        -- LLM Prompt Templates table
+        CREATE TABLE IF NOT EXISTS llm_prompt_templates (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            template_name VARCHAR(100) NOT NULL UNIQUE,
+            template_content TEXT NOT NULL,
+            template_type VARCHAR(50) NOT NULL,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        
+        -- Retrieval Weights table
+        CREATE TABLE IF NOT EXISTS retrieval_weights (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            weight_name VARCHAR(100) NOT NULL UNIQUE,
+            context_type VARCHAR(50) NOT NULL DEFAULT 'global',
+            context_value VARCHAR(100) NOT NULL DEFAULT 'default',
+            semantic_weight DECIMAL(3,2) DEFAULT 0.4,
+            methodology_weight DECIMAL(3,2) DEFAULT 0.25,
+            industry_weight DECIMAL(3,2) DEFAULT 0.15,
+            quality_weight DECIMAL(3,2) DEFAULT 0.1,
+            annotation_weight DECIMAL(3,2) DEFAULT 0.1,
+            enabled BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        
+        -- Methodology Compatibility table
+        CREATE TABLE IF NOT EXISTS methodology_compatibility (
+            methodology_a VARCHAR(50) NOT NULL,
+            methodology_b VARCHAR(50) NOT NULL,
+            compatibility_score DECIMAL(3,2) NOT NULL CHECK (compatibility_score >= 0 AND compatibility_score <= 1),
+            notes TEXT,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            PRIMARY KEY (methodology_a, methodology_b),
+            CHECK (methodology_a != methodology_b)
+        );
+        
+        -- Human Reviews table
+        CREATE TABLE IF NOT EXISTS human_reviews (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            workflow_id VARCHAR(255) NOT NULL,
+            survey_id VARCHAR(255) NOT NULL,
+            review_status VARCHAR(50) NOT NULL DEFAULT 'pending',
+            prompt_data JSONB,
+            original_rfq TEXT,
+            reviewer_id VARCHAR(255),
+            review_deadline TIMESTAMP WITH TIME ZONE,
+            reviewer_notes TEXT,
+            approval_reason TEXT,
+            rejection_reason TEXT,
+            edited_prompt_data JSONB,
+            original_prompt_data JSONB,
+            prompt_edited BOOLEAN DEFAULT FALSE,
+            prompt_edit_timestamp TIMESTAMP WITH TIME ZONE,
+            edited_by VARCHAR(255),
+            edit_reason TEXT,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        
+        -- Document Uploads table
+        CREATE TABLE IF NOT EXISTS document_uploads (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            filename VARCHAR(255) NOT NULL,
+            original_filename VARCHAR(255) NOT NULL,
+            file_size INTEGER NOT NULL,
+            content_type VARCHAR(100) NOT NULL,
+            session_id VARCHAR(255) NOT NULL,
+            uploaded_by VARCHAR(255),
+            upload_timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            processing_status VARCHAR(50) DEFAULT 'pending',
+            analysis_result JSONB,
+            error_message TEXT,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        """
+        
+        db.execute(text(main_tables_sql))
+        
+        # Step 3: Create annotation tables (if they don't exist)
+        annotation_tables_sql = """
+        -- Question Annotations table
+        CREATE TABLE IF NOT EXISTS question_annotations (
+            id SERIAL PRIMARY KEY,
+            question_id VARCHAR(255) NOT NULL,
+            survey_id VARCHAR(255) NOT NULL,
+            required BOOLEAN NOT NULL DEFAULT TRUE,
+            quality INTEGER NOT NULL CHECK (quality >= 1 AND quality <= 5),
+            relevant INTEGER NOT NULL CHECK (relevant >= 1 AND relevant <= 5),
+            comment TEXT,
+            annotator_id VARCHAR(255),
+            labels JSONB,
+            removed_labels JSONB,
+            advanced_labels JSONB,
+            industry_classification VARCHAR(100),
+            respondent_type VARCHAR(100),
+            methodology_tags TEXT[],
+            is_mandatory BOOLEAN DEFAULT FALSE,
+            compliance_status VARCHAR(50),
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            methodological_rigor INTEGER NOT NULL DEFAULT 3 CHECK (methodological_rigor >= 1 AND methodological_rigor <= 5),
+            content_validity INTEGER NOT NULL DEFAULT 3 CHECK (content_validity >= 1 AND content_validity <= 5),
+            respondent_experience INTEGER NOT NULL DEFAULT 3 CHECK (respondent_experience >= 1 AND respondent_experience <= 5),
+            analytical_value INTEGER NOT NULL DEFAULT 3 CHECK (analytical_value >= 1 AND analytical_value <= 5),
+            business_impact INTEGER NOT NULL DEFAULT 3 CHECK (business_impact >= 1 AND business_impact <= 5),
+            ai_generated BOOLEAN DEFAULT FALSE,
+            ai_confidence DECIMAL(3,2),
+            human_verified BOOLEAN DEFAULT FALSE,
+            generation_timestamp TIMESTAMP WITH TIME ZONE,
+            human_overridden BOOLEAN DEFAULT FALSE,
+            override_timestamp TIMESTAMP WITH TIME ZONE,
+            original_ai_quality INTEGER,
+            original_ai_relevant INTEGER,
+            original_ai_comment TEXT
+        );
+        
+        -- Section Annotations table
+        CREATE TABLE IF NOT EXISTS section_annotations (
+            id SERIAL PRIMARY KEY,
+            section_id VARCHAR(255) NOT NULL,
+            survey_id VARCHAR(255) NOT NULL,
+            required BOOLEAN NOT NULL DEFAULT TRUE,
+            quality INTEGER NOT NULL CHECK (quality >= 1 AND quality <= 5),
+            relevant INTEGER NOT NULL CHECK (relevant >= 1 AND relevant <= 5),
+            comment TEXT,
+            annotator_id VARCHAR(255),
+            labels JSONB,
+            section_classification VARCHAR(100),
+            mandatory_elements TEXT[],
+            compliance_score DECIMAL(3,2),
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            methodological_rigor INTEGER NOT NULL DEFAULT 3 CHECK (methodological_rigor >= 1 AND methodological_rigor <= 5),
+            content_validity INTEGER NOT NULL DEFAULT 3 CHECK (content_validity >= 1 AND content_validity <= 5),
+            respondent_experience INTEGER NOT NULL DEFAULT 3 CHECK (respondent_experience >= 1 AND respondent_experience <= 5),
+            analytical_value INTEGER NOT NULL DEFAULT 3 CHECK (analytical_value >= 1 AND analytical_value <= 5),
+            business_impact INTEGER NOT NULL DEFAULT 3 CHECK (business_impact >= 1 AND business_impact <= 5),
+            removed_labels JSONB,
+            ai_generated BOOLEAN DEFAULT FALSE,
+            ai_confidence DECIMAL(3,2),
+            human_verified BOOLEAN DEFAULT FALSE,
+            generation_timestamp TIMESTAMP WITH TIME ZONE,
+            human_overridden BOOLEAN DEFAULT FALSE,
+            override_timestamp TIMESTAMP WITH TIME ZONE,
+            original_ai_quality INTEGER,
+            original_ai_relevant INTEGER,
+            original_ai_comment TEXT
+        );
+        
+        -- Survey Annotations table
+        CREATE TABLE IF NOT EXISTS survey_annotations (
+            id SERIAL PRIMARY KEY,
+            survey_id VARCHAR(255) NOT NULL UNIQUE,
+            overall_quality INTEGER NOT NULL CHECK (overall_quality >= 1 AND overall_quality <= 5),
+            methodological_rigor INTEGER NOT NULL CHECK (methodological_rigor >= 1 AND methodological_rigor <= 5),
+            content_validity INTEGER NOT NULL CHECK (content_validity >= 1 AND content_validity <= 5),
+            respondent_experience INTEGER NOT NULL CHECK (respondent_experience >= 1 AND respondent_experience <= 5),
+            analytical_value INTEGER NOT NULL CHECK (analytical_value >= 1 AND analytical_value <= 5),
+            business_impact INTEGER NOT NULL CHECK (business_impact >= 1 AND business_impact <= 5),
+            overall_comment TEXT,
+            comment TEXT,
+            annotator_id VARCHAR(255),
+            labels JSONB,
+            detected_labels JSONB,
+            compliance_report JSONB,
+            advanced_metadata JSONB,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+        
+        db.execute(text(annotation_tables_sql))
+        
+        # Step 4: Create indexes for performance
+        indexes_sql = """
+        -- Create indexes for better performance
+        CREATE INDEX IF NOT EXISTS idx_surveys_rfq_id ON surveys(rfq_id);
+        CREATE INDEX IF NOT EXISTS idx_surveys_status ON surveys(status);
+        CREATE INDEX IF NOT EXISTS idx_surveys_created_at ON surveys(created_at);
+        
+        CREATE INDEX IF NOT EXISTS idx_golden_pairs_quality_score ON golden_rfq_survey_pairs(quality_score);
+        CREATE INDEX IF NOT EXISTS idx_golden_pairs_usage_count ON golden_rfq_survey_pairs(usage_count);
+        CREATE INDEX IF NOT EXISTS idx_golden_pairs_created_at ON golden_rfq_survey_pairs(created_at);
+        
+        CREATE INDEX IF NOT EXISTS idx_question_annotations_survey_id ON question_annotations(survey_id);
+        CREATE INDEX IF NOT EXISTS idx_question_annotations_quality ON question_annotations(quality);
+        CREATE INDEX IF NOT EXISTS idx_question_annotations_relevant ON question_annotations(relevant);
+        CREATE INDEX IF NOT EXISTS idx_question_annotations_ai_generated ON question_annotations(ai_generated);
+        CREATE INDEX IF NOT EXISTS idx_question_annotations_human_verified ON question_annotations(human_verified);
+        CREATE INDEX IF NOT EXISTS idx_question_annotations_human_overridden ON question_annotations(human_overridden);
+        
+        CREATE INDEX IF NOT EXISTS idx_section_annotations_survey_id ON section_annotations(survey_id);
+        CREATE INDEX IF NOT EXISTS idx_section_annotations_quality ON section_annotations(quality);
+        CREATE INDEX IF NOT EXISTS idx_section_annotations_relevant ON section_annotations(relevant);
+        CREATE INDEX IF NOT EXISTS idx_section_annotations_ai_generated ON section_annotations(ai_generated);
+        CREATE INDEX IF NOT EXISTS idx_section_annotations_human_verified ON section_annotations(human_verified);
+        CREATE INDEX IF NOT EXISTS idx_section_annotations_human_overridden ON section_annotations(human_overridden);
+        
+        CREATE INDEX IF NOT EXISTS idx_llm_audit_interaction_id ON llm_audit(interaction_id);
+        CREATE INDEX IF NOT EXISTS idx_llm_audit_parent_workflow_id ON llm_audit(parent_workflow_id);
+        CREATE INDEX IF NOT EXISTS idx_llm_audit_created_at ON llm_audit(created_at);
+        CREATE INDEX IF NOT EXISTS idx_llm_audit_model_name ON llm_audit(model_name);
+        CREATE INDEX IF NOT EXISTS idx_llm_audit_purpose ON llm_audit(purpose);
+        """
+        
+        db.execute(text(indexes_sql))
+        
+        # Step 5: Insert default data
+        default_data_sql = """
+        -- Insert default retrieval weights
+        INSERT INTO retrieval_weights (weight_name, context_type, context_value, semantic_weight, methodology_weight, industry_weight, quality_weight, annotation_weight, enabled)
+        VALUES ('default', 'global', 'default', 0.4, 0.25, 0.15, 0.1, 0.1, true)
+        ON CONFLICT (weight_name) DO NOTHING;
+        
+        -- Insert default LLM hyperparameter config
+        INSERT INTO llm_hyperparameter_configs (config_name, model_name, temperature, top_p, max_tokens, is_default)
+        VALUES ('default', 'meta/llama-3.3-70b-instruct', 0.7, 0.9, 4000, true)
+        ON CONFLICT (config_name) DO NOTHING;
+        
+        -- Insert default prompt templates
+        INSERT INTO llm_prompt_templates (template_name, template_content, template_type, is_active)
+        VALUES 
+        ('survey_generation', 'Generate a professional survey based on the RFQ...', 'generation', true),
+        ('survey_validation', 'Validate this survey for quality and completeness...', 'validation', true)
+        ON CONFLICT (template_name) DO NOTHING;
+        """
+        
+        db.execute(text(default_data_sql))
+        
+        db.commit()
+        
+        logger.info("✅ Complete database bootstrap completed successfully")
+        return {
+            "status": "success",
+            "message": "Complete database bootstrap completed - all tables, indexes, and default data created",
+            "bootstrap_completed": True,
+            "tables_created": [
+                "rfqs", "surveys", "golden_rfq_survey_pairs", "survey_rules",
+                "golden_sections", "golden_questions", "llm_audit",
+                "llm_hyperparameter_configs", "llm_prompt_templates",
+                "retrieval_weights", "methodology_compatibility",
+                "question_annotations", "section_annotations", "survey_annotations",
+                "human_reviews", "document_uploads"
+            ],
+            "extensions_enabled": ["vector", "pgcrypto"],
+            "indexes_created": "performance indexes for all major tables",
+            "default_data_inserted": "retrieval weights, LLM configs, prompt templates"
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Complete database bootstrap failed: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Complete database bootstrap failed: {str(e)}"
+        )

@@ -52,4 +52,14 @@ class Settings(BaseSettings):
     )
 
 
-settings = Settings()
+# Only instantiate settings if not in test mode
+import sys
+if "pytest" not in sys.modules:
+    settings = Settings()
+else:
+    # In test mode, create a mock settings object
+    settings = Settings(
+        database_url="postgresql://test@localhost:5432/test_db",
+        redis_url="redis://localhost:6379",
+        replicate_api_token="test_token"
+    )
