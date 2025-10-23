@@ -62,6 +62,9 @@ class PdfSurveyRenderer(SurveyExportRenderer):
         """Register all implemented question types."""
         self._registered_types = {
             QuestionType.MULTIPLE_CHOICE,
+            QuestionType.SINGLE_CHOICE,
+            QuestionType.YES_NO,
+            QuestionType.DROPDOWN,
             QuestionType.SCALE,
             QuestionType.TEXT,
             QuestionType.NUMERIC,
@@ -74,7 +77,6 @@ class PdfSurveyRenderer(SurveyExportRenderer):
             QuestionType.NUMERIC_GRID,
             QuestionType.NUMERIC_OPEN,
             QuestionType.INSTRUCTION,
-            QuestionType.SINGLE_CHOICE,
             QuestionType.MATRIX,
             QuestionType.OPEN_TEXT,
             QuestionType.MULTIPLE_SELECT,
@@ -500,6 +502,34 @@ class PdfSurveyRenderer(SurveyExportRenderer):
             for i, option in enumerate(options, 1):
                 option_text = f"({i}) {option}"  # 1), 2), 3), etc.
                 self.story.append(Paragraph(option_text, self.option_style))
+        
+        self.story.append(Spacer(1, 12))
+
+    def _render_yes_no(self, question: Dict[str, Any]) -> None:
+        """Render yes/no question."""
+        self._add_question_header(question)
+        
+        # Use provided options or default to Yes/No
+        options = question.get("options", ["Yes", "No"])
+        for i, option in enumerate(options, 1):
+            option_text = f"({i}) {option}"
+            self.story.append(Paragraph(option_text, self.option_style))
+        
+        self.story.append(Spacer(1, 12))
+
+    def _render_dropdown(self, question: Dict[str, Any]) -> None:
+        """Render dropdown question."""
+        self._add_question_header(question)
+        
+        options = question.get("options", [])
+        if options:
+            for i, option in enumerate(options, 1):
+                option_text = f"({i}) {option}"
+                self.story.append(Paragraph(option_text, self.option_style))
+        
+        # Add note about dropdown format
+        note_text = "(Note: This will be rendered as a dropdown in the actual survey)"
+        self.story.append(Paragraph(note_text, self.note_style))
         
         self.story.append(Spacer(1, 12))
         self.question_number += 1

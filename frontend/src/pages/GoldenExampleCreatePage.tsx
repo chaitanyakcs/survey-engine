@@ -6,6 +6,7 @@ import { IntelligentFieldExtractor } from '../components/IntelligentFieldExtract
 import { useSidebarLayout } from '../hooks/useSidebarLayout';
 import { ToastContainer } from '../components/Toast';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
+import MethodologyTagsInput from '../components/MethodologyTagsInput';
 
 export const GoldenExampleCreatePage: React.FC = () => {
   const { 
@@ -44,6 +45,7 @@ export const GoldenExampleCreatePage: React.FC = () => {
   const [inputMode, setInputMode] = useState<'upload' | 'manual'>('upload');
   const [rfqInputMode, setRfqInputMode] = useState<'text' | 'upload'>('text');
   const [isUploadingRfq, setIsUploadingRfq] = useState(false);
+  const [extractedMethodologyTags, setExtractedMethodologyTags] = useState<string[]>([]);
   const [rfqUploadStatus, setRfqUploadStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [rfqUploadMessage, setRfqUploadMessage] = useState('');
   const [autoGenerateRfq, setAutoGenerateRfq] = useState(false);
@@ -447,6 +449,9 @@ export const GoldenExampleCreatePage: React.FC = () => {
           mapped_methodology_tags: methodologyTags
         });
 
+        // Store extracted methodology tags for display
+        setExtractedMethodologyTags(methodologyTags);
+
         setFormData(prev => ({
           ...prev,
           survey_json: surveyJson,
@@ -502,7 +507,7 @@ export const GoldenExampleCreatePage: React.FC = () => {
     }
   };
 
-  const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings') => {
+  const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings' | 'annotation-insights' | 'llm-review') => {
     if (view === 'rules') {
       window.location.href = '/rules';
     } else if (view === 'surveys') {
@@ -511,6 +516,10 @@ export const GoldenExampleCreatePage: React.FC = () => {
       window.location.href = '/golden-examples';
     } else if (view === 'survey') {
       window.location.href = '/';
+    } else if (view === 'annotation-insights') {
+      window.location.href = '/annotation-insights';
+    } else if (view === 'llm-review') {
+      window.location.href = '/llm-audit';
     }
   };
 
@@ -900,31 +909,23 @@ export const GoldenExampleCreatePage: React.FC = () => {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Methodology Tags</label>
-                  <div className="flex flex-wrap gap-2">
-                    {['VW', 'GG', 'Conjoint', 'MaxDiff', 'Choice', 'TURF'].map((tag) => (
-                      <button
-                        key={tag}
-                        type="button"
-                        onClick={() => {
-                          const tags = formData.methodology_tags;
-                          if (tags.includes(tag)) {
-                            setFormData({ ...formData, methodology_tags: tags.filter(t => t !== tag) });
-                          } else {
-                            setFormData({ ...formData, methodology_tags: [...tags, tag] });
-                          }
-                        }}
-                        className={`px-3 py-1 text-sm rounded-full transition-all duration-200 ${
-                          formData.methodology_tags.includes(tag)
-                            ? 'bg-yellow-600 text-white shadow-lg'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                      >
-                        {tag}
-                      </button>
-                    ))}
-                  </div>
+                <div className="relative">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Methodology Tags
+                    {extractedMethodologyTags.length > 0 && (
+                      <span className="text-xs text-green-600 ml-2">
+                        (Extracted from document)
+                      </span>
+                    )}
+                  </label>
+                  <MethodologyTagsInput
+                    tags={formData.methodology_tags}
+                    onTagsChange={(tags) => setFormData({ ...formData, methodology_tags: tags })}
+                    placeholder="Add methodology tags..."
+                    maxTags={20}
+                    showDropdownMenu={true}
+                    extractedTags={extractedMethodologyTags}
+                  />
                 </div>
 
                 <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">

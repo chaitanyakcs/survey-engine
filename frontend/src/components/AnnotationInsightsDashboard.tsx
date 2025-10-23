@@ -68,7 +68,7 @@ export function AnnotationInsightsDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings') => {
+  const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings' | 'annotation-insights' | 'llm-review') => {
     if (view === 'survey') {
       window.location.href = '/';
     } else if (view === 'golden-examples') {
@@ -79,6 +79,10 @@ export function AnnotationInsightsDashboard() {
       window.location.href = '/surveys';
     } else if (view === 'settings') {
       window.location.href = '/settings';
+    } else if (view === 'annotation-insights') {
+      window.location.href = '/annotation-insights';
+    } else if (view === 'llm-review') {
+      window.location.href = '/llm-audit';
     }
   };
 

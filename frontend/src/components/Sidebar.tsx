@@ -7,15 +7,15 @@ import {
   Cog6ToothIcon,
   HomeIcon,
   InformationCircleIcon,
-  DocumentCheckIcon,
-  ChartBarIcon
+  ChartBarIcon,
+  DocumentCheckIcon
 } from '@heroicons/react/24/outline';
 import AIEngineInfoModal from './AIEngineInfoModal';
 import { useSidebar } from '../contexts/SidebarContext';
 
 interface SidebarProps {
-  currentView: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings' | 'annotation-insights';
-  onViewChange: (view: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings') => void;
+  currentView: 'survey' | 'golden-examples' | 'surveys' | 'settings' | 'annotation-insights' | 'llm-review';
+  onViewChange: (view: 'survey' | 'golden-examples' | 'surveys' | 'settings' | 'annotation-insights' | 'llm-review') => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) => {
@@ -40,16 +40,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) =
       name: 'Reference Examples',
       icon: StarIcon,
       href: null
+    },
+    {
+      id: 'llm-review' as const,
+      name: 'LLM Review',
+      icon: DocumentCheckIcon,
+      href: null
     }
   ];
 
   const externalLinks = [
-    {
-      id: 'rules',
-      name: 'Rules',
-      icon: DocumentCheckIcon,
-      href: '/rules'
-    },
     {
       id: 'settings',
       name: 'Settings',
@@ -117,6 +117,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) =
                     window.location.href = '/surveys';
                   } else if (item.id === 'golden-examples') {
                     window.location.href = '/golden-examples';
+                  } else if (item.id === 'llm-review') {
+                    window.location.href = '/llm-audit';
                   } else {
                     onViewChange(item.id);
                   }

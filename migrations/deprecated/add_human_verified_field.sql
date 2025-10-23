@@ -2,8 +2,9 @@
 -- This field indicates whether the golden pair was manually created by a human (True) 
 -- or automatically migrated from existing surveys (False)
 
+-- Simple approach: try to add the column, ignore if it already exists
 ALTER TABLE golden_rfq_survey_pairs 
-ADD COLUMN human_verified BOOLEAN DEFAULT FALSE;
+ADD COLUMN IF NOT EXISTS human_verified BOOLEAN DEFAULT FALSE;
 
 -- Update existing golden pairs to be human-verified (they were manually created)
 UPDATE golden_rfq_survey_pairs 

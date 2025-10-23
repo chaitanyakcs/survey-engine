@@ -4,6 +4,7 @@ from src.config import settings
 from src.services.embedding_service import EmbeddingService
 from src.services.text_requirements_validator import TextRequirementsValidator
 from src.utils.survey_utils import extract_all_questions
+from src.models.survey import QuestionType
 import json
 import numpy as np
 
@@ -172,27 +173,25 @@ class ValidationService:
             
             # Validate question type
             if "type" in question:
-                valid_types = [
-                    # Basic question types
-                    "multiple_choice", "single_choice", "multiple_select", "text", "open_text", 
-                    "scale", "ranking", "yes_no",
-                    # Advanced question types
-                    "numeric_open", "matrix_likert", "constant_sum", "numeric_grid",
-                    # Methodology-specific types
-                    "van_westendorp", "gabor_granger", "conjoint", "maxdiff",
-                    # Special types
-                    "instruction", "matrix", "grid"
-                ]
+                # Get all valid types from the enum
+                valid_types = [t.value for t in QuestionType]
                 if question["type"] not in valid_types:
                     errors.append(f"{context} question {i} has invalid type: {question['type']}")
                 
                 # Validate options for choice-based questions
-                choice_types = ["multiple_choice", "single_choice", "multiple_select"]
+                choice_types = ["multiple_choice", "single_choice", "multiple_select", "dropdown"]
                 if question.get("type") in choice_types:
                     if "options" not in question or not isinstance(question["options"], list):
                         errors.append(f"{context} question {i} {question['type']} must have options list")
                     elif len(question.get("options", [])) == 0:
                         errors.append(f"{context} question {i} {question['type']} must have at least one option")
+                
+                # Validate yes_no questions (options are optional, default to Yes/No)
+                if question.get("type") == "yes_no":
+                    if "options" in question and not isinstance(question["options"], list):
+                        errors.append(f"{context} question {i} yes_no must have options as list if provided")
+                    elif "options" in question and len(question.get("options", [])) == 0:
+                        errors.append(f"{context} question {i} yes_no must have at least one option if provided")
     
     def _extract_all_questions(self, survey: Dict[str, Any]) -> List[Dict[str, Any]]:
         """

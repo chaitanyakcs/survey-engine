@@ -70,8 +70,27 @@ async def list_surveys(
         
         survey_list = []
         for survey in surveys:
-            # Extract survey data
-            survey_data = survey.final_output or survey.raw_output or {}
+            # Extract survey data - handle both dict and JSON string formats
+            survey_data = {}
+            if survey.final_output:
+                if isinstance(survey.final_output, dict):
+                    survey_data = survey.final_output
+                elif isinstance(survey.final_output, str):
+                    try:
+                        survey_data = json.loads(survey.final_output)
+                    except json.JSONDecodeError:
+                        logger.warning(f"⚠️ [Survey List] Failed to parse final_output JSON for survey {survey.id}")
+                        survey_data = {}
+            elif survey.raw_output:
+                if isinstance(survey.raw_output, dict):
+                    survey_data = survey.raw_output
+                elif isinstance(survey.raw_output, str):
+                    try:
+                        survey_data = json.loads(survey.raw_output)
+                    except json.JSONDecodeError:
+                        logger.warning(f"⚠️ [Survey List] Failed to parse raw_output JSON for survey {survey.id}")
+                        survey_data = {}
+            
             metadata = survey_data.get('metadata', {})
             
             # Ensure methodology_tags is always a list
@@ -460,6 +479,17 @@ async def update_question(
         survey.updated_at = datetime.now()
         db.commit()
         
+        # Sync to golden pair if this is a reference survey
+        if survey.status == "reference":
+            try:
+                from src.services.golden_service import GoldenService
+                golden_service = GoldenService(db)
+                golden_service.sync_survey_to_golden_pair(survey.id, survey_data)
+                logger.info(f"✅ [Survey API] Synced question update to golden pair")
+            except Exception as e:
+                logger.warning(f"⚠️ [Survey API] Failed to sync question update to golden pair: {e}")
+                # Don't fail the edit if sync fails
+        
         logger.info(f"💾 [Survey API] Successfully saved updated question {question_id}")
         return {"status": "success", "message": "Question updated successfully"}
         
@@ -725,6 +755,17 @@ async def reorder_questions(
         db.flush()  # Flush changes to database without committing
         db.commit()
         
+        # Sync to golden pair if this is a reference survey
+        if survey.status == "reference":
+            try:
+                from src.services.golden_service import GoldenService
+                golden_service = GoldenService(db)
+                golden_service.sync_survey_to_golden_pair(survey.id, survey.final_output)
+                logger.info(f"✅ [Survey API] Synced question reorder to golden pair")
+            except Exception as e:
+                logger.warning(f"⚠️ [Survey API] Failed to sync question reorder to golden pair: {e}")
+                # Don't fail the edit if sync fails
+        
         # Verify the changes were saved
         db.refresh(survey)
         if 'sections' in survey.final_output:
@@ -813,6 +854,17 @@ async def update_section(
         # Force the database to recognize the change
         db.flush()  # Flush changes to database without committing
         db.commit()
+        
+        # Sync to golden pair if this is a reference survey
+        if survey.status == "reference":
+            try:
+                from src.services.golden_service import GoldenService
+                golden_service = GoldenService(db)
+                golden_service.sync_survey_to_golden_pair(survey.id, new_final_output)
+                logger.info(f"✅ [Survey API] Synced section update to golden pair")
+            except Exception as e:
+                logger.warning(f"⚠️ [Survey API] Failed to sync section update to golden pair: {e}")
+                # Don't fail the edit if sync fails
         
         logger.info(f"💾 [Survey API] Successfully saved updated section {section_id}")
         return {"status": "success", "message": "Section updated successfully"}

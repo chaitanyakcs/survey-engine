@@ -361,8 +361,9 @@ export interface SurveyListItem {
 export interface Question {
   id: string;
   text: string;
-  type: 'multiple_choice' | 'scale' | 'text' | 'ranking' | 'instruction' | 'single_choice' | 'matrix' | 'numeric' | 'date' | 'boolean' | 'open_text' | 'multiple_select' | 'matrix_likert' | 'constant_sum' | 'numeric_grid' | 'numeric_open' | 'likert' | 'open_end' | 'display_only' | 'single_open' | 'multiple_open' | 'open_ended' | 'gabor_granger';
+  type: 'multiple_choice' | 'single_choice' | 'yes_no' | 'dropdown' | 'scale' | 'text' | 'ranking' | 'instruction' | 'matrix' | 'numeric' | 'date' | 'boolean' | 'open_text' | 'multiple_select' | 'matrix_likert' | 'constant_sum' | 'numeric_grid' | 'numeric_open' | 'likert' | 'open_end' | 'display_only' | 'single_open' | 'multiple_open' | 'open_ended' | 'gabor_granger' | 'maxdiff' | 'van_westendorp' | 'conjoint' | 'unknown';
   options?: string[];
+  features?: string[]; // For MaxDiff questions
   scale_labels?: Record<string, string>;
   required: boolean;
   category: string;
@@ -1194,4 +1195,70 @@ export interface AppStore {
   validateSurveyTextCompliance: (survey: Survey) => TextComplianceReport;
   generateMissingTextContent: (missing: AiRATextLabel[], methodology: string[], rfq?: EnhancedRFQRequest) => SurveyTextContent[];
   getRequiredTextForMethodology: (methodology: string[]) => AiRATextLabel[];
+
+  // Golden Content Types
+  goldenSections: GoldenSection[];
+  goldenQuestions: GoldenQuestion[];
+  goldenContentAnalytics: GoldenContentAnalytics | null;
+
+  // Golden Content Actions
+  fetchGoldenSections: (filters?: any) => Promise<void>;
+  fetchGoldenQuestions: (filters?: any) => Promise<void>;
+  updateGoldenSection: (id: string, updates: Partial<GoldenSection>) => Promise<void>;
+  updateGoldenQuestion: (id: string, updates: Partial<GoldenQuestion>) => Promise<void>;
+  deleteGoldenSection: (id: string) => Promise<void>;
+  deleteGoldenQuestion: (id: string) => Promise<void>;
+  fetchGoldenContentAnalytics: () => Promise<void>;
+}
+
+// Golden Content Types
+export interface GoldenSection {
+  id: string;
+  section_id: string;
+  golden_pair_id?: string;
+  annotation_id?: number;
+  section_title?: string;
+  section_text: string;
+  section_type?: string;
+  methodology_tags: string[];
+  industry_keywords: string[];
+  question_patterns: string[];
+  quality_score?: number;
+  usage_count: number;
+  human_verified: boolean;
+  labels: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GoldenQuestion {
+  id: string;
+  question_id: string;
+  golden_pair_id?: string;
+  annotation_id?: number;
+  question_text: string;
+  question_type?: string;
+  question_subtype?: string;
+  methodology_tags: string[];
+  industry_keywords: string[];
+  question_patterns: string[];
+  quality_score?: number;
+  usage_count: number;
+  human_verified: boolean;
+  labels: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GoldenContentAnalytics {
+  total_sections: number;
+  total_questions: number;
+  human_verified_sections: number;
+  human_verified_questions: number;
+  avg_section_quality: number;
+  avg_question_quality: number;
+  top_section_types: Array<{type: string; count: number}>;
+  top_question_types: Array<{type: string; count: number}>;
+  methodology_coverage: Record<string, number>;
+  industry_coverage: Record<string, number>;
 }

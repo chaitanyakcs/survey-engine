@@ -20,7 +20,7 @@ import json
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/llm-audit", tags=["LLM Audit"])
+router = APIRouter(prefix="/llm-audit", tags=["LLM Audit"])
 
 
 def parse_raw_response(raw_response: str) -> Any:
@@ -626,3 +626,114 @@ async def create_prompt_template(
     except Exception as e:
         logger.error(f"❌ [LLM Audit API] Error creating prompt template: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to create prompt template: {str(e)}")
+
+
+# Golden Pair Creation from Audit Records
+
+class CreateGoldenFromAuditRequest(BaseModel):
+    industry_category: str
+    research_goal: str
+    quality_score: Optional[float] = None
+    review_notes: Optional[str] = None
+
+
+@router.post("/interactions/{interaction_id}/create-golden-pair")
+async def create_golden_pair_from_audit(
+    interaction_id: str,
+    request: CreateGoldenFromAuditRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Create a golden pair from a successful survey_conversion audit record.
+    Extracts RFQ text and survey JSON from the audit record.
+    """
+    try:
+        # Fetch audit record
+        audit_service = LLMAuditService(db)
+        audit_record = await audit_service.get_interaction(interaction_id)
+        
+        if not audit_record:
+            raise HTTPException(status_code=404, detail="Audit record not found")
+        
+        if not audit_record.success:
+            raise HTTPException(status_code=400, detail="Cannot create golden pair from failed interaction")
+        
+        if audit_record.purpose != "document_parsing" or audit_record.sub_purpose != "survey_conversion":
+            raise HTTPException(status_code=400, detail="Can only create golden pairs from document_parsing/survey_conversion records")
+        
+        # Extract data from audit record
+        # 1. RFQ text from metadata or input_prompt
+        rfq_text = None
+        if audit_record.interaction_metadata:
+            rfq_text = audit_record.interaction_metadata.get('document_text') or \
+                      audit_record.interaction_metadata.get('rfq_text')
+        
+        if not rfq_text and audit_record.input_prompt:
+            # Extract from prompt if not in metadata
+            rfq_text = audit_record.input_prompt[:5000]  # Limit to reasonable size
+        
+        if not rfq_text:
+            raise HTTPException(status_code=400, detail="Cannot extract RFQ text from audit record")
+        
+        # 2. Survey JSON from raw_response
+        survey_json = None
+        if audit_record.raw_response:
+            if isinstance(audit_record.raw_response, dict):
+                # Check for final_output structure
+                if 'final_output' in audit_record.raw_response:
+                    survey_json = audit_record.raw_response['final_output']
+                # Or direct structure
+                elif 'sections' in audit_record.raw_response or 'questions' in audit_record.raw_response:
+                    survey_json = audit_record.raw_response
+        
+        if not survey_json:
+            raise HTTPException(status_code=400, detail="Cannot extract survey JSON from audit record")
+        
+        # Extract methodology tags from survey if available
+        methodology_tags = None
+        if isinstance(survey_json, dict):
+            metadata = survey_json.get('metadata', {})
+            if isinstance(metadata, dict):
+                methodology_tags = metadata.get('methodology_tags', [])
+        
+        # Create title from survey or metadata
+        title = None
+        if isinstance(survey_json, dict):
+            title = survey_json.get('title')
+        
+        # Calculate quality score if not provided
+        quality_score = request.quality_score
+        if quality_score is None and isinstance(survey_json, dict):
+            metadata = survey_json.get('metadata', {})
+            if isinstance(metadata, dict):
+                quality_score = metadata.get('quality_score', 0.85)  # Default to 0.85
+        
+        # Create golden pair
+        from src.services.golden_service import GoldenService
+        golden_service = GoldenService(db)
+        golden_pair = await golden_service.create_golden_pair(
+            rfq_text=rfq_text,
+            survey_json=survey_json,
+            title=title,
+            methodology_tags=methodology_tags,
+            industry_category=request.industry_category,
+            research_goal=request.research_goal,
+            quality_score=quality_score,
+            auto_generate_rfq=False  # We already have the RFQ
+        )
+        
+        # Add audit link in metadata
+        if audit_record.id:
+            logger.info(f"Created golden pair {golden_pair.id} from audit record {audit_record.id}")
+        
+        return {
+            "success": True,
+            "golden_pair_id": str(golden_pair.id),
+            "message": "Golden pair created successfully from audit record"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create golden pair from audit: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to create golden pair: {str(e)}")

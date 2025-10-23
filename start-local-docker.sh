@@ -238,7 +238,9 @@ main() {
     sleep 15
     
     # Step 5: Run migrations and seeding
-    run_migrations
+    # Database migrations are now manual
+    echo -e "${YELLOW}📊 Database migrations are now manual${NC}"
+    echo -e "${CYAN}To run migrations: $COMPOSE_CMD exec backend python3 run_migrations.py${NC}"
     seed_database
     
     # Step 6: Show status
@@ -306,6 +308,7 @@ case "${1:-start}" in
     "migrate")
         check_docker
         check_docker_compose
+        echo -e "${YELLOW}📊 Running database migrations...${NC}"
         run_migrations
         ;;
     "seed")

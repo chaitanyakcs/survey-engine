@@ -13,7 +13,7 @@ import { RecoveryAction } from '../types';
 
 export const SurveyGeneratorPage: React.FC = () => {
   const { workflow, currentSurvey, toasts, removeToast, addToast, resetWorkflow, clearEnhancedRfqState, loadPillarScoresAsync } = useAppStore();
-  const [currentView, setCurrentView] = useState<'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings'>('survey');
+  const [currentView, setCurrentView] = useState<'survey' | 'golden-examples' | 'surveys' | 'settings' | 'annotation-insights' | 'llm-review'>('survey');
   const { mainContentClasses } = useSidebarLayout();
 
   // Debug logging (reduced frequency to prevent render loops)
@@ -116,13 +116,15 @@ export const SurveyGeneratorPage: React.FC = () => {
     }
   }, [currentSurvey, loadPillarScoresAsync]);
 
-  const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings') => {
-    if (view === 'rules') {
-      window.location.href = '/rules';
-    } else if (view === 'surveys') {
+  const handleViewChange = (view: 'survey' | 'golden-examples' | 'surveys' | 'settings' | 'annotation-insights' | 'llm-review') => {
+    if (view === 'surveys') {
       window.location.href = '/surveys';
     } else if (view === 'golden-examples') {
       window.location.href = '/golden-examples';
+    } else if (view === 'annotation-insights') {
+      window.location.href = '/annotation-insights';
+    } else if (view === 'llm-review') {
+      window.location.href = '/llm-audit';
     } else {
       setCurrentView(view);
     }

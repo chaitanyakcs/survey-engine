@@ -43,6 +43,7 @@ class RFQNode:
             
             # Load enhanced RFQ data from database if RFQ ID is available
             enhanced_rfq_data = None
+            unmapped_context = ""
             if state.rfq_id:
                 try:
                     from src.database.models import RFQ
@@ -53,6 +54,13 @@ class RFQNode:
                         if 'survey_structure' in enhanced_rfq_data:
                             text_requirements = enhanced_rfq_data['survey_structure'].get('text_requirements', [])
                             logger.info(f"📋 [RFQNode] Text requirements found: {text_requirements}")
+                        
+                        # Extract unmapped_context for survey generation
+                        unmapped_context = enhanced_rfq_data.get('unmapped_context', '')
+                        if unmapped_context:
+                            logger.info(f"📝 [RFQNode] Found unmapped_context: {len(unmapped_context)} characters")
+                        else:
+                            logger.info("ℹ️ [RFQNode] No unmapped_context found in enhanced RFQ data")
                     else:
                         logger.info("ℹ️ [RFQNode] No enhanced RFQ data found in database")
                 except Exception as e:
@@ -66,6 +74,7 @@ class RFQNode:
                 "rfq_embedding": embedding,
                 "research_goal": extracted_goal,
                 "enhanced_rfq_data": enhanced_rfq_data,
+                "unmapped_context": unmapped_context,
                 "error_message": None
             }
             
@@ -215,7 +224,9 @@ class ContextBuilderNode:
                 "methodology_guidance": state.methodology_blocks,
                 "template_fallbacks": state.template_questions,
                 # Enhanced RFQ data for text requirements and enriched context
-                "enhanced_rfq_data": state.enhanced_rfq_data
+                "enhanced_rfq_data": state.enhanced_rfq_data,
+                # Unmapped context from RFQ parsing for additional survey generation context
+                "unmapped_context": state.unmapped_context or ""
             }
             
             logger.info(f"🔍 [ContextBuilderNode] Final context audit_survey_id: {context.get('audit_survey_id')}")

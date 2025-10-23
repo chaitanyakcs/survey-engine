@@ -19,6 +19,7 @@ class SurveyGenerationState(BaseModel):
 
     # Enhanced RFQ fields
     enhanced_rfq_data: Optional[Dict[str, Any]] = None
+    unmapped_context: Optional[str] = None
 
     # Workflow tracking fields
     current_step: Optional[str] = None

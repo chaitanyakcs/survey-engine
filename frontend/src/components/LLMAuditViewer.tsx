@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  XMarkIcon, 
   DocumentTextIcon, 
   ClockIcon, 
   CheckCircleIcon, 
@@ -10,40 +9,10 @@ import {
   EyeIcon,
   XCircleIcon
 } from '@heroicons/react/24/outline';
-
-interface LLMAuditRecord {
-  id: string;
-  interaction_id: string;
-  parent_workflow_id?: string;
-  parent_survey_id?: string;
-  parent_rfq_id?: string;
-  model_name: string;
-  model_provider: string;
-  model_version?: string;
-  purpose: string;
-  sub_purpose?: string;
-  context_type?: string;
-  input_prompt: string;
-  input_tokens?: number;
-  output_content?: string;
-  output_tokens?: number;
-  raw_response?: string;
-  temperature?: number;
-  top_p?: number;
-  max_tokens?: number;
-  frequency_penalty?: number;
-  presence_penalty?: number;
-  stop_sequences?: string[];
-  response_time_ms?: number;
-  cost_usd?: number;
-  success: boolean;
-  error_message?: string;
-  old_fields?: Record<string, any>;
-  new_fields?: Record<string, any>;
-  interaction_metadata?: Record<string, any>;
-  tags?: string[];
-  created_at: string;
-}
+import { CreateGoldenPairModal } from './CreateGoldenPairModal';
+import { LLMAuditRecord } from '../types';
+import { Sidebar } from './Sidebar';
+import { useSidebarLayout } from '../hooks/useSidebarLayout';
 
 interface LLMAuditSummary {
   total_interactions: number;
@@ -58,17 +27,15 @@ interface LLMAuditSummary {
 }
 
 interface LLMAuditViewerProps {
-  onClose: () => void;
   surveyId?: string; // Optional - if provided, filters by survey
   title?: string; // Optional custom title
   showSummary?: boolean; // Whether to show the summary sidebar
 }
 
 export const LLMAuditViewer: React.FC<LLMAuditViewerProps> = ({ 
-  onClose, 
   surveyId, 
   title = "LLM Audit Viewer",
-  showSummary = true
+  showSummary = true 
 }) => {
   const [auditRecords, setAuditRecords] = useState<LLMAuditRecord[]>([]);
   const [summary, setSummary] = useState<LLMAuditSummary | null>(null);
@@ -84,6 +51,26 @@ export const LLMAuditViewer: React.FC<LLMAuditViewerProps> = ({
     page_size: 50
   });
   const [copiedTab, setCopiedTab] = useState<string | null>(null);
+  const [showGoldenPairModal, setShowGoldenPairModal] = useState(false);
+  const [selectedAuditForGolden, setSelectedAuditForGolden] = useState<LLMAuditRecord | null>(null);
+
+  const { mainContentClasses } = useSidebarLayout();
+
+  const handleViewChange = (view: 'survey' | 'golden-examples' | 'surveys' | 'settings' | 'annotation-insights' | 'llm-review') => {
+    if (view === 'survey') {
+      window.location.href = '/';
+    } else if (view === 'golden-examples') {
+      window.location.href = '/golden-examples';
+    } else if (view === 'surveys') {
+      window.location.href = '/surveys';
+    } else if (view === 'settings') {
+      window.location.href = '/settings';
+    } else if (view === 'annotation-insights') {
+      window.location.href = '/annotation-insights';
+    } else if (view === 'llm-review') {
+      window.location.href = '/llm-audit';
+    }
+  };
 
   const fetchAuditData = useCallback(async () => {
     try {
@@ -174,7 +161,7 @@ export const LLMAuditViewer: React.FC<LLMAuditViewerProps> = ({
     if (!selectedRecord) return null;
 
     const content = {
-      prompt: selectedRecord.input_prompt,
+      prompt: selectedRecord.input_prompt.replace(/^[^.]*\.\s*/, ''),
       output: selectedRecord.output_content || 'No output available',
       raw_response: selectedRecord.raw_response || 'No raw response available',
       metadata: JSON.stringify({
@@ -232,9 +219,10 @@ export const LLMAuditViewer: React.FC<LLMAuditViewerProps> = ({
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-white rounded-lg p-6 w-full max-w-4xl">
-          <div className="flex items-center justify-center py-8">
+      <div className="min-h-screen bg-gray-50">
+        <Sidebar currentView="llm-review" onViewChange={handleViewChange} />
+        <div className={mainContentClasses}>
+          <div className="flex items-center justify-center h-64">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
             <span className="ml-3 text-gray-600">Loading audit records...</span>
           </div>
@@ -245,27 +233,20 @@ export const LLMAuditViewer: React.FC<LLMAuditViewerProps> = ({
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-white rounded-lg p-6 w-full max-w-4xl">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
-            <button
-              onClick={onClose}
-              className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <XMarkIcon className="w-5 h-5" />
-              <span className="text-sm font-medium">Close</span>
-            </button>
-          </div>
-          <div className="text-center py-8">
-            <div className="text-red-600 mb-2">Error loading audit records</div>
-            <div className="text-gray-600 text-sm">{error}</div>
-            <button
-              onClick={fetchAuditData}
-              className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-            >
-              Retry
-            </button>
+      <div className="min-h-screen bg-gray-50">
+        <Sidebar currentView="llm-review" onViewChange={handleViewChange} />
+        <div className={mainContentClasses}>
+          <div className="bg-white rounded-lg p-6 w-full max-w-4xl mx-auto mt-8">
+            <div className="text-center py-8">
+              <div className="text-red-600 mb-2">Error loading audit records</div>
+              <div className="text-gray-600 text-sm">{error}</div>
+              <button
+                onClick={fetchAuditData}
+                className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+              >
+                Retry
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -274,26 +255,19 @@ export const LLMAuditViewer: React.FC<LLMAuditViewerProps> = ({
 
   if (auditRecords.length === 0) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-white rounded-lg p-6 w-full max-w-4xl">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
-            <button
-              onClick={onClose}
-              className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <XMarkIcon className="w-5 h-5" />
-              <span className="text-sm font-medium">Close</span>
-            </button>
-          </div>
-          <div className="text-center py-8">
-            <DocumentTextIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <div className="text-gray-600 mb-2">No audit records found</div>
-            <div className="text-gray-500 text-sm">
-              {surveyId 
-                ? "No LLM interactions found for this survey."
-                : "No LLM interactions found with the current filters."
-              }
+      <div className="min-h-screen bg-gray-50">
+        <Sidebar currentView="llm-review" onViewChange={handleViewChange} />
+        <div className={mainContentClasses}>
+          <div className="bg-white rounded-lg p-6 w-full max-w-4xl mx-auto mt-8">
+            <div className="text-center py-8">
+              <DocumentTextIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <div className="text-gray-600 mb-2">No audit records found</div>
+              <div className="text-gray-500 text-sm">
+                {surveyId 
+                  ? "No LLM interactions found for this survey."
+                  : "No LLM interactions found with the current filters."
+                }
+              </div>
             </div>
           </div>
         </div>
@@ -303,26 +277,21 @@ export const LLMAuditViewer: React.FC<LLMAuditViewerProps> = ({
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-white w-full h-screen overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <div>
-            <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
-            <p className="text-sm text-gray-600 mt-1">
-              {surveyId 
-                ? "View all AI interactions and prompts used for this survey"
-                : "View all AI interactions and prompts across the system"
-              }
-            </p>
+      <Sidebar currentView="llm-review" onViewChange={handleViewChange} />
+      <div className={mainContentClasses}>
+        <div className="bg-white w-full h-screen overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-between p-6 border-b border-gray-200">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
+              <p className="text-sm text-gray-600 mt-1">
+                {surveyId 
+                  ? "View all AI interactions and prompts used for this survey"
+                  : "View all AI interactions and prompts across the system"
+                }
+              </p>
+            </div>
           </div>
-          <button
-            onClick={onClose}
-            className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <XMarkIcon className="w-5 h-5" />
-            <span className="text-sm font-medium">Close</span>
-          </button>
-        </div>
 
         <div className="flex h-[calc(100vh-120px)]">
           {/* Summary Sidebar */}
@@ -487,18 +456,16 @@ export const LLMAuditViewer: React.FC<LLMAuditViewerProps> = ({
                             <span className="text-sm font-medium text-gray-900">
                               {getPurposeDisplayName(record.purpose, record.sub_purpose)}
                             </span>
-                            {record.success ? (
-                              <CheckCircleIcon className="w-4 h-4 text-green-500" />
-                            ) : (
-                              <XCircleIcon className="w-4 h-4 text-red-500" />
-                            )}
+                            <div className="flex items-center">
+                              {record.success ? (
+                                <CheckCircleIcon className="w-4 h-4 text-green-500" />
+                              ) : (
+                                <XCircleIcon className="w-4 h-4 text-red-500" />
+                              )}
+                            </div>
                           </div>
                           <div className="text-xs text-gray-500 mb-2">
                             {record.model_name} • {new Date(record.created_at).toLocaleString()}
-                          </div>
-                          <div className="text-sm text-gray-600 truncate">
-                            {record.input_prompt.substring(0, 100)}
-                            {record.input_prompt.length > 100 && '...'}
                           </div>
                         </div>
                         <div className="flex items-center space-x-2 ml-2">
@@ -511,6 +478,20 @@ export const LLMAuditViewer: React.FC<LLMAuditViewerProps> = ({
                           <EyeIcon className="w-4 h-4 text-gray-400" />
                         </div>
                       </div>
+                      {record.purpose === 'document_parsing' && record.sub_purpose === 'survey_conversion' && record.success && (
+                        <div className="mt-3 flex justify-end">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedAuditForGolden(record);
+                              setShowGoldenPairModal(true);
+                            }}
+                            className="px-3 py-1 text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md hover:bg-emerald-100 hover:border-emerald-300 transition-colors"
+                          >
+                            Create Golden Pair
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -582,7 +563,23 @@ export const LLMAuditViewer: React.FC<LLMAuditViewerProps> = ({
             </div>
           </div>
         </div>
+        </div>
       </div>
+      
+      {/* Golden Pair Creation Modal */}
+      <CreateGoldenPairModal
+        isOpen={showGoldenPairModal}
+        onClose={() => {
+          setShowGoldenPairModal(false);
+          setSelectedAuditForGolden(null);
+        }}
+        auditRecord={selectedAuditForGolden}
+        onSuccess={() => {
+          // Show success toast
+          console.log('Golden pair created successfully!');
+          // Could add a toast notification here
+        }}
+      />
     </div>
   );
 };

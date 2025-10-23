@@ -69,10 +69,17 @@ class SectionManager:
                 method = methodology_rules[tag.lower()]
                 content.extend([
                     f"### {method['description']}:",
-                    f"- Required Questions: {method['required_questions']}",
+                    f"- Required Questions: {method.get('required_questions', 'varies')}",
                     f"- Validation Rules: {'; '.join(method['validation_rules'])}",
                     ""
                 ])
+                
+                # Add specific formatting note for MaxDiff
+                if tag.lower() == 'maxdiff':
+                    content.append("- CRITICAL: Use 'features' array (not 'options') with actual feature names")
+                    content.append("- Generate ONE question per concept showing ALL features in a single table")
+                    content.append("- Extract feature names from product/concept descriptions")
+                    content.append("")
 
         return PromptSection("methodology", content, order=2)
 
@@ -105,6 +112,21 @@ class SectionManager:
         ]
 
         return PromptSection("rag_context", content, order=4)
+
+    def build_unmapped_context_section(self, unmapped_context: str) -> PromptSection:
+        """Build unmapped context section for additional RFQ information"""
+        if not unmapped_context or not unmapped_context.strip():
+            return PromptSection("unmapped_context", [], order=4.5, required=False)
+        
+        content = [
+            "## ADDITIONAL CONTEXT FROM RFQ:",
+            "The following information was extracted from the RFQ but doesn't fit into structured fields:",
+            "",
+            unmapped_context.strip(),
+            ""
+        ]
+        
+        return PromptSection("unmapped_context", content, order=4.5)
 
     def build_current_task_section(self, rfq_details: Dict[str, Any]) -> PromptSection:
         """Build current RFQ task section"""
@@ -206,6 +228,16 @@ class OutputFormatter:
             "   - Required: No 'options' array needed - currency is auto-detected from question text",
             "   - Special: Van Westendorp questions use this type for price sensitivity",
             "",
+            "🎯 **maxdiff**: For Maximum Difference Scaling feature importance ranking",
+            "   - Format: Single question with ALL features shown in a table format",
+            "   - Question text: 'Highlight the MOST IMPORTANT and the LEAST IMPORTANT features in the [Product/Concept] description.'",
+            "   - Structure: Uses 'features' array (NOT 'options') with ALL feature names in the list",
+            "   - Example features array: ['AI Coaching', 'Workout Plans', 'Nutrition Tracking', 'Social Features', 'Live Classes', 'Progress Analytics']",
+            "   - Rendering: Frontend displays ALL features in rows with MOST/LEAST radio button columns",
+            "   - CRITICAL: Generate ONE maxdiff question per concept, not multiple choice sets",
+            "   - CRITICAL: Extract actual feature names from the concept description, don't use placeholder like 'Features within X concept'",
+            "   - Example: If concept describes 'AI-powered coaching, personalized plans, nutrition tracking', extract these as separate features",
+            "",
             "## REQUIRED JSON STRUCTURE:"
         ]
 
@@ -254,6 +286,15 @@ class OutputFormatter:
                         },
                         {
                             "id": "q4",
+                            "text": "Highlight the MOST IMPORTANT and the LEAST IMPORTANT features in the Product_A description.",
+                            "type": "maxdiff",
+                            "features": ["AI Personal Coaching", "Custom Workout Plans", "Nutrition Tracking", "Social Community", "Live Classes", "Progress Analytics"],
+                            "required": True,
+                            "methodology": "maxdiff",
+                            "order": 4
+                        },
+                        {
+                            "id": "q5",
                             "text": "How much would you pay for each benefit? HydraGlyde Moisture Matrix, SmartShield Technology, Month-long comfort guarantee.",
                             "type": "numeric_grid",
                             "options": ["$0-5", "$5-10", "$10-15", "$15-20", "$20+"],
@@ -478,6 +519,12 @@ class PromptBuilder:
         if rag_context:
             self.section_manager.add_section("rag_context",
                 self.section_manager.build_rag_context_section(rag_context))
+
+        # Add unmapped context section if available
+        unmapped_context = context.get("unmapped_context", "")
+        if unmapped_context:
+            self.section_manager.add_section("unmapped_context",
+                self.section_manager.build_unmapped_context_section(unmapped_context))
 
         # Add annotation insights section if available
         annotation_insights_section = await self._build_annotation_insights_section()

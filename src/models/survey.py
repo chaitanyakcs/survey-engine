@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 class QuestionType(str, Enum):
     """Enumeration of question types."""
+    # Basic question types
     SINGLE_CHOICE = "single_choice"
     MULTIPLE_CHOICE = "multiple_choice"
     TEXT = "text"
@@ -20,11 +21,36 @@ class QuestionType(str, Enum):
     DATE = "date"
     BOOLEAN = "boolean"
     FILE_UPLOAD = "file_upload"
+    
+    # Open-ended variants
+    OPEN_TEXT = "open_text"
+    OPEN_END = "open_end"
+    OPEN_ENDED = "open_ended"
+    SINGLE_OPEN = "single_open"
+    MULTIPLE_OPEN = "multiple_open"
+    
+    # Numeric variants
+    NUMERIC_OPEN = "numeric_open"
+    NUMERIC_GRID = "numeric_grid"
+    
+    # Matrix/Grid variants
+    MATRIX_LIKERT = "matrix_likert"
+    CONSTANT_SUM = "constant_sum"
+    
+    # Specialized types
+    LIKERT = "likert"
+    
+    # Display types
+    INSTRUCTION = "instruction"
+    DISPLAY_ONLY = "display_only"
+    
     # Methodology-specific types
     VAN_WESTENDORP = "van_westendorp"
     GABOR_GRANGER = "gabor_granger"
     CONJOINT = "conjoint"
     MAXDIFF = "maxdiff"
+    
+    # Fallback
     UNKNOWN = "unknown"
 
 
@@ -47,11 +73,40 @@ class Question(BaseModel):
     conditional_logic: Optional[Dict[str, Any]] = Field(None, description="Conditional display logic")
 
 
+class SurveySection(BaseModel):
+    """Pydantic model for survey sections."""
+    id: int = Field(..., description="Unique identifier for the section")
+    title: str = Field(..., description="Section title")
+    description: Optional[str] = Field(None, description="Section description")
+    questions: List[Question] = Field(..., description="Questions in this section")
+    order: Optional[int] = Field(None, description="Order of the section in the survey")
+    introText: Optional[Dict[str, Any]] = Field(None, description="Introduction text for the section")
+    textBlocks: Optional[List[Dict[str, Any]]] = Field(None, description="Additional text blocks for the section")
+    
+    class Config:
+        """Pydantic configuration."""
+        validate_assignment = True
+
+
 class SurveyCreate(BaseModel):
     """Pydantic model for creating a survey."""
     title: str = Field(..., description="Survey title")
     description: Optional[str] = Field(None, description="Survey description")
     questions: List[Question] = Field(..., description="List of survey questions")
+    settings: Optional[Dict[str, Any]] = Field(None, description="Survey settings")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+    
+    class Config:
+        """Pydantic configuration."""
+        use_enum_values = True
+        validate_assignment = True
+
+
+class SurveyCreateWithSections(BaseModel):
+    """Pydantic model for creating a survey with sections format."""
+    title: str = Field(..., description="Survey title")
+    description: Optional[str] = Field(None, description="Survey description")
+    sections: List[SurveySection] = Field(..., description="List of survey sections")
     settings: Optional[Dict[str, Any]] = Field(None, description="Survey settings")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
     
@@ -106,19 +161,6 @@ class QuestionUpdate(BaseModel):
     class Config:
         """Pydantic configuration."""
         use_enum_values = True
-        validate_assignment = True
-
-
-class SurveySection(BaseModel):
-    """Pydantic model for survey sections."""
-    id: int = Field(..., description="Unique identifier for the section")
-    title: str = Field(..., description="Section title")
-    description: str = Field(..., description="Section description")
-    questions: List[Question] = Field(..., description="Questions in this section")
-    order: Optional[int] = Field(None, description="Order of the section in the survey")
-    
-    class Config:
-        """Pydantic configuration."""
         validate_assignment = True
 
 

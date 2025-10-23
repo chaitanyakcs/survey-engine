@@ -1,0 +1,643 @@
+-- ============================================================================
+-- COMPREHENSIVE BOOTSTRAP SCHEMA
+-- Survey Engine Database - Complete Schema Definition
+-- Version: 1.0.0
+-- Generated from: src/database/models.py
+-- ============================================================================
+-- This file defines the complete database schema for the Survey Engine
+-- application. It includes all tables, indexes, constraints, and foreign keys.
+-- All operations are idempotent using IF NOT EXISTS.
+-- ============================================================================
+
+-- Step 1: Enable required extensions
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE EXTENSION IF NOT EXISTS "vector";
+
+-- Verify pgvector is available
+
+-- ============================================================================
+-- CORE TABLES
+-- ============================================================================
+
+-- RFQs Table
+CREATE TABLE IF NOT EXISTS rfqs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title TEXT,
+    description TEXT NOT NULL,
+    product_category TEXT,
+    target_segment TEXT,
+    research_goal TEXT,
+    embedding VECTOR(384),
+    enhanced_rfq_data JSONB,
+    document_upload_id UUID,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_rfqs_created_at ON rfqs(created_at);
+CREATE INDEX IF NOT EXISTS idx_rfqs_document_upload_id ON rfqs(document_upload_id);
+
+-- Surveys Table
+CREATE TABLE IF NOT EXISTS surveys (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    rfq_id UUID REFERENCES rfqs(id),
+    status VARCHAR(50) NOT NULL DEFAULT 'draft',
+    raw_output JSONB,
+    final_output JSONB,
+    golden_similarity_score DECIMAL(3,2),
+    used_golden_examples UUID[],
+    cleanup_minutes_actual INTEGER,
+    model_version TEXT,
+    pillar_scores JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Note: Constraint checks removed for Railway compatibility
+-- The application will handle status validation
+
+CREATE INDEX IF NOT EXISTS idx_surveys_rfq_id ON surveys(rfq_id);
+CREATE INDEX IF NOT EXISTS idx_surveys_status ON surveys(status);
+CREATE INDEX IF NOT EXISTS idx_surveys_created_at ON surveys(created_at);
+
+-- Edits Table
+CREATE TABLE IF NOT EXISTS edits (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    survey_id UUID REFERENCES surveys(id),
+    edit_type TEXT,
+    edit_reason TEXT,
+    before_text TEXT,
+    after_text TEXT,
+    annotation JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_edits_survey_id ON edits(survey_id);
+CREATE INDEX IF NOT EXISTS idx_edits_created_at ON edits(created_at);
+
+-- ============================================================================
+-- GOLDEN EXAMPLE TABLES
+-- ============================================================================
+
+-- Golden RFQ Survey Pairs Table
+CREATE TABLE IF NOT EXISTS golden_rfq_survey_pairs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title TEXT,
+    rfq_text TEXT NOT NULL,
+    rfq_embedding VECTOR(384),
+    survey_json JSONB NOT NULL,
+    methodology_tags TEXT[],
+    industry_category VARCHAR(100),
+    research_goal TEXT,
+    quality_score DECIMAL(3,2) DEFAULT 0.0,
+    usage_count INTEGER DEFAULT 0,
+    human_verified BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_golden_rfq_survey_pairs_methodology_tags 
+    ON golden_rfq_survey_pairs USING GIN(methodology_tags);
+CREATE INDEX IF NOT EXISTS idx_golden_rfq_survey_pairs_industry_category 
+    ON golden_rfq_survey_pairs(industry_category);
+CREATE INDEX IF NOT EXISTS idx_golden_rfq_survey_pairs_quality_score 
+    ON golden_rfq_survey_pairs(quality_score);
+CREATE INDEX IF NOT EXISTS idx_golden_rfq_survey_pairs_created_at 
+    ON golden_rfq_survey_pairs(created_at);
+
+-- Create vector index for similarity search
+CREATE INDEX IF NOT EXISTS idx_golden_rfq_survey_pairs_rfq_embedding 
+    ON golden_rfq_survey_pairs 
+    USING ivfflat (rfq_embedding vector_cosine_ops) 
+    WITH (lists = 100);
+
+-- Golden Sections Table
+CREATE TABLE IF NOT EXISTS golden_sections (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    section_id VARCHAR(255) NOT NULL,
+    survey_id VARCHAR(255) NOT NULL,
+    golden_pair_id UUID REFERENCES golden_rfq_survey_pairs(id) ON DELETE CASCADE,
+    annotation_id INTEGER,
+    section_title VARCHAR(500),
+    section_text TEXT NOT NULL,
+    section_type VARCHAR(100),
+    methodology_tags TEXT[],
+    industry_keywords TEXT[],
+    question_patterns TEXT[],
+    quality_score DECIMAL(3,2),
+    usage_count INTEGER DEFAULT 0,
+    human_verified BOOLEAN DEFAULT FALSE,
+    labels JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_golden_sections_golden_pair_id ON golden_sections(golden_pair_id);
+CREATE INDEX IF NOT EXISTS idx_golden_sections_section_type ON golden_sections(section_type);
+CREATE INDEX IF NOT EXISTS idx_golden_sections_methodology_tags 
+    ON golden_sections USING GIN(methodology_tags);
+CREATE INDEX IF NOT EXISTS idx_golden_sections_quality_score ON golden_sections(quality_score);
+
+-- Golden Questions Table
+CREATE TABLE IF NOT EXISTS golden_questions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    question_id VARCHAR(255) NOT NULL,
+    survey_id VARCHAR(255) NOT NULL,
+    golden_pair_id UUID REFERENCES golden_rfq_survey_pairs(id) ON DELETE CASCADE,
+    annotation_id INTEGER,
+    question_text TEXT NOT NULL,
+    question_type VARCHAR(100),
+    question_subtype VARCHAR(100),
+    methodology_tags TEXT[],
+    industry_keywords TEXT[],
+    question_patterns TEXT[],
+    quality_score DECIMAL(3,2),
+    usage_count INTEGER DEFAULT 0,
+    human_verified BOOLEAN DEFAULT FALSE,
+    labels JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_golden_questions_golden_pair_id ON golden_questions(golden_pair_id);
+CREATE INDEX IF NOT EXISTS idx_golden_questions_question_type ON golden_questions(question_type);
+CREATE INDEX IF NOT EXISTS idx_golden_questions_methodology_tags 
+    ON golden_questions USING GIN(methodology_tags);
+CREATE INDEX IF NOT EXISTS idx_golden_questions_quality_score ON golden_questions(quality_score);
+
+-- Golden Example States Table
+CREATE TABLE IF NOT EXISTS golden_example_states (
+    id SERIAL PRIMARY KEY,
+    session_id VARCHAR(255) NOT NULL UNIQUE,
+    state_data JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_golden_example_states_session_id ON golden_example_states(session_id);
+CREATE INDEX IF NOT EXISTS idx_golden_example_states_created_at ON golden_example_states(created_at);
+
+-- ============================================================================
+-- RAG CONFIGURATION TABLES
+-- ============================================================================
+
+-- Retrieval Weights Table
+CREATE TABLE IF NOT EXISTS retrieval_weights (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    context_type VARCHAR(50) NOT NULL DEFAULT 'global',
+    context_value VARCHAR(100) NOT NULL DEFAULT 'default',
+    semantic_weight DECIMAL(3,2) DEFAULT 0.40,
+    methodology_weight DECIMAL(3,2) DEFAULT 0.25,
+    industry_weight DECIMAL(3,2) DEFAULT 0.15,
+    quality_weight DECIMAL(3,2) DEFAULT 0.10,
+    annotation_weight DECIMAL(3,2) DEFAULT 0.10,
+    enabled BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_retrieval_weights_context_type ON retrieval_weights(context_type);
+CREATE INDEX IF NOT EXISTS idx_retrieval_weights_enabled ON retrieval_weights(enabled);
+
+-- Methodology Compatibility Table
+CREATE TABLE IF NOT EXISTS methodology_compatibility (
+    methodology_a VARCHAR(50) NOT NULL,
+    methodology_b VARCHAR(50) NOT NULL,
+    compatibility_score DECIMAL(3,2) NOT NULL,
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    PRIMARY KEY (methodology_a, methodology_b),
+    CHECK (methodology_a != methodology_b),
+    CHECK (compatibility_score >= 0 AND compatibility_score <= 1)
+);
+
+CREATE INDEX IF NOT EXISTS idx_methodology_compatibility_score 
+    ON methodology_compatibility(compatibility_score);
+
+-- ============================================================================
+-- RULES AND VALIDATION TABLES
+-- ============================================================================
+
+-- Survey Rules Table
+CREATE TABLE IF NOT EXISTS survey_rules (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    rule_type VARCHAR(50) NOT NULL,
+    category VARCHAR(100) NOT NULL,
+    rule_name VARCHAR(200) NOT NULL,
+    rule_description TEXT,
+    rule_content JSONB NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    priority INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_by VARCHAR(100) DEFAULT 'system'
+);
+
+CREATE INDEX IF NOT EXISTS idx_survey_rules_type_category ON survey_rules(rule_type, category);
+CREATE INDEX IF NOT EXISTS idx_survey_rules_active ON survey_rules(is_active);
+CREATE INDEX IF NOT EXISTS idx_survey_rules_priority ON survey_rules(priority);
+
+-- Rule Validations Table
+CREATE TABLE IF NOT EXISTS rule_validations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    survey_id UUID REFERENCES surveys(id) NOT NULL,
+    rule_id UUID REFERENCES survey_rules(id) NOT NULL,
+    validation_passed BOOLEAN NOT NULL,
+    error_message TEXT,
+    warning_message TEXT,
+    validation_details JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_rule_validations_survey ON rule_validations(survey_id);
+CREATE INDEX IF NOT EXISTS idx_rule_validations_rule ON rule_validations(rule_id);
+CREATE INDEX IF NOT EXISTS idx_rule_validations_passed ON rule_validations(validation_passed);
+
+-- ============================================================================
+-- ANNOTATION TABLES
+-- ============================================================================
+
+-- Question Annotations Table
+CREATE TABLE IF NOT EXISTS question_annotations (
+    id SERIAL PRIMARY KEY,
+    question_id VARCHAR(255) NOT NULL,
+    survey_id VARCHAR(255) NOT NULL,
+    required BOOLEAN NOT NULL DEFAULT TRUE,
+    quality INTEGER NOT NULL,
+    relevant INTEGER NOT NULL,
+    methodological_rigor INTEGER NOT NULL,
+    content_validity INTEGER NOT NULL,
+    respondent_experience INTEGER NOT NULL,
+    analytical_value INTEGER NOT NULL,
+    business_impact INTEGER NOT NULL,
+    comment TEXT,
+    annotator_id VARCHAR(255),
+    labels JSONB,
+    removed_labels JSONB,
+    advanced_labels JSONB,
+    industry_classification VARCHAR(100),
+    respondent_type VARCHAR(100),
+    methodology_tags VARCHAR(255)[],
+    is_mandatory BOOLEAN DEFAULT FALSE,
+    compliance_status VARCHAR(50),
+    ai_generated BOOLEAN NOT NULL DEFAULT FALSE,
+    ai_confidence DECIMAL(3,2),
+    human_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    generation_timestamp TIMESTAMP WITH TIME ZONE,
+    human_overridden BOOLEAN NOT NULL DEFAULT FALSE,
+    override_timestamp TIMESTAMP WITH TIME ZONE,
+    original_ai_quality INTEGER,
+    original_ai_relevant INTEGER,
+    original_ai_comment TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT check_quality_range CHECK (quality >= 1 AND quality <= 5),
+    CONSTRAINT check_relevant_range CHECK (relevant >= 1 AND relevant <= 5),
+    CONSTRAINT check_methodological_rigor_range CHECK (methodological_rigor >= 1 AND methodological_rigor <= 5),
+    CONSTRAINT check_content_validity_range CHECK (content_validity >= 1 AND content_validity <= 5),
+    CONSTRAINT check_respondent_experience_range CHECK (respondent_experience >= 1 AND respondent_experience <= 5),
+    CONSTRAINT check_analytical_value_range CHECK (analytical_value >= 1 AND analytical_value <= 5),
+    CONSTRAINT check_business_impact_range CHECK (business_impact >= 1 AND business_impact <= 5),
+    CONSTRAINT check_ai_confidence_range CHECK (ai_confidence >= 0.00 AND ai_confidence <= 1.00)
+);
+
+CREATE INDEX IF NOT EXISTS idx_question_annotations_survey_id ON question_annotations(survey_id);
+CREATE INDEX IF NOT EXISTS idx_question_annotations_annotator_id ON question_annotations(annotator_id);
+CREATE INDEX IF NOT EXISTS idx_question_annotations_ai_generated ON question_annotations(ai_generated);
+CREATE INDEX IF NOT EXISTS idx_question_annotations_human_overridden ON question_annotations(human_overridden);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_question_annotations_unique 
+    ON question_annotations(question_id, annotator_id);
+
+-- Section Annotations Table
+CREATE TABLE IF NOT EXISTS section_annotations (
+    id SERIAL PRIMARY KEY,
+    section_id INTEGER NOT NULL,
+    survey_id VARCHAR(255) NOT NULL,
+    quality INTEGER NOT NULL,
+    relevant INTEGER NOT NULL,
+    methodological_rigor INTEGER NOT NULL,
+    content_validity INTEGER NOT NULL,
+    respondent_experience INTEGER NOT NULL,
+    analytical_value INTEGER NOT NULL,
+    business_impact INTEGER NOT NULL,
+    comment TEXT,
+    annotator_id VARCHAR(255),
+    labels JSONB,
+    section_classification VARCHAR(100),
+    mandatory_elements JSONB,
+    compliance_score INTEGER,
+    ai_generated BOOLEAN NOT NULL DEFAULT FALSE,
+    ai_confidence DECIMAL(3,2),
+    human_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    generation_timestamp TIMESTAMP WITH TIME ZONE,
+    human_overridden BOOLEAN NOT NULL DEFAULT FALSE,
+    override_timestamp TIMESTAMP WITH TIME ZONE,
+    original_ai_quality INTEGER,
+    original_ai_relevant INTEGER,
+    original_ai_comment TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT check_section_quality_range CHECK (quality >= 1 AND quality <= 5),
+    CONSTRAINT check_section_relevant_range CHECK (relevant >= 1 AND relevant <= 5),
+    CONSTRAINT check_section_methodological_rigor_range CHECK (methodological_rigor >= 1 AND methodological_rigor <= 5),
+    CONSTRAINT check_section_content_validity_range CHECK (content_validity >= 1 AND content_validity <= 5),
+    CONSTRAINT check_section_respondent_experience_range CHECK (respondent_experience >= 1 AND respondent_experience <= 5),
+    CONSTRAINT check_section_analytical_value_range CHECK (analytical_value >= 1 AND analytical_value <= 5),
+    CONSTRAINT check_section_business_impact_range CHECK (business_impact >= 1 AND business_impact <= 5),
+    CONSTRAINT check_section_ai_confidence_range CHECK (ai_confidence >= 0.00 AND ai_confidence <= 1.00)
+);
+
+CREATE INDEX IF NOT EXISTS idx_section_annotations_survey_id ON section_annotations(survey_id);
+CREATE INDEX IF NOT EXISTS idx_section_annotations_annotator_id ON section_annotations(annotator_id);
+CREATE INDEX IF NOT EXISTS idx_section_annotations_ai_generated ON section_annotations(ai_generated);
+CREATE INDEX IF NOT EXISTS idx_section_annotations_human_overridden ON section_annotations(human_overridden);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_section_annotations_unique 
+    ON section_annotations(section_id, annotator_id);
+
+-- Survey Annotations Table
+CREATE TABLE IF NOT EXISTS survey_annotations (
+    id SERIAL PRIMARY KEY,
+    survey_id VARCHAR(255) NOT NULL UNIQUE,
+    overall_comment TEXT,
+    annotator_id VARCHAR(255),
+    labels JSONB,
+    detected_labels JSONB,
+    compliance_report JSONB,
+    advanced_metadata JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_survey_annotations_annotator_id ON survey_annotations(annotator_id);
+CREATE INDEX IF NOT EXISTS idx_survey_annotations_survey_id ON survey_annotations(survey_id);
+
+-- Add foreign key constraints for golden sections/questions after annotations tables exist
+
+-- ============================================================================
+-- WORKFLOW AND STATE MANAGEMENT TABLES
+-- ============================================================================
+
+-- Human Reviews Table
+CREATE TABLE IF NOT EXISTS human_reviews (
+    id SERIAL PRIMARY KEY,
+    workflow_id VARCHAR(255) NOT NULL UNIQUE,
+    survey_id VARCHAR(255),
+    review_status VARCHAR(50) NOT NULL DEFAULT 'pending',
+    prompt_data TEXT NOT NULL,
+    original_rfq TEXT NOT NULL,
+    reviewer_id VARCHAR(255),
+    review_deadline TIMESTAMP WITH TIME ZONE,
+    reviewer_notes TEXT,
+    approval_reason TEXT,
+    rejection_reason TEXT,
+    edited_prompt_data TEXT,
+    original_prompt_data TEXT,
+    prompt_edited BOOLEAN DEFAULT FALSE NOT NULL,
+    prompt_edit_timestamp TIMESTAMP WITH TIME ZONE,
+    edited_by VARCHAR(255),
+    edit_reason TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT check_review_status CHECK (
+        review_status IN ('pending', 'in_progress', 'approved', 'rejected', 'expired')
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_human_reviews_workflow_id ON human_reviews(workflow_id);
+CREATE INDEX IF NOT EXISTS idx_human_reviews_status ON human_reviews(review_status);
+CREATE INDEX IF NOT EXISTS idx_human_reviews_reviewer_id ON human_reviews(reviewer_id);
+CREATE INDEX IF NOT EXISTS idx_human_reviews_created_at ON human_reviews(created_at);
+CREATE INDEX IF NOT EXISTS idx_human_reviews_prompt_edited ON human_reviews(prompt_edited);
+CREATE INDEX IF NOT EXISTS idx_human_reviews_edited_by ON human_reviews(edited_by);
+CREATE INDEX IF NOT EXISTS idx_human_reviews_edit_timestamp ON human_reviews(prompt_edit_timestamp);
+
+-- Workflow States Table
+CREATE TABLE IF NOT EXISTS workflow_states (
+    id SERIAL PRIMARY KEY,
+    workflow_id VARCHAR(255) NOT NULL UNIQUE,
+    survey_id VARCHAR(255),
+    state_data TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_workflow_states_workflow_id ON workflow_states(workflow_id);
+CREATE INDEX IF NOT EXISTS idx_workflow_states_survey_id ON workflow_states(survey_id);
+CREATE INDEX IF NOT EXISTS idx_workflow_states_created_at ON workflow_states(created_at);
+
+-- ============================================================================
+-- SETTINGS AND CONFIGURATION TABLES
+-- ============================================================================
+
+-- Settings Table
+CREATE TABLE IF NOT EXISTS settings (
+    id SERIAL PRIMARY KEY,
+    setting_key VARCHAR(100) NOT NULL UNIQUE,
+    setting_value JSONB NOT NULL,
+    description TEXT,
+    is_active BOOLEAN DEFAULT TRUE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_settings_key ON settings(setting_key);
+CREATE INDEX IF NOT EXISTS idx_settings_active ON settings(is_active);
+
+-- ============================================================================
+-- DOCUMENT MANAGEMENT TABLES
+-- ============================================================================
+
+-- Document Uploads Table
+CREATE TABLE IF NOT EXISTS document_uploads (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    filename VARCHAR(255) NOT NULL,
+    original_filename VARCHAR(255),
+    file_size INTEGER,
+    content_type VARCHAR(100),
+    session_id VARCHAR(100),
+    uploaded_by VARCHAR(255),
+    upload_timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    processing_status VARCHAR(50) DEFAULT 'pending' NOT NULL,
+    analysis_result JSONB,
+    error_message TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT check_processing_status CHECK (
+        processing_status IN ('pending', 'processing', 'completed', 'failed', 'cancelled')
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_document_uploads_status ON document_uploads(processing_status);
+CREATE INDEX IF NOT EXISTS idx_document_uploads_timestamp ON document_uploads(upload_timestamp);
+CREATE INDEX IF NOT EXISTS idx_document_uploads_filename ON document_uploads(original_filename);
+CREATE INDEX IF NOT EXISTS idx_document_uploads_session_id ON document_uploads(session_id);
+
+-- Add FK for rfqs.document_upload_id after document_uploads table exists
+
+-- Document RFQ Mappings Table
+CREATE TABLE IF NOT EXISTS document_rfq_mappings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    document_id UUID REFERENCES document_uploads(id) NOT NULL,
+    rfq_id UUID REFERENCES rfqs(id) NOT NULL,
+    mapping_data JSONB NOT NULL,
+    confidence_score DECIMAL(3,2) DEFAULT 0.0,
+    fields_mapped JSONB,
+    user_corrections JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_document_rfq_mappings_document_id ON document_rfq_mappings(document_id);
+CREATE INDEX IF NOT EXISTS idx_document_rfq_mappings_rfq_id ON document_rfq_mappings(rfq_id);
+CREATE INDEX IF NOT EXISTS idx_document_rfq_mappings_confidence ON document_rfq_mappings(confidence_score);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_document_rfq_mappings_unique 
+    ON document_rfq_mappings(document_id, rfq_id);
+
+-- ============================================================================
+-- LLM AUDIT AND CONFIGURATION TABLES
+-- ============================================================================
+
+-- LLM Audit Table
+CREATE TABLE IF NOT EXISTS llm_audit (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    interaction_id VARCHAR(255) NOT NULL,
+    parent_workflow_id VARCHAR(255),
+    parent_survey_id VARCHAR(255),
+    parent_rfq_id UUID,
+    model_name VARCHAR(100) NOT NULL,
+    model_provider VARCHAR(50) NOT NULL,
+    model_version VARCHAR(50),
+    purpose VARCHAR(100) NOT NULL,
+    sub_purpose VARCHAR(100),
+    context_type VARCHAR(50),
+    input_prompt TEXT NOT NULL,
+    input_tokens INTEGER,
+    output_content TEXT,
+    output_tokens INTEGER,
+    raw_response TEXT,
+    temperature DECIMAL(3,2),
+    top_p DECIMAL(3,2),
+    max_tokens INTEGER,
+    frequency_penalty DECIMAL(3,2),
+    presence_penalty DECIMAL(3,2),
+    stop_sequences JSONB,
+    response_time_ms INTEGER,
+    cost_usd DECIMAL(10,6),
+    success BOOLEAN NOT NULL DEFAULT TRUE,
+    error_message TEXT,
+    interaction_metadata JSONB,
+    tags JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_llm_audit_interaction_id ON llm_audit(interaction_id);
+CREATE INDEX IF NOT EXISTS idx_llm_audit_parent_workflow_id ON llm_audit(parent_workflow_id);
+CREATE INDEX IF NOT EXISTS idx_llm_audit_parent_survey_id ON llm_audit(parent_survey_id);
+CREATE INDEX IF NOT EXISTS idx_llm_audit_parent_rfq_id ON llm_audit(parent_rfq_id);
+CREATE INDEX IF NOT EXISTS idx_llm_audit_model_name ON llm_audit(model_name);
+CREATE INDEX IF NOT EXISTS idx_llm_audit_purpose ON llm_audit(purpose);
+CREATE INDEX IF NOT EXISTS idx_llm_audit_context_type ON llm_audit(context_type);
+CREATE INDEX IF NOT EXISTS idx_llm_audit_created_at ON llm_audit(created_at);
+CREATE INDEX IF NOT EXISTS idx_llm_audit_success ON llm_audit(success);
+CREATE INDEX IF NOT EXISTS idx_llm_audit_cost_usd ON llm_audit(cost_usd);
+
+-- LLM Hyperparameter Configs Table
+CREATE TABLE IF NOT EXISTS llm_hyperparameter_configs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    config_name VARCHAR(100) NOT NULL UNIQUE,
+    purpose VARCHAR(100) NOT NULL,
+    sub_purpose VARCHAR(100),
+    temperature DECIMAL(3,2) DEFAULT 0.7,
+    top_p DECIMAL(3,2) DEFAULT 0.9,
+    max_tokens INTEGER DEFAULT 8000,
+    frequency_penalty DECIMAL(3,2) DEFAULT 0.0,
+    presence_penalty DECIMAL(3,2) DEFAULT 0.0,
+    stop_sequences JSONB DEFAULT '[]'::jsonb,
+    preferred_models JSONB DEFAULT '[]'::jsonb,
+    fallback_models JSONB DEFAULT '[]'::jsonb,
+    description TEXT,
+    is_active BOOLEAN DEFAULT TRUE,
+    is_default BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_llm_hyperparameter_configs_purpose ON llm_hyperparameter_configs(purpose);
+CREATE INDEX IF NOT EXISTS idx_llm_hyperparameter_configs_sub_purpose ON llm_hyperparameter_configs(sub_purpose);
+CREATE INDEX IF NOT EXISTS idx_llm_hyperparameter_configs_is_active ON llm_hyperparameter_configs(is_active);
+CREATE INDEX IF NOT EXISTS idx_llm_hyperparameter_configs_is_default ON llm_hyperparameter_configs(is_default);
+
+-- LLM Prompt Templates Table
+CREATE TABLE IF NOT EXISTS llm_prompt_templates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    template_name VARCHAR(100) NOT NULL UNIQUE,
+    purpose VARCHAR(100) NOT NULL,
+    sub_purpose VARCHAR(100),
+    system_prompt_template TEXT NOT NULL,
+    user_prompt_template TEXT,
+    template_variables JSONB DEFAULT '{}'::jsonb,
+    description TEXT,
+    version VARCHAR(20) DEFAULT '1.0',
+    is_active BOOLEAN DEFAULT TRUE,
+    is_default BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_llm_prompt_templates_purpose ON llm_prompt_templates(purpose);
+CREATE INDEX IF NOT EXISTS idx_llm_prompt_templates_sub_purpose ON llm_prompt_templates(sub_purpose);
+CREATE INDEX IF NOT EXISTS idx_llm_prompt_templates_is_active ON llm_prompt_templates(is_active);
+CREATE INDEX IF NOT EXISTS idx_llm_prompt_templates_is_default ON llm_prompt_templates(is_default);
+
+-- ============================================================================
+-- QNR LABEL TAXONOMY TABLES
+-- ============================================================================
+
+-- QNR Label Definitions Table
+CREATE TABLE IF NOT EXISTS qnr_label_definitions (
+    id SERIAL PRIMARY KEY,
+    label_name VARCHAR(100) NOT NULL UNIQUE,
+    category VARCHAR(50) NOT NULL,
+    description TEXT,
+    mandatory BOOLEAN DEFAULT FALSE,
+    applicable_labels JSONB,
+    label_type VARCHAR(50),
+    detection_patterns JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_qnr_labels_category ON qnr_label_definitions(category);
+CREATE INDEX IF NOT EXISTS idx_qnr_labels_mandatory ON qnr_label_definitions(mandatory);
+CREATE INDEX IF NOT EXISTS idx_qnr_labels_label_type ON qnr_label_definitions(label_type);
+CREATE INDEX IF NOT EXISTS idx_qnr_labels_name ON qnr_label_definitions(label_name);
+CREATE INDEX IF NOT EXISTS idx_qnr_labels_applicable_labels 
+    ON qnr_label_definitions USING GIN(applicable_labels);
+CREATE INDEX IF NOT EXISTS idx_qnr_labels_detection_patterns 
+    ON qnr_label_definitions USING GIN(detection_patterns);
+
+COMMENT ON TABLE qnr_label_definitions IS 'Stores QNR label definitions for survey structure validation';
+COMMENT ON COLUMN qnr_label_definitions.label_name IS 'Standardized label name (e.g., Recent_Participation)';
+COMMENT ON COLUMN qnr_label_definitions.category IS 'Label category: screener, brand, concept, methodology, additional';
+COMMENT ON COLUMN qnr_label_definitions.mandatory IS 'Whether this label is required for the section';
+COMMENT ON COLUMN qnr_label_definitions.applicable_labels IS 'Other labels that must be present when this label is used';
+COMMENT ON COLUMN qnr_label_definitions.label_type IS 'Type of label: Text, QNR, Rules';
+COMMENT ON COLUMN qnr_label_definitions.detection_patterns IS 'Keywords and patterns for automatic label detection';
+
+-- QNR Tag Definitions Table
+CREATE TABLE IF NOT EXISTS qnr_tag_definitions (
+    id SERIAL PRIMARY KEY,
+    tag_name VARCHAR(100) NOT NULL,
+    tag_values TEXT[],
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_qnr_tags_values ON qnr_tag_definitions USING GIN(tag_values);
+
+COMMENT ON TABLE qnr_tag_definitions IS 'Stores QNR tag definitions for metadata categorization';
+
+-- ============================================================================
+-- COMPLETION MESSAGE
+-- ============================================================================
+
+

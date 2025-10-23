@@ -156,6 +156,54 @@ We need a comprehensive survey with approximately {len(questions)} questions to 
         logger.info(f"🏭 [GoldenService] Industry category: {industry_category}")
         logger.info(f"🎯 [GoldenService] Research goal: {research_goal}")
         logger.info(f"⭐ [GoldenService] Quality score: {quality_score}")
+        
+        # Run field extraction if fields are missing
+        if not methodology_tags or not industry_category or not research_goal:
+            logger.info(f"🔍 [GoldenService] Running field extraction for missing metadata")
+            try:
+                from src.services.field_extraction_service import FieldExtractionService
+                field_extractor = FieldExtractionService()
+                
+                # Extract text from survey_json for field extraction
+                survey_text = ""
+                if isinstance(survey_json, dict):
+                    final_output = survey_json.get('final_output', survey_json)
+                    if isinstance(final_output, dict):
+                        # Extract text from questions and sections
+                        questions = final_output.get('questions', [])
+                        for q in questions:
+                            if isinstance(q, dict) and 'text' in q:
+                                survey_text += q['text'] + " "
+                        
+                        sections = final_output.get('sections', [])
+                        for s in sections:
+                            if isinstance(s, dict):
+                                if 'title' in s:
+                                    survey_text += s['title'] + " "
+                                if 'description' in s:
+                                    survey_text += s['description'] + " "
+                
+                if survey_text.strip():
+                    extracted_fields = await field_extractor.extract_fields(survey_text, survey_json)
+                    logger.info(f"✅ [GoldenService] Field extraction completed: {extracted_fields}")
+                    
+                    # Use extracted fields if original fields are missing
+                    if not methodology_tags and extracted_fields.get('methodology_tags'):
+                        methodology_tags = extracted_fields['methodology_tags']
+                        logger.info(f"🏷️ [GoldenService] Using extracted methodology tags: {methodology_tags}")
+                    
+                    if not industry_category and extracted_fields.get('industry_category'):
+                        industry_category = extracted_fields['industry_category']
+                        logger.info(f"🏭 [GoldenService] Using extracted industry category: {industry_category}")
+                    
+                    if not research_goal and extracted_fields.get('research_goal'):
+                        research_goal = extracted_fields['research_goal']
+                        logger.info(f"🎯 [GoldenService] Using extracted research goal: {research_goal}")
+                else:
+                    logger.warning(f"⚠️ [GoldenService] No survey text found for field extraction")
+            except Exception as e:
+                logger.warning(f"⚠️ [GoldenService] Field extraction failed: {e}")
+                # Continue with original values
 
         try:
             # Handle RFQ text - generate if requested, or allow empty if auto-generate is enabled
@@ -186,9 +234,12 @@ We need a comprehensive survey with approximately {len(questions)} questions to 
             final_quality_score = quality_score if quality_score is not None else 1.0
             logger.info(f"⭐ [GoldenService] Using quality score: {final_quality_score}")
             
+            # Determine the golden pair title (will be updated later if needed)
+            golden_pair_title = title or "Untitled Golden Pair"
+            
             # Create the golden pair first to get the ID
             golden_pair = GoldenRFQSurveyPair(
-                title=title,
+                title=golden_pair_title,
                 rfq_text=rfq_text,
                 rfq_embedding=rfq_embedding,
                 survey_json=survey_json,
@@ -214,28 +265,70 @@ We need a comprehensive survey with approximately {len(questions)} questions to 
             if isinstance(survey_json, dict):
                 survey_json["survey_id"] = str(survey_id)  # Convert UUID to string for JSON
                 
-                # Ensure survey JSON has a title (use golden pair title if survey JSON doesn't have one)
-                if not survey_json.get('title') and title:
-                    survey_json["title"] = title
-                    logger.info(f"📝 [GoldenService] Added title to survey JSON: {title}")
+                # Ensure survey JSON has a proper title
+                survey_title = survey_json.get('title', '').strip()
+                golden_title = (title or '').strip()
                 
-                # Update the golden pair with the modified survey_json
+                # Determine the best title to use
+                if survey_title:
+                    # Survey JSON already has a title, use it
+                    final_title = survey_title
+                    logger.info(f"📝 [GoldenService] Using existing survey title: {final_title}")
+                elif golden_title:
+                    # Use golden pair title
+                    final_title = golden_title
+                    survey_json["title"] = final_title
+                    logger.info(f"📝 [GoldenService] Using golden pair title: {final_title}")
+                else:
+                    # Generate a meaningful fallback title
+                    industry = industry_category or "General"
+                    methodology = ", ".join(methodology_tags) if methodology_tags else "Survey"
+                    final_title = f"{industry} {methodology} Survey"
+                    survey_json["title"] = final_title
+                    logger.info(f"📝 [GoldenService] Generated fallback title: {final_title}")
+                
+                # Update the golden pair with the modified survey_json and final title
                 golden_pair.survey_json = survey_json
+                golden_pair.title = final_title  # Ensure golden pair title matches survey title
                 self.db.commit()
             
             # Create survey record for annotation support
             logger.info(f"💾 [GoldenService] Creating survey record for reference example")
+            
+            # Extract the actual survey data from the nested structure
+            actual_survey_data = survey_json.get('final_output', survey_json)
+            logger.info(f"🔍 [GoldenService] Using actual survey data from final_output")
+            logger.info(f"  Keys in actual_survey_data: {list(actual_survey_data.keys())}")
+            logger.info(f"  Has 'questions': {'questions' in actual_survey_data}")
+            if 'questions' in actual_survey_data:
+                questions = actual_survey_data.get('questions', [])
+                logger.info(f"  Number of questions: {len(questions)}")
+                if questions:
+                    logger.info(f"  First question preview: {str(questions[0])[:200]}")
+            
             reference_survey = Survey(
                 id=survey_id,  # Use the same UUID as golden pair
                 rfq_id=None,  # Reference examples don't have RFQ
                 status="reference",  # Special status for reference examples
-                raw_output=survey_json,
-                final_output=survey_json,
+                raw_output=actual_survey_data,
+                final_output=actual_survey_data,
                 created_at=datetime.now()
             )
             
             self.db.add(reference_survey)
             self.db.commit()
+            self.db.refresh(reference_survey)
+            
+            # Diagnostic logging - check what was saved to the Survey record
+            logger.info(f"🔍 [GoldenService] Diagnostic - Survey record after commit:")
+            logger.info(f"  Survey ID: {reference_survey.id}")
+            logger.info(f"  Survey status: {reference_survey.status}")
+            logger.info(f"  Has final_output: {reference_survey.final_output is not None}")
+            if reference_survey.final_output:
+                logger.info(f"  Keys in final_output: {list(reference_survey.final_output.keys())}")
+                logger.info(f"  Has 'questions' in final_output: {'questions' in reference_survey.final_output}")
+                if 'questions' in reference_survey.final_output:
+                    logger.info(f"  Questions in final_output: {len(reference_survey.final_output.get('questions', []))}")
             
             logger.info(f"✅ [GoldenService] Golden pair created successfully with ID: {golden_pair.id}")
             logger.info(f"✅ [GoldenService] Survey record created with ID: {survey_id}")
@@ -260,6 +353,27 @@ We need a comprehensive survey with approximately {len(questions)} questions to 
             logger.error(f"❌ [GoldenService] Rolling back transaction")
             self.db.rollback()
             raise Exception(f"Failed to create golden pair: {str(e)}")
+    
+    def sync_survey_to_golden_pair(self, golden_pair_id: UUID, survey_data: Dict[str, Any]):
+        """Sync Survey changes back to GoldenRFQSurveyPair.survey_json"""
+        golden_pair = self.db.query(GoldenRFQSurveyPair).filter(
+            GoldenRFQSurveyPair.id == golden_pair_id
+        ).first()
+        
+        if not golden_pair:
+            logger.warning(f"Golden pair {golden_pair_id} not found for sync")
+            return
+        
+        # Update the nested structure to maintain compatibility
+        if isinstance(golden_pair.survey_json, dict) and 'final_output' in golden_pair.survey_json:
+            # Nested structure from document parser
+            golden_pair.survey_json['final_output'] = survey_data
+        else:
+            # Direct structure
+            golden_pair.survey_json = survey_data
+        
+        self.db.commit()
+        logger.info(f"✅ Synced survey data to golden pair {golden_pair_id}")
     
     def update_golden_pair(
         self,
@@ -288,6 +402,28 @@ We need a comprehensive survey with approximately {len(questions)} questions to 
             # Add survey_id to the survey_json for consistency
             if isinstance(survey_json, dict):
                 survey_json["survey_id"] = str(survey_id)  # Convert UUID to string for JSON
+                
+                # Ensure survey JSON has a proper title
+                survey_title = survey_json.get('title', '').strip()
+                golden_title = (golden_pair.title or '').strip()
+                
+                # Determine the best title to use
+                if survey_title:
+                    # Survey JSON already has a title, use it
+                    final_title = survey_title
+                    logger.info(f"📝 [GoldenService] Using existing survey title: {final_title}")
+                elif golden_title:
+                    # Use existing golden pair title
+                    final_title = golden_title
+                    survey_json["title"] = final_title
+                    logger.info(f"📝 [GoldenService] Using existing golden pair title: {final_title}")
+                else:
+                    # Generate a meaningful fallback title
+                    industry = industry_category or "General"
+                    methodology = ", ".join(methodology_tags) if methodology_tags else "Survey"
+                    final_title = f"{industry} {methodology} Survey"
+                    survey_json["title"] = final_title
+                    logger.info(f"📝 [GoldenService] Generated fallback title: {final_title}")
             
             # Update fields
             golden_pair.rfq_text = rfq_text
@@ -296,26 +432,36 @@ We need a comprehensive survey with approximately {len(questions)} questions to 
             golden_pair.industry_category = industry_category or "General"
             golden_pair.research_goal = research_goal or "Market Research"
             
+            # Update title if we determined a final title
+            if isinstance(survey_json, dict) and 'final_title' in locals():
+                golden_pair.title = final_title
+            
             if quality_score is not None:
                 golden_pair.quality_score = quality_score
             
             # Update or create the corresponding survey record
             existing_survey = self.db.query(Survey).filter(Survey.id == survey_id).first()
+            
+            # Extract the actual survey data from the nested structure
+            actual_survey_data = survey_json.get('final_output', survey_json)
+            
             if existing_survey:
                 # Update existing survey record
-                existing_survey.raw_output = survey_json
-                existing_survey.final_output = survey_json
+                existing_survey.raw_output = actual_survey_data
+                existing_survey.final_output = actual_survey_data
+                logger.info(f"✅ Synced golden pair data to survey {survey_id}")
             else:
                 # Create new survey record
                 reference_survey = Survey(
                     id=survey_id,
                     rfq_id=None,
                     status="reference",
-                    raw_output=survey_json,
-                    final_output=survey_json,
+                    raw_output=actual_survey_data,
+                    final_output=actual_survey_data,
                     created_at=datetime.now()
                 )
                 self.db.add(reference_survey)
+                logger.info(f"✅ Created new survey record for golden pair {survey_id}")
             
             self.db.commit()
             self.db.refresh(golden_pair)
@@ -340,16 +486,10 @@ We need a comprehensive survey with approximately {len(questions)} questions to 
             ).first()
             
             if not golden_pair:
+                logger.warning(f"⚠️ [GoldenService] Golden pair not found: {golden_id}")
                 return False
             
-            # Also delete the corresponding survey record
-            survey_id = golden_id  # Use the same UUID as the golden pair
-            survey_record = self.db.query(Survey).filter(Survey.id == survey_id).first()
-            if survey_record:
-                self.db.delete(survey_record)
-                logger.info(f"🗑️ [GoldenService] Deleted survey record: {survey_id}")
-            
-            # Log what we're deleting for debugging
+            # Log what we're deleting for debugging (before any deletions)
             try:
                 if golden_pair.rfq_embedding is not None:
                     # Handle both NumPy arrays and pgvector objects
@@ -359,19 +499,29 @@ We need a comprehensive survey with approximately {len(questions)} questions to 
                         embedding_dim = 'Unknown'
                 else:
                     embedding_dim = 'None'
-                print(f"Deleting golden pair {golden_id} with embedding dimension: {embedding_dim}")
+                logger.info(f"🗑️ [GoldenService] Deleting golden pair {golden_id} with embedding dimension: {embedding_dim}")
             except Exception as e:
-                print(f"Deleting golden pair {golden_id} with embedding (dimension check failed: {str(e)})")
+                logger.warning(f"⚠️ [GoldenService] Could not determine embedding dimension for {golden_id}: {str(e)}")
             
-            # Delete the record (this also removes the vector from pgvector)
+            # Delete the corresponding survey record first
+            survey_id = golden_id  # Use the same UUID as the golden pair
+            survey_record = self.db.query(Survey).filter(Survey.id == survey_id).first()
+            if survey_record:
+                self.db.delete(survey_record)
+                logger.info(f"🗑️ [GoldenService] Deleted survey record: {survey_id}")
+            else:
+                logger.info(f"ℹ️ [GoldenService] No survey record found for: {survey_id}")
+            
+            # Delete the golden pair record (this also removes the vector from pgvector)
             self.db.delete(golden_pair)
             self.db.commit()
             
-            print(f"Successfully deleted golden pair {golden_id} and its vector embedding")
+            logger.info(f"✅ [GoldenService] Successfully deleted golden pair {golden_id} and its vector embedding")
             return True
             
         except Exception as e:
             self.db.rollback()
+            logger.error(f"❌ [GoldenService] Failed to delete golden pair {golden_id}: {str(e)}")
             raise Exception(f"Failed to delete golden pair: {str(e)}")
     
     def validate_golden_pair(

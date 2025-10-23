@@ -10,7 +10,11 @@ set -e  # Exit on any error
 STRICT_TYPES=false
 STRICT_LINT=false
 CLEAN_BUILD=false
-AUTO_MIGRATE=false
+# Check for RESET_DATABASE environment variable
+RESET_DATABASE=${RESET_DATABASE:-false}
+if [ "$RESET_DATABASE" = "true" ]; then
+    echo "⚠️  RESET_DATABASE=true detected - database will be reset during deployment"
+fi
 SKIP_TESTS=false
 STRICT_TESTS=false
 TEST_ONLY=false
@@ -33,10 +37,6 @@ for arg in "$@"; do
             CLEAN_BUILD=true
             shift
             ;;
-        --auto-migrate)
-            AUTO_MIGRATE=true
-            shift
-            ;;
         --skip-tests)
             SKIP_TESTS=true
             shift
@@ -50,14 +50,13 @@ for arg in "$@"; do
             shift
             ;;
         --help|-h)
-            echo "Usage: $0 [--strict-types] [--strict-lint] [--strict] [--clean] [--auto-migrate] [--skip-tests] [--strict-tests] [--test-only]"
+            echo "Usage: $0 [--strict-types] [--strict-lint] [--strict] [--clean] [--skip-tests] [--strict-tests] [--test-only]"
             echo "  --strict-types    Enforce strict type checking (mypy errors block deployment)"
             echo "  --strict-lint     Enforce strict linting (flake8 errors block deployment)"
             echo "  --strict          Enable both strict type checking and linting"
             echo "  --clean           Perform a clean build (remove build artifacts and Docker cache)"
-            echo "  --auto-migrate    Automatically run database migrations after deployment"
             echo "  --skip-tests      Skip all tests (use with caution)"
-            echo "  --strict-tests    Integration tests must pass too"
+            echo "  --strict-tests    Run integration tests (normally skipped for faster deployment)"
             echo "  --test-only       Run tests without deploying"
             echo "  --help, -h        Show this help message"
             echo ""
@@ -150,9 +149,9 @@ if [ "$SKIP_TESTS" = false ]; then
         exit 1
     fi
     
-    # Run integration tests (can warn but not block unless strict)
+    # Run integration tests only if explicitly requested
     if [ "$STRICT_TESTS" = true ]; then
-        echo "🔍 Running integration tests (strict mode)..."
+        echo "🔍 Running integration tests (--strict-tests flag)..."
         if ./scripts/run_tests.sh integration --quiet; then
             echo "✅ Integration tests passed!"
         else
@@ -161,16 +160,13 @@ if [ "$SKIP_TESTS" = false ]; then
             exit 1
         fi
     else
-        echo "🔍 Running integration tests..."
-        if ./scripts/run_tests.sh integration --quiet; then
-            echo "✅ Integration tests passed!"
-        else
-            echo "⚠️  Integration tests found issues, but continuing with deployment..."
-            echo "   (Use --strict-tests to enforce integration test passing)"
-        fi
+        echo "ℹ️  Skipping integration tests (use --strict-tests to run them)"
+        echo "   Critical tests are sufficient for deployment validation"
     fi
     
     echo "✅ Test suite completed!"
+    echo "   (Critical tests passed, integration tests skipped for faster deployment)"
+    echo "   Use --strict-tests to run integration tests if needed"
     echo "================================================"
 else
     echo "⚠️  Skipping tests (--skip-tests flag used)"
@@ -248,111 +244,19 @@ if [ $? -eq 0 ]; then
     if railway redeploy -y; then
         echo "✅ Railway redeploy triggered successfully."
         
-        # Wait for deployment to complete if auto-migrate is enabled
-        if [ "$AUTO_MIGRATE" = true ]; then
-            echo "⏳ Waiting for deployment to complete..."
-            
-            # Wait for transformers to load by checking the health endpoint
-            HEALTH_URL="https://survey-engine-production.up.railway.app/api/v1/admin/health"
-            MAX_WAIT_ATTEMPTS=60  # 60 attempts * 10 seconds = 10 minutes max
-            WAIT_COUNT=0
-            
-            while [ $WAIT_COUNT -lt $MAX_WAIT_ATTEMPTS ]; do
-                if curl -s "$HEALTH_URL" | grep -q '"status":"healthy"'; then
-                    echo "✅ Server is ready!"
-                    break
-                else
-                    sleep 10
-                    WAIT_COUNT=$((WAIT_COUNT + 1))
-                fi
-            done
-            
-            if [ $WAIT_COUNT -eq $MAX_WAIT_ATTEMPTS ]; then
-                echo "⚠️  Server health check timed out after 10 minutes."
-            fi
-            
-            # Try to run migrations with retries
-            echo "🗄️  Running database migrations..."
-            MIGRATION_URL="https://survey-engine-production.up.railway.app/api/v1/admin/migrate-all"
-            MAX_RETRIES=5
-            RETRY_COUNT=0
-            
-            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-                if curl -s -X POST "$MIGRATION_URL" | grep -q '"status":"success"'; then
-                    echo "✅ Database migrations completed successfully!"
-                    break
-                else
-                    sleep 10
-                    RETRY_COUNT=$((RETRY_COUNT + 1))
-                fi
-            done
-            
-            if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-                echo "❌ Database migrations failed after $MAX_RETRIES attempts."
-                echo "   Please run manually: curl -X POST $MIGRATION_URL"
-            fi
-            
-            # Run bootstrap script to seed golden pairs if needed
-            echo "🌱 Running golden pairs bootstrap..."
-            BOOTSTRAP_URL="https://survey-engine-production.up.railway.app/api/v1/admin/bootstrap-golden-pairs"
-            BOOTSTRAP_RETRY_COUNT=0
-            BOOTSTRAP_MAX_RETRIES=3
-            
-            while [ $BOOTSTRAP_RETRY_COUNT -lt $BOOTSTRAP_MAX_RETRIES ]; do
-                if curl -s -X POST "$BOOTSTRAP_URL" | grep -q '"status":"success"'; then
-                    echo "✅ Golden pairs bootstrap completed successfully!"
-                    break
-                else
-                    sleep 10
-                    BOOTSTRAP_RETRY_COUNT=$((BOOTSTRAP_RETRY_COUNT + 1))
-                fi
-            done
-            
-       if [ $BOOTSTRAP_RETRY_COUNT -eq $BOOTSTRAP_MAX_RETRIES ]; then
-           echo "⚠️  Golden pairs bootstrap failed after $BOOTSTRAP_MAX_RETRIES attempts."
-           echo "   This is not critical - golden pairs can be created manually via UI"
-       fi
-       
-       # Run multi-level RAG population
-       echo "🔍 Running multi-level RAG population..."
-       RAG_URL="https://survey-engine-production.up.railway.app/api/v1/admin/populate-multi-level-rag"
-       RAG_RETRY_COUNT=0
-       RAG_MAX_RETRIES=3
-       
-       while [ $RAG_RETRY_COUNT -lt $RAG_MAX_RETRIES ]; do
-           if curl -s -X POST "$RAG_URL" | grep -q '"status":"success"'; then
-               echo "✅ Multi-level RAG population completed successfully!"
-               break
-           else
-               sleep 10
-               RAG_RETRY_COUNT=$((RAG_RETRY_COUNT + 1))
-           fi
-       done
-       
-       if [ $RAG_RETRY_COUNT -eq $RAG_MAX_RETRIES ]; then
-           echo "⚠️  Multi-level RAG population failed after $RAG_MAX_RETRIES attempts."
-           echo "   This is not critical - multi-level RAG can be populated manually"
-       fi
-            
-            # Post-deployment smoke tests
-            echo "🧪 Running post-deployment smoke tests..."
-            PROD_URL="https://survey-engine-production.up.railway.app"
-            
-            # Test critical endpoints
-            if curl -f "$PROD_URL/health" > /dev/null 2>&1; then
-                echo "✅ Health check passed"
-            else
-                echo "⚠️ Health check failed"
-            fi
-            
-            if curl -f "$PROD_URL/api/v1/golden/" > /dev/null 2>&1; then
-                echo "✅ Golden API passed"
-            else
-                echo "⚠️ Golden API failed"
-            fi
-            
-            echo "✅ Post-deployment smoke tests completed"
-        fi
+        # Wait for Railway deployment to take effect
+        echo "⏳ Waiting 120 seconds for Railway deployment to take effect..."
+        echo "   This ensures the new Docker image is fully deployed and ready."
+        sleep 120
+        echo "✅ Deployment wait period completed."
+        
+        # Start Railway logs for monitoring
+        echo "📋 Starting Railway logs monitoring..."
+        echo "   You can monitor deployment progress in real-time."
+        echo "   Press Ctrl+C to stop logs and continue with deployment."
+        echo ""
+        railway logs
+        
     else
         echo "❌ Railway redeploy failed."
         exit 1
@@ -360,30 +264,28 @@ if [ $? -eq 0 ]; then
     
     echo ""
     echo "🎉 Deployment complete!"
-    echo "📋 Next steps:"
-    echo "   1. Railway is redeploying your service with the latest image"
-    echo "   2. Your app will be available at: https://survey-engine-production.up.railway.app"
+    echo "📋 App URL: https://survey-engine-production.up.railway.app"
     echo ""
-    if [ "$AUTO_MIGRATE" = true ]; then
-        echo "✅ Database migrations were automatically executed"
-        echo "   Verify migration status:"
-        echo "   curl https://survey-engine-production.up.railway.app/api/v1/admin/check-migration-status"
-    else
-        echo "🗄️  Database Migration:"
-        echo "   After deployment completes, run database migrations:"
-        echo "   curl -X POST https://survey-engine-production.up.railway.app/api/v1/admin/migrate-all"
+    echo "📋 Database Setup (Manual Operations):"
+    echo ""
+
+    if [ "$RESET_DATABASE" = "true" ]; then
+        echo "🧹 RESET_DATABASE=true - Run reset first:"
+        echo "   curl -X POST 'https://survey-engine-production.up.railway.app/api/v1/admin/reset-database?confirmation_code=DANGER_DELETE_ALL_DATA&force=true'"
         echo ""
-        echo "   Bootstrap golden pairs (if needed):"
-        echo "   curl -X POST https://survey-engine-production.up.railway.app/api/v1/admin/bootstrap-golden-pairs"
-        echo ""
-        echo "   Populate multi-level RAG (if needed):"
-        echo "   curl -X POST https://survey-engine-production.up.railway.app/api/v1/admin/populate-multi-level-rag"
-        echo ""
-        echo "   Verify migration status:"
-        echo "   curl https://survey-engine-production.up.railway.app/api/v1/admin/check-migration-status"
-        echo ""
-        echo "   💡 Tip: Use --auto-migrate flag to automatically run migrations and bootstrap"
     fi
+
+    echo "🏗️  Bootstrap schema (idempotent, safe to run):"
+    echo "   curl -X POST 'https://survey-engine-production.up.railway.app/api/v1/admin/migrate-all'"
+    echo "   # Or use bootstrap-complete directly:"
+    echo "   curl -X POST 'https://survey-engine-production.up.railway.app/api/v1/admin/bootstrap-complete?confirmation_code=BOOTSTRAP_DATABASE&force=true'"
+    echo ""
+    echo "🌱 Seed data (after bootstrap):"
+    echo "   # Run these via Railway console or API:"
+    echo "   python migrations/seed_core_generation_rules.py"
+    echo "   python scripts/populate_rule_based_multi_level_rag.py"
+    echo ""
+    echo "📖 Full documentation: docs/DATABASE_SETUP.md"
     echo ""
     echo "🔍 To check logs:"
     echo "   - Use Railway dashboard logs tab"

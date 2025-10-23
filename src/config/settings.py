@@ -52,14 +52,32 @@ class Settings(BaseSettings):
     )
 
 
-# Only instantiate settings if not in test mode
-import sys
-if "pytest" not in sys.modules:
-    settings = Settings()
-else:
-    # In test mode, create a mock settings object
-    settings = Settings(
-        database_url="postgresql://test@localhost:5432/test_db",
-        redis_url="redis://localhost:6379",
-        replicate_api_token="test_token"
-    )
+# Lazy instantiation - only create settings when accessed
+_settings_instance = None
+
+def get_settings():
+    """Get settings instance (lazy loading)"""
+    global _settings_instance
+    if _settings_instance is None:
+        # Only instantiate settings if not in test mode
+        import sys
+        if "pytest" not in sys.modules:
+            _settings_instance = Settings()
+        else:
+            # In test mode, create a mock settings object
+            _settings_instance = Settings(
+                database_url="postgresql://test@localhost:5432/test_db",
+                redis_url="redis://localhost:6379",
+                replicate_api_token="test_token"
+            )
+    return _settings_instance
+
+# For backward compatibility, create a settings object that delegates to get_settings()
+class SettingsProxy:
+    def __getattr__(self, name):
+        return getattr(get_settings(), name)
+    
+    def __setattr__(self, name, value):
+        setattr(get_settings(), name, value)
+
+settings = SettingsProxy()

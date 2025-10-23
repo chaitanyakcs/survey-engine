@@ -4,6 +4,7 @@ import { SurveyPreview } from '../components/SurveyPreview';
 import { useAppStore } from '../store/useAppStore';
 import { GoldenExample, GoldenExampleRequest } from '../types';
 import { useSidebarLayout } from '../hooks/useSidebarLayout';
+import MethodologyTagsInput from '../components/MethodologyTagsInput';
 import { 
   ArrowLeftIcon, 
   DocumentTextIcon, 
@@ -81,9 +82,8 @@ export const GoldenExampleEditPage: React.FC = () => {
           return data && 
                  typeof data === 'object' && 
                  data.title && 
-                 data.questions && 
-                 Array.isArray(data.questions) && 
-                 data.questions.length > 0;
+                 ((data.questions && Array.isArray(data.questions) && data.questions.length > 0) ||
+                  (data.sections && Array.isArray(data.sections) && data.sections.length > 0));
         };
         
         console.log('🔍 [GoldenExampleEdit] Original survey_json:', foundExample.survey_json);
@@ -115,6 +115,7 @@ export const GoldenExampleEditPage: React.FC = () => {
         console.log('🔍 [GoldenExampleEdit] Extracted actualSurvey:', actualSurvey);
         console.log('🔍 [GoldenExampleEdit] Actual survey title:', actualSurvey?.title);
         console.log('🔍 [GoldenExampleEdit] Actual survey questions:', actualSurvey?.questions?.length);
+        console.log('🔍 [GoldenExampleEdit] Actual survey sections:', actualSurvey?.sections?.length);
         console.log('🔍 [GoldenExampleEdit] Actual survey type:', typeof actualSurvey);
         console.log('🔍 [GoldenExampleEdit] ===== END EXTRACTION =====');
         
@@ -196,7 +197,7 @@ export const GoldenExampleEditPage: React.FC = () => {
     setIsEditing(false);
   };
 
-  const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings') => {
+  const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings' | 'annotation-insights' | 'llm-review') => {
     if (view === 'survey') {
       window.location.href = '/';
     } else if (view === 'golden-examples') {
@@ -205,6 +206,10 @@ export const GoldenExampleEditPage: React.FC = () => {
       window.location.href = '/surveys';
     } else if (view === 'rules') {
       window.location.href = '/rules';
+    } else if (view === 'annotation-insights') {
+      window.location.href = '/annotation-insights';
+    } else if (view === 'llm-review') {
+      window.location.href = '/llm-audit';
     }
   };
 
@@ -529,20 +534,120 @@ export const GoldenExampleEditPage: React.FC = () => {
                 {activeMainTab === 'rfq' && (
                   <div className="space-y-6">
                     <h2 className="text-xl font-semibold text-gray-900">Request for Quotation (RFQ)</h2>
-                    {isEditing ? (
-                      <textarea
-                        value={formData.rfq_text}
-                        onChange={(e) => setFormData({ ...formData, rfq_text: e.target.value })}
-                        className="w-full h-96 border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                        placeholder="Enter the RFQ description..."
-                      />
-                    ) : (
-                      <div className="prose max-w-none">
-                        <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
-                          <pre className="text-gray-700 whitespace-pre-wrap leading-relaxed text-sm font-mono">
-                            {example.rfq_text}
-                          </pre>
+                    
+                    {/* RFQ Text Section */}
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-medium text-gray-800">RFQ Text</h3>
+                      {isEditing ? (
+                        <textarea
+                          value={formData.rfq_text}
+                          onChange={(e) => setFormData({ ...formData, rfq_text: e.target.value })}
+                          className="w-full h-96 border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                          placeholder="Enter the RFQ description..."
+                        />
+                      ) : (
+                        <div className="prose max-w-none">
+                          <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+                            <pre className="text-gray-700 whitespace-pre-wrap leading-relaxed text-sm font-mono">
+                              {example.rfq_text}
+                            </pre>
+                          </div>
                         </div>
+                      )}
+                    </div>
+
+                    {/* Metadata Section - Only show when editing */}
+                    {isEditing && (
+                      <div className="space-y-6 pt-6 border-t border-gray-200">
+                        <h3 className="text-lg font-medium text-gray-800">Metadata</h3>
+                        
+                        {/* Industry Category */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Industry Category
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.industry_category}
+                            onChange={(e) => setFormData({ ...formData, industry_category: e.target.value })}
+                            className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all duration-200"
+                            placeholder="Enter industry category (e.g., Consumer Electronics, Healthcare, Finance)"
+                          />
+                        </div>
+
+                        {/* Research Goal */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Research Goal
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.research_goal}
+                            onChange={(e) => setFormData({ ...formData, research_goal: e.target.value })}
+                            className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all duration-200"
+                            placeholder="Enter research goal (e.g., Pricing Research, Product Development, Market Segmentation)"
+                          />
+                        </div>
+
+                        {/* Methodology Tags */}
+                        <div className="relative">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Methodology Tags
+                          </label>
+                          <MethodologyTagsInput
+                            tags={formData.methodology_tags}
+                            onTagsChange={(tags) => setFormData({ ...formData, methodology_tags: tags })}
+                            placeholder="Add methodology tags..."
+                            maxTags={20}
+                            showDropdownMenu={true}
+                            extractedTags={[]}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Display metadata when not editing */}
+                    {!isEditing && (
+                      <div className="space-y-4 pt-6 border-t border-gray-200">
+                        <h3 className="text-lg font-medium text-gray-800">Metadata</h3>
+                        
+                        {/* Industry Category */}
+                        <div className="flex items-center space-x-3">
+                          <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
+                          <span className="text-xs font-medium text-gray-700 uppercase tracking-wide">Industry</span>
+                          <div className="text-sm text-gray-600">
+                            {example.industry_category || 'N/A'}
+                          </div>
+                        </div>
+
+                        {/* Research Goal */}
+                        <div className="flex items-center space-x-3">
+                          <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
+                          <span className="text-xs font-medium text-gray-700 uppercase tracking-wide">Research Goal</span>
+                          <div className="text-sm text-gray-600">
+                            {example.research_goal || 'N/A'}
+                          </div>
+                        </div>
+
+                        {/* Methodology Tags */}
+                        {example.methodology_tags.length > 0 && (
+                          <div className="flex flex-col space-y-2">
+                            <div className="flex items-center space-x-2">
+                              <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
+                              <span className="text-xs font-medium text-gray-700 uppercase tracking-wide">Methodologies</span>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {example.methodology_tags.map((tag, index) => (
+                                <span 
+                                  key={tag} 
+                                  className="px-3 py-1.5 bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 rounded-lg text-sm font-medium border border-gray-300 hover:from-gray-200 hover:to-gray-300 transition-all duration-200"
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

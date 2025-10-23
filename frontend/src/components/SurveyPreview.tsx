@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { Question, Survey, SurveySection, QuestionAnnotation, SectionAnnotation, SurveyAnnotations, SurveyLevelAnnotation } from '../types';
 import AnnotationMode from './AnnotationMode';
@@ -272,6 +272,49 @@ const QuestionCard: React.FC<{
               />
             )}
             
+            {question.type === 'maxdiff' && question.features && question.features.length > 0 && (
+              <div className="space-y-3">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <p className="text-sm font-medium text-blue-900 mb-4">
+                    Select ONE feature as MOST important and ONE as LEAST important:
+                  </p>
+                  
+                  {/* Header row */}
+                  <div className="grid grid-cols-[1fr_auto_auto] gap-4 mb-2 pb-2 border-b border-blue-300">
+                    <div className="text-xs font-semibold text-blue-900">Feature</div>
+                    <div className="text-xs font-semibold text-green-700 text-center w-20">MOST</div>
+                    <div className="text-xs font-semibold text-red-700 text-center w-20">LEAST</div>
+                  </div>
+                  
+                  {/* Feature rows */}
+                  <div className="space-y-1">
+                    {question.features.map((feature, idx) => (
+                      <div key={idx} className="grid grid-cols-[1fr_auto_auto] gap-4 items-center p-2 bg-white rounded hover:bg-gray-50">
+                        <span className="text-sm text-gray-700">{feature}</span>
+                        <div className="flex justify-center w-20">
+                          <input 
+                            type="radio" 
+                            name={`${question.id}_most`} 
+                            value={feature}
+                            disabled 
+                            className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300" 
+                          />
+                        </div>
+                        <div className="flex justify-center w-20">
+                          <input 
+                            type="radio" 
+                            name={`${question.id}_least`} 
+                            value={feature}
+                            disabled 
+                            className="h-4 w-4 text-red-600 focus:ring-red-500 border-gray-300" 
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Multiple Select Questions */}
             {question.type === 'multiple_select' && question.options && question.options.length > 0 && (
@@ -319,7 +362,7 @@ const QuestionCard: React.FC<{
             )}
 
             {/* Unknown Question Type */}
-            {!['multiple_choice', 'scale', 'ranking', 'text', 'instruction', 'single_choice', 'matrix', 'numeric', 'date', 'boolean', 'open_text', 'multiple_select', 'matrix_likert', 'constant_sum', 'numeric_grid', 'numeric_open', 'likert', 'open_end', 'display_only', 'single_open', 'multiple_open', 'open_ended', 'gabor_granger'].includes(question.type) && (
+            {!['multiple_choice', 'scale', 'ranking', 'text', 'instruction', 'single_choice', 'matrix', 'numeric', 'date', 'boolean', 'open_text', 'multiple_select', 'matrix_likert', 'constant_sum', 'numeric_grid', 'numeric_open', 'likert', 'open_end', 'display_only', 'single_open', 'multiple_open', 'open_ended', 'gabor_granger', 'maxdiff'].includes(question.type) && (
               <div className="bg-warning-50 border border-warning-200 rounded-lg p-4">
                 <div className="flex items-center space-x-2">
                   <svg className="w-5 h-5 text-warning-600" fill="currentColor" viewBox="0 0 20 20">
@@ -752,6 +795,7 @@ interface SurveyPreviewProps {
   onCancel?: () => void;
   hideHeader?: boolean;
   hideRightPanel?: boolean;
+  onSaveTrigger?: (saveFunction: () => Promise<void>) => void;
 }
 
 export const SurveyPreview: React.FC<SurveyPreviewProps> = ({ 
@@ -762,7 +806,8 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
   onSaveAndExit,
   onCancel,
   hideHeader = false,
-  hideRightPanel = false
+  hideRightPanel = false,
+  onSaveTrigger
 }) => {
   const { currentSurvey, isAnnotationMode, setAnnotationMode, currentAnnotations, saveAnnotations, loadAnnotations } = useAppStore();
   const survey = propSurvey || currentSurvey;
@@ -789,6 +834,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
     type: null as 'question' | 'section' | 'survey' | null,
     target: null as any
   });
+
 
 
   const handleSurveyLevelAnnotation = async (annotation: SurveyLevelAnnotation) => {
@@ -858,138 +904,26 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
     }
   };
 
-  const handleSaveAllChanges = async () => {
-    if (!editedSurvey || !survey?.survey_id) {
-      console.log('❌ [Save] Cannot save - missing editedSurvey or survey_id');
-      console.log('❌ [Save] editedSurvey:', !!editedSurvey);
-      console.log('❌ [Save] survey_id:', survey?.survey_id);
-      return;
-    }
+  // All changes are now saved immediately, so this function just calls onSaveAndExit
+  const handleSaveAllChanges = useCallback(async () => {
+    console.log('🚪 [Save] All changes are already saved immediately, just exiting');
     
-    setIsSaving(true);
-    try {
-      console.log('💾 Saving all changes...');
-      
-      // Store the original survey data BEFORE any updates to avoid comparison issues
-      // We need to get the data from the store directly, not from the survey prop which might be updated
-      const storeState = useAppStore.getState();
-      const originalSurveyData = JSON.parse(JSON.stringify(storeState.currentSurvey));
-      
-      console.log('📊 Current editedSurvey sections:', editedSurvey.sections?.map((s: any) => ({ id: s.id, title: s.title, order: s.order })));
-      console.log('📊 Original survey sections:', originalSurveyData.sections?.map((s: any) => ({ id: s.id, title: s.title, order: s.order })));
-      console.log('📊 hasUnsavedChanges:', hasUnsavedChanges);
-      
-      // Save section reordering if sections exist
-      if (editedSurvey.sections && editedSurvey.sections.length > 0) {
-        const sectionOrder = editedSurvey.sections.map(s => s.id);
-        console.log('📤 Sending section order to backend:', sectionOrder);
-        await reorderSections(sectionOrder);
-        console.log('✅ Section order saved');
-      }
-      
-      // Save question reordering - only for legacy flat format
-      // For surveys with sections, question reordering is handled by section updates
-      if (editedSurvey.questions && editedSurvey.questions.length > 0 && 
-          (!editedSurvey.sections || editedSurvey.sections.length === 0)) {
-        // Handle legacy flat questions format
-        const questionOrder = editedSurvey.questions.map(q => q.id);
-        console.log('📤 Sending question order to backend (legacy format):', questionOrder);
-        await reorderQuestions(questionOrder);
-        console.log('✅ Question order saved (legacy format)');
-      }
-      
-      // Save individual section updates
-      if (editedSurvey.sections && editedSurvey.sections.length > 0) {
-        for (const section of editedSurvey.sections) {
-          const originalSection = originalSurveyData.sections?.find((s: any) => s.id === section.id);
-          if (originalSection) {
-            // Check for changes in section properties (excluding questions)
-            const originalSectionWithoutQuestions = { ...originalSection };
-            const sectionWithoutQuestions = { ...section };
-            // Remove questions property for comparison
-            if ('questions' in originalSectionWithoutQuestions) {
-              delete (originalSectionWithoutQuestions as any).questions;
-            }
-            if ('questions' in sectionWithoutQuestions) {
-              delete (sectionWithoutQuestions as any).questions;
-            }
-            
-            const sectionPropertiesChanged = JSON.stringify(originalSectionWithoutQuestions) !== JSON.stringify(sectionWithoutQuestions);
-            
-            // Check for changes in question order within the section
-            const originalQuestionOrder = originalSection.questions?.map((q: any) => q.id) || [];
-            const currentQuestionOrder = section.questions?.map((q: any) => q.id) || [];
-            const questionOrderChanged = JSON.stringify(originalQuestionOrder) !== JSON.stringify(currentQuestionOrder);
-            
-            const hasChanges = sectionPropertiesChanged || questionOrderChanged;
-            
-            console.log(`🔍 [Save] Section ${section.id} changes detected:`, hasChanges);
-            console.log(`🔍 [Save] Section ${section.id} properties changed:`, sectionPropertiesChanged);
-            console.log(`🔍 [Save] Section ${section.id} question order changed:`, questionOrderChanged);
-            console.log(`🔍 [Save] Section ${section.id} original question order:`, originalQuestionOrder);
-            console.log(`🔍 [Save] Section ${section.id} current question order:`, currentQuestionOrder);
-            console.log(`🔍 [Save] Section ${section.id} original section:`, originalSection);
-            console.log(`🔍 [Save] Section ${section.id} current section:`, section);
-            
-            if (hasChanges) {
-              console.log('📤 Saving updated section:', section.id);
-              console.log('📊 Original section questions:', originalSection.questions?.map((q: any) => ({ id: q.id, order: q.order })));
-              console.log('📊 Updated section questions:', section.questions?.map((q: any) => ({ id: q.id, order: q.order })));
-              await updateSection(section.id, section);
-            }
-          }
-        }
-      }
-      
-      // Save individual question updates
-      if (editedSurvey.sections && editedSurvey.sections.length > 0) {
-        // Save questions within sections
-        for (const section of editedSurvey.sections) {
-          for (const question of section.questions) {
-            // Check if question was modified by comparing with original
-            const originalQuestion = originalSurveyData.sections?.find((s: any) => s.id === section.id)?.questions?.find((q: any) => q.id === question.id);
-            if (originalQuestion && JSON.stringify(originalQuestion) !== JSON.stringify(question)) {
-              console.log('📤 Saving updated question:', question.id);
-              await updateQuestion(question.id, question);
-            }
-          }
-        }
-      } else if (editedSurvey.questions && editedSurvey.questions.length > 0) {
-        // Save questions in legacy format
-        for (const question of editedSurvey.questions) {
-          const originalQuestion = originalSurveyData.questions?.find((q: any) => q.id === question.id);
-          if (originalQuestion && JSON.stringify(originalQuestion) !== JSON.stringify(question)) {
-            console.log('📤 Saving updated question:', question.id);
-            await updateQuestion(question.id, question);
-          }
-        }
-      }
-      
-      // Mark changes as saved
-      setHasUnsavedChanges(false);
-      
-      // Update the main survey state
-      if (onSurveyChange) {
-        onSurveyChange(editedSurvey);
-      }
-      
-      console.log('✅ All changes saved successfully');
-      
-      // Call onSaveAndExit if provided (for separate edit route)
-      if (onSaveAndExit) {
-        onSaveAndExit();
-      } else {
-        // Fallback to old behavior (exit edit mode)
-        setIsEditModeActive(false);
-      }
-      
-    } catch (error) {
-      console.error('❌ Failed to save changes:', error);
-      alert('Failed to save changes. Please try again.');
-    } finally {
-      setIsSaving(false);
+    // Call onSaveAndExit if provided (for separate edit route)
+    if (onSaveAndExit) {
+      onSaveAndExit();
+    } else {
+      // Fallback to old behavior (exit edit mode)
+      setIsEditModeActive(false);
     }
-  };
+  }, [onSaveAndExit]);
+
+  // Expose save function to parent component - only when onSaveTrigger changes
+  useEffect(() => {
+    if (onSaveTrigger) {
+      onSaveTrigger(handleSaveAllChanges);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onSaveTrigger]); // Intentionally exclude handleSaveAllChanges to prevent infinite loop
 
   const handleCancelChanges = async () => {
     try {
@@ -1177,7 +1111,9 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
     if (!survey?.survey_id) return;
     
     try {
-      // Update local state only - no immediate API call
+      console.log('🔄 [Question Update] Starting update for question:', updatedQuestion.id);
+      
+      // First update local state
       const surveyToUpdate = editedSurvey || survey;
       let updatedSurvey = { ...surveyToUpdate };
       
@@ -1197,13 +1133,20 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
       }
       
       setEditedSurvey(updatedSurvey);
-      setHasUnsavedChanges(true); // Mark as having unsaved changes
       if (onSurveyChange) onSurveyChange(updatedSurvey);
       
-      console.log('✅ Question updated locally, marked as unsaved');
+      // Now save the question immediately to the backend
+      console.log('💾 [Question Update] Saving question to backend:', updatedQuestion.id);
+      await updateQuestion(updatedQuestion.id, updatedQuestion);
+      console.log('✅ [Question Update] Question saved successfully');
+      
+      // Don't mark as unsaved since we just saved it
+      setHasUnsavedChanges(false);
       
     } catch (error) {
-      console.error('Failed to update question locally:', error);
+      console.error('❌ [Question Update] Failed to update question:', error);
+      // Mark as unsaved since the save failed
+      setHasUnsavedChanges(true);
     }
   };
 
@@ -1214,7 +1157,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
     }
   };
 
-  const handleMoveQuestion = (questionId: string, direction: 'up' | 'down') => {
+  const handleMoveQuestion = async (questionId: string, direction: 'up' | 'down') => {
     if (!editedSurvey) {
       console.log('❌ [Move] Cannot move question - no editedSurvey');
       return;
@@ -1258,9 +1201,16 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
       })));
       
       setEditedSurvey({ ...editedSurvey, sections: updatedSections });
-      setHasUnsavedChanges(true);
-      console.log('✅ [Move] Set hasUnsavedChanges to true');
       if (onSurveyChange) onSurveyChange({ ...editedSurvey, sections: updatedSections });
+      
+      // Save the question reorder immediately to the backend
+      console.log('💾 [Question Move] Saving question reorder to backend');
+      const questionOrder = updatedSections.flatMap(s => s.questions).map(q => q.id);
+      await reorderQuestions(questionOrder);
+      console.log('✅ [Question Move] Question reorder saved successfully');
+      
+      // Don't mark as unsaved since we just saved it
+      setHasUnsavedChanges(false);
     } else if (editedSurvey.questions) {
       // Handle legacy flat questions format
       const questions = [...editedSurvey.questions];
@@ -1279,8 +1229,16 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
         
         console.log('✅ Question moved in legacy format');
         setEditedSurvey({ ...editedSurvey, questions });
-        setHasUnsavedChanges(true);
         if (onSurveyChange) onSurveyChange({ ...editedSurvey, questions });
+        
+        // Save the question reorder immediately to the backend
+        console.log('💾 [Question Move] Saving question reorder to backend (legacy format)');
+        const questionOrder = questions.map(q => q.id);
+        await reorderQuestions(questionOrder);
+        console.log('✅ [Question Move] Question reorder saved successfully (legacy format)');
+        
+        // Don't mark as unsaved since we just saved it
+        setHasUnsavedChanges(false);
       }
     }
   };
@@ -1290,7 +1248,9 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
     if (!survey?.survey_id) return;
     
     try {
-      // Update local state only - no immediate API call
+      console.log('🔄 [Section Update] Starting update for section:', sectionId);
+      
+      // First update local state
       const surveyToUpdate = editedSurvey || survey;
       let updatedSurvey = { ...surveyToUpdate };
       
@@ -1301,13 +1261,20 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
       }
       
       setEditedSurvey(updatedSurvey);
-      setHasUnsavedChanges(true); // Mark as having unsaved changes
       if (onSurveyChange) onSurveyChange(updatedSurvey);
       
-      console.log('✅ Section updated locally, marked as unsaved');
+      // Now save the section immediately to the backend
+      console.log('💾 [Section Update] Saving section to backend:', sectionId);
+      await updateSection(sectionId, updatedSection);
+      console.log('✅ [Section Update] Section saved successfully');
+      
+      // Don't mark as unsaved since we just saved it
+      setHasUnsavedChanges(false);
       
     } catch (error) {
-      console.error('Failed to update section locally:', error);
+      console.error('❌ [Section Update] Failed to update section:', error);
+      // Mark as unsaved since the save failed
+      setHasUnsavedChanges(true);
     }
   };
 
@@ -1377,10 +1344,16 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
       console.log('💾 Updating state with:', updatedSurvey.sections.map(s => ({ id: s.id, title: s.title, order: s.order })));
       
       setEditedSurvey(updatedSurvey);
-      setHasUnsavedChanges(true); // Mark as having unsaved changes
       if (onSurveyChange) onSurveyChange(updatedSurvey);
       
-      console.log('✅ Section reorder applied locally - use Save button to persist');
+      // Save the section reorder immediately to the backend
+      console.log('💾 [Section Move] Saving section reorder to backend');
+      const sectionOrder = sections.map(s => s.id);
+      await reorderSections(sectionOrder);
+      console.log('✅ [Section Move] Section reorder saved successfully');
+      
+      // Don't mark as unsaved since we just saved it
+      setHasUnsavedChanges(false);
     } else {
       console.log('❌ Invalid move:', { currentIndex, newIndex, direction, sectionsLength: sections.length });
     }
@@ -1722,7 +1695,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12" />
                       </svg>
-                      <span>Save & Exit</span>
+                      <span>Exit</span>
                     </>
                   )}
                 </button>

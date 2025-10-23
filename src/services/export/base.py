@@ -10,29 +10,52 @@ from enum import Enum
 
 class QuestionType(Enum):
     """Enumeration of all supported question types."""
+    # Basic question types
     MULTIPLE_CHOICE = "multiple_choice"
-    SCALE = "scale"
-    TEXT = "text"
-    RANKING = "ranking"
-    INSTRUCTION = "instruction"
     SINGLE_CHOICE = "single_choice"
+    TEXT = "text"
+    SCALE = "scale"
+    RATING = "rating"
+    YES_NO = "yes_no"
+    DROPDOWN = "dropdown"
     MATRIX = "matrix"
+    RANKING = "ranking"
     NUMERIC = "numeric"
     DATE = "date"
     BOOLEAN = "boolean"
+    FILE_UPLOAD = "file_upload"
+    
+    # Open-ended variants
     OPEN_TEXT = "open_text"
-    MULTIPLE_SELECT = "multiple_select"
-    MATRIX_LIKERT = "matrix_likert"
-    CONSTANT_SUM = "constant_sum"
-    NUMERIC_GRID = "numeric_grid"
-    NUMERIC_OPEN = "numeric_open"
-    LIKERT = "likert"
     OPEN_END = "open_end"
-    DISPLAY_ONLY = "display_only"
+    OPEN_ENDED = "open_ended"
     SINGLE_OPEN = "single_open"
     MULTIPLE_OPEN = "multiple_open"
-    OPEN_ENDED = "open_ended"
+    
+    # Numeric variants
+    NUMERIC_OPEN = "numeric_open"
+    NUMERIC_GRID = "numeric_grid"
+    
+    # Matrix/Grid variants
+    MATRIX_LIKERT = "matrix_likert"
+    CONSTANT_SUM = "constant_sum"
+    
+    # Specialized types
+    LIKERT = "likert"
+    MULTIPLE_SELECT = "multiple_select"
+    
+    # Display types
+    INSTRUCTION = "instruction"
+    DISPLAY_ONLY = "display_only"
+    
+    # Methodology-specific types
+    VAN_WESTENDORP = "van_westendorp"
     GABOR_GRANGER = "gabor_granger"
+    CONJOINT = "conjoint"
+    MAXDIFF = "maxdiff"
+    
+    # Fallback
+    UNKNOWN = "unknown"
 
 
 class SurveyExportRenderer(ABC):
@@ -59,11 +82,11 @@ class SurveyExportRenderer(ABC):
         Validates that all question types are implemented.
         Raises ValueError if any question type is missing.
         """
-        all_types = set(QuestionType)
+        all_types = {t.value for t in QuestionType}
         missing_types = all_types - self._registered_types
 
         if missing_types:
-            missing_names = [t.value for t in missing_types]
+            missing_names = list(missing_types)
             raise ValueError(
                 f"Incomplete implementation: Missing renderers for question types: {missing_names}. "
                 f"All question types must be implemented to ensure export completeness."

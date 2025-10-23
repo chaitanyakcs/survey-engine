@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Question } from '../../types';
 import { LoadingSpinner } from '../common/LoadingSpinner';
 import { ErrorDisplay } from '../common/ErrorDisplay';
@@ -43,6 +43,7 @@ export const QuestionEditor: React.FC<QuestionEditorProps> = ({
   const [saveError, setSaveError] = useState<string | null>(null);
   
   const { parsedData, validateParsedData } = useQuestionParser(question);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Update edited question when question prop changes
   useEffect(() => {
@@ -51,6 +52,15 @@ export const QuestionEditor: React.FC<QuestionEditorProps> = ({
     setSaveError(null);
   }, [question]);
 
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
+
   // Validate question on changes
   useEffect(() => {
     const validationErrors = validateQuestion(editedQuestion);
@@ -58,8 +68,35 @@ export const QuestionEditor: React.FC<QuestionEditorProps> = ({
     setErrors([...validationErrors, ...parsedErrors]);
   }, [editedQuestion, validateParsedData]);
 
+  // Debounced auto-save function
+  const debouncedSave = useCallback(async (questionToSave: Question) => {
+    if (hideSaveButton && onSave) {
+      try {
+        console.log('💾 [QuestionEditor] Auto-saving question:', questionToSave.id);
+        await onSave(questionToSave);
+        console.log('✅ [QuestionEditor] Auto-save successful');
+      } catch (error) {
+        console.error('❌ [QuestionEditor] Auto-save failed:', error);
+      }
+    }
+  }, [hideSaveButton, onSave]);
+
   const updateQuestionField = (field: keyof Question, value: any) => {
-    setEditedQuestion(prev => ({ ...prev, [field]: value }));
+    const updatedQuestion = { ...editedQuestion, [field]: value };
+    setEditedQuestion(updatedQuestion);
+    
+    // Auto-save when in survey edit mode (hideSaveButton = true)
+    if (hideSaveButton) {
+      // Clear existing timeout
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+      
+      // Set new timeout for debounced save
+      saveTimeoutRef.current = setTimeout(() => {
+        debouncedSave(updatedQuestion);
+      }, 1000); // 1 second debounce
+    }
   };
 
   const handleQuestionTypeChange = (newType: string) => {
@@ -80,6 +117,37 @@ export const QuestionEditor: React.FC<QuestionEditorProps> = ({
     }
     
     setEditedQuestion(updatedQuestion);
+    
+    // Auto-save when in survey edit mode
+    if (hideSaveButton) {
+      // Clear existing timeout
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+      
+      // Set new timeout for debounced save
+      saveTimeoutRef.current = setTimeout(() => {
+        debouncedSave(updatedQuestion);
+      }, 1000); // 1 second debounce
+    }
+  };
+
+  // Wrapper function for specialized editors that also triggers auto-save
+  const handleSpecializedUpdate = (updatedQuestion: Question) => {
+    setEditedQuestion(updatedQuestion);
+    
+    // Auto-save when in survey edit mode
+    if (hideSaveButton) {
+      // Clear existing timeout
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+      
+      // Set new timeout for debounced save
+      saveTimeoutRef.current = setTimeout(() => {
+        debouncedSave(updatedQuestion);
+      }, 1000); // 1 second debounce
+    }
   };
 
   const handleSave = async () => {
@@ -107,7 +175,7 @@ export const QuestionEditor: React.FC<QuestionEditorProps> = ({
           <MatrixLikertEditor
             question={editedQuestion}
             parsedData={parsedData}
-            onUpdate={setEditedQuestion}
+            onUpdate={handleSpecializedUpdate}
             errors={errors}
           />
         );
@@ -116,7 +184,7 @@ export const QuestionEditor: React.FC<QuestionEditorProps> = ({
           <ConstantSumEditor
             question={editedQuestion}
             parsedData={parsedData}
-            onUpdate={setEditedQuestion}
+            onUpdate={handleSpecializedUpdate}
             errors={errors}
           />
         );
@@ -125,7 +193,7 @@ export const QuestionEditor: React.FC<QuestionEditorProps> = ({
           <GaborGrangerEditor
             question={editedQuestion}
             parsedData={parsedData}
-            onUpdate={setEditedQuestion}
+            onUpdate={handleSpecializedUpdate}
             errors={errors}
           />
         );
@@ -134,7 +202,7 @@ export const QuestionEditor: React.FC<QuestionEditorProps> = ({
           <NumericGridEditor
             question={editedQuestion}
             parsedData={parsedData}
-            onUpdate={setEditedQuestion}
+            onUpdate={handleSpecializedUpdate}
             errors={errors}
           />
         );
@@ -143,7 +211,7 @@ export const QuestionEditor: React.FC<QuestionEditorProps> = ({
           <NumericOpenEditor
             question={editedQuestion}
             parsedData={parsedData}
-            onUpdate={setEditedQuestion}
+            onUpdate={handleSpecializedUpdate}
             errors={errors}
           />
         );
@@ -365,28 +433,30 @@ export const QuestionEditor: React.FC<QuestionEditorProps> = ({
 
       {/* Action Buttons */}
       <div className="mt-6 flex justify-end space-x-3">
-        <button
-          onClick={onCancel}
-          disabled={isSaving}
-          className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50"
-        >
-          Cancel
-        </button>
         {!hideSaveButton && (
-          <button
-            onClick={handleSave}
-            disabled={isSaving || errors.length > 0}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isSaving ? (
-              <div className="flex items-center">
-                <LoadingSpinner size="sm" />
-                <span className="ml-2">Saving...</span>
-              </div>
-            ) : (
-              'Save Changes'
-            )}
-          </button>
+          <>
+            <button
+              onClick={onCancel}
+              disabled={isSaving}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={isSaving || errors.length > 0}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSaving ? (
+                <div className="flex items-center">
+                  <LoadingSpinner size="sm" />
+                  <span className="ml-2">Saving...</span>
+                </div>
+              ) : (
+                'Save Changes'
+              )}
+            </button>
+          </>
         )}
       </div>
     </div>

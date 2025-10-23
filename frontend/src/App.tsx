@@ -1,7 +1,6 @@
 import React, { useEffect } from 'react';
 import { useAppStore } from './store/useAppStore';
 import { SurveyGeneratorPage, SurveyPreviewPage, GoldenExamplesPage, SurveyEditPage, SurveyViewPage } from './pages';
-import { RulesPage } from './pages/RulesPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { SurveysPage } from './pages/SurveysPage';
 import { GoldenExampleEditPage } from './pages/GoldenExampleEditPage';
@@ -44,9 +43,6 @@ function App() {
     if (view === 'preview') {
       return 'preview';
     }
-    if (view === 'rules') {
-      return 'rules';
-    }
     if (view === 'settings') {
       return 'settings';
     }
@@ -66,9 +62,6 @@ function App() {
     // Fall back to pathname-based routing
     if (path === '/preview') {
       return 'preview';
-    }
-    if (path === '/rules') {
-      return 'rules';
     }
     if (path === '/settings') {
       return 'settings';
@@ -147,8 +140,6 @@ function App() {
         {/* Route to appropriate page */}
         {currentPage === 'preview' ? (
           <SurveyPreviewPage />
-        ) : currentPage === 'rules' ? (
-          <RulesPage />
         ) : currentPage === 'settings' ? (
           <SettingsPage />
         ) : currentPage === 'surveys' ? (
@@ -167,14 +158,12 @@ function App() {
           <LLMAuditViewer 
             title="LLM Audit Dashboard"
             showSummary={true}
-            onClose={() => window.history.back()}
           />
         ) : currentPage === 'llm-audit-survey' ? (
           <LLMAuditViewer 
             surveyId={new URLSearchParams(window.location.search).get('surveyId') || undefined}
             title="Survey LLM Audit"
             showSummary={true}
-            onClose={() => window.history.back()}
           />
         ) : currentPage === 'annotation-insights' ? (
           <AnnotationInsightsDashboard />

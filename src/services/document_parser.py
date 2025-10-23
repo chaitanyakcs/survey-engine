@@ -10,7 +10,7 @@ from pydantic import ValidationError
 import uuid
 import time
 
-from ..models.survey import SurveyCreate, Question, QuestionType
+from ..models.survey import SurveyCreate, SurveyCreateWithSections, Question, QuestionType, SurveySection
 from ..config.settings import settings
 from ..utils.error_messages import UserFriendlyError, get_api_configuration_error
 from ..utils.llm_audit_decorator import LLMAuditContext
@@ -182,7 +182,7 @@ class DocumentParser:
     def create_conversion_prompt(self, document_text: str, comments: List[Dict[str, Any]] = None) -> str:
         """Create the system prompt for LLM conversion with comment context."""
         
-        # Define the expected JSON schema with explicit question types
+        # Define the expected JSON schema with sections format
         json_schema = {
             "title": "string (required)",
             "description": "string (required)", 
@@ -192,20 +192,36 @@ class DocumentParser:
             "methodologies": "array of strings (van_westendorp|gabor_granger|conjoint|maxdiff|brand_tracking|nps)",
             "estimated_time": "number (minutes)",
             "confidence_score": "number (0.0-1.0)",
-            "questions": [
+            "sections": [
                 {
-                    "id": "string (required)",
-                    "text": "string (required)",
-                    "type": "string (REQUIRED: must be one of: multiple_choice|single_choice|text|scale|rating|yes_no|dropdown|matrix|ranking|numeric|date|boolean|file_upload|van_westendorp|gabor_granger|conjoint|maxdiff|unknown)",
-                    "options": "array of strings (for choice questions)",
-                    "scale_min": "number (for scale questions)",
-                    "scale_max": "number (for scale questions)",
-                    "scale_labels": "object with min/max keys (for scale questions, e.g. {'min': 'Poor', 'max': 'Excellent'})",
-                    "required": "boolean",
-                    "logic": "object (optional)",
-                    "annotation": "object (optional) - include if there's a comment for this question"
+                    "id": "integer (required, 1-7)",
+                    "title": "string (required)",
+                    "description": "string (optional)",
+                    "introText": "object (optional) - for study introduction text",
+                    "textBlocks": "array of objects (optional) - for additional text blocks",
+                    "questions": [
+                        {
+                            "id": "string (required)",
+                            "text": "string (required)",
+                            "type": "string (REQUIRED: must be one of: multiple_choice|single_choice|text|scale|rating|yes_no|dropdown|matrix|ranking|numeric|date|boolean|file_upload|van_westendorp|gabor_granger|conjoint|maxdiff|instruction)",
+                            "options": "array of strings (for choice questions)",
+                            "scale_min": "number (for scale questions)",
+                            "scale_max": "number (for scale questions)",
+                            "scale_labels": "object with min/max keys (for scale questions, e.g. {'min': 'Poor', 'max': 'Excellent'})",
+                            "required": "boolean",
+                            "logic": "object (optional)",
+                            "annotation": "object (optional) - include if there's a comment for this question",
+                            "order": "integer (optional) - question order within section"
+                        }
+                    ]
                 }
-            ]
+            ],
+            "metadata": {
+                "estimated_time": "number (minutes)",
+                "target_responses": "number",
+                "methodology_tags": "array of strings",
+                "sections_count": "number"
+            }
         }
         
         # Build comment context if available
@@ -227,18 +243,31 @@ DOCUMENT TEXT:
 
 INSTRUCTIONS:
 1. Extract the survey structure and convert to the exact JSON schema provided below
-2. CRITICAL: Question types MUST be one of: multiple_choice, single_choice, text, scale, rating, yes_no, dropdown, matrix, ranking, numeric, date, boolean, file_upload, van_westendorp, gabor_granger, conjoint, maxdiff, unknown
-3. Detect methodologies: van_westendorp, gabor_granger, conjoint, maxdiff, brand_tracking, nps
-4. Preserve question order and logic flow
-5. If unsure about any field, use null rather than guessing
-6. Generate a confidence_score (0.0-1.0) based on how well you could parse the document
-7. COMMENT MATCHING: If there are comments provided, match each comment to the question it was anchored to:
-   - Compare the "Anchored to" text with each question's text
+2. CRITICAL: Question types MUST be one of: multiple_choice, single_choice, text, scale, rating, yes_no, dropdown, matrix, ranking, numeric, date, boolean, file_upload, van_westendorp, gabor_granger, conjoint, maxdiff, instruction
+3. CRITICAL: If question type cannot be determined, use "instruction" instead of "unknown"
+4. Detect methodologies: van_westendorp, gabor_granger, conjoint, maxdiff, brand_tracking, nps
+5. Preserve question order and logic flow
+6. If unsure about any field, use null rather than guessing
+7. Generate a confidence_score (0.0-1.0) based on how well you could parse the document
+8. CRITICAL: Always extract the COMPLETE question text from the document - never truncate based on comment anchors
+9. CRITICAL: Check research objectives section for methodology requirements (e.g., "Most Important and Least Important features" indicates MaxDiff needed)
+10. CRITICAL: Generate survey using SECTIONS format - this is MANDATORY:
+   - Look for section headers like "SECTION A", "SECTION B", "Screener", "Introduction", etc.
+   - Map sections to the 7-section structure: Sample Plan, Screener, Brand/Product Awareness, Concept Exposure, Methodology, Additional Questions, Programmer Instructions
+   - If no explicit sections, organize questions logically into appropriate sections based on content
+   - Each section must have: id (1-7), title, description, questions array
+   - DO NOT use flat "questions" array - always use "sections" format
+11. COMMENT MATCHING: If there are comments provided, match each comment to the question it was anchored to:
+   - CRITICAL: Extract the COMPLETE question text from the document, not just the anchored portion
+   - The "anchored_text" is only for matching comments to questions - it may be partial or truncated
+   - Find the FULL question text in the document that contains or relates to the anchored text
    - If a comment matches a question, add an "annotation" field to that question with:
      - "comment": the comment text
-     - "anchored_text": the exact text the comment was attached to
+     - "anchored_text": the exact text the comment was attached to (may be partial)
      - "author": the comment author (if available)
      - "date": the comment date (if available)
+   - EXAMPLE: If anchored_text is "[EQ04] On a scale of 1 to 5 where 1 is 'Completely Unlikely' and 5 is 'Completely Likely', how likely would you be to f", 
+     find the complete question like "How likely would you be to follow up and learn more about Product_B?" in the document
 
 REQUIRED JSON SCHEMA:
 {json.dumps(json_schema, indent=2)}
@@ -247,9 +276,37 @@ METHODOLOGY DETECTION HINTS:
 - Van Westendorp PSM: Questions about "too cheap", "too expensive", "cheap", "expensive" price points
 - Gabor-Granger: Sequential price acceptance questions
 - Conjoint Analysis: Choice scenarios with multiple attributes
-- MaxDiff: "Most important" and "Least important" selection tasks
+- MaxDiff: "Most important" and "Least important" selection tasks with features list
+  CRITICAL: MaxDiff is ONE question per concept showing ALL features, not multiple questions
+  CRITICAL: Extract actual feature names from concept description into 'features' array
+  CRITICAL: Use 'features' field (not 'options') and set type to 'maxdiff'
+  CRITICAL: Look for research objectives mentioning "Most Important and Least Important features"
 - Brand Tracking: Brand awareness, consideration, preference questions
 - NPS: "How likely are you to recommend" questions
+
+QUESTION TEXT EXTRACTION RULES:
+- CRITICAL: Use the ACTUAL question text from the document, not generic descriptions
+- CRITICAL: Do not create generic descriptions like "Gabor-Granger: How likely would you be to purchase Product_A at varying price points?"
+- CRITICAL: Extract the exact question text as written in the document
+- EXAMPLE: If document has "CQ01a. On a scale of 1 to 5: where 1 is 'Definitely will not purchase' and 5 is 'Definitely will purchase', how likely would you be to purchase Product_A?", use that exact text
+- EXAMPLE: If document has "Please highlight the MOST IMPORTANT and LEAST IMPORTANT features", use that exact text, not a generic description
+
+UNKNOWN QUESTION TYPE HANDLING:
+- CRITICAL: If question type cannot be determined, use "instruction" instead of "unknown"
+- CRITICAL: Instructions are non-interactive text blocks that provide context or guidance
+- CRITICAL: Instructions should not have options, scales, or interactive elements
+- EXAMPLE: Text like "Please read the following information carefully" should be type "instruction"
+
+SECTION MAPPING GUIDANCE:
+- Section 1 (Sample Plan): Introduction text, study overview, recruitment criteria, quotas, confidentiality agreements
+- Section 2 (Screener): SQ01-SQ09 type questions, demographics, qualification questions, participation checks
+- Section 3 (Brand/Product Awareness): AQ00-AQ01 type questions, brand recall, usage patterns, product awareness
+- Section 4 (Concept Exposure): BQ01-BQ07 type questions, concept introduction, impression ratings, product concepts
+- Section 5 (Methodology): CQ01-CQ02 type questions, pricing studies, MaxDiff, conjoint, van_westendorp
+- Section 6 (Additional Questions): DQ01-DQ05 type questions, demographics, supplementary questions, final questions
+- Section 7 (Programmer Instructions): Technical notes, routing logic, implementation details, programming notes
+- Look for patterns like "SQ01", "AQ00", "BQ01", "CQ01", "DQ01" to identify section boundaries
+- If no clear section markers, group questions by topic: introduction → screening → awareness → concepts → methodology → demographics → technical
 
 IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanations or additional text.
 """
@@ -319,7 +376,7 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                                 "prompt": prompt,
                                 "temperature": 0.1,
                                 "max_tokens": 2000,  # Reduced from 4000
-                                "system_prompt": "Parse document to JSON. Return ONLY valid JSON with this structure:\n\n{\n  \"raw_output\": {\n    \"document_text\": \"[original text]\",\n    \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n    \"source_file\": null,\n    \"error\": null\n  },\n  \"final_output\": {\n    \"title\": \"[survey title]\",\n    \"description\": \"[description or null]\",\n    \"metadata\": {\n      \"quality_score\": 0.9,\n      \"estimated_time\": 10,\n      \"methodology_tags\": [\"tag1\", \"tag2\"],\n      \"target_responses\": 100,\n      \"source_file\": null\n    },\n    \"questions\": [\n      {\n        \"id\": \"q1\",\n        \"text\": \"[question text]\",\n        \"type\": \"multiple_choice|single_choice|text|scale|ranking|matrix|numeric|date|boolean|file_upload|unknown\",\n        \"options\": [\"option1\", \"option2\"],\n        \"required\": true,\n        \"validation\": \"single_select\",\n        \"methodology\": \"van_westendorp|gabor_granger|conjoint|maxdiff|null\",\n        \"routing\": null\n      }\n    ],\n    \"parsing_issues\": []\n  }\n}\n\nRules:\n- Use sequential IDs: q1, q2, q3...\n- For choice questions: put options in \"options\" array\n- For scales: use \"type\":\"scale\" with scale labels in \"options\"\n- For matrices: use \"type\":\"matrix\"\n- Set \"required\": true for most questions\n- Use \"unknown\" type if unsure\n- Return ONLY JSON, no explanations\n\nMethodology Detection:\n- Van Westendorp: \"too cheap\", \"too expensive\" price questions\n- Gabor-Granger: Sequential price acceptance\n- Conjoint: Choice scenarios with attributes\n- MaxDiff: \"Most/Least important\" selections\n- NPS: \"How likely to recommend\" questions"
+                                "system_prompt": "Parse document to JSON. Return ONLY valid JSON with this structure:\n\n{\n  \"raw_output\": {\n    \"document_text\": \"[original text]\",\n    \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n    \"source_file\": null,\n    \"error\": null\n  },\n  \"final_output\": {\n    \"title\": \"[survey title]\",\n    \"description\": \"[description or null]\",\n    \"metadata\": {\n      \"quality_score\": 0.9,\n      \"estimated_time\": 10,\n      \"methodology_tags\": [\"tag1\", \"tag2\"],\n      \"target_responses\": 100,\n      \"source_file\": null\n    },\n    \"sections\": [\n      {\n        \"id\": 1,\n        \"title\": \"[section title]\",\n        \"description\": \"[section description or null]\",\n        \"introText\": {\n          \"text\": \"[intro text or null]\"\n        },\n        \"textBlocks\": [\n          {\n            \"text\": \"[additional text block or null]\"\n          }\n        ],\n        \"questions\": [\n          {\n            \"id\": \"q1\",\n            \"text\": \"[question text]\",\n            \"type\": \"multiple_choice|single_choice|text|scale|rating|yes_no|dropdown|matrix|ranking|numeric|date|boolean|file_upload|van_westendorp|gabor_granger|conjoint|maxdiff|instruction|display_only|unknown\",\n            \"options\": [\"option1\", \"option2\"],\n            \"required\": true,\n            \"validation\": \"single_select\",\n            \"methodology\": \"van_westendorp|gabor_granger|conjoint|maxdiff|null\",\n            \"routing\": null,\n            \"order\": 1\n          }\n        ]\n      }\n    ],\n    \"parsing_issues\": []\n  }\n}\n\nCRITICAL RULES:\n- MUST use sections format with 7 sections (Sample Plan, Screener, Brand/Product Awareness, Concept Exposure, Methodology, Additional Questions, Programmer Instructions)\n- DO NOT use flat 'questions' array - use 'sections' array instead\n- Each section has id (1-7), title, description, introText, textBlocks, and questions array\n- Use sequential question IDs: q1, q2, q3...\n- For choice questions: put options in \"options\" array\n- For scales: use \"type\":\"scale\" with scale labels in \"options\"\n- For matrices: use \"type\":\"matrix\"\n- Set \"required\": true for most questions\n- Use \"instruction\" type for non-interactive text blocks\n- Return ONLY JSON, no explanations\n\nMethodology Detection:\n- Van Westendorp: \"too cheap\", \"too expensive\" price questions\n- Gabor-Granger: Sequential price acceptance\n- Conjoint: Choice scenarios with attributes\n- MaxDiff: \"Most/Least important\" selections\n- NPS: \"How likely to recommend\" questions"
                             }
                         )
                         
@@ -351,7 +408,7 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                         "prompt": prompt,
                         "temperature": 0.1,
                         "max_tokens": 2000,  # Reduced from 4000
-                        "system_prompt": "Parse document to JSON. Return ONLY valid JSON with this structure:\n\n{\n  \"raw_output\": {\n    \"document_text\": \"[original text]\",\n    \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n    \"source_file\": null,\n    \"error\": null\n  },\n  \"final_output\": {\n    \"title\": \"[survey title]\",\n    \"description\": \"[description or null]\",\n    \"metadata\": {\n      \"quality_score\": 0.9,\n      \"estimated_time\": 10,\n      \"methodology_tags\": [\"tag1\", \"tag2\"],\n      \"target_responses\": 100,\n      \"source_file\": null\n    },\n    \"questions\": [\n      {\n        \"id\": \"q1\",\n        \"text\": \"[question text]\",\n        \"type\": \"multiple_choice|single_choice|text|scale|ranking|matrix|numeric|date|boolean|file_upload|unknown\",\n        \"options\": [\"option1\", \"option2\"],\n        \"required\": true,\n        \"validation\": \"single_select\",\n        \"methodology\": \"van_westendorp|gabor_granger|conjoint|maxdiff|null\",\n        \"routing\": null\n      }\n    ],\n    \"parsing_issues\": []\n  }\n}\n\nRules:\n- Use sequential IDs: q1, q2, q3...\n- For choice questions: put options in \"options\" array\n- For scales: use \"type\":\"scale\" with scale labels in \"options\"\n- For matrices: use \"type\":\"matrix\"\n- Set \"required\": true for most questions\n- Use \"unknown\" type if unsure\n- Return ONLY JSON, no explanations\n\nMethodology Detection:\n- Van Westendorp: \"too cheap\", \"too expensive\" price questions\n- Gabor-Granger: Sequential price acceptance\n- Conjoint: Choice scenarios with attributes\n- MaxDiff: \"Most/Least important\" selections\n- NPS: \"How likely to recommend\" questions"
+                        "system_prompt": "Parse document to JSON. Return ONLY valid JSON with this structure:\n\n{\n  \"raw_output\": {\n    \"document_text\": \"[original text]\",\n    \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n    \"source_file\": null,\n    \"error\": null\n  },\n  \"final_output\": {\n    \"title\": \"[survey title]\",\n    \"description\": \"[description or null]\",\n    \"metadata\": {\n      \"quality_score\": 0.9,\n      \"estimated_time\": 10,\n      \"methodology_tags\": [\"tag1\", \"tag2\"],\n      \"target_responses\": 100,\n      \"source_file\": null\n    },\n    \"sections\": [\n      {\n        \"id\": 1,\n        \"title\": \"[section title]\",\n        \"description\": \"[section description or null]\",\n        \"introText\": {\n          \"text\": \"[intro text or null]\"\n        },\n        \"textBlocks\": [\n          {\n            \"text\": \"[additional text block or null]\"\n          }\n        ],\n        \"questions\": [\n          {\n            \"id\": \"q1\",\n            \"text\": \"[question text]\",\n            \"type\": \"multiple_choice|single_choice|text|scale|rating|yes_no|dropdown|matrix|ranking|numeric|date|boolean|file_upload|van_westendorp|gabor_granger|conjoint|maxdiff|instruction|display_only|unknown\",\n            \"options\": [\"option1\", \"option2\"],\n            \"required\": true,\n            \"validation\": \"single_select\",\n            \"methodology\": \"van_westendorp|gabor_granger|conjoint|maxdiff|null\",\n            \"routing\": null,\n            \"order\": 1\n          }\n        ]\n      }\n    ],\n    \"parsing_issues\": []\n  }\n}\n\nCRITICAL RULES:\n- MUST use sections format with 7 sections (Sample Plan, Screener, Brand/Product Awareness, Concept Exposure, Methodology, Additional Questions, Programmer Instructions)\n- DO NOT use flat 'questions' array - use 'sections' array instead\n- Each section has id (1-7), title, description, introText, textBlocks, and questions array\n- Use sequential question IDs: q1, q2, q3...\n- For choice questions: put options in \"options\" array\n- For scales: use \"type\":\"scale\" with scale labels in \"options\"\n- For matrices: use \"type\":\"matrix\"\n- Set \"required\": true for most questions\n- Use \"instruction\" type for non-interactive text blocks\n- Return ONLY JSON, no explanations\n\nMethodology Detection:\n- Van Westendorp: \"too cheap\", \"too expensive\" price questions\n- Gabor-Granger: Sequential price acceptance\n- Conjoint: Choice scenarios with attributes\n- MaxDiff: \"Most/Least important\" selections\n- NPS: \"How likely to recommend\" questions"
                     }
                 )
             except Exception as audit_error:
@@ -364,7 +421,7 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                         "prompt": prompt,
                         "temperature": 0.1,
                         "max_tokens": 2000,  # Reduced from 4000
-                        "system_prompt": "Parse document to JSON. Return ONLY valid JSON with this structure:\n\n{\n  \"raw_output\": {\n    \"document_text\": \"[original text]\",\n    \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n    \"source_file\": null,\n    \"error\": null\n  },\n  \"final_output\": {\n    \"title\": \"[survey title]\",\n    \"description\": \"[description or null]\",\n    \"metadata\": {\n      \"quality_score\": 0.9,\n      \"estimated_time\": 10,\n      \"methodology_tags\": [\"tag1\", \"tag2\"],\n      \"target_responses\": 100,\n      \"source_file\": null\n    },\n    \"questions\": [\n      {\n        \"id\": \"q1\",\n        \"text\": \"[question text]\",\n        \"type\": \"multiple_choice|single_choice|text|scale|ranking|matrix|numeric|date|boolean|file_upload|unknown\",\n        \"options\": [\"option1\", \"option2\"],\n        \"required\": true,\n        \"validation\": \"single_select\",\n        \"methodology\": \"van_westendorp|gabor_granger|conjoint|maxdiff|null\",\n        \"routing\": null\n      }\n    ],\n    \"parsing_issues\": []\n  }\n}\n\nRules:\n- Use sequential IDs: q1, q2, q3...\n- For choice questions: put options in \"options\" array\n- For scales: use \"type\":\"scale\" with scale labels in \"options\"\n- For matrices: use \"type\":\"matrix\"\n- Set \"required\": true for most questions\n- Use \"unknown\" type if unsure\n- Return ONLY JSON, no explanations\n\nMethodology Detection:\n- Van Westendorp: \"too cheap\", \"too expensive\" price questions\n- Gabor-Granger: Sequential price acceptance\n- Conjoint: Choice scenarios with attributes\n- MaxDiff: \"Most/Least important\" selections\n- NPS: \"How likely to recommend\" questions"
+                        "system_prompt": "Parse document to JSON. Return ONLY valid JSON with this structure:\n\n{\n  \"raw_output\": {\n    \"document_text\": \"[original text]\",\n    \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n    \"source_file\": null,\n    \"error\": null\n  },\n  \"final_output\": {\n    \"title\": \"[survey title]\",\n    \"description\": \"[description or null]\",\n    \"metadata\": {\n      \"quality_score\": 0.9,\n      \"estimated_time\": 10,\n      \"methodology_tags\": [\"tag1\", \"tag2\"],\n      \"target_responses\": 100,\n      \"source_file\": null\n    },\n    \"sections\": [\n      {\n        \"id\": 1,\n        \"title\": \"[section title]\",\n        \"description\": \"[section description or null]\",\n        \"introText\": {\n          \"text\": \"[intro text or null]\"\n        },\n        \"textBlocks\": [\n          {\n            \"text\": \"[additional text block or null]\"\n          }\n        ],\n        \"questions\": [\n          {\n            \"id\": \"q1\",\n            \"text\": \"[question text]\",\n            \"type\": \"multiple_choice|single_choice|text|scale|rating|yes_no|dropdown|matrix|ranking|numeric|date|boolean|file_upload|van_westendorp|gabor_granger|conjoint|maxdiff|instruction|display_only|unknown\",\n            \"options\": [\"option1\", \"option2\"],\n            \"required\": true,\n            \"validation\": \"single_select\",\n            \"methodology\": \"van_westendorp|gabor_granger|conjoint|maxdiff|null\",\n            \"routing\": null,\n            \"order\": 1\n          }\n        ]\n      }\n    ],\n    \"parsing_issues\": []\n  }\n}\n\nCRITICAL RULES:\n- MUST use sections format with 7 sections (Sample Plan, Screener, Brand/Product Awareness, Concept Exposure, Methodology, Additional Questions, Programmer Instructions)\n- DO NOT use flat 'questions' array - use 'sections' array instead\n- Each section has id (1-7), title, description, introText, textBlocks, and questions array\n- Use sequential question IDs: q1, q2, q3...\n- For choice questions: put options in \"options\" array\n- For scales: use \"type\":\"scale\" with scale labels in \"options\"\n- For matrices: use \"type\":\"matrix\"\n- Set \"required\": true for most questions\n- Use \"instruction\" type for non-interactive text blocks\n- Return ONLY JSON, no explanations\n\nMethodology Detection:\n- Van Westendorp: \"too cheap\", \"too expensive\" price questions\n- Gabor-Granger: Sequential price acceptance\n- Conjoint: Choice scenarios with attributes\n- MaxDiff: \"Most/Least important\" selections\n- NPS: \"How likely to recommend\" questions"
                     }
                 )
             
@@ -458,9 +515,25 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
             
             if "raw_output" not in survey_data or "final_output" not in survey_data:
                 logger.warning(f"⚠️ [Document Parser] Missing expected structure (raw_output/final_output)")
+                
+                # Add comprehensive logging of response structure
+                logger.info(f"📊 [Document Parser] Response structure keys: {list(survey_data.keys())}")
+                if isinstance(survey_data, dict):
+                    logger.info(f"📊 [Document Parser] Has 'sections': {'sections' in survey_data}")
+                    logger.info(f"📊 [Document Parser] Has 'questions': {'questions' in survey_data}")
+                    logger.info(f"📊 [Document Parser] Has 'title': {'title' in survey_data}")
+                
                 # Try to use the response as-is if it has the old structure
-                if "title" in survey_data and "questions" in survey_data:
-                    logger.info(f"🔧 [Document Parser] Using legacy structure")
+                if "title" in survey_data and ("questions" in survey_data or "sections" in survey_data):
+                    # Validate structure quality before wrapping
+                    if not self._validate_llm_response_quality(survey_data):
+                        raise ValueError("LLM response failed quality validation")
+                    
+                    if "sections" in survey_data:
+                        logger.info(f"🔧 [Document Parser] Using sections format with {len(survey_data['sections'])} sections")
+                    elif "questions" in survey_data:
+                        logger.info(f"🔧 [Document Parser] Using legacy questions format with {len(survey_data['questions'])} questions")
+                    
                     survey_data = {
                         "raw_output": {"document_text": document_text, "extraction_timestamp": "2024-01-01T00:00:00Z"},
                         "final_output": survey_data
@@ -502,6 +575,55 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
             logger.warning(f"⚠️ [Document Parser] Returning fallback response due to error")
             return fallback_response
     
+    def _validate_llm_response_quality(self, survey_data: Dict[str, Any]) -> bool:
+        """
+        Validate LLM response has minimum required quality.
+        Uses lenient validation - logs warnings but allows empty sections.
+        """
+        if not isinstance(survey_data, dict):
+            logger.error("❌ [Document Parser] Response is not a dictionary")
+            return False
+        
+        if "title" not in survey_data or not survey_data.get("title"):
+            logger.warning("⚠️ [Document Parser] Missing or empty title (allowed but not ideal)")
+        
+        # Check sections format
+        if "sections" in survey_data:
+            sections = survey_data["sections"]
+            if not isinstance(sections, list):
+                logger.error("❌ [Document Parser] Sections is not a list")
+                return False
+            
+            if len(sections) == 0:
+                logger.warning("⚠️ [Document Parser] Sections array is empty (allowed)")
+            else:
+                # Count sections with questions
+                sections_with_questions = sum(
+                    1 for s in sections
+                    if isinstance(s, dict) and isinstance(s.get("questions"), list) and len(s["questions"]) > 0
+                )
+                logger.info(f"📊 [Document Parser] {sections_with_questions}/{len(sections)} sections have questions")
+                
+                if sections_with_questions == 0:
+                    logger.warning("⚠️ [Document Parser] No sections contain questions (allowed but suspicious)")
+        
+        # Check legacy format
+        elif "questions" in survey_data:
+            questions = survey_data["questions"]
+            if not isinstance(questions, list):
+                logger.error("❌ [Document Parser] Questions is not a list")
+                return False
+            
+            if len(questions) == 0:
+                logger.warning("⚠️ [Document Parser] Questions array is empty (allowed)")
+            else:
+                logger.info(f"📊 [Document Parser] Found {len(questions)} questions in legacy format")
+        else:
+            logger.error("❌ [Document Parser] No sections or questions found in response")
+            return False
+        
+        return True
+    
     def validate_survey_json(self, survey_data: Dict[str, Any]) -> Dict[str, Any]:
         """Validate the generated JSON against our survey schema."""
         try:
@@ -510,8 +632,38 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                 final_output = survey_data["final_output"]
                 logger.info(f"🔍 [Document Parser] Validating final_output structure")
                 
-                # Add order field to questions if missing and handle annotation fields
-                if "questions" in final_output and isinstance(final_output["questions"], list):
+                # Handle sections format (NEW)
+                if "sections" in final_output and isinstance(final_output["sections"], list):
+                    logger.info(f"🔍 [Document Parser] Processing sections format with {len(final_output['sections'])} sections")
+                    
+                    # Process questions in each section
+                    for section_idx, section in enumerate(final_output["sections"]):
+                        if isinstance(section, dict) and "questions" in section and isinstance(section["questions"], list):
+                            logger.info(f"🔍 [Document Parser] Processing {len(section['questions'])} questions in section {section.get('id', section_idx+1)}")
+                            
+                            for i, question in enumerate(section["questions"]):
+                                if isinstance(question, dict) and "order" not in question:
+                                    question["order"] = i + 1
+                                
+                                # Fix scale_labels format - convert array to dictionary if needed
+                                if isinstance(question, dict) and "scale_labels" in question:
+                                    scale_labels = question["scale_labels"]
+                                    if isinstance(scale_labels, list) and len(scale_labels) >= 2:
+                                        # Convert array to dictionary format
+                                        question["scale_labels"] = {
+                                            "min": scale_labels[0],
+                                            "max": scale_labels[-1]
+                                        }
+                                        logger.debug(f"🔧 [Document Parser] Fixed scale_labels for section {section.get('id', section_idx+1)} question {i+1}: {scale_labels} -> {question['scale_labels']}")
+                                    elif not isinstance(scale_labels, dict):
+                                        # Remove invalid scale_labels
+                                        question.pop("scale_labels", None)
+                                        logger.debug(f"🔧 [Document Parser] Removed invalid scale_labels for section {section.get('id', section_idx+1)} question {i+1}")
+                
+                # Handle legacy flat format (for backward compatibility)
+                elif "questions" in final_output and isinstance(final_output["questions"], list):
+                    logger.info(f"🔍 [Document Parser] Processing legacy flat format with {len(final_output['questions'])} questions")
+                    
                     for i, question in enumerate(final_output["questions"]):
                         if isinstance(question, dict) and "order" not in question:
                             question["order"] = i + 1
@@ -533,21 +685,49 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                 
                 # Extract annotation fields before validation (SurveyCreate doesn't support them)
                 annotation_fields = {}
-                if "questions" in final_output and isinstance(final_output["questions"], list):
+                
+                # Handle sections format for annotations
+                if "sections" in final_output and isinstance(final_output["sections"], list):
+                    for section_idx, section in enumerate(final_output["sections"]):
+                        if isinstance(section, dict) and "questions" in section and isinstance(section["questions"], list):
+                            for i, question in enumerate(section["questions"]):
+                                if isinstance(question, dict) and "annotation" in question:
+                                    annotation_fields[question.get("id", f"s{section.get('id', section_idx+1)}_q{i+1}")] = question.pop("annotation")
+                
+                # Handle legacy format for annotations
+                elif "questions" in final_output and isinstance(final_output["questions"], list):
                     for i, question in enumerate(final_output["questions"]):
                         if isinstance(question, dict) and "annotation" in question:
                             annotation_fields[question.get("id", f"q{i+1}")] = question.pop("annotation")
                 
-                # Create a SurveyCreate object to validate the structure
-                survey = SurveyCreate(**final_output)
+                # Create appropriate SurveyCreate object based on structure
+                if "sections" in final_output:
+                    logger.info(f"✅ [Document Parser] Using SurveyCreateWithSections for validation")
+                    # Use sections format validation
+                    survey = SurveyCreateWithSections(**final_output)
+                else:
+                    logger.info(f"✅ [Document Parser] Using SurveyCreate (legacy) for validation")
+                    # Use legacy questions format validation
+                    survey = SurveyCreate(**final_output)
                 validated_data = survey.model_dump()
                 
                 # Restore annotation fields after validation
-                if annotation_fields and "questions" in validated_data:
-                    for question in validated_data["questions"]:
-                        question_id = question.get("id")
-                        if question_id in annotation_fields:
-                            question["annotation"] = annotation_fields[question_id]
+                if annotation_fields:
+                    # Handle sections format for restoring annotations
+                    if "sections" in validated_data and isinstance(validated_data["sections"], list):
+                        for section in validated_data["sections"]:
+                            if isinstance(section, dict) and "questions" in section and isinstance(section["questions"], list):
+                                for question in section["questions"]:
+                                    question_id = question.get("id")
+                                    if question_id in annotation_fields:
+                                        question["annotation"] = annotation_fields[question_id]
+                    
+                    # Handle legacy format for restoring annotations
+                    elif "questions" in validated_data and isinstance(validated_data["questions"], list):
+                        for question in validated_data["questions"]:
+                            question_id = question.get("id")
+                            if question_id in annotation_fields:
+                                question["annotation"] = annotation_fields[question_id]
                 
                 # Preserve metadata fields that are not part of SurveyCreate model
                 metadata_fields = {}
@@ -584,7 +764,11 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                                 question.pop("scale_labels", None)
                                 logger.debug(f"🔧 [Document Parser] Removed invalid scale_labels for legacy question {i+1}")
                 
-                survey = SurveyCreate(**survey_data)
+                # Use appropriate validation based on structure
+                if "sections" in survey_data and "questions" not in survey_data:
+                    survey = SurveyCreateWithSections(**survey_data)
+                else:
+                    survey = SurveyCreate(**survey_data)
                 validated_data = survey.model_dump()
                 
                 # Preserve metadata fields that are not part of SurveyCreate model
@@ -674,6 +858,42 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                 logger.error(f"❌ [Document Parser] Minimal response creation also failed: {str(e2)}")
                 raise DocumentParsingError(f"Generated JSON validation failed: {str(e)}")
     
+    def _infer_question_type_from_content(self, question: Dict[str, Any]) -> str:
+        """Intelligently infer question type from content when type is unknown."""
+        text = question.get("text", "").lower()
+        options = question.get("options", [])
+        scale_labels = question.get("scale_labels", {})
+        
+        # If it has options, it's likely a choice question
+        if options and len(options) > 0:
+            if len(options) == 2 and any(opt.lower() in ['yes', 'no', 'true', 'false'] for opt in options):
+                return 'yes_no'
+            elif len(options) > 10:  # Many options suggest dropdown
+                return 'dropdown'
+            else:
+                return 'single_choice'
+        
+        # If it has scale labels, it's a scale question
+        if scale_labels:
+            return 'scale'
+        
+        # Check for instructional/informational content
+        instructional_keywords = [
+            'click', 'continue', 'review', 'introduction', 'thank you', 'welcome',
+            'please note', 'disclaimer', 'instruction', 'guidance', 'proceed',
+            'next', 'begin', 'start', 'complete', 'finish', 'end'
+        ]
+        
+        if any(keyword in text for keyword in instructional_keywords):
+            return 'instruction'
+        
+        # Check for matrix/grid patterns
+        if 'matrix' in text or 'grid' in text or 'table' in text:
+            return 'matrix'
+        
+        # Default to text for open-ended questions
+        return 'text'
+
     def _fix_invalid_question_types(self, survey_data: Dict[str, Any]) -> Dict[str, Any]:
         """Fix invalid question types by mapping them to valid ones."""
         logger.info(f"🔧 [Document Parser] Attempting to fix invalid question types")
@@ -706,7 +926,7 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
             'stars': 'scale',
             'slider': 'scale',
             'range': 'scale',
-            'dropdown': 'single_choice',
+            'dropdown': 'dropdown',
             'select': 'single_choice',
             'radio': 'single_choice',
             'checkbox': 'multiple_choice',
@@ -726,7 +946,7 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
             'suggestion': 'text',
             'other': 'text',
             'custom': 'text',
-            'unknown': 'unknown'
+            'unknown': 'unknown'  # Will be handled by intelligent inference
         }
         
         fixed_data = survey_data.copy()
@@ -734,7 +954,49 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
         # Handle both new format (with final_output) and legacy format
         if "final_output" in fixed_data:
             final_output = fixed_data["final_output"].copy()
-            if 'questions' in final_output:
+            
+            # Handle sections format (NEW)
+            if 'sections' in final_output and isinstance(final_output['sections'], list):
+                logger.info(f"🔧 [Document Parser] Fixing question types in sections format with {len(final_output['sections'])} sections")
+                
+                for section_idx, section in enumerate(final_output['sections']):
+                    if isinstance(section, dict) and 'questions' in section and isinstance(section['questions'], list):
+                        fixed_questions = []
+                        for question in section['questions']:
+                            fixed_question = question.copy()
+                            if 'type' in fixed_question:
+                                original_type = fixed_question['type']
+                                if original_type not in [t.value for t in QuestionType]:
+                                    mapped_type = type_mapping.get(original_type.lower(), 'unknown')
+                                    logger.info(f"🔧 [Document Parser] Mapped question type '{original_type}' to '{mapped_type}' in section {section.get('id', section_idx+1)}")
+                                    
+                                    # If still unknown, use intelligent inference
+                                    if mapped_type == 'unknown':
+                                        inferred_type = self._infer_question_type_from_content(fixed_question)
+                                        logger.info(f"🔧 [Document Parser] Intelligently inferred type '{inferred_type}' for question: {fixed_question.get('text', '')[:50]}...")
+                                        mapped_type = inferred_type
+                                    
+                                    fixed_question['type'] = mapped_type
+                            
+                            # Fix scale_labels format
+                            if 'scale_labels' in fixed_question:
+                                scale_labels = fixed_question['scale_labels']
+                                if isinstance(scale_labels, list) and len(scale_labels) >= 2:
+                                    fixed_question['scale_labels'] = {
+                                        "min": scale_labels[0],
+                                        "max": scale_labels[-1]
+                                    }
+                                elif not isinstance(scale_labels, dict):
+                                    fixed_question.pop('scale_labels', None)
+                            
+                            fixed_questions.append(fixed_question)
+                        section['questions'] = fixed_questions
+                        logger.info(f"🔧 [Document Parser] Fixed {len(fixed_questions)} questions in section {section.get('id', section_idx+1)}")
+            
+            # Handle legacy flat format (for backward compatibility)
+            elif 'questions' in final_output and isinstance(final_output['questions'], list):
+                logger.info(f"🔧 [Document Parser] Fixing question types in legacy flat format with {len(final_output['questions'])} questions")
+                
                 fixed_questions = []
                 for question in final_output['questions']:
                     fixed_question = question.copy()
@@ -743,6 +1005,13 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                         if original_type not in [t.value for t in QuestionType]:
                             mapped_type = type_mapping.get(original_type.lower(), 'unknown')
                             logger.info(f"🔧 [Document Parser] Mapped question type '{original_type}' to '{mapped_type}'")
+                            
+                            # If still unknown, use intelligent inference
+                            if mapped_type == 'unknown':
+                                inferred_type = self._infer_question_type_from_content(fixed_question)
+                                logger.info(f"🔧 [Document Parser] Intelligently inferred type '{inferred_type}' for question: {fixed_question.get('text', '')[:50]}...")
+                                mapped_type = inferred_type
+                            
                             fixed_question['type'] = mapped_type
                     
                     # Fix scale_labels format
@@ -758,6 +1027,7 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                     
                     fixed_questions.append(fixed_question)
                 final_output['questions'] = fixed_questions
+            
             fixed_data["final_output"] = final_output
         else:
             # Legacy format
@@ -770,6 +1040,13 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                         if original_type not in [t.value for t in QuestionType]:
                             mapped_type = type_mapping.get(original_type.lower(), 'unknown')
                             logger.info(f"🔧 [Document Parser] Mapped question type '{original_type}' to '{mapped_type}'")
+                            
+                            # If still unknown, use intelligent inference
+                            if mapped_type == 'unknown':
+                                inferred_type = self._infer_question_type_from_content(fixed_question)
+                                logger.info(f"🔧 [Document Parser] Intelligently inferred type '{inferred_type}' for question: {fixed_question.get('text', '')[:50]}...")
+                                mapped_type = inferred_type
+                            
                             fixed_question['type'] = mapped_type
                     
                     # Fix scale_labels format
@@ -1207,6 +1484,13 @@ INSTRUCTIONS:
    - reasoning: why this text maps to this field
    - priority: field priority level (critical/high/medium)
 
+UNMAPPED_CONTEXT FIELD:
+- Purpose: Capture any useful information that doesn't fit into structured fields but could help with survey generation
+- Examples: Methodology preferences, tone requirements, special constraints, stakeholder notes, cultural considerations, brand guidelines, specific terminology preferences
+- Strategy: Look for contextual details, preferences, or requirements that would influence survey design but aren't captured in the structured fields
+- Limit: Maximum 200 words, focus on actionable information for survey generation
+- If no additional context exists, use empty string ""
+
 EXPECTED JSON STRUCTURE:
 {{
   "confidence": 0.85,
@@ -1526,6 +1810,14 @@ EXPECTED JSON STRUCTURE:
       "source": "No usage frequency tracking needed",
       "reasoning": "Feature research doesn't require usage frequency tracking",
       "priority": "medium"
+    }},
+    {{
+      "field": "methodology_tags",
+      "value": ["conjoint", "choice_modeling"],
+      "confidence": 0.85,
+      "source": "Conjoint analysis methodology mentioned in document",
+      "reasoning": "Conjoint analysis and choice modeling methodologies detected",
+      "priority": "high"
     }}
   ]
 }}
@@ -1582,7 +1874,8 @@ COMPLETE JSON EXAMPLE:
       "reasoning": "Explicit sample size range provided",
       "priority": "high"
     }}
-  ]
+  ],
+  "unmapped_context": "Any additional useful information from the document that doesn't fit into the structured fields above but could be valuable for survey generation. This might include methodology preferences, tone requirements, special constraints, stakeholder notes, or other contextual details. Keep this concise (maximum 200 words) and focus on information that would help create better surveys."
 }}
 
 REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or formatting.
@@ -2132,24 +2425,74 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
             logger.info(f"✅ [Document Parser] JSON validation successful")
 
             # NEW: Create question annotations from comments
-            # Check both direct questions and nested final_output questions
+            # Check multiple possible locations for questions
             questions_to_process = None
-            if comments and "questions" in validated_survey and validated_survey["questions"]:
-                questions_to_process = validated_survey["questions"]
-                logger.info(f"💬 [Document Parser] Found questions directly in survey_json")
-            elif comments and "final_output" in validated_survey and "questions" in validated_survey["final_output"] and validated_survey["final_output"]["questions"]:
-                questions_to_process = validated_survey["final_output"]["questions"]
-                logger.info(f"💬 [Document Parser] Found questions in final_output")
+            if comments:
+                # Check direct questions array
+                if "questions" in validated_survey and validated_survey["questions"]:
+                    questions_to_process = validated_survey["questions"]
+                    logger.info(f"💬 [Document Parser] Found questions directly in survey_json")
+                
+                # Check final_output questions
+                elif "final_output" in validated_survey and "questions" in validated_survey["final_output"] and validated_survey["final_output"]["questions"]:
+                    questions_to_process = validated_survey["final_output"]["questions"]
+                    logger.info(f"💬 [Document Parser] Found questions in final_output")
+                
+                # Check sections for questions (NEW: Handle sections format)
+                elif "sections" in validated_survey and validated_survey["sections"]:
+                    all_questions = []
+                    for section in validated_survey["sections"]:
+                        if isinstance(section, dict) and "questions" in section and section["questions"]:
+                            all_questions.extend(section["questions"])
+                    
+                    if all_questions:
+                        questions_to_process = all_questions
+                        logger.info(f"💬 [Document Parser] Found {len(all_questions)} questions across {len(validated_survey['sections'])} sections")
+                
+                # Check raw_output for questions (for golden pairs)
+                elif "raw_output" in validated_survey and "questions" in validated_survey["raw_output"] and validated_survey["raw_output"]["questions"]:
+                    questions_to_process = validated_survey["raw_output"]["questions"]
+                    logger.info(f"💬 [Document Parser] Found questions in raw_output")
+                
+                else:
+                    logger.warning(f"⚠️ [Document Parser] No questions found in any expected location")
             
             if questions_to_process:
                 survey_id = validated_survey.get("survey_id", str(uuid.uuid4()))
                 logger.info(f"💬 [Document Parser] Creating question annotations from comments for {len(questions_to_process)} questions")
-                self.create_question_annotations_from_comments(
+                annotations_created = self.create_question_annotations_from_comments(
                     survey_id, 
                     questions_to_process, 
                     comments
                 )
                 logger.info(f"✅ [Document Parser] Question annotations created successfully")
+                
+                # Sync annotations to RAG if any were created
+                if annotations_created > 0:
+                    logger.info(f"🔗 [Document Parser] Syncing {annotations_created} annotations to RAG")
+                    try:
+                        from src.services.annotation_rag_sync_service import AnnotationRAGSyncService
+                        
+                        sync_service = AnnotationRAGSyncService(self.db_session)
+                        
+                        # Get all annotations we just created
+                        from ..database.models import QuestionAnnotation
+                        recent_annotations = self.db_session.query(QuestionAnnotation).filter(
+                            QuestionAnnotation.survey_id == survey_id,
+                            QuestionAnnotation.annotator_id == "docx_parser"
+                        ).all()
+                        
+                        sync_count = 0
+                        for annotation in recent_annotations:
+                            result = await sync_service.sync_question_annotation(annotation.id)
+                            if result.get("success"):
+                                sync_count += 1
+                                logger.info(f"✅ Synced annotation to RAG: {result.get('action')}")
+                        
+                        logger.info(f"🎉 [Document Parser] Synced {sync_count}/{len(recent_annotations)} annotations to RAG")
+                        
+                    except Exception as e:
+                        logger.warning(f"⚠️ [Document Parser] Failed to sync annotations to RAG (non-critical): {str(e)}")
 
             # NEW: Add comment metadata to survey JSON
             if comments:
@@ -2500,8 +2843,12 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
         
         try:
             from ..database.models import QuestionAnnotation
+            from src.services.label_normalizer import LabelNormalizer
             
             logger.info(f"💬 [Comment Annotation] Processing annotations for {len(questions)} questions")
+            
+            # Initialize label normalizer
+            label_normalizer = LabelNormalizer()
             
             annotations_created = 0
             
@@ -2519,6 +2866,11 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
                     date = annotation_data.get("date", "")
                     
                     if comment_text:  # Only create annotation if there's actual comment text
+                        # Normalize the comment text as a label
+                        normalized_label = label_normalizer.normalize(comment_text)
+                        
+                        logger.info(f"🏷️ [Comment Annotation] Normalizing comment '{comment_text}' -> '{normalized_label}'")
+                        
                         # Create advanced_labels with full context
                         advanced_labels = {
                             "comment_text": comment_text,
@@ -2526,17 +2878,19 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
                             "comment_author": author,
                             "comment_date": date,
                             "matching_method": "llm_with_anchored_text",
-                            "matching_confidence": 1.0  # LLM did the matching, so high confidence
+                            "matching_confidence": 1.0,  # LLM did the matching, so high confidence
+                            "original_comment": comment_text,
+                            "normalized_label": normalized_label
                         }
                         
-                        # Create annotation with full context
+                        # Create annotation with normalized labels
                         annotation = QuestionAnnotation(
                             question_id=question_id,
                             survey_id=survey_id,
                             
-                            # Store comment text in the comment field (primary) and labels field (backup)
+                            # Store both original and normalized
                             comment=comment_text,
-                            labels=[comment_text],
+                            labels=[normalized_label],  # Use normalized label
                             
                             # Store full context in advanced_labels
                             advanced_labels=advanced_labels,
@@ -2571,10 +2925,13 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
             self.db_session.commit()
             logger.info(f"🎉 [Comment Annotation] Successfully created {annotations_created} question annotations from LLM-embedded data")
             
+            return annotations_created
+            
         except Exception as e:
             logger.error(f"❌ [Comment Annotation] Error creating annotations: {str(e)}")
             if self.db_session:
                 self.db_session.rollback()
+            raise
 
 # Global instance
 document_parser = DocumentParser()

@@ -460,7 +460,7 @@ export const SurveysPage: React.FC = () => {
   console.log('🔍 [Render] Filtered surveys count:', filteredSurveys.length);
   console.log('🔍 [Render] First filtered survey (if any):', filteredSurveys[0]);
 
-  const handleViewChange = (view: 'survey' | 'golden-examples' | 'surveys' | 'rules' | 'settings') => {
+  const handleViewChange = (view: 'survey' | 'golden-examples' | 'surveys' | 'rules' | 'settings' | 'annotation-insights' | 'llm-review') => {
     if (view === 'survey') {
       window.location.href = '/';
     } else if (view === 'golden-examples') {
@@ -469,6 +469,10 @@ export const SurveysPage: React.FC = () => {
       window.location.href = '/surveys';
     } else if (view === 'rules') {
       window.location.href = '/rules';
+    } else if (view === 'annotation-insights') {
+      window.location.href = '/annotation-insights';
+    } else if (view === 'llm-review') {
+      window.location.href = '/llm-audit';
     }
   };
 

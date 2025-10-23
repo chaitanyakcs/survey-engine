@@ -93,6 +93,13 @@ async def submit_rfq(
         is_enhanced_rfq = request.enhanced_rfq_data is not None
         if is_enhanced_rfq:
             logger.info(f"🎯 [RFQ API] Enhanced RFQ detected with structured data: objectives={len(request.enhanced_rfq_data.get('objectives', []))}, constraints={len(request.enhanced_rfq_data.get('constraints', []))}")
+            
+            # Extract unmapped_context if present in enhanced_rfq_data
+            unmapped_context = request.enhanced_rfq_data.get('unmapped_context', '')
+            if unmapped_context:
+                logger.info(f"📝 [RFQ API] Found unmapped_context: {len(unmapped_context)} characters")
+                # Store unmapped_context in enhanced_rfq_data for survey generation
+                request.enhanced_rfq_data['unmapped_context'] = unmapped_context
 
         rfq = RFQ(
             title=request.title,
@@ -605,6 +612,16 @@ async def submit_enhanced_rfq(
         # Extract legacy fields for backward compatibility
         legacy_fields = extract_legacy_fields(validated_rfq)
 
+        # Extract unmapped_context if present in validated_rfq
+        unmapped_context = validated_rfq.model_dump().get('unmapped_context', '')
+        if unmapped_context:
+            logger.info(f"📝 [Enhanced RFQ API] Found unmapped_context: {len(unmapped_context)} characters")
+            # Ensure unmapped_context is included in the stored enhanced_rfq_data
+            validated_rfq_dict = validated_rfq.model_dump()
+            validated_rfq_dict['unmapped_context'] = unmapped_context
+        else:
+            validated_rfq_dict = validated_rfq.model_dump()
+
         # Generate unique IDs
         workflow_id = f"enhanced-survey-gen-{str(uuid4())}"
         survey_id = f"enhanced-survey-{str(uuid4())}"
@@ -620,7 +637,7 @@ async def submit_enhanced_rfq(
             product_category=legacy_fields["product_category"],
             target_segment=legacy_fields["target_segment"],
             research_goal=legacy_fields["research_goal"],
-            enhanced_rfq_data=validated_rfq.model_dump()  # Store complete enhanced data
+            enhanced_rfq_data=validated_rfq_dict  # Store complete enhanced data with unmapped_context
         )
         db.add(rfq)
         db.commit()
@@ -871,6 +888,14 @@ async def preview_survey_generation_prompt(
             },
             "enhanced_rfq_data": request.enhanced_rfq_data
         }
+        
+        # Extract unmapped_context from enhanced RFQ data if available
+        unmapped_context = ""
+        if request.enhanced_rfq_data and isinstance(request.enhanced_rfq_data, dict):
+            unmapped_context = request.enhanced_rfq_data.get('unmapped_context', '')
+            if unmapped_context:
+                logger.info(f"📝 [RFQ API] Found unmapped_context in preview: {len(unmapped_context)} characters")
+                context["unmapped_context"] = unmapped_context
         
         # If enhanced RFQ data is provided, validate and extract methodology tags
         methodology_tags = []

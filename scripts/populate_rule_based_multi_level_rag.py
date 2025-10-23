@@ -302,6 +302,10 @@ class RuleBasedRAGPopulator:
         """Extract questions from golden pair survey JSON"""
         questions_created = 0
         
+        # Initialize label normalizer
+        from src.services.label_normalizer import LabelNormalizer
+        label_normalizer = LabelNormalizer()
+        
         try:
             survey_data = golden_pair.survey_json
             # Handle both old and new JSON structures
@@ -315,6 +319,11 @@ class RuleBasedRAGPopulator:
                     question_id = question_data.get('id', f"question_{questions_created}")
                     question_text = question_data.get('text', '')
                     question_type = question_data.get('type', '')
+                    
+                    # Extract and normalize labels
+                    labels = question_data.get('labels', [])
+                    if labels:
+                        labels = label_normalizer.normalize_batch(labels)
                     
                     # Detect question type and subtype
                     detected_type, detected_subtype = self._detect_question_type(question_text, question_type)
@@ -342,7 +351,7 @@ class RuleBasedRAGPopulator:
                             question_patterns=question_patterns,
                             quality_score=0.5,  # Default quality score
                             human_verified=False,
-                            labels={}
+                            labels=labels  # Use normalized labels
                         )
                         
                         self.db.add(golden_question)

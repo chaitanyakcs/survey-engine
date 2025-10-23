@@ -61,6 +61,8 @@ export const QUESTION_TYPE_GROUPS = {
     'multiple_choice',
     'multiple_select',
     'single_choice',
+    'yes_no',
+    'dropdown',
     'ranking'
   ],
   'Scale Questions': [
@@ -91,7 +93,8 @@ export const QUESTION_TYPE_GROUPS = {
     'display_only',
     'numeric',
     'date',
-    'boolean'
+    'boolean',
+    'unknown'
   ]
 };
 

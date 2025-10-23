@@ -44,7 +44,7 @@ class DocxSurveyRenderer(SurveyExportRenderer):
 
     def _register_question_types(self) -> None:
         """Register all implemented question types."""
-        self._registered_types = set(QuestionType)
+        self._registered_types = {t.value for t in QuestionType}
 
     def _get_document(self) -> DocumentType:
         """Get the document instance with type assertion."""
@@ -304,6 +304,44 @@ class DocxSurveyRenderer(SurveyExportRenderer):
         for option in options:
             option_paragraph = doc.add_paragraph()
             option_paragraph.add_run("○ " + option)
+
+        doc.add_paragraph("")
+
+    def _render_yes_no(self, question: Dict[str, Any]) -> None:
+        """Render yes/no question with radio buttons."""
+        self._add_question_header(question)
+        self._add_required_indicator(question)
+
+        doc = self._get_document()
+        paragraph = doc.add_paragraph()
+        paragraph.add_run("Select one option:").italic = True
+
+        # Use provided options or default to Yes/No
+        options = question.get("options", ["Yes", "No"])
+        for option in options:
+            option_paragraph = doc.add_paragraph()
+            option_paragraph.add_run("○ " + option)
+
+        doc.add_paragraph("")
+
+    def _render_dropdown(self, question: Dict[str, Any]) -> None:
+        """Render dropdown question as single choice with note."""
+        self._add_question_header(question)
+        self._add_required_indicator(question)
+
+        doc = self._get_document()
+        paragraph = doc.add_paragraph()
+        paragraph.add_run("Select one option from dropdown:").italic = True
+
+        options = question.get("options", [])
+        for option in options:
+            option_paragraph = doc.add_paragraph()
+            option_paragraph.add_run("• " + option)
+
+        # Add note about dropdown format
+        note_paragraph = doc.add_paragraph()
+        note_paragraph.add_run("(Note: This will be rendered as a dropdown in the actual survey)").italic = True
+        note_paragraph.runs[0].font.size = Pt(9)
 
         doc.add_paragraph("")
 

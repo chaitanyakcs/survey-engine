@@ -9,6 +9,8 @@ import {
   MagnifyingGlassIcon,
   FunnelIcon
 } from '@heroicons/react/24/outline';
+import { GoldenSectionsList } from '../components/GoldenSectionsList';
+import { GoldenQuestionsList } from '../components/GoldenQuestionsList';
 
 export const GoldenExamplesPage: React.FC = () => {
   const { goldenExamples, fetchGoldenExamples, deleteGoldenExample, toasts, removeToast } = useAppStore();
@@ -16,6 +18,7 @@ export const GoldenExamplesPage: React.FC = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState<'pairs' | 'sections' | 'questions'>('pairs');
   const { mainContentClasses } = useSidebarLayout();
 
   const loadGoldenExamples = useCallback(async () => {
@@ -52,7 +55,7 @@ export const GoldenExamplesPage: React.FC = () => {
     return `${(score * 100).toFixed(0)}%`;
   };
 
-  const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings') => {
+  const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings' | 'annotation-insights' | 'llm-review') => {
     if (view === 'rules') {
       window.location.href = '/rules';
     } else if (view === 'surveys') {
@@ -61,6 +64,10 @@ export const GoldenExamplesPage: React.FC = () => {
       window.location.href = '/golden-examples';
     } else if (view === 'survey') {
       window.location.href = '/';
+    } else if (view === 'annotation-insights') {
+      window.location.href = '/annotation-insights';
+    } else if (view === 'llm-review') {
+      window.location.href = '/llm-audit';
     }
   };
 
@@ -157,8 +164,44 @@ export const GoldenExamplesPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Tab Navigation */}
+            <div className="flex space-x-2 border-b border-gray-200 mb-6">
+              <button
+                onClick={() => setActiveTab('pairs')}
+                className={`px-4 py-2 font-medium transition-colors ${
+                  activeTab === 'pairs'
+                    ? 'border-b-2 border-yellow-600 text-yellow-600'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Golden Pairs
+              </button>
+              <button
+                onClick={() => setActiveTab('sections')}
+                className={`px-4 py-2 font-medium transition-colors ${
+                  activeTab === 'sections'
+                    ? 'border-b-2 border-yellow-600 text-yellow-600'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Sections
+              </button>
+              <button
+                onClick={() => setActiveTab('questions')}
+                className={`px-4 py-2 font-medium transition-colors ${
+                  activeTab === 'questions'
+                    ? 'border-b-2 border-yellow-600 text-yellow-600'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Questions
+              </button>
+            </div>
+
             {/* Content */}
-            {isLoading ? (
+            {activeTab === 'pairs' && (
+              <>
+                {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <div className="text-center">
                   <div className="relative mb-4">
@@ -303,6 +346,12 @@ export const GoldenExamplesPage: React.FC = () => {
                 ))}
               </div>
             )}
+              </>
+            )}
+
+            {activeTab === 'sections' && <GoldenSectionsList />}
+
+            {activeTab === 'questions' && <GoldenQuestionsList />}
           </main>
         </div>
       </div>

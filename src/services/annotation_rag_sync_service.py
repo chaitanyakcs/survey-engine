@@ -60,6 +60,17 @@ class AnnotationRAGSyncService:
             annotation_labels = annotation.labels
             annotation_question_id = annotation.question_id
             annotation_survey_id = annotation.survey_id
+            
+            # Normalize labels
+            from src.services.label_normalizer import LabelNormalizer
+            label_normalizer = LabelNormalizer()
+            
+            if isinstance(annotation_labels, list):
+                annotation_labels = label_normalizer.normalize_batch(annotation_labels)
+            elif isinstance(annotation_labels, str):
+                annotation_labels = [label_normalizer.normalize(annotation_labels)]
+            elif annotation_labels is None:
+                annotation_labels = []
 
             # Validate survey_id is a valid UUID
             try:
@@ -213,6 +224,17 @@ class AnnotationRAGSyncService:
             annotation_labels = annotation.labels
             annotation_section_id = annotation.section_id
             annotation_survey_id = annotation.survey_id
+            
+            # Normalize labels
+            from src.services.label_normalizer import LabelNormalizer
+            label_normalizer = LabelNormalizer()
+            
+            if isinstance(annotation_labels, list):
+                annotation_labels = label_normalizer.normalize_batch(annotation_labels)
+            elif isinstance(annotation_labels, str):
+                annotation_labels = [label_normalizer.normalize(annotation_labels)]
+            elif annotation_labels is None:
+                annotation_labels = []
 
             # Validate survey_id is a valid UUID
             try:

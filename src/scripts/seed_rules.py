@@ -74,26 +74,25 @@ def seed_methodology_rules():
             ]
         },
         "maxdiff": {
-            "description": "MaxDiff (Maximum Difference Scaling) - Ranks items by importance",
-            "required_items": 8,
-            "max_items": 20,
+            "description": "MaxDiff (Maximum Difference Scaling) - Ranks features by importance",
+            "required_questions": 1,  # ONE question per concept, not multiple choice sets
             "question_flow": [
-                "Item familiarity screening",
-                "Multiple choice sets showing 3-5 items",
-                "Best/worst selection within each set",
-                "Demographic questions"
+                "Concept exposure with feature description",
+                "Single MaxDiff question showing ALL features",
+                "Respondent selects MOST and LEAST important"
             ],
             "validation_rules": [
-                "Items must be balanced across choice sets",
-                "Include appropriate number of choice tasks (typically 12-15)",
-                "Ensure statistical power for analysis",
-                "Use clear, distinct item descriptions"
+                "Use 'features' array with actual feature names extracted from concept",
+                "Generate ONE question per concept (not multiple choice sets)",
+                "Include all relevant features from the concept description",
+                "Use clear question text: 'Highlight the MOST IMPORTANT and LEAST IMPORTANT features'",
+                "CRITICAL: Do not use placeholder text like 'Features within X concept'"
             ],
             "best_practices": [
-                "Keep items concise and mutually exclusive",
-                "Use 3-5 items per choice set",
-                "Include 12-15 choice tasks total",
-                "Randomize item order within sets"
+                "Extract 5-10 distinct features from product/concept description",
+                "Ensure features are specific and meaningful",
+                "Use parallel structure for feature descriptions",
+                "Features should be mutually exclusive attributes"
             ]
         },
         "nps": {

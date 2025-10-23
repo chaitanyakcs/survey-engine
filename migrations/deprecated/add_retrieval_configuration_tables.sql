@@ -4,8 +4,9 @@
 -- Configurable retrieval weights table
 CREATE TABLE IF NOT EXISTS retrieval_weights (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    context_type VARCHAR(50) NOT NULL,  -- 'global', 'methodology', 'industry'
-    context_value VARCHAR(100),        -- e.g., 'van_westendorp', 'healthcare'
+    weight_name VARCHAR(100) NOT NULL UNIQUE,
+    context_type VARCHAR(50) NOT NULL DEFAULT 'global',
+    context_value VARCHAR(100) NOT NULL DEFAULT 'default',
     semantic_weight DECIMAL(3,2) DEFAULT 0.40,
     methodology_weight DECIMAL(3,2) DEFAULT 0.25,
     industry_weight DECIMAL(3,2) DEFAULT 0.15,
@@ -64,29 +65,29 @@ CREATE INDEX IF NOT EXISTS idx_methodology_compatibility_b
     ON methodology_compatibility(methodology_b);
 
 -- Insert default global weights
-INSERT INTO retrieval_weights (context_type, context_value, semantic_weight, methodology_weight, industry_weight, quality_weight, annotation_weight)
-VALUES ('global', 'default', 0.40, 0.25, 0.15, 0.10, 0.10)
-ON CONFLICT DO NOTHING;
+INSERT INTO retrieval_weights (weight_name, context_type, context_value, semantic_weight, methodology_weight, industry_weight, quality_weight, annotation_weight)
+VALUES ('global_default', 'global', 'default', 0.40, 0.25, 0.15, 0.10, 0.10)
+ON CONFLICT (weight_name) DO NOTHING;
 
 -- Insert methodology-specific weights
-INSERT INTO retrieval_weights (context_type, context_value, semantic_weight, methodology_weight, industry_weight, quality_weight, annotation_weight)
+INSERT INTO retrieval_weights (weight_name, context_type, context_value, semantic_weight, methodology_weight, industry_weight, quality_weight, annotation_weight)
 VALUES 
-    ('methodology', 'van_westendorp', 0.35, 0.40, 0.10, 0.10, 0.05),
-    ('methodology', 'gabor_granger', 0.35, 0.40, 0.10, 0.10, 0.05),
-    ('methodology', 'conjoint', 0.30, 0.35, 0.15, 0.15, 0.05),
-    ('methodology', 'maxdiff', 0.30, 0.35, 0.15, 0.15, 0.05),
-    ('methodology', 'nps', 0.40, 0.20, 0.20, 0.15, 0.05),
-    ('methodology', 'csat', 0.40, 0.20, 0.20, 0.15, 0.05)
-ON CONFLICT DO NOTHING;
+    ('methodology_van_westendorp', 'methodology', 'van_westendorp', 0.35, 0.40, 0.10, 0.10, 0.05),
+    ('methodology_gabor_granger', 'methodology', 'gabor_granger', 0.35, 0.40, 0.10, 0.10, 0.05),
+    ('methodology_conjoint', 'methodology', 'conjoint', 0.30, 0.35, 0.15, 0.15, 0.05),
+    ('methodology_maxdiff', 'methodology', 'maxdiff', 0.30, 0.35, 0.15, 0.15, 0.05),
+    ('methodology_nps', 'methodology', 'nps', 0.40, 0.20, 0.20, 0.15, 0.05),
+    ('methodology_csat', 'methodology', 'csat', 0.40, 0.20, 0.20, 0.15, 0.05)
+ON CONFLICT (weight_name) DO NOTHING;
 
 -- Insert industry-specific weights
-INSERT INTO retrieval_weights (context_type, context_value, semantic_weight, methodology_weight, industry_weight, quality_weight, annotation_weight)
+INSERT INTO retrieval_weights (weight_name, context_type, context_value, semantic_weight, methodology_weight, industry_weight, quality_weight, annotation_weight)
 VALUES 
-    ('industry', 'healthcare', 0.30, 0.20, 0.30, 0.15, 0.05),
-    ('industry', 'technology', 0.35, 0.25, 0.25, 0.10, 0.05),
-    ('industry', 'finance', 0.30, 0.25, 0.25, 0.15, 0.05),
-    ('industry', 'retail', 0.40, 0.20, 0.20, 0.15, 0.05)
-ON CONFLICT DO NOTHING;
+    ('industry_healthcare', 'industry', 'healthcare', 0.30, 0.20, 0.30, 0.15, 0.05),
+    ('industry_technology', 'industry', 'technology', 0.35, 0.25, 0.25, 0.10, 0.05),
+    ('industry_finance', 'industry', 'finance', 0.30, 0.25, 0.25, 0.15, 0.05),
+    ('industry_retail', 'industry', 'retail', 0.40, 0.20, 0.20, 0.15, 0.05)
+ON CONFLICT (weight_name) DO NOTHING;
 
 -- Insert methodology compatibility data
 INSERT INTO methodology_compatibility (methodology_a, methodology_b, compatibility_score, notes)

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { SurveyPreview } from '../components/SurveyPreview';
 import { Survey } from '../types';
@@ -9,6 +9,7 @@ export const SurveyEditPage: React.FC = () => {
   const [survey, setSurvey] = useState<Survey | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const saveFunctionRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     const loadSurvey = async () => {
@@ -61,12 +62,15 @@ export const SurveyEditPage: React.FC = () => {
     setSurvey(updatedSurvey);
   };
 
-  const handleSaveAndExit = () => {
+  const handleExit = () => {
+    console.log('🚪 [Survey Edit] Exit triggered - all changes are already saved immediately');
+    
+    // All changes are now saved immediately when editing, so just navigate away
     if (survey?.survey_id) {
-      console.log('💾 [Survey Edit] Save and exit - navigating back to read-only view');
+      console.log('🚪 [Survey Edit] Navigating back to read-only view');
       window.location.href = `/surveys/${survey.survey_id}`;
     } else {
-      console.log('💾 [Survey Edit] Save and exit - navigating back to surveys list');
+      console.log('🚪 [Survey Edit] Navigating back to surveys list');
       window.location.href = '/surveys';
     }
   };
@@ -79,6 +83,11 @@ export const SurveyEditPage: React.FC = () => {
       console.log('❌ [Survey Edit] Cancel - navigating back to surveys list');
       window.location.href = '/surveys';
     }
+  };
+
+  const handleSaveTrigger = (saveFn: () => Promise<void>) => {
+    console.log('🔗 [Survey Edit] Save function received from SurveyPreview');
+    saveFunctionRef.current = saveFn;
   };
 
   if (loading) {
@@ -131,9 +140,10 @@ export const SurveyEditPage: React.FC = () => {
         survey={survey}
         onSurveyChange={handleSurveyChange}
         isInEditMode={true}
-        onSaveAndExit={handleSaveAndExit}
+        onSaveAndExit={handleExit}
         onCancel={handleCancel}
         hideRightPanel={true}
+        onSaveTrigger={handleSaveTrigger}
       />
     </div>
   );

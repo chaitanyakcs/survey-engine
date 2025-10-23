@@ -854,15 +854,39 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                       <span className="text-2xl mr-3">📄</span>
                       Document Upload
                     </h2>
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6">
+                    
+                    {/* Enhanced explanation section */}
+                    <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-xl p-6">
                       <div className="flex items-start space-x-3">
-                        <div className="text-yellow-600 text-2xl">💡</div>
-                        <div>
-                          <h3 className="font-medium text-yellow-900 mb-1">Smart Auto-fill</h3>
-                          <p className="text-yellow-800 text-xs">
-                            Upload your RFQ document to automatically extract business context, research objectives,
-                            methodology requirements, and survey specifications using AI-powered analysis.
+                        <div className="text-blue-600 text-2xl">🤖</div>
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-blue-900 mb-2">AI-Powered Document Analysis</h3>
+                          <p className="text-blue-800 text-sm mb-3">
+                            Upload your RFQ document (.docx) and our AI will automatically extract and populate:
                           </p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                            <div className="flex items-center space-x-2">
+                              <span className="text-green-600">✓</span>
+                              <span className="text-blue-700">Business context & objectives</span>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <span className="text-green-600">✓</span>
+                              <span className="text-blue-700">Research methodology tags</span>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <span className="text-green-600">✓</span>
+                              <span className="text-blue-700">Target audience details</span>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <span className="text-green-600">✓</span>
+                              <span className="text-blue-700">Survey requirements</span>
+                            </div>
+                          </div>
+                          <div className="mt-3 p-3 bg-white/50 rounded-lg border border-blue-100">
+                            <p className="text-xs text-blue-600 font-medium">
+                              💡 <strong>Tip:</strong> After upload, extracted methodology tags will appear in the Advanced Classification section below. You can then add or remove additional tags as needed.
+                            </p>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -2252,41 +2276,108 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                     <div>
                       <label className="block text-sm font-semibold text-gray-800 mb-3">
                         Methodology Tags
+                        {(enhancedRfq.advanced_classification?.methodology_tags?.length || 0) > 0 && (
+                          <span className="text-xs text-green-600 ml-2">
+                            ({enhancedRfq.advanced_classification?.methodology_tags?.length || 0} selected)
+                          </span>
+                        )}
                       </label>
+                      
+                      {/* Show extracted tags from document if any */}
+                      {(enhancedRfq.advanced_classification?.methodology_tags?.length || 0) > 0 && (
+                        <div className="mb-4">
+                          <p className="text-xs text-green-600 mb-2 flex items-center">
+                            <span className="mr-1">✨</span>
+                            Tags extracted from uploaded document (click to deselect):
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {(enhancedRfq.advanced_classification?.methodology_tags || []).map((tag) => (
+                              <button
+                                key={`extracted-${tag}`}
+                                type="button"
+                                onClick={() => {
+                                  const tags = [...(enhancedRfq.advanced_classification?.methodology_tags || [])];
+                                  const index = tags.indexOf(tag);
+                                  if (index > -1) tags.splice(index, 1);
+                                  setEnhancedRfq({
+                                    ...enhancedRfq,
+                                    advanced_classification: {
+                                      ...enhancedRfq.advanced_classification,
+                                      methodology_tags: tags
+                                    }
+                                  });
+                                }}
+                                className="px-3 py-1 text-sm rounded-full bg-green-100 text-green-700 hover:bg-green-200 border border-green-300 transition-colors"
+                              >
+                                {tag.replace('_', ' ')} ×
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Always show all available methodology tags */}
                       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                         {[
                           'quantitative', 'qualitative', 'mixed_methods', 'attitudinal', 'behavioral',
                           'concept_testing', 'brand_tracking', 'pricing_research', 'segmentation',
                           'customer_satisfaction', 'market_sizing', 'competitive_analysis'
-                        ].map((tag) => (
-                          <label key={tag} className="flex items-center space-x-2 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={(enhancedRfq.advanced_classification?.methodology_tags || []).includes(tag)}
-                              onChange={(e) => {
-                                const tags = [...(enhancedRfq.advanced_classification?.methodology_tags || [])];
-                                if (e.target.checked) {
-                                  tags.push(tag);
-                                } else {
-                                  const index = tags.indexOf(tag);
-                                  if (index > -1) tags.splice(index, 1);
-                                }
-                                setEnhancedRfq({
-                                  ...enhancedRfq,
-                                  advanced_classification: {
-                                    ...enhancedRfq.advanced_classification,
-                                    methodology_tags: tags
+                        ].map((tag) => {
+                          const isSelected = (enhancedRfq.advanced_classification?.methodology_tags || []).includes(tag);
+                          const isFromDocument = (enhancedRfq.advanced_classification?.methodology_tags || []).includes(tag);
+                          
+                          return (
+                            <label key={tag} className={`flex items-center space-x-2 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors ${
+                              isFromDocument 
+                                ? 'border-green-200 bg-green-50' 
+                                : 'border-gray-200'
+                            }`}>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  const tags = [...(enhancedRfq.advanced_classification?.methodology_tags || [])];
+                                  if (e.target.checked) {
+                                    if (!tags.includes(tag)) {
+                                      tags.push(tag);
+                                    }
+                                  } else {
+                                    const index = tags.indexOf(tag);
+                                    if (index > -1) tags.splice(index, 1);
                                   }
-                                });
-                              }}
-                              className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                            />
-                            <span className="text-sm font-medium text-gray-700 capitalize">
-                              {tag.replace('_', ' ')}
-                            </span>
-                          </label>
-                        ))}
+                                  setEnhancedRfq({
+                                    ...enhancedRfq,
+                                    advanced_classification: {
+                                      ...enhancedRfq.advanced_classification,
+                                      methodology_tags: tags
+                                    }
+                                  });
+                                }}
+                                className={`rounded border-gray-300 focus:ring-purple-500 ${
+                                  isFromDocument 
+                                    ? 'text-green-600' 
+                                    : 'text-purple-600'
+                                }`}
+                              />
+                              <span className={`text-sm font-medium capitalize ${
+                                isFromDocument 
+                                  ? 'text-green-700' 
+                                  : 'text-gray-700'
+                              }`}>
+                                {tag.replace('_', ' ')}
+                                {isFromDocument && <span className="ml-1 text-xs">✨</span>}
+                              </span>
+                            </label>
+                          );
+                        })}
                       </div>
+                      
+                      {(enhancedRfq.advanced_classification?.methodology_tags?.length || 0) === 0 && (
+                        <p className="text-xs text-gray-500 mt-2 flex items-center">
+                          <span className="mr-1">💡</span>
+                          Upload a document to automatically extract methodology tags, or manually select from the options above
+                        </p>
+                      )}
                     </div>
 
                     <div>

@@ -4,14 +4,20 @@ import { useSidebarLayout } from '../hooks/useSidebarLayout';
 import { ToastContainer } from '../components/Toast';
 import { useAppStore } from '../store/useAppStore';
 import { RetrievalWeightsAccordion } from '../components/RetrievalWeightsAccordion';
+import { MethodologyRules } from '../components/MethodologyRules';
+import { PillarRulesSection } from '../components/PillarRulesSection';
+import { SystemPromptComponent } from '../components/SystemPrompt';
 import { 
   CogIcon, 
   ClockIcon,
-  ChartBarIcon
+  ChartBarIcon,
+  DocumentTextIcon,
+  BeakerIcon,
+  ChevronDownIcon
 } from '@heroicons/react/24/outline';
 
 interface EvaluationSettings {
-  evaluation_mode: 'single_call' | 'multiple_calls' | 'hybrid' | 'aira_v1';
+  evaluation_mode: 'single_call' | 'multiple_calls' | 'aira_v1';
   enable_cost_tracking: boolean;
   enable_parallel_processing: boolean;
   enable_ab_testing: boolean;
@@ -50,14 +56,51 @@ interface RetrievalWeights {
   enabled: boolean;
 }
 
+interface MethodologyRule {
+  description: string;
+  required_questions: number;
+  validation_rules: string[];
+  question_flow?: string[];
+  best_practices?: string[];
+}
+
+interface SystemPrompt {
+  id: string;
+  prompt_text: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export const SettingsPage: React.FC = () => {
   const { toasts, removeToast, addToast } = useAppStore();
   const { mainContentClasses } = useSidebarLayout();
   
+  // Tab management
+  const [activeTab, setActiveTab] = useState<'survey-generation' | 'evaluation'>('survey-generation');
+  
+  // Rules state
+  const [methodologies, setMethodologies] = useState<Record<string, MethodologyRule>>({});
+  const [systemPrompt, setSystemPrompt] = useState<SystemPrompt>({ id: '', prompt_text: '', created_at: '', updated_at: '' });
+  const [expandedSections, setExpandedSections] = useState({
+    aiModels: false,
+    qualityControl: false,
+    retrievalWeights: false,
+    methodology: false,
+    pillars: false,
+    systemPrompt: false
+  });
+  const [saving, setSaving] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    show: boolean;
+    type: 'rule' | 'methodology' | 'system-prompt' | 'pillar-rule';
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
   
   const [settings, setSettings] = useState<EvaluationSettings>({
     evaluation_mode: 'single_call',
-    enable_cost_tracking: true,
+    enable_cost_tracking: false,
     enable_parallel_processing: false,
     enable_ab_testing: false,
     cost_threshold_daily: 50,
@@ -79,7 +122,6 @@ export const SettingsPage: React.FC = () => {
   });
   
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [rfqParsing, setRfqParsing] = useState<RFQParsingSettings>({ parsing_model: 'openai/gpt-4o-mini' });
   const [rfqModels, setRfqModels] = useState<string[]>([]);
   const [generationModels, setGenerationModels] = useState<string[]>([]);
@@ -108,7 +150,7 @@ export const SettingsPage: React.FC = () => {
   }, [addToast]);
 
   const saveSettings = async () => {
-    setSaving(true);
+    setSaving('saving');
     try {
       // Save evaluation settings
       const settingsResponse = await fetch('/api/v1/settings/evaluation', {
@@ -167,7 +209,7 @@ export const SettingsPage: React.FC = () => {
         duration: 5000
       });
     } finally {
-      setSaving(false);
+      setSaving(null);
     }
   };
 
@@ -252,6 +294,47 @@ export const SettingsPage: React.FC = () => {
     }
   }, [addToast]);
 
+  const fetchRules = useCallback(async () => {
+    try {
+      const timestamp = new Date().getTime();
+      
+      const [methodologiesRes, systemPromptRes] = await Promise.all([
+        fetch(`/api/v1/rules/methodologies?t=${timestamp}`, {
+          method: 'GET',
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        }),
+        fetch(`/api/v1/rules/system-prompt?t=${timestamp}`, {
+          method: 'GET',
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        })
+      ]);
+
+      if (methodologiesRes.ok) {
+        const methodologiesData = await methodologiesRes.json();
+        setMethodologies(methodologiesData.rules || {});
+      }
+
+      if (systemPromptRes.ok) {
+        const systemPromptData = await systemPromptRes.json();
+        setSystemPrompt(systemPromptData);
+      }
+    } catch (error) {
+      console.error('Failed to fetch rules:', error);
+      addToast({
+        type: 'error',
+        title: 'Rules Error',
+        message: 'Failed to load rules data',
+        duration: 5000
+      });
+    }
+  }, [addToast]);
+
   const updateRetrievalWeight = async (weightId: string, updates: Partial<RetrievalWeights>) => {
     try {
       const response = await fetch(`/api/v1/retrieval-weights/${weightId}`, {
@@ -274,6 +357,23 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  const toggleSection = (section: 'aiModels' | 'qualityControl' | 'retrievalWeights' | 'methodology' | 'pillars' | 'systemPrompt') => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
+  const showDeleteConfirm = (config: {
+    show: boolean;
+    type: 'rule' | 'methodology' | 'system-prompt' | 'pillar-rule';
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }) => {
+    setDeleteConfirm(config);
+  };
+
   useEffect(() => {
     fetchSettings();
     fetchRfqParsingSettings();
@@ -282,24 +382,27 @@ export const SettingsPage: React.FC = () => {
     fetchEvaluationModels();
     fetchEmbeddingModels();
     fetchRetrievalWeights();
-  }, [fetchSettings, fetchRetrievalWeights]);
+    fetchRules();
+  }, [fetchSettings, fetchRetrievalWeights, fetchRules]);
 
-  const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings') => {
+  const handleViewChange = (view: 'survey' | 'golden-examples' | 'surveys' | 'settings' | 'annotation-insights' | 'llm-review') => {
     if (view === 'survey') {
       window.location.href = '/';
     } else if (view === 'golden-examples') {
       window.location.href = '/golden-examples';
-    } else if (view === 'rules') {
-      window.location.href = '/rules';
     } else if (view === 'surveys') {
       window.location.href = '/surveys';
+    } else if (view === 'annotation-insights') {
+      window.location.href = '/annotation-insights';
+    } else if (view === 'llm-review') {
+      window.location.href = '/llm-audit';
     }
   };
 
   const resetToDefaults = () => {
     setSettings({
       evaluation_mode: 'single_call',
-      enable_cost_tracking: true,
+      enable_cost_tracking: false,
       enable_parallel_processing: false,
       enable_ab_testing: false,
       cost_threshold_daily: 50,
@@ -349,18 +452,11 @@ export const SettingsPage: React.FC = () => {
                 <div className="flex items-center space-x-3">
                   <CogIcon className="w-8 h-8 text-yellow-600" />
                   <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Survey Generation Settings</h1>
-                    <p className="text-gray-600">Configure human review and survey generation preferences</p>
+                    <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+                    <p className="text-gray-600">Configure survey generation and evaluation preferences</p>
                   </div>
                 </div>
                 <div className="flex space-x-3">
-                  <button
-                    onClick={() => window.location.href = '/llm-audit'}
-                    className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors flex items-center space-x-2"
-                  >
-                    <ChartBarIcon className="w-4 h-4" />
-                    <span>LLM Audit</span>
-                  </button>
                   <button
                     onClick={resetToDefaults}
                     className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
@@ -369,240 +465,552 @@ export const SettingsPage: React.FC = () => {
                   </button>
                   <button
                     onClick={saveSettings}
-                    disabled={saving}
+                    disabled={saving === 'saving'}
                     className="px-6 py-2 bg-gradient-to-r from-yellow-500 to-amber-500 text-white rounded-lg hover:from-yellow-600 hover:to-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg"
                   >
-                    {saving ? 'Saving...' : 'Save Settings'}
+                    {saving === 'saving' ? 'Saving...' : 'Save Settings'}
                   </button>
                 </div>
               </div>
             </div>
           </header>
 
+          {/* Tab Navigation */}
+          <div className="bg-white border-b border-gray-200">
+            <div className="px-6">
+              <nav className="flex space-x-8">
+                <button
+                  onClick={() => setActiveTab('survey-generation')}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                    activeTab === 'survey-generation'
+                      ? 'border-yellow-500 text-yellow-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2">
+                    <DocumentTextIcon className="w-5 h-5" />
+                    <span>Survey Generation</span>
+                  </div>
+                </button>
+                <button
+                  onClick={() => setActiveTab('evaluation')}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                    activeTab === 'evaluation'
+                      ? 'border-yellow-500 text-yellow-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2">
+                    <BeakerIcon className="w-5 h-5" />
+                    <span>Evaluation</span>
+                  </div>
+                </button>
+              </nav>
+            </div>
+          </div>
+
           <div className="p-6 space-y-8">
-
-            {/* AI Models Configuration */}
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6">
-              <div className="flex items-center space-x-3 mb-6">
-                <CogIcon className="w-6 h-6 text-purple-600" />
-                <h2 className="text-xl font-semibold text-gray-900">AI Models</h2>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {/* Generation Model */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Survey Generation</label>
-                  <select
-                    value={settings.generation_model}
-                    onChange={(e) => setSettings({ ...settings, generation_model: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+            {/* Survey Generation Tab */}
+            {activeTab === 'survey-generation' && (
+              <div className="space-y-8">
+                {/* AI Models Configuration */}
+                <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 overflow-hidden hover:shadow-xl transition-all duration-300">
+                  <div 
+                    className="bg-gray-50 border-b border-gray-200 px-6 py-6 cursor-pointer hover:bg-gray-100 transition-colors"
+                    onClick={() => toggleSection('aiModels')}
                   >
-                    {generationModels.map((m) => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">Generates surveys</p>
-                </div>
-
-                {/* Evaluation Model */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Evaluation</label>
-                  <select
-                    value={settings.evaluation_model}
-                    onChange={(e) => setSettings({ ...settings, evaluation_model: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  >
-                    {evaluationModels.map((m) => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">Evaluates quality</p>
-                </div>
-
-                {/* Embedding Model */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Embeddings</label>
-                  <select
-                    value={settings.embedding_model}
-                    onChange={(e) => setSettings({ ...settings, embedding_model: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  >
-                    {embeddingModels.map((m) => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">Semantic search</p>
-                </div>
-
-                {/* RFQ Parsing Model */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">RFQ Parsing</label>
-                  <select
-                    value={rfqParsing.parsing_model}
-                    onChange={(e) => setRfqParsing({ ...rfqParsing, parsing_model: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  >
-                    {rfqModels.map((m) => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">Parses documents</p>
-                </div>
-              </div>
-            </div>
-            {/* Quality Control & Review */}
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6">
-              <div className="flex items-center space-x-3 mb-6">
-                <ChartBarIcon className="w-6 h-6 text-green-600" />
-                <h2 className="text-xl font-semibold text-gray-900">Quality Control & Review</h2>
-              </div>
-              
-              <div className="space-y-6">
-                {/* Enable LLM Evaluation */}
-                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-                  <div>
-                    <h3 className="text-lg font-medium text-gray-900">Enable AI Quality Evaluation</h3>
-                    <p className="text-gray-600">Run AI-powered quality evaluation on generated surveys using pillar-based scoring</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={settings.enable_llm_evaluation}
-                      onChange={(e) => setSettings({ ...settings, enable_llm_evaluation: e.target.checked })}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-green-500 peer-checked:to-emerald-500"></div>
-                  </label>
-                </div>
-
-                {/* Enable Human Review */}
-                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-                  <div>
-                    <h3 className="text-lg font-medium text-gray-900">Enable Human Prompt Review</h3>
-                    <p className="text-gray-600">Allow human review and approval of AI-generated system prompts</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={settings.enable_prompt_review}
-                      onChange={(e) => setSettings({ 
-                        ...settings, 
-                        enable_prompt_review: e.target.checked,
-                        prompt_review_mode: e.target.checked ? settings.prompt_review_mode : 'disabled'
-                      })}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-green-500 peer-checked:to-emerald-500"></div>
-                  </label>
-                </div>
-
-                {/* Review Mode Selection */}
-                {settings.enable_prompt_review && (
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-medium text-gray-900">Review Mode</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {[
-                        {
-                          value: 'parallel',
-                          title: 'Parallel Review',
-                          description: 'Survey generation continues while prompts are reviewed in parallel',
-                          icon: '🔄',
-                          recommended: true
-                        },
-                        {
-                          value: 'blocking',
-                          title: 'Blocking Review',
-                          description: 'Survey generation waits for prompt approval before proceeding',
-                          icon: '🛑',
-                          recommended: false
-                        }
-                      ].map((mode) => (
-                        <div
-                          key={mode.value}
-                          className={`border-2 rounded-xl p-4 cursor-pointer transition-all duration-200 ${
-                            settings.prompt_review_mode === mode.value
-                              ? 'border-green-500 bg-gradient-to-br from-green-50 to-emerald-50'
-                              : 'border-gray-200 hover:border-green-300 hover:bg-green-50'
-                          }`}
-                          onClick={() => setSettings({ ...settings, prompt_review_mode: mode.value as any })}
-                        >
-                          <div className="flex items-center space-x-3 mb-2">
-                            <input
-                              type="radio"
-                              name="prompt_review_mode"
-                              value={mode.value}
-                              checked={settings.prompt_review_mode === mode.value}
-                              onChange={() => setSettings({ ...settings, prompt_review_mode: mode.value as any })}
-                              className="w-4 h-4 text-green-600"
-                            />
-                            <span className="text-2xl">{mode.icon}</span>
-                            <h4 className="text-lg font-medium text-gray-900">{mode.title}</h4>
-                            {mode.recommended && (
-                              <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Recommended</span>
-                            )}
-                          </div>
-                          <p className="text-gray-600 text-sm ml-7">{mode.description}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Review Timeout */}
-                {settings.enable_prompt_review && (
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-medium text-gray-900">Review Settings</h3>
-                    <div className="p-4 bg-gray-50 rounded-xl">
-                      <label className="block font-medium text-gray-900 mb-2">
-                        Review Timeout (Hours)
-                      </label>
+                    <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
-                        <ClockIcon className="w-5 h-5 text-gray-500" />
-                        <input
-                          type="number"
-                          value={settings.prompt_review_timeout_hours}
-                          onChange={(e) => setSettings({ ...settings, prompt_review_timeout_hours: Number(e.target.value) })}
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                          min="1"
-                          max="168"
-                          step="1"
-                        />
+                        <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center">
+                          <CogIcon className="w-6 h-6 text-gray-600" />
+                        </div>
+                        <div>
+                          <h2 className="text-2xl font-bold text-gray-900">AI Models</h2>
+                          <p className="text-gray-600 mt-1">Configure AI models for survey generation and processing</p>
+                        </div>
                       </div>
-                      <p className="text-xs text-gray-500 mt-1">Auto-approval timeout (1-168 hours)</p>
+                      <ChevronDownIcon 
+                        className={`w-6 h-6 text-gray-500 transition-transform duration-200 ${
+                          expandedSections.aiModels ? 'rotate-180' : ''
+                        }`} 
+                      />
                     </div>
                   </div>
-                )}
-              </div>
-            </div>
+                  {expandedSections.aiModels && (
+                    <div className="p-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {/* Generation Model */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Survey Generation</label>
+                          <select
+                            value={settings.generation_model}
+                            onChange={(e) => setSettings({ ...settings, generation_model: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                          >
+                            {generationModels.map((m) => (
+                              <option key={m} value={m}>{m}</option>
+                            ))}
+                          </select>
+                          <p className="text-xs text-gray-500 mt-1">Generates surveys</p>
+                        </div>
 
-            {/* Retrieval Weights Configuration */}
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6">
-              <div className="flex items-center space-x-3 mb-6">
-                <CogIcon className="w-6 h-6 text-blue-600" />
-                <h2 className="text-xl font-semibold text-gray-900">Retrieval Weights Configuration</h2>
-              </div>
-              
-              <RetrievalWeightsAccordion
-                weights={retrievalWeights}
-                onUpdateWeight={updateRetrievalWeight}
-                onError={(message) => addToast({
-                  type: 'error',
-                  title: 'Update Failed',
-                  message,
-                  duration: 5000
-                })}
-                onSuccess={(message) => addToast({
-                  type: 'success',
-                  title: 'Weights Updated',
-                  message,
-                  duration: 3000
-                })}
-              />
-            </div>
+                        {/* Embedding Model */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Embeddings</label>
+                          <select
+                            value={settings.embedding_model}
+                            onChange={(e) => setSettings({ ...settings, embedding_model: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                          >
+                            {embeddingModels.map((m) => (
+                              <option key={m} value={m}>{m}</option>
+                            ))}
+                          </select>
+                          <p className="text-xs text-gray-500 mt-1">Semantic search</p>
+                        </div>
 
+                        {/* RFQ Parsing Model */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">RFQ Parsing</label>
+                          <select
+                            value={rfqParsing.parsing_model}
+                            onChange={(e) => setRfqParsing({ ...rfqParsing, parsing_model: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                          >
+                            {rfqModels.map((m) => (
+                              <option key={m} value={m}>{m}</option>
+                            ))}
+                          </select>
+                          <p className="text-xs text-gray-500 mt-1">Parses documents</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {/* Quality Control & Review */}
+                <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 overflow-hidden hover:shadow-xl transition-all duration-300">
+                  <div 
+                    className="bg-gray-50 border-b border-gray-200 px-6 py-6 cursor-pointer hover:bg-gray-100 transition-colors"
+                    onClick={() => toggleSection('qualityControl')}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center">
+                          <ChartBarIcon className="w-6 h-6 text-gray-600" />
+                        </div>
+                        <div>
+                          <h2 className="text-2xl font-bold text-gray-900">Quality Control & Review</h2>
+                          <p className="text-gray-600 mt-1">Configure human review and quality control settings</p>
+                        </div>
+                      </div>
+                      <ChevronDownIcon 
+                        className={`w-6 h-6 text-gray-500 transition-transform duration-200 ${
+                          expandedSections.qualityControl ? 'rotate-180' : ''
+                        }`} 
+                      />
+                    </div>
+                  </div>
+                  {expandedSections.qualityControl && (
+                    <div className="p-6">
+                      <div className="space-y-6">
+                        {/* Enable Human Review */}
+                        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                          <div>
+                            <h3 className="text-lg font-medium text-gray-900">Enable Human Prompt Review</h3>
+                            <p className="text-gray-600">Allow human review and approval of AI-generated system prompts</p>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={settings.enable_prompt_review}
+                              onChange={(e) => setSettings({ 
+                                ...settings, 
+                                enable_prompt_review: e.target.checked,
+                                prompt_review_mode: e.target.checked ? settings.prompt_review_mode : 'disabled'
+                              })}
+                              className="sr-only peer"
+                            />
+                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-green-500 peer-checked:to-emerald-500"></div>
+                          </label>
+                        </div>
+
+                        {/* Review Mode Selection */}
+                        {settings.enable_prompt_review && (
+                          <div className="space-y-4">
+                            <h3 className="text-lg font-medium text-gray-900">Review Mode</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {[
+                                {
+                                  value: 'parallel',
+                                  title: 'Parallel Review',
+                                  description: 'Survey generation continues while prompts are reviewed in parallel',
+                                  icon: '🔄',
+                                  recommended: true
+                                },
+                                {
+                                  value: 'blocking',
+                                  title: 'Blocking Review',
+                                  description: 'Survey generation waits for prompt approval before proceeding',
+                                  icon: '🛑',
+                                  recommended: false
+                                }
+                              ].map((mode) => (
+                                <div
+                                  key={mode.value}
+                                  className={`border-2 rounded-xl p-4 cursor-pointer transition-all duration-200 ${
+                                    settings.prompt_review_mode === mode.value
+                                      ? 'border-green-500 bg-gradient-to-br from-green-50 to-emerald-50'
+                                      : 'border-gray-200 hover:border-green-300 hover:bg-green-50'
+                                  }`}
+                                  onClick={() => setSettings({ ...settings, prompt_review_mode: mode.value as any })}
+                                >
+                                  <div className="flex items-center space-x-3 mb-2">
+                                    <input
+                                      type="radio"
+                                      name="prompt_review_mode"
+                                      value={mode.value}
+                                      checked={settings.prompt_review_mode === mode.value}
+                                      onChange={() => setSettings({ ...settings, prompt_review_mode: mode.value as any })}
+                                      className="w-4 h-4 text-green-600"
+                                    />
+                                    <span className="text-2xl">{mode.icon}</span>
+                                    <h4 className="text-lg font-medium text-gray-900">{mode.title}</h4>
+                                    {mode.recommended && (
+                                      <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Recommended</span>
+                                    )}
+                                  </div>
+                                  <p className="text-gray-600 text-sm ml-7">{mode.description}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Review Timeout */}
+                        {settings.enable_prompt_review && (
+                          <div className="space-y-4">
+                            <h3 className="text-lg font-medium text-gray-900">Review Settings</h3>
+                            <div className="p-4 bg-gray-50 rounded-xl">
+                              <label className="block font-medium text-gray-900 mb-2">
+                                Review Timeout (Hours)
+                              </label>
+                              <div className="flex items-center space-x-3">
+                                <ClockIcon className="w-5 h-5 text-gray-500" />
+                                <input
+                                  type="number"
+                                  value={settings.prompt_review_timeout_hours}
+                                  onChange={(e) => setSettings({ ...settings, prompt_review_timeout_hours: Number(e.target.value) })}
+                                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                  min="1"
+                                  max="168"
+                                  step="1"
+                                />
+                              </div>
+                              <p className="text-xs text-gray-500 mt-1">Auto-approval timeout (1-168 hours)</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Retrieval Weights Configuration */}
+                <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 overflow-hidden hover:shadow-xl transition-all duration-300">
+                  <div 
+                    className="bg-gray-50 border-b border-gray-200 px-6 py-6 cursor-pointer hover:bg-gray-100 transition-colors"
+                    onClick={() => toggleSection('retrievalWeights')}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center">
+                          <CogIcon className="w-6 h-6 text-gray-600" />
+                        </div>
+                        <div>
+                          <h2 className="text-2xl font-bold text-gray-900">Retrieval Weights</h2>
+                          <p className="text-gray-600 mt-1">Configure semantic search and retrieval preferences</p>
+                        </div>
+                      </div>
+                      <ChevronDownIcon 
+                        className={`w-6 h-6 text-gray-500 transition-transform duration-200 ${
+                          expandedSections.retrievalWeights ? 'rotate-180' : ''
+                        }`} 
+                      />
+                    </div>
+                  </div>
+                  {expandedSections.retrievalWeights && (
+                    <div className="p-6">
+                      <RetrievalWeightsAccordion
+                        weights={retrievalWeights}
+                        onUpdateWeight={updateRetrievalWeight}
+                        onError={(message) => addToast({
+                          type: 'error',
+                          title: 'Update Failed',
+                          message,
+                          duration: 5000
+                        })}
+                        onSuccess={(message) => addToast({
+                          type: 'success',
+                          title: 'Weights Updated',
+                          message,
+                          duration: 3000
+                        })}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Methodology Rules */}
+                <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 overflow-hidden hover:shadow-xl transition-all duration-300">
+                  <div 
+                    className="bg-gray-50 border-b border-gray-200 px-6 py-6 cursor-pointer hover:bg-gray-100 transition-colors"
+                    onClick={() => toggleSection('methodology')}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center">
+                          <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <h2 className="text-2xl font-bold text-gray-900">Methodology Rules</h2>
+                          <p className="text-gray-600 mt-1">Predefined research methodologies and their requirements</p>
+                        </div>
+                      </div>
+                      <ChevronDownIcon 
+                        className={`w-6 h-6 text-gray-500 transition-transform duration-200 ${
+                          expandedSections.methodology ? 'rotate-180' : ''
+                        }`} 
+                      />
+                    </div>
+                  </div>
+                  {expandedSections.methodology && (
+                    <div className="p-6">
+                      <MethodologyRules
+                        methodologies={methodologies}
+                        onUpdateMethodologies={setMethodologies}
+                        onFetchRules={fetchRules}
+                        saving={saving}
+                        setSaving={setSaving}
+                        onShowDeleteConfirm={showDeleteConfirm}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Pillar Rules */}
+                <PillarRulesSection
+                  expandedSections={expandedSections}
+                  onToggleSection={toggleSection}
+                  onShowDeleteConfirm={showDeleteConfirm}
+                />
+
+                {/* System Prompt */}
+                <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 overflow-hidden hover:shadow-xl transition-all duration-300">
+                  <div 
+                    className="bg-gray-50 border-b border-gray-200 px-6 py-6 cursor-pointer hover:bg-gray-100 transition-colors"
+                    onClick={() => toggleSection('systemPrompt')}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center">
+                          <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <h2 className="text-2xl font-bold text-gray-900">System Prompt</h2>
+                            <span className="px-2 py-1 bg-gray-200 text-gray-700 rounded-full text-xs font-medium">ADVANCED</span>
+                          </div>
+                          <p className="text-gray-600 mt-1">Add custom instructions that will be injected into every AI prompt</p>
+                        </div>
+                      </div>
+                      <ChevronDownIcon 
+                        className={`w-6 h-6 text-gray-500 transition-transform duration-200 ${
+                          expandedSections.systemPrompt ? 'rotate-180' : ''
+                        }`} 
+                      />
+                    </div>
+                  </div>
+                  {expandedSections.systemPrompt && (
+                    <div className="p-6">
+                      <SystemPromptComponent
+                        systemPrompt={systemPrompt}
+                        onUpdateSystemPrompt={setSystemPrompt}
+                        onShowDeleteConfirm={showDeleteConfirm}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Evaluation Tab */}
+            {activeTab === 'evaluation' && (
+              <div className="space-y-8">
+                {/* Evaluation AI Models */}
+                <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6">
+                  <div className="flex items-center space-x-3 mb-6">
+                    <BeakerIcon className="w-6 h-6 text-purple-600" />
+                    <h2 className="text-xl font-semibold text-gray-900">Evaluation AI Models</h2>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Evaluation Model */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Evaluation Model</label>
+                      <select
+                        value={settings.evaluation_model}
+                        onChange={(e) => setSettings({ ...settings, evaluation_model: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      >
+                        {evaluationModels.map((m) => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">Evaluates survey quality</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Evaluation Settings */}
+                <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6">
+                  <div className="flex items-center space-x-3 mb-6">
+                    <ChartBarIcon className="w-6 h-6 text-green-600" />
+                    <h2 className="text-xl font-semibold text-gray-900">Evaluation Configuration</h2>
+                  </div>
+                  
+                  <div className="space-y-6">
+                    {/* Enable LLM Evaluation */}
+                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                      <div>
+                        <h3 className="text-lg font-medium text-gray-900">Enable AI Quality Evaluation</h3>
+                        <p className="text-gray-600">Run AI-powered quality evaluation on generated surveys using pillar-based scoring</p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={settings.enable_llm_evaluation}
+                          onChange={(e) => setSettings({ ...settings, enable_llm_evaluation: e.target.checked })}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-green-500 peer-checked:to-emerald-500"></div>
+                      </label>
+                    </div>
+
+                    {/* Evaluation Mode - Only show when AI evaluation is enabled */}
+                    {settings.enable_llm_evaluation && (
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-medium text-gray-900">Evaluation Mode</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {[
+                            {
+                              value: 'single_call',
+                              title: 'Single Call',
+                              description: 'Single evaluation call for faster processing',
+                              icon: '⚡',
+                              recommended: true
+                            },
+                            {
+                              value: 'multiple_calls',
+                              title: 'Multiple Calls',
+                              description: 'Multiple evaluation calls for comprehensive analysis',
+                              icon: '🔄',
+                              recommended: false
+                            },
+                            {
+                              value: 'aira_v1',
+                              title: 'AiRA v1',
+                              description: 'Original AiRA evaluation framework',
+                              icon: '🧪',
+                              recommended: false
+                            }
+                          ].map((mode) => (
+                            <div
+                              key={mode.value}
+                              className={`border-2 rounded-xl p-4 cursor-pointer transition-all duration-200 ${
+                                settings.evaluation_mode === mode.value
+                                  ? 'border-green-500 bg-gradient-to-br from-green-50 to-emerald-50'
+                                  : 'border-gray-200 hover:border-green-300 hover:bg-green-50'
+                              }`}
+                              onClick={() => setSettings({ ...settings, evaluation_mode: mode.value as any })}
+                            >
+                              <div className="flex items-center space-x-3 mb-2">
+                                <input
+                                  type="radio"
+                                  name="evaluation_mode"
+                                  value={mode.value}
+                                  checked={settings.evaluation_mode === mode.value}
+                                  onChange={() => setSettings({ ...settings, evaluation_mode: mode.value as any })}
+                                  className="w-4 h-4 text-green-600"
+                                />
+                                <span className="text-2xl">{mode.icon}</span>
+                                <h4 className="text-lg font-medium text-gray-900">{mode.title}</h4>
+                                {mode.recommended && (
+                                  <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Recommended</span>
+                                )}
+                              </div>
+                              <p className="text-gray-600 text-sm ml-7">{mode.description}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div className="p-6">
+              <div className="flex items-center mb-4">
+                <div className="flex-shrink-0">
+                  <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                    <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="ml-4">
+                  <h3 className="text-lg font-medium text-gray-900">
+                    {deleteConfirm.title}
+                  </h3>
+                </div>
+              </div>
+              
+              <div className="mb-6">
+                <p className="text-sm text-gray-500">
+                  {deleteConfirm.message}
+                </p>
+              </div>
+              
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={deleteConfirm.onConfirm}
+                  className="px-4 py-2 text-sm font-medium text-white rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors bg-red-600 hover:bg-red-700 focus:ring-red-500"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       
     </div>
   );

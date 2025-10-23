@@ -437,10 +437,9 @@ main() {
     log_info "Step 2: Checking Redis..."
     check_redis || true  # Redis is optional, don't exit if unavailable
     
-    log_info "Step 3: Running migrations and seeding..."
-    # Always use admin API for migrations (consistent across all environments)
-    log_info "Using admin API for database migrations..."
-    run_migrations || exit 1
+    log_info "Step 3: Database setup (manual)"
+    # Database migrations are now manual - run via API when needed
+    log_info "To run migrations: curl -X POST 'http://localhost:8000/api/v1/admin/migrate-all'"
     
     log_info "Step 4: Starting services..."
     

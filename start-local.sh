@@ -156,7 +156,7 @@ except Exception as e:
 
 # Function to run database migrations via API
 run_migrations() {
-    echo -e "${YELLOW}📊 Running database migrations...${NC}"
+    echo -e "${YELLOW}📊 Running database bootstrap via migrate-all (idempotent)...${NC}"
     
     # Start FastAPI server temporarily for migrations
     REPLICATE_API_TOKEN="$REPLICATE_API_TOKEN" DATABASE_URL="$DATABASE_URL" uvicorn src.main:app --host 0.0.0.0 --port 8000 &
@@ -190,8 +190,8 @@ run_migrations() {
         return 1
     fi
     
-    # Run migrations via API
-    echo -e "${BLUE}📝 Executing migrations via API...${NC}"
+    # Run migrations via API (now calls bootstrap internally)
+    echo -e "${BLUE}📝 Executing migrations (bootstrap)...${NC}"
     local migration_result
     migration_result=$(curl -s -X POST "http://localhost:8000/api/v1/admin/migrate-all" -H "Content-Type: application/json")
     
@@ -201,7 +201,7 @@ run_migrations() {
     
     # Check migration result
     if echo "$migration_result" | grep -q '"status":"success"'; then
-        echo -e "${GREEN}✅ Database migrations completed successfully${NC}"
+        echo -e "${GREEN}✅ Database migrations (bootstrap) completed successfully${NC}"
         return 0
     else
         echo -e "${RED}❌ Database migrations failed${NC}"
@@ -211,63 +211,6 @@ run_migrations() {
 }
 
 # Function to seed the database
-seed_database() {
-    echo -e "${YELLOW}🌱 Seeding database with golden pairs...${NC}"
-    
-    # Check if golden pairs already exist
-    local golden_count
-    golden_count=$(DATABASE_URL="$DATABASE_URL" uv run python3 -c "
-import os
-import psycopg2
-from urllib.parse import urlparse
-
-try:
-    url = os.getenv('DATABASE_URL')
-    parsed = urlparse(url)
-    conn = psycopg2.connect(
-        host=parsed.hostname,
-        port=parsed.port,
-        database=parsed.path[1:],
-        user=parsed.username,
-        password=parsed.password
-    )
-    cur = conn.cursor()
-    cur.execute('SELECT COUNT(*) FROM golden_rfq_survey_pairs')
-    count = cur.fetchone()[0]
-    print(count)
-    conn.close()
-except Exception as e:
-    print('0')
-" 2>/dev/null || echo "0")
-    
-    if [ "$golden_count" -gt 0 ]; then
-        echo -e "${GREEN}✅ Found $golden_count existing golden pairs${NC}"
-    else
-        echo -e "${YELLOW}📝 No golden pairs found, seeding database...${NC}"
-        
-        # Run golden pairs seeding
-        if DATABASE_URL="$DATABASE_URL" uv run python3 seed_golden_pairs.py; then
-            echo -e "${GREEN}✅ Golden pairs seeded successfully${NC}"
-        else
-            echo -e "${RED}❌ Failed to seed golden pairs${NC}"
-            echo -e "${YELLOW}💡 Continuing without golden pairs - retrieval may be limited${NC}"
-        fi
-    fi
-    
-    echo -e "${GREEN}✅ Database seeding completed${NC}"
-    
-    # Collect baseline metrics if not already collected
-    if [ ! -f "baseline_metrics.json" ]; then
-        echo -e "${YELLOW}📊 Collecting baseline metrics...${NC}"
-        if DATABASE_URL="$DATABASE_URL" uv run python3 scripts/collect_baseline_metrics.py; then
-            echo -e "${GREEN}✅ Baseline metrics collected${NC}"
-        else
-            echo -e "${YELLOW}⚠️  Failed to collect baseline metrics - continuing anyway${NC}"
-        fi
-    else
-        echo -e "${GREEN}✅ Baseline metrics already exist${NC}"
-    fi
-}
 
 # Function to start the application
 start_application() {
@@ -543,8 +486,14 @@ main() {
     
     # Check database and setup
     check_database
-    run_migrations
-    seed_database
+
+    # Database setup is manual - show instructions
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}📋 Database Setup (Manual):${NC}"
+    echo -e "${CYAN}   First time? Run: ./start-local.sh migrate${NC}"
+    echo -e "${CYAN}   Need data? Run: python migrations/seed_core_generation_rules.py${NC}"
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
     
     # Run development checks (only in local development)
     if [ -z "$RAILWAY_ENVIRONMENT" ] && [ -z "$PORT" ]; then
@@ -571,10 +520,6 @@ case "${1:-startup}" in
     "migrate")
         check_database
         run_migrations
-        ;;
-    "seed")
-        check_database
-        seed_database
         ;;
     "preload")
         preload_models
@@ -613,20 +558,21 @@ case "${1:-startup}" in
         echo "Usage: $0 [command]"
         echo ""
         echo "Commands:"
-        echo "  startup       - Full startup sequence (default) - kills existing processes first"
-        echo "  startup-safe  - Run tests first, then startup (safer)"
-        echo "  migrate       - Run database migrations only"
-        echo "  seed          - Seed database only"
-        echo "  preload       - Preload ML models only"
-        echo "  dev-checks    - Run development checks (tests, formatting, imports, logger)"
-        echo "  test-quick    - Run quick smoke tests (<30s)"
+        echo "  startup       - Start server (no auto database ops)"
+        echo "  startup-safe  - Run tests first, then start"
+        echo "  migrate       - Run database bootstrap (idempotent)"
+        echo "  dev-checks    - Run development checks"
+        echo "  test-quick    - Run quick smoke tests"
         echo "  test-full     - Run full test suite"
-        echo "  test-coverage - Run tests with coverage report"
-        echo "  kill          - Kill existing processes on ports 3000 and 8000"
-        echo "  setup-env     - Create .env file from .env.example template"
-        echo "  help          - Show this help message"
+        echo "  test-coverage - Run tests with coverage"
+        echo "  kill          - Kill existing processes"
+        echo "  setup-env     - Create .env file"
+        echo "  help          - Show this help"
         echo ""
-        echo "Note: All startup commands automatically kill existing processes first"
+        echo "Database:"
+        echo "  ./start-local.sh migrate  - Bootstrap schema"
+        echo "  python migrations/seed_core_generation_rules.py  - Seed rules"
+        echo "  python scripts/populate_rule_based_multi_level_rag.py  - Seed RAG"
         ;;
     *)
         echo -e "${RED}❌ Unknown command: $1${NC}"

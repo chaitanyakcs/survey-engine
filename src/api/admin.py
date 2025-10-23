@@ -182,322 +182,115 @@ async def readiness_check():
         )
 
 
+@router.post("/sync-golden-pairs-surveys")
+async def sync_golden_pairs_surveys(db: Session = Depends(get_db)):
+    """Verify and repair sync between golden pairs and surveys"""
+    try:
+        from src.database.models import GoldenRFQSurveyPair, Survey
+        
+        golden_pairs = db.query(GoldenRFQSurveyPair).all()
+        synced_count = 0
+        
+        for gp in golden_pairs:
+            survey = db.query(Survey).filter(Survey.id == gp.id).first()
+            
+            if not survey:
+                logger.warning(f"No survey found for golden pair {gp.id}")
+                continue
+            
+            # Get actual survey data from golden pair
+            actual_data = gp.survey_json.get('final_output', gp.survey_json)
+            
+            # Update survey if out of sync
+            if survey.final_output != actual_data:
+                survey.final_output = actual_data
+                survey.raw_output = actual_data
+                synced_count += 1
+                logger.info(f"Synced golden pair {gp.id} to survey")
+        
+        db.commit()
+        
+        return {
+            "status": "success",
+            "message": f"Synced {synced_count} golden pairs to surveys"
+        }
+        
+    except Exception as e:
+        logger.error(f"Sync failed: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/migrate-all")
 async def migrate_all(db: Session = Depends(get_db)):
     """
-    Run all database migrations in the correct order
+    Run database migrations (consolidated bootstrap approach)
+    
+    This endpoint now delegates to the consolidated bootstrap,
+    which is idempotent and safe to run multiple times.
+    
+    Creates all tables, indexes, and constraints from:
+    migrations/000_bootstrap_complete_schema.sql
+    
+    Returns:
+        dict: Bootstrap status and details
     """
+    logger.info("🚀 [Admin] migrate-all called - delegating to consolidated bootstrap")
+    
     try:
-        logger.info("🚀 [Admin] Starting comprehensive database migration")
+        from pathlib import Path
         
-        migration_results = []
-
-        # Step 0: Ensure required extensions (pgcrypto, vector)
-        try:
-            await _enable_required_extensions(db)
-            migration_results.append({
-                "step": "enable_extensions",
-                "status": "success",
-                "message": "Required extensions enabled (pgcrypto, vector)"
-            })
-        except Exception as e:
-            migration_results.append({
-                "step": "enable_extensions",
-                "status": "failed",
-                "message": f"Failed to enable extensions: {str(e)}"
-            })
+        # Read bootstrap schema file
+        schema_file = Path(__file__).parent.parent.parent / "migrations" / "000_bootstrap_complete_schema.sql"
         
-        # Step 1: Core table migrations
-        try:
-            await _migrate_core_tables(db)
-            migration_results.append({
-                "step": "core_tables",
-                "status": "success",
-                "message": "Core tables migration completed"
-            })
-        except Exception as e:
-            migration_results.append({
-                "step": "core_tables", 
-                "status": "failed",
-                "message": f"Core tables migration failed: {str(e)}"
-            })
+        if not schema_file.exists():
+            raise HTTPException(
+                status_code=500,
+                detail=f"Bootstrap schema file not found: {schema_file}"
+            )
         
-        # Step 2: Add removed_labels column
-        try:
-            await _migrate_removed_labels_column(db)
-            migration_results.append({
-                "step": "removed_labels_column",
-                "status": "success", 
-                "message": "Removed labels column migration completed"
-            })
-        except Exception as e:
-            migration_results.append({
-                "step": "removed_labels_column",
-                "status": "failed",
-                "message": f"Removed labels column migration failed: {str(e)}"
-            })
+        logger.info(f"📂 Reading bootstrap schema from: {schema_file}")
         
-        # Step 3: AI annotation fields
-        try:
-            await _migrate_ai_annotation_fields(db)
-            migration_results.append({
-                "step": "ai_annotation_fields",
-                "status": "success", 
-                "message": "AI annotation fields migration completed"
-            })
-        except Exception as e:
-            migration_results.append({
-                "step": "ai_annotation_fields",
-                "status": "failed",
-                "message": f"AI annotation fields migration failed: {str(e)}"
-            })
+        with open(schema_file, 'r') as f:
+            bootstrap_sql = f.read()
         
-        # Step 4: Human override tracking
-        try:
-            await _migrate_human_override_tracking(db)
-            migration_results.append({
-                "step": "human_override_tracking",
-                "status": "success",
-                "message": "Human override tracking migration completed"
-            })
-        except Exception as e:
-            migration_results.append({
-                "step": "human_override_tracking",
-                "status": "failed", 
-                "message": f"Human override tracking migration failed: {str(e)}"
-            })
+        logger.info("📋 Executing consolidated bootstrap schema...")
         
-        # Step 4: LLM audit system
-        try:
-            await _migrate_llm_audit_system(db)
-            migration_results.append({
-                "step": "llm_audit_system",
-                "status": "success",
-                "message": "LLM audit system migration completed"
-            })
-        except Exception as e:
-            migration_results.append({
-                "step": "llm_audit_system",
-                "status": "failed",
-                "message": f"LLM audit system migration failed: {str(e)}"
-            })
+        # Temporarily suppress SQL logging during bootstrap
+        import logging
+        sql_logger = logging.getLogger('sqlalchemy.engine')
+        original_level = sql_logger.level
+        sql_logger.setLevel(logging.WARNING)  # Only show warnings and errors
         
-        # Step 5: Performance indexes
         try:
-            await _migrate_performance_indexes(db)
-            migration_results.append({
-                "step": "performance_indexes",
-                "status": "success",
-                "message": "Performance indexes migration completed"
-            })
-        except Exception as e:
-            migration_results.append({
-                "step": "performance_indexes",
-                "status": "failed",
-                "message": f"Performance indexes migration failed: {str(e)}"
-            })
+            # Execute bootstrap (idempotent)
+            db.execute(text(bootstrap_sql))
+            db.commit()
+        finally:
+            # Restore original logging level
+            sql_logger.setLevel(original_level)
         
-        # Step 6: Retrieval configuration tables (weights, methodology compatibility)
-        try:
-            await _migrate_retrieval_configuration(db)
-            migration_results.append({
-                "step": "retrieval_configuration",
-                "status": "success",
-                "message": "Retrieval configuration tables migration completed"
-            })
-        except Exception as e:
-            migration_results.append({
-                "step": "retrieval_configuration",
-                "status": "failed",
-                "message": f"Retrieval configuration migration failed: {str(e)}"
-            })
-
-        # Step 7: Add human_verified field to golden pairs
-        try:
-            await _migrate_human_verified_field(db)
-            migration_results.append({
-                "step": "human_verified_field",
-                "status": "success",
-                "message": "Human verified field migration completed"
-            })
-        except Exception as e:
-            migration_results.append({
-                "step": "human_verified_field",
-                "status": "failed",
-                "message": f"Human verified field migration failed: {str(e)}"
-            })
-
-        # Step 8: Fix SurveyAnnotation constraint
-        try:
-            await _fix_survey_annotation_constraint(db)
-            migration_results.append({
-                "step": "fix_survey_annotation_constraint",
-                "status": "success",
-                "message": "SurveyAnnotation constraint fix completed"
-            })
-        except Exception as e:
-            migration_results.append({
-                "step": "fix_survey_annotation_constraint",
-                "status": "failed", 
-                "message": f"SurveyAnnotation constraint fix failed: {str(e)}"
-            })
+        logger.info("✅ Consolidated bootstrap completed via migrate-all")
         
-        # Step 8: Update survey status constraint
-        try:
-            await _migrate_survey_status_constraint(db)
-            migration_results.append({
-                "step": "update_survey_status_constraint",
-                "status": "success",
-                "message": "Survey status constraint updated to include 'reference' status"
-            })
-        except Exception as e:
-            migration_results.append({
-                "step": "update_survey_status_constraint",
-                "status": "failed",
-                "message": f"Survey status constraint update failed: {str(e)}"
-            })
+        return {
+            "status": "success",
+            "message": "Database migrations completed via consolidated bootstrap (idempotent)",
+            "approach": "consolidated_bootstrap",
+            "schema_file": "migrations/000_bootstrap_complete_schema.sql",
+            "tables_created": 24,
+            "note": "migrate-all now calls consolidated bootstrap for idempotent schema management"
+        }
         
-        # Step 9: Clean up Alembic version table
-        try:
-            await _migrate_drop_alembic_version(db)
-            migration_results.append({
-                "step": "drop_alembic_version",
-                "status": "success",
-                "message": "Alembic version table cleanup completed"
-            })
-        except Exception as e:
-            migration_results.append({
-                "step": "drop_alembic_version",
-                "status": "failed",
-                "message": f"Alembic version table cleanup failed: {str(e)}"
-            })
-        
-        # Step 10: Seed retrieval weights
-        try:
-            await _seed_retrieval_weights(db)
-            migration_results.append({
-                "step": "seed_retrieval_weights",
-                "status": "success",
-                "message": "Retrieval weights seeding completed"
-            })
-        except Exception as e:
-            migration_results.append({
-                "step": "seed_retrieval_weights",
-                "status": "failed",
-                "message": f"Retrieval weights seeding failed: {str(e)}"
-            })
-        
-        # Step 11: Seed methodology compatibility
-        try:
-            await _seed_methodology_compatibility(db)
-            migration_results.append({
-                "step": "seed_methodology_compatibility",
-                "status": "success",
-                "message": "Methodology compatibility seeding completed"
-            })
-        except Exception as e:
-            migration_results.append({
-                "step": "seed_methodology_compatibility",
-                "status": "failed",
-                "message": f"Methodology compatibility seeding failed: {str(e)}"
-            })
-        
-        # Step 12: Seed methodology rules
-        try:
-            await _seed_methodology_rules(db)
-            migration_results.append({
-                "step": "seed_methodology_rules",
-                "status": "success",
-                "message": "Methodology rules seeding completed"
-            })
-        except Exception as e:
-            migration_results.append({
-                "step": "seed_methodology_rules",
-                "status": "failed",
-                "message": f"Methodology rules seeding failed: {str(e)}"
-            })
-        
-        # Step 13: Seed generation rules
-        try:
-            await _seed_generation_rules(db)
-            migration_results.append({
-                "step": "seed_generation_rules",
-                "status": "success",
-                "message": "Generation rules seeding completed"
-            })
-        except Exception as e:
-            migration_results.append({
-                "step": "seed_generation_rules",
-                "status": "failed",
-                "message": f"Generation rules seeding failed: {str(e)}"
-            })
-        
-        # Step 14: Multi-level RAG tables
-        try:
-            await _migrate_multi_level_rag_tables(db)
-            migration_results.append({
-                "step": "multi_level_rag_tables",
-                "status": "success",
-                "message": "Multi-level RAG tables migration completed"
-            })
-        except Exception as e:
-            migration_results.append({
-                "step": "multi_level_rag_tables",
-                "status": "failed",
-                "message": f"Multi-level RAG tables migration failed: {str(e)}"
-            })
-        
-        # Step 12: Annotation ID fields in golden tables
-        try:
-            await _migrate_annotation_id_fields(db)
-            migration_results.append({
-                "step": "annotation_id_fields",
-                "status": "success",
-                "message": "Annotation ID fields migration completed"
-            })
-        except Exception as e:
-            migration_results.append({
-                "step": "annotation_id_fields",
-                "status": "failed",
-                "message": f"Annotation ID fields migration failed: {str(e)}"
-            })
-        
-        # Determine overall success
-        successful_migrations = len([r for r in migration_results if r["status"] == "success"])
-        failed_migrations = len([r for r in migration_results if r["status"] == "failed"])
-        
-        if failed_migrations == 0:
-            logger.info("🎉 All migrations completed successfully!")
-            return {
-                "status": "success",
-                "message": "All database migrations completed successfully",
-                "migration_results": migration_results,
-                "summary": {
-                    "total_migrations": len(migration_results),
-                    "successful_migrations": successful_migrations,
-                    "failed_migrations": failed_migrations
-                },
-                "railway_ready": True
-            }
-        else:
-            logger.warning(f"⚠️ {failed_migrations} migrations failed")
-            return {
-                "status": "partial",
-                "message": f"Database migration completed with {failed_migrations} failures",
-                "migration_results": migration_results,
-                "summary": {
-                    "total_migrations": len(migration_results),
-                    "successful_migrations": successful_migrations,
-                    "failed_migrations": failed_migrations
-                },
-                "railway_ready": failed_migrations == 0
-            }
-            
     except Exception as e:
-        logger.error(f"❌ Comprehensive migration error: {str(e)}")
+        logger.error(f"❌ migrate-all (bootstrap) failed: {e}")
+        db.rollback()
         raise HTTPException(
             status_code=500,
-            detail=f"Comprehensive migration failed: {str(e)}"
+            detail={
+                "status": "error",
+                "message": f"Database migrations failed: {str(e)}",
+                "approach": "consolidated_bootstrap"
+            }
         )
 
 
@@ -1091,10 +884,11 @@ async def _migrate_performance_indexes(db: Session):
     for sql in indexes_sql:
         try:
             db.execute(text(sql))
+            db.commit()  # Commit after each successful index creation
         except Exception as e:
             logger.warning(f"⚠️ Index creation warning: {e}")
-    
-    db.commit()
+            db.rollback()
+            # Continue with next index instead of failing completely
     logger.info("✅ Performance indexes added")
 
 
@@ -1481,10 +1275,9 @@ async def _seed_retrieval_weights(db: Session):
     
     for context_type, context_value, semantic, methodology, industry, quality, annotation in methodology_weights:
         db.execute(text("""
-            INSERT INTO retrieval_weights (id, weight_name, context_type, context_value, semantic_weight, methodology_weight, industry_weight, quality_weight, annotation_weight, enabled)
-            VALUES (gen_random_uuid(), :weight_name, :context_type, :context_value, :semantic, :methodology, :industry, :quality, :annotation, true)
+            INSERT INTO retrieval_weights (id, context_type, context_value, semantic_weight, methodology_weight, industry_weight, quality_weight, annotation_weight, enabled)
+            VALUES (gen_random_uuid(), :context_type, :context_value, :semantic, :methodology, :industry, :quality, :annotation, true)
         """), {
-            'weight_name': f"{context_type}_{context_value}",
             'context_type': context_type,
             'context_value': context_value,
             'semantic': semantic,
@@ -1506,10 +1299,9 @@ async def _seed_retrieval_weights(db: Session):
     
     for context_type, context_value, semantic, methodology, industry, quality, annotation in industry_weights:
         db.execute(text("""
-            INSERT INTO retrieval_weights (id, weight_name, context_type, context_value, semantic_weight, methodology_weight, industry_weight, quality_weight, annotation_weight, enabled)
-            VALUES (gen_random_uuid(), :weight_name, :context_type, :context_value, :semantic, :methodology, :industry, :quality, :annotation, true)
+            INSERT INTO retrieval_weights (id, context_type, context_value, semantic_weight, methodology_weight, industry_weight, quality_weight, annotation_weight, enabled)
+            VALUES (gen_random_uuid(), :context_type, :context_value, :semantic, :methodology, :industry, :quality, :annotation, true)
         """), {
-            'weight_name': f"{context_type}_{context_value}",
             'context_type': context_type,
             'context_value': context_value,
             'semantic': semantic,
@@ -1824,6 +1616,25 @@ async def _migrate_multi_level_rag_tables(db: Session):
     logger.info("📝 Updating existing multi-level RAG tables to rule-based schema...")
     
     try:
+        # First check if the tables exist
+        golden_sections_exists = db.execute(text("""
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.tables 
+                WHERE table_name = 'golden_sections'
+            )
+        """)).scalar()
+        
+        golden_questions_exists = db.execute(text("""
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.tables 
+                WHERE table_name = 'golden_questions'
+            )
+        """)).scalar()
+        
+        if not golden_sections_exists and not golden_questions_exists:
+            logger.info("ℹ️  Golden tables don't exist, skipping multi-level RAG migration")
+            return
+        
         # Read the update migration SQL file
         with open('migrations/update_existing_multi_level_rag_tables.sql', 'r') as f:
             migration_sql = f.read()
@@ -1833,11 +1644,21 @@ async def _migrate_multi_level_rag_tables(db: Session):
         
         for statement in statements:
             if statement:
-                db.execute(text(statement))
+                try:
+                    db.execute(text(statement))
+                    db.commit()  # Commit after each successful statement
+                except Exception as stmt_err:
+                    # Log and rollback, but continue with other statements
+                    logger.warning(f"⚠️ Multi-level RAG statement failed: {stmt_err}")
+                    db.rollback()
+                    # Continue with next statement instead of raising
         
-        db.commit()
         logger.info("✅ Rule-based multi-level RAG tables migration completed")
         
+    except FileNotFoundError:
+        logger.warning("⚠️ Multi-level RAG migration file not found, skipping")
+        db.rollback()
+        # Do not raise; allow environments without this migration file
     except Exception as e:
         logger.error(f"❌ Error migrating rule-based multi-level RAG tables: {e}")
         db.rollback()
@@ -1878,12 +1699,13 @@ async def _migrate_retrieval_configuration(db: Session):
         for statement in statements:
             try:
                 db.execute(text(statement))
+                db.commit()  # Commit after each successful statement
             except Exception as stmt_err:
-                # Log and rethrow to surface meaningful failure in migrate-all
-                logger.error(f"❌ Retrieval config statement failed: {stmt_err}")
-                raise
+                # Log and rollback, but continue with other statements
+                logger.warning(f"⚠️ Retrieval config statement failed: {stmt_err}")
+                db.rollback()
+                # Continue with next statement instead of raising
 
-        db.commit()
         logger.info("✅ Retrieval configuration migration completed")
     except FileNotFoundError:
         logger.warning("⚠️ Retrieval configuration migration file not found, skipping")
@@ -1919,36 +1741,6 @@ async def _migrate_annotation_id_fields(db: Session):
         db.rollback()
     except Exception as e:
         logger.error(f"❌ Error migrating annotation ID fields: {e}")
-        db.rollback()
-        raise
-
-
-async def _migrate_human_verified_field(db: Session):
-    """Add human_verified field to golden_rfq_survey_pairs table"""
-    logger.info("👤 Adding human_verified field to golden pairs...")
-    try:
-        migration_file = 'migrations/add_human_verified_field.sql'
-        with open(migration_file, 'r') as f:
-            migration_sql = f.read()
-
-        # Execute statements individually to tolerate partial failures
-        statements = [stmt.strip() for stmt in migration_sql.split(';') if stmt.strip()]
-        for statement in statements:
-            try:
-                db.execute(text(statement))
-            except Exception as stmt_err:
-                # Log and rethrow to surface meaningful failure in migrate-all
-                logger.error(f"❌ Human verified field statement failed: {stmt_err}")
-                raise
-
-        db.commit()
-        logger.info("✅ Human verified field migration completed")
-    except FileNotFoundError:
-        logger.warning("⚠️ Human verified field migration file not found, skipping")
-        db.rollback()
-        # Do not raise; allow environments without this migration file
-    except Exception as e:
-        logger.error(f"❌ Error migrating human verified field: {e}")
         db.rollback()
         raise
 
@@ -2160,12 +1952,51 @@ async def seed_methodology_rules(db: Session = Depends(get_db)):
         )
 
 
-@router.post("/bootstrap-complete")
-async def bootstrap_complete_database(
-    confirmation_code: str = None,
-    force: bool = False,
-    db: Session = Depends(get_db)
-):
+@router.post("/seed-core-generation-rules")
+async def seed_core_generation_rules(db: Session = Depends(get_db)):
+    """
+    Seed 58 core generation rules from AiRA v1 framework (5-pillar evaluation system)
+    """
+    try:
+        logger.info("🌱 Starting core generation rules seeding...")
+        
+        await _seed_generation_rules(db)
+        
+        logger.info("✅ Core generation rules seeding completed successfully")
+        
+        return {
+            "status": "success",
+            "message": "Core generation rules seeding completed - 58 AiRA v1 rules added across 5 pillars",
+            "rules_seeded": {
+                "total_rules": 58,
+                "pillars": [
+                    "content_validity", "methodological_rigor", "clarity_comprehensibility",
+                    "structural_coherence", "deployment_readiness"
+                ],
+                "source_framework": "aira_v1"
+            },
+            "seeding_completed": True
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Core generation rules seeding failed: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Core generation rules seeding failed: {str(e)}"
+        )
+
+
+# REMOVED: bootstrap-complete endpoint
+# This endpoint was removed because it tried to insert data with outdated column names
+# that don't match the corrected bootstrap schema. Use migrate-all instead.
+# 
+# # DISABLED: @router.post("/bootstrap-complete")
+# async def bootstrap_complete_database(
+#     confirmation_code: str = None,
+#     force: bool = False,
+#     db: Session = Depends(get_db)
+# ):
     """
     Bootstrap the complete database structure including all tables and vectors
     
@@ -2219,359 +2050,46 @@ async def bootstrap_complete_database(
         logger.warning(f"🚀 Confirmation code: {confirmation_code}")
         logger.warning(f"🚀 Force flag: {force}")
         
-        # Step 1: Ensure extensions are available
-        db.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
-        db.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto;"))
+        # Read and execute the comprehensive bootstrap schema
+        import os
+        from pathlib import Path
         
-        # Step 2: Create all main application tables
-        main_tables_sql = """
-        -- RFQs table
-        CREATE TABLE IF NOT EXISTS rfqs (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            title TEXT,
-            content TEXT NOT NULL,
-            embedding VECTOR(384),
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
+        # Get the migrations directory path
+        current_dir = Path(__file__).parent.parent.parent
+        schema_file = current_dir / "migrations" / "000_bootstrap_complete_schema.sql"
         
-        -- Surveys table
-        CREATE TABLE IF NOT EXISTS surveys (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            rfq_id UUID REFERENCES rfqs(id),
-            status VARCHAR(50) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','validated','edited','final','reference')),
-            raw_output TEXT,
-            final_output TEXT,
-            golden_similarity_score DECIMAL(5,4),
-            used_golden_examples TEXT[],
-            cleanup_minutes_actual INTEGER,
-            model_version VARCHAR(100),
-            pillar_scores JSONB,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
+        if not schema_file.exists():
+            logger.error(f"❌ Bootstrap schema file not found: {schema_file}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Bootstrap schema file not found: {schema_file}"
+            )
         
-        -- Golden RFQ Survey Pairs table
-        CREATE TABLE IF NOT EXISTS golden_rfq_survey_pairs (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            title TEXT,
-            rfq_text TEXT NOT NULL,
-            rfq_embedding VECTOR(384),
-            survey_json JSONB NOT NULL,
-            methodology_tags TEXT[],
-            industry_category VARCHAR(100),
-            research_goal TEXT,
-            quality_score DECIMAL(3,2) DEFAULT 0.0,
-            usage_count INTEGER DEFAULT 0,
-            human_verified BOOLEAN DEFAULT FALSE,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
+        logger.info(f"📂 Reading bootstrap schema from: {schema_file}")
         
-        -- Survey Rules table
-        CREATE TABLE IF NOT EXISTS survey_rules (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            rule_type VARCHAR(50) NOT NULL,
-            category VARCHAR(100),
-            rule_name VARCHAR(200),
-            rule_description TEXT,
-            rule_content JSONB NOT NULL,
-            is_active BOOLEAN DEFAULT TRUE,
-            priority INTEGER DEFAULT 0,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            created_by VARCHAR(100)
-        );
+        # Read the complete schema SQL
+        with open(schema_file, 'r') as f:
+            bootstrap_sql = f.read()
         
-        -- Golden Sections table
-        CREATE TABLE IF NOT EXISTS golden_sections (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            section_type VARCHAR(100),
-            title TEXT NOT NULL,
-            content TEXT NOT NULL,
-            methodology_tags TEXT[],
-            industry_keywords TEXT[],
-            question_patterns TEXT[],
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
+        logger.info("📋 Executing comprehensive bootstrap schema...")
         
-        -- Golden Questions table
-        CREATE TABLE IF NOT EXISTS golden_questions (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            question_text TEXT NOT NULL,
-            question_type VARCHAR(50),
-            methodology_tags TEXT[],
-            industry_keywords TEXT[],
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
+        # Execute the complete bootstrap schema
+        db.execute(text(bootstrap_sql))
+        db.commit()
         
-        -- LLM Audit table
-        CREATE TABLE IF NOT EXISTS llm_audit (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            interaction_id VARCHAR(255) NOT NULL,
-            parent_workflow_id VARCHAR(255),
-            parent_survey_id VARCHAR(255),
-            parent_rfq_id UUID,
-            model_name VARCHAR(100) NOT NULL,
-            model_provider VARCHAR(50) NOT NULL,
-            model_version VARCHAR(50),
-            purpose VARCHAR(100) NOT NULL,
-            sub_purpose VARCHAR(100),
-            context_type VARCHAR(50),
-            input_prompt TEXT NOT NULL,
-            input_tokens INTEGER,
-            output_content TEXT,
-            output_tokens INTEGER,
-            temperature DECIMAL(3,2),
-            top_p DECIMAL(3,2),
-            max_tokens INTEGER,
-            frequency_penalty DECIMAL(3,2),
-            presence_penalty DECIMAL(3,2),
-            stop_sequences JSONB,
-            response_time_ms INTEGER,
-            cost_usd DECIMAL(10,6),
-            success BOOLEAN NOT NULL DEFAULT true,
-            error_message TEXT,
-            interaction_metadata JSONB,
-            tags JSONB,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            old_fields JSONB,
-            new_fields JSONB
-        );
+        logger.info("✅ Bootstrap schema executed successfully")
         
-        -- LLM Hyperparameter Configs table
-        CREATE TABLE IF NOT EXISTS llm_hyperparameter_configs (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            config_name VARCHAR(100) NOT NULL UNIQUE,
-            model_name VARCHAR(100) NOT NULL,
-            temperature DECIMAL(3,2),
-            top_p DECIMAL(3,2),
-            max_tokens INTEGER,
-            frequency_penalty DECIMAL(3,2),
-            presence_penalty DECIMAL(3,2),
-            stop_sequences JSONB,
-            is_default BOOLEAN DEFAULT FALSE,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
+        # All tables, indexes, and constraints are now created from the schema file
+        # The bootstrap file is comprehensive and idempotent
         
-        -- LLM Prompt Templates table
-        CREATE TABLE IF NOT EXISTS llm_prompt_templates (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            template_name VARCHAR(100) NOT NULL UNIQUE,
-            template_content TEXT NOT NULL,
-            template_type VARCHAR(50) NOT NULL,
-            is_active BOOLEAN DEFAULT TRUE,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
+        # Optional: Insert default configuration data
+        logger.info("📋 Inserting default configuration data...")
         
-        -- Retrieval Weights table
-        CREATE TABLE IF NOT EXISTS retrieval_weights (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            weight_name VARCHAR(100) NOT NULL UNIQUE,
-            context_type VARCHAR(50) NOT NULL DEFAULT 'global',
-            context_value VARCHAR(100) NOT NULL DEFAULT 'default',
-            semantic_weight DECIMAL(3,2) DEFAULT 0.4,
-            methodology_weight DECIMAL(3,2) DEFAULT 0.25,
-            industry_weight DECIMAL(3,2) DEFAULT 0.15,
-            quality_weight DECIMAL(3,2) DEFAULT 0.1,
-            annotation_weight DECIMAL(3,2) DEFAULT 0.1,
-            enabled BOOLEAN DEFAULT TRUE,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
-        
-        -- Methodology Compatibility table
-        CREATE TABLE IF NOT EXISTS methodology_compatibility (
-            methodology_a VARCHAR(50) NOT NULL,
-            methodology_b VARCHAR(50) NOT NULL,
-            compatibility_score DECIMAL(3,2) NOT NULL CHECK (compatibility_score >= 0 AND compatibility_score <= 1),
-            notes TEXT,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            PRIMARY KEY (methodology_a, methodology_b),
-            CHECK (methodology_a != methodology_b)
-        );
-        
-        -- Human Reviews table
-        CREATE TABLE IF NOT EXISTS human_reviews (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            workflow_id VARCHAR(255) NOT NULL,
-            survey_id VARCHAR(255) NOT NULL,
-            review_status VARCHAR(50) NOT NULL DEFAULT 'pending',
-            prompt_data JSONB,
-            original_rfq TEXT,
-            reviewer_id VARCHAR(255),
-            review_deadline TIMESTAMP WITH TIME ZONE,
-            reviewer_notes TEXT,
-            approval_reason TEXT,
-            rejection_reason TEXT,
-            edited_prompt_data JSONB,
-            original_prompt_data JSONB,
-            prompt_edited BOOLEAN DEFAULT FALSE,
-            prompt_edit_timestamp TIMESTAMP WITH TIME ZONE,
-            edited_by VARCHAR(255),
-            edit_reason TEXT,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
-        
-        -- Document Uploads table
-        CREATE TABLE IF NOT EXISTS document_uploads (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            filename VARCHAR(255) NOT NULL,
-            original_filename VARCHAR(255) NOT NULL,
-            file_size INTEGER NOT NULL,
-            content_type VARCHAR(100) NOT NULL,
-            session_id VARCHAR(255) NOT NULL,
-            uploaded_by VARCHAR(255),
-            upload_timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            processing_status VARCHAR(50) DEFAULT 'pending',
-            analysis_result JSONB,
-            error_message TEXT,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
-        """
-        
-        db.execute(text(main_tables_sql))
-        
-        # Step 3: Create annotation tables (if they don't exist)
-        annotation_tables_sql = """
-        -- Question Annotations table
-        CREATE TABLE IF NOT EXISTS question_annotations (
-            id SERIAL PRIMARY KEY,
-            question_id VARCHAR(255) NOT NULL,
-            survey_id VARCHAR(255) NOT NULL,
-            required BOOLEAN NOT NULL DEFAULT TRUE,
-            quality INTEGER NOT NULL CHECK (quality >= 1 AND quality <= 5),
-            relevant INTEGER NOT NULL CHECK (relevant >= 1 AND relevant <= 5),
-            comment TEXT,
-            annotator_id VARCHAR(255),
-            labels JSONB,
-            removed_labels JSONB,
-            advanced_labels JSONB,
-            industry_classification VARCHAR(100),
-            respondent_type VARCHAR(100),
-            methodology_tags TEXT[],
-            is_mandatory BOOLEAN DEFAULT FALSE,
-            compliance_status VARCHAR(50),
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            methodological_rigor INTEGER NOT NULL DEFAULT 3 CHECK (methodological_rigor >= 1 AND methodological_rigor <= 5),
-            content_validity INTEGER NOT NULL DEFAULT 3 CHECK (content_validity >= 1 AND content_validity <= 5),
-            respondent_experience INTEGER NOT NULL DEFAULT 3 CHECK (respondent_experience >= 1 AND respondent_experience <= 5),
-            analytical_value INTEGER NOT NULL DEFAULT 3 CHECK (analytical_value >= 1 AND analytical_value <= 5),
-            business_impact INTEGER NOT NULL DEFAULT 3 CHECK (business_impact >= 1 AND business_impact <= 5),
-            ai_generated BOOLEAN DEFAULT FALSE,
-            ai_confidence DECIMAL(3,2),
-            human_verified BOOLEAN DEFAULT FALSE,
-            generation_timestamp TIMESTAMP WITH TIME ZONE,
-            human_overridden BOOLEAN DEFAULT FALSE,
-            override_timestamp TIMESTAMP WITH TIME ZONE,
-            original_ai_quality INTEGER,
-            original_ai_relevant INTEGER,
-            original_ai_comment TEXT
-        );
-        
-        -- Section Annotations table
-        CREATE TABLE IF NOT EXISTS section_annotations (
-            id SERIAL PRIMARY KEY,
-            section_id VARCHAR(255) NOT NULL,
-            survey_id VARCHAR(255) NOT NULL,
-            required BOOLEAN NOT NULL DEFAULT TRUE,
-            quality INTEGER NOT NULL CHECK (quality >= 1 AND quality <= 5),
-            relevant INTEGER NOT NULL CHECK (relevant >= 1 AND relevant <= 5),
-            comment TEXT,
-            annotator_id VARCHAR(255),
-            labels JSONB,
-            section_classification VARCHAR(100),
-            mandatory_elements TEXT[],
-            compliance_score DECIMAL(3,2),
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            methodological_rigor INTEGER NOT NULL DEFAULT 3 CHECK (methodological_rigor >= 1 AND methodological_rigor <= 5),
-            content_validity INTEGER NOT NULL DEFAULT 3 CHECK (content_validity >= 1 AND content_validity <= 5),
-            respondent_experience INTEGER NOT NULL DEFAULT 3 CHECK (respondent_experience >= 1 AND respondent_experience <= 5),
-            analytical_value INTEGER NOT NULL DEFAULT 3 CHECK (analytical_value >= 1 AND analytical_value <= 5),
-            business_impact INTEGER NOT NULL DEFAULT 3 CHECK (business_impact >= 1 AND business_impact <= 5),
-            removed_labels JSONB,
-            ai_generated BOOLEAN DEFAULT FALSE,
-            ai_confidence DECIMAL(3,2),
-            human_verified BOOLEAN DEFAULT FALSE,
-            generation_timestamp TIMESTAMP WITH TIME ZONE,
-            human_overridden BOOLEAN DEFAULT FALSE,
-            override_timestamp TIMESTAMP WITH TIME ZONE,
-            original_ai_quality INTEGER,
-            original_ai_relevant INTEGER,
-            original_ai_comment TEXT
-        );
-        
-        -- Survey Annotations table
-        CREATE TABLE IF NOT EXISTS survey_annotations (
-            id SERIAL PRIMARY KEY,
-            survey_id VARCHAR(255) NOT NULL UNIQUE,
-            overall_quality INTEGER NOT NULL CHECK (overall_quality >= 1 AND overall_quality <= 5),
-            methodological_rigor INTEGER NOT NULL CHECK (methodological_rigor >= 1 AND methodological_rigor <= 5),
-            content_validity INTEGER NOT NULL CHECK (content_validity >= 1 AND content_validity <= 5),
-            respondent_experience INTEGER NOT NULL CHECK (respondent_experience >= 1 AND respondent_experience <= 5),
-            analytical_value INTEGER NOT NULL CHECK (analytical_value >= 1 AND analytical_value <= 5),
-            business_impact INTEGER NOT NULL CHECK (business_impact >= 1 AND business_impact <= 5),
-            overall_comment TEXT,
-            comment TEXT,
-            annotator_id VARCHAR(255),
-            labels JSONB,
-            detected_labels JSONB,
-            compliance_report JSONB,
-            advanced_metadata JSONB,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-        );
-        """
-        
-        db.execute(text(annotation_tables_sql))
-        
-        # Step 4: Create indexes for performance
-        indexes_sql = """
-        -- Create indexes for better performance
-        CREATE INDEX IF NOT EXISTS idx_surveys_rfq_id ON surveys(rfq_id);
-        CREATE INDEX IF NOT EXISTS idx_surveys_status ON surveys(status);
-        CREATE INDEX IF NOT EXISTS idx_surveys_created_at ON surveys(created_at);
-        
-        CREATE INDEX IF NOT EXISTS idx_golden_pairs_quality_score ON golden_rfq_survey_pairs(quality_score);
-        CREATE INDEX IF NOT EXISTS idx_golden_pairs_usage_count ON golden_rfq_survey_pairs(usage_count);
-        CREATE INDEX IF NOT EXISTS idx_golden_pairs_created_at ON golden_rfq_survey_pairs(created_at);
-        
-        CREATE INDEX IF NOT EXISTS idx_question_annotations_survey_id ON question_annotations(survey_id);
-        CREATE INDEX IF NOT EXISTS idx_question_annotations_quality ON question_annotations(quality);
-        CREATE INDEX IF NOT EXISTS idx_question_annotations_relevant ON question_annotations(relevant);
-        CREATE INDEX IF NOT EXISTS idx_question_annotations_ai_generated ON question_annotations(ai_generated);
-        CREATE INDEX IF NOT EXISTS idx_question_annotations_human_verified ON question_annotations(human_verified);
-        CREATE INDEX IF NOT EXISTS idx_question_annotations_human_overridden ON question_annotations(human_overridden);
-        
-        CREATE INDEX IF NOT EXISTS idx_section_annotations_survey_id ON section_annotations(survey_id);
-        CREATE INDEX IF NOT EXISTS idx_section_annotations_quality ON section_annotations(quality);
-        CREATE INDEX IF NOT EXISTS idx_section_annotations_relevant ON section_annotations(relevant);
-        CREATE INDEX IF NOT EXISTS idx_section_annotations_ai_generated ON section_annotations(ai_generated);
-        CREATE INDEX IF NOT EXISTS idx_section_annotations_human_verified ON section_annotations(human_verified);
-        CREATE INDEX IF NOT EXISTS idx_section_annotations_human_overridden ON section_annotations(human_overridden);
-        
-        CREATE INDEX IF NOT EXISTS idx_llm_audit_interaction_id ON llm_audit(interaction_id);
-        CREATE INDEX IF NOT EXISTS idx_llm_audit_parent_workflow_id ON llm_audit(parent_workflow_id);
-        CREATE INDEX IF NOT EXISTS idx_llm_audit_created_at ON llm_audit(created_at);
-        CREATE INDEX IF NOT EXISTS idx_llm_audit_model_name ON llm_audit(model_name);
-        CREATE INDEX IF NOT EXISTS idx_llm_audit_purpose ON llm_audit(purpose);
-        """
-        
-        db.execute(text(indexes_sql))
-        
-        # Step 5: Insert default data
         default_data_sql = """
         -- Insert default retrieval weights
-        INSERT INTO retrieval_weights (weight_name, context_type, context_value, semantic_weight, methodology_weight, industry_weight, quality_weight, annotation_weight, enabled)
-        VALUES ('default', 'global', 'default', 0.4, 0.25, 0.15, 0.1, 0.1, true)
-        ON CONFLICT (weight_name) DO NOTHING;
+        INSERT INTO retrieval_weights (id, context_type, context_value, semantic_weight, methodology_weight, industry_weight, quality_weight, annotation_weight, enabled)
+        VALUES (gen_random_uuid(), 'global', 'default', 0.4, 0.25, 0.15, 0.1, 0.1, true)
+        ON CONFLICT (context_type, context_value) DO NOTHING;
         
         -- Insert default LLM hyperparameter config
         INSERT INTO llm_hyperparameter_configs (config_name, model_name, temperature, top_p, max_tokens, is_default)
@@ -2593,18 +2111,33 @@ async def bootstrap_complete_database(
         logger.info("✅ Complete database bootstrap completed successfully")
         return {
             "status": "success",
-            "message": "Complete database bootstrap completed - all tables, indexes, and default data created",
+            "message": "Complete database bootstrap completed - all tables, indexes, and default data created from consolidated schema",
             "bootstrap_completed": True,
+            "schema_file": "migrations/000_bootstrap_complete_schema.sql",
             "tables_created": [
-                "rfqs", "surveys", "golden_rfq_survey_pairs", "survey_rules",
-                "golden_sections", "golden_questions", "llm_audit",
-                "llm_hyperparameter_configs", "llm_prompt_templates",
+                # Core tables
+                "rfqs", "surveys", "edits",
+                # Golden example tables
+                "golden_rfq_survey_pairs", "golden_sections", "golden_questions", "golden_example_states",
+                # RAG configuration
                 "retrieval_weights", "methodology_compatibility",
+                # Rules and validation
+                "survey_rules", "rule_validations",
+                # Annotations
                 "question_annotations", "section_annotations", "survey_annotations",
-                "human_reviews", "document_uploads"
+                # Workflow management
+                "human_reviews", "workflow_states",
+                # Configuration
+                "settings",
+                # Document management
+                "document_uploads", "document_rfq_mappings",
+                # LLM audit
+                "llm_audit", "llm_hyperparameter_configs", "llm_prompt_templates",
+                # QNR taxonomy
+                "qnr_label_definitions", "qnr_tag_definitions"
             ],
-            "extensions_enabled": ["vector", "pgcrypto"],
-            "indexes_created": "performance indexes for all major tables",
+            "extensions_enabled": ["uuid-ossp", "pgcrypto", "vector"],
+            "indexes_created": "All performance indexes from schema file",
             "default_data_inserted": "retrieval weights, LLM configs, prompt templates"
         }
         

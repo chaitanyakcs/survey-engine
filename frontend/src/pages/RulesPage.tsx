@@ -52,13 +52,17 @@ export const RulesPage: React.FC = () => {
     // quality section removed - replaced by comprehensive generation rules system
   });
 
-  const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings') => {
+  const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings' | 'annotation-insights' | 'llm-review') => {
     if (view === 'survey') {
       window.location.href = '/';
     } else if (view === 'golden-examples') {
       window.location.href = '/?view=golden-examples';
     } else if (view === 'surveys') {
       window.location.href = '/surveys';
+    } else if (view === 'annotation-insights') {
+      window.location.href = '/annotation-insights';
+    } else if (view === 'llm-review') {
+      window.location.href = '/llm-audit';
     }
   };
 
@@ -179,7 +183,7 @@ export const RulesPage: React.FC = () => {
     return (
       <div className="min-h-screen bg-white">
         <ToastContainer toasts={toasts} onRemove={removeToast} />
-        <Sidebar currentView="rules" onViewChange={handleViewChange} />
+        <Sidebar currentView="settings" onViewChange={handleViewChange} />
         <div className={mainContentClasses}>
           <div className="flex items-center justify-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-600"></div>
@@ -193,7 +197,7 @@ export const RulesPage: React.FC = () => {
     return (
       <div className="min-h-screen bg-white">
         <ToastContainer toasts={toasts} onRemove={removeToast} />
-        <Sidebar currentView="rules" onViewChange={handleViewChange} />
+        <Sidebar currentView="settings" onViewChange={handleViewChange} />
         <div className={mainContentClasses}>
           <div className="flex items-center justify-center h-64">
             <div className="text-center">
@@ -229,7 +233,7 @@ export const RulesPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
       <ToastContainer toasts={toasts} onRemove={removeToast} />
-      <Sidebar currentView="rules" onViewChange={handleViewChange} />
+      <Sidebar currentView="settings" onViewChange={handleViewChange} />
       <div className={mainContentClasses}>
         <div className="space-y-8">
           {/* Header */}

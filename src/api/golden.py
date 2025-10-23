@@ -93,6 +93,21 @@ async def create_golden_pair(
         logger.info(f"🔧 [Golden Pair API] Initializing GoldenService")
         golden_service = GoldenService(db)
         
+        # Validate that we have enough information to create a meaningful title
+        survey_title = request.survey_json.get('title', '').strip() if isinstance(request.survey_json, dict) else ''
+        golden_title = (request.title or '').strip()
+        
+        # Check if we have any meaningful title information
+        has_survey_title = bool(survey_title)
+        has_golden_title = bool(golden_title)
+        has_industry = bool(request.industry_category)
+        has_methodology = bool(request.methodology_tags)
+        
+        if not (has_survey_title or has_golden_title or has_industry or has_methodology):
+            logger.warning(f"⚠️ [Golden Pair API] Insufficient information for meaningful title generation")
+            logger.warning(f"⚠️ [Golden Pair API] Survey title: '{survey_title}', Golden title: '{golden_title}', Industry: '{request.industry_category}', Methodology: '{request.methodology_tags}'")
+            # Don't fail, but log a warning - the service will generate a fallback title
+        
         # Handle missing RFQ text
         rfq_text = request.rfq_text
         if not rfq_text or not rfq_text.strip():
@@ -287,13 +302,24 @@ async def parse_document(
         # The parsed data has final_output containing the actual survey data
         final_output = survey_data.get('final_output', {}) if isinstance(survey_data, dict) else {}
         
+        # Run field extraction to populate category, goal, and methodology
+        logger.info(f"🔍 [Document Parse] Running field extraction for metadata")
+        try:
+            from src.services.field_extraction_service import FieldExtractionService
+            field_extractor = FieldExtractionService()
+            extracted_fields = await field_extractor.extract_fields(extracted_text, final_output)
+            logger.info(f"✅ [Document Parse] Field extraction completed: {extracted_fields}")
+        except Exception as e:
+            logger.warning(f"⚠️ [Document Parse] Field extraction failed: {e}")
+            extracted_fields = {}
+        
         response = DocumentParseResponse(
             survey_json=survey_data,
             confidence_score=final_output.get('confidence_score') if isinstance(final_output, dict) else None,
             extracted_text=extracted_text[:1000] + "..." if len(extracted_text) > 1000 else extracted_text,
-            product_category=final_output.get('product_category') if isinstance(final_output, dict) else None,
-            research_goal=final_output.get('research_goal') if isinstance(final_output, dict) else None,
-            methodologies=final_output.get('methodologies') if isinstance(final_output, dict) else None
+            product_category=extracted_fields.get('industry_category') or final_output.get('product_category') if isinstance(final_output, dict) else None,
+            research_goal=extracted_fields.get('research_goal') or final_output.get('research_goal') if isinstance(final_output, dict) else None,
+            methodologies=extracted_fields.get('methodology_tags') or final_output.get('methodologies') if isinstance(final_output, dict) else None
         )
         
         logger.info(f"🎉 [Document Parse] Successfully parsed document: {file.filename}")

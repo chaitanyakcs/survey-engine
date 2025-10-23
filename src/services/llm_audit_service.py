@@ -330,6 +330,34 @@ class LLMAuditService:
             logger.error(f"❌ [LLMAuditService] Failed to get audit records: {str(e)}")
             return [], 0
     
+    async def get_interaction(self, interaction_id: str) -> Optional[LLMAudit]:
+        """
+        Get a specific LLM interaction by interaction_id
+        
+        Args:
+            interaction_id: The interaction ID to look up
+            
+        Returns:
+            The LLMAudit record if found, None otherwise
+        """
+        try:
+            logger.info(f"🔍 [LLMAuditService] Looking up interaction: {interaction_id}")
+            
+            record = self.db_session.query(LLMAudit).filter(
+                LLMAudit.interaction_id == interaction_id
+            ).first()
+            
+            if record:
+                logger.info(f"✅ [LLMAuditService] Found interaction: {interaction_id}")
+            else:
+                logger.warning(f"⚠️ [LLMAuditService] Interaction not found: {interaction_id}")
+            
+            return record
+            
+        except Exception as e:
+            logger.error(f"❌ [LLMAuditService] Failed to get interaction {interaction_id}: {str(e)}")
+            return None
+    
     async def get_cost_summary(
         self,
         start_date: datetime = None,
@@ -600,3 +628,52 @@ class LLMAuditContext:
     def set_raw_response(self, raw_response: str):
         """Set the raw response from the LLM before any processing"""
         self.raw_response = raw_response
+    
+    def can_create_golden_pair(self, audit_record: LLMAudit) -> dict:
+        """
+        Check if an audit record can be used to create a golden pair.
+        Returns dict with: {can_create: bool, reason: str, warnings: list}
+        """
+        if not audit_record.success:
+            return {"can_create": False, "reason": "Interaction failed", "warnings": []}
+        
+        if audit_record.purpose != "document_parsing" or audit_record.sub_purpose != "survey_conversion":
+            return {"can_create": False, "reason": "Not a document parsing/survey conversion record", "warnings": []}
+        
+        warnings = []
+        
+        # Check for RFQ text
+        has_rfq = False
+        if audit_record.interaction_metadata:
+            has_rfq = bool(audit_record.interaction_metadata.get('document_text') or 
+                          audit_record.interaction_metadata.get('rfq_text'))
+        
+        if not has_rfq and not audit_record.input_prompt:
+            return {"can_create": False, "reason": "No RFQ text available", "warnings": []}
+        
+        # Check for survey JSON
+        has_survey = False
+        if audit_record.raw_response:
+            if isinstance(audit_record.raw_response, dict):
+                has_survey = bool('final_output' in audit_record.raw_response or 
+                                'sections' in audit_record.raw_response or 
+                                'questions' in audit_record.raw_response)
+        
+        if not has_survey:
+            return {"can_create": False, "reason": "No survey JSON available", "warnings": []}
+        
+        # Check quality score
+        quality_score = None
+        if isinstance(audit_record.raw_response, dict):
+            final_output = audit_record.raw_response.get('final_output', audit_record.raw_response)
+            if isinstance(final_output, dict):
+                metadata = final_output.get('metadata', {})
+                if isinstance(metadata, dict):
+                    quality_score = metadata.get('quality_score')
+        
+        if quality_score is None:
+            warnings.append("No quality score found in survey metadata")
+        elif quality_score < 0.7:
+            warnings.append(f"Low quality score: {quality_score}")
+        
+        return {"can_create": True, "reason": "", "warnings": warnings}

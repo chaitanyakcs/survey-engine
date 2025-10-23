@@ -732,9 +732,9 @@ async def get_pillar_rules_summary(db: Session = Depends(get_db)):
     try:
         from src.database.models import SurveyRule
         
-        # Get all pillar rules
+        # Get all pillar rules (both pillar and generation types)
         rules = db.query(SurveyRule).filter(
-            SurveyRule.rule_type == 'pillar',
+            SurveyRule.rule_type.in_(['pillar', 'generation']),
             SurveyRule.is_active == True
         ).all()
         

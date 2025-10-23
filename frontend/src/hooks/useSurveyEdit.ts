@@ -32,6 +32,7 @@ export const useSurveyEdit = ({ surveyId, onSuccess, onError }: UseSurveyEditOpt
       return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to update question';
+      console.error('❌ [useSurveyEdit] updateQuestion error:', errorMessage);
       onError?.(errorMessage);
       throw error;
     } finally {
@@ -60,6 +61,7 @@ export const useSurveyEdit = ({ surveyId, onSuccess, onError }: UseSurveyEditOpt
       return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to update section';
+      console.error('❌ [useSurveyEdit] updateSection error:', errorMessage);
       onError?.(errorMessage);
       throw error;
     } finally {
@@ -125,7 +127,16 @@ export const useSurveyEdit = ({ surveyId, onSuccess, onError }: UseSurveyEditOpt
   const reorderSections = async (sectionOrder: number[]) => {
     setIsSaving(true);
     try {
-      console.log('📤 Sending section order to backend:', sectionOrder);
+      console.log('📤 [reorderSections] Starting request');
+      console.log('📤 [reorderSections] Survey ID:', surveyId);
+      console.log('📤 [reorderSections] Survey ID type:', typeof surveyId);
+      console.log('📤 [reorderSections] Survey ID length:', surveyId?.length);
+      console.log('📤 [reorderSections] Section order:', sectionOrder);
+      console.log('📤 [reorderSections] Full URL:', `/api/v1/survey/${surveyId}/sections/reorder`);
+      
+      if (!surveyId) {
+        throw new Error('Survey ID is required for reordering sections');
+      }
       
       const response = await fetch(`/api/v1/survey/${surveyId}/sections/reorder`, {
         method: 'PUT',
@@ -134,6 +145,8 @@ export const useSurveyEdit = ({ surveyId, onSuccess, onError }: UseSurveyEditOpt
         },
         body: JSON.stringify(sectionOrder)
       });
+      
+      console.log('📤 [reorderSections] Response received:', response.status, response.statusText);
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -165,7 +178,8 @@ export const useSurveyEdit = ({ surveyId, onSuccess, onError }: UseSurveyEditOpt
       return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to reorder sections';
-      console.error('❌ Frontend error:', errorMessage);
+      console.error('❌ [useSurveyEdit] reorderSections error:', errorMessage);
+      console.error('❌ [useSurveyEdit] Full error object:', error);
       onError?.(errorMessage);
       throw error;
     } finally {
@@ -216,7 +230,8 @@ export const useSurveyEdit = ({ surveyId, onSuccess, onError }: UseSurveyEditOpt
       return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to reorder questions';
-      console.error('❌ Frontend error:', errorMessage);
+      console.error('❌ [useSurveyEdit] reorderQuestions error:', errorMessage);
+      console.error('❌ [useSurveyEdit] Full error object:', error);
       onError?.(errorMessage);
       throw error;
     } finally {

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { AppStore, RFQRequest, EnhancedRFQRequest, WorkflowState, ProgressMessage, GoldenExampleRequest, GoldenExampleFormState, ToastMessage, SurveyAnnotations, getQuestionCount, PendingReview, ReviewDecision, RFQFieldMapping, DocumentAnalysisResponse, Survey, SurveyTextContent, TextComplianceReport, AiRATextLabel, METHODOLOGY_TEXT_REQUIREMENTS, AIRA_LABEL_TO_TYPE_MAP } from '../types';
+import { AppStore, RFQRequest, EnhancedRFQRequest, WorkflowState, ProgressMessage, GoldenExampleRequest, GoldenExampleFormState, ToastMessage, SurveyAnnotations, getQuestionCount, PendingReview, ReviewDecision, RFQFieldMapping, DocumentAnalysisResponse, Survey, SurveyTextContent, TextComplianceReport, AiRATextLabel, METHODOLOGY_TEXT_REQUIREMENTS, AIRA_LABEL_TO_TYPE_MAP, GoldenSection, GoldenQuestion } from '../types';
 import { ErrorClassifier } from '../types/errors';
 import { apiService } from '../services/api';
 import { rfqTemplateService } from '../services/RFQTemplateService';
@@ -311,6 +311,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
   // Golden Examples State
   goldenExamples: [],
   setGoldenExamples: (examples) => set({ goldenExamples: examples }),
+
+  // Golden Content State
+  goldenSections: [],
+  goldenQuestions: [],
+  goldenContentAnalytics: null,
 
   // UI State
   selectedQuestionId: undefined,
@@ -2649,6 +2654,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
           if (!rfqUpdates.advanced_classification) rfqUpdates.advanced_classification = { industry_classification: '', respondent_classification: '', methodology_tags: [], compliance_requirements: [] };
           rfqUpdates.advanced_classification.respondent_classification = value;
           break;
+        case 'methodology_tags':
+          if (!rfqUpdates.advanced_classification) rfqUpdates.advanced_classification = { industry_classification: '', respondent_classification: '', methodology_tags: [], compliance_requirements: [] };
+          // Handle both string and array values
+          if (Array.isArray(value)) {
+            rfqUpdates.advanced_classification.methodology_tags = value;
+          } else if (typeof value === 'string') {
+            // Split by comma and clean up
+            rfqUpdates.advanced_classification.methodology_tags = value.split(',').map(tag => tag.trim()).filter(tag => tag);
+          }
+          break;
 
         // Rules and Definitions field
         case 'rules_and_definitions':
@@ -3263,5 +3278,195 @@ export const useAppStore = create<AppStore>((set, get) => ({
         order: index
       };
     });
+  },
+
+  // Golden Content Actions
+  fetchGoldenSections: async (filters = {}) => {
+    try {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== '') {
+          if (Array.isArray(value)) {
+            params.append(key, value.join(','));
+          } else {
+            params.append(key, String(value));
+          }
+        }
+      });
+      
+      const response = await fetch(`/api/v1/golden-content/sections?${params}`);
+      if (!response.ok) throw new Error('Failed to fetch golden sections');
+      const sections = await response.json();
+      set({ goldenSections: sections });
+    } catch (error) {
+      console.error('Failed to fetch golden sections:', error);
+      get().addToast({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to load golden sections',
+        duration: 5000
+      });
+    }
+  },
+
+  fetchGoldenQuestions: async (filters = {}) => {
+    try {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== '') {
+          if (Array.isArray(value)) {
+            params.append(key, value.join(','));
+          } else {
+            params.append(key, String(value));
+          }
+        }
+      });
+      
+      const response = await fetch(`/api/v1/golden-content/questions?${params}`);
+      if (!response.ok) throw new Error('Failed to fetch golden questions');
+      const questions = await response.json();
+      set({ goldenQuestions: questions });
+    } catch (error) {
+      console.error('Failed to fetch golden questions:', error);
+      get().addToast({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to load golden questions',
+        duration: 5000
+      });
+    }
+  },
+
+  updateGoldenSection: async (id: string, updates: Partial<GoldenSection>) => {
+    try {
+      const response = await fetch(`/api/v1/golden-content/sections/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+      });
+      
+      if (!response.ok) throw new Error('Failed to update golden section');
+      
+      // Refresh list
+      await get().fetchGoldenSections();
+      
+      get().addToast({
+        type: 'success',
+        title: 'Updated',
+        message: 'Golden section updated successfully',
+        duration: 3000
+      });
+    } catch (error) {
+      console.error('Failed to update golden section:', error);
+      get().addToast({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to update golden section',
+        duration: 5000
+      });
+    }
+  },
+
+  updateGoldenQuestion: async (id: string, updates: Partial<GoldenQuestion>) => {
+    try {
+      const response = await fetch(`/api/v1/golden-content/questions/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+      });
+      
+      if (!response.ok) throw new Error('Failed to update golden question');
+      
+      // Refresh list
+      await get().fetchGoldenQuestions();
+      
+      get().addToast({
+        type: 'success',
+        title: 'Updated',
+        message: 'Golden question updated successfully',
+        duration: 3000
+      });
+    } catch (error) {
+      console.error('Failed to update golden question:', error);
+      get().addToast({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to update golden question',
+        duration: 5000
+      });
+    }
+  },
+
+  deleteGoldenSection: async (id: string) => {
+    try {
+      const response = await fetch(`/api/v1/golden-content/sections/${id}`, { 
+        method: 'DELETE' 
+      });
+      
+      if (!response.ok) throw new Error('Failed to delete golden section');
+      
+      // Refresh list
+      await get().fetchGoldenSections();
+      
+      get().addToast({
+        type: 'success',
+        title: 'Deleted',
+        message: 'Golden section deleted successfully',
+        duration: 3000
+      });
+    } catch (error) {
+      console.error('Failed to delete golden section:', error);
+      get().addToast({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to delete golden section',
+        duration: 5000
+      });
+    }
+  },
+
+  deleteGoldenQuestion: async (id: string) => {
+    try {
+      const response = await fetch(`/api/v1/golden-content/questions/${id}`, { 
+        method: 'DELETE' 
+      });
+      
+      if (!response.ok) throw new Error('Failed to delete golden question');
+      
+      // Refresh list
+      await get().fetchGoldenQuestions();
+      
+      get().addToast({
+        type: 'success',
+        title: 'Deleted',
+        message: 'Golden question deleted successfully',
+        duration: 3000
+      });
+    } catch (error) {
+      console.error('Failed to delete golden question:', error);
+      get().addToast({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to delete golden question',
+        duration: 5000
+      });
+    }
+  },
+
+  fetchGoldenContentAnalytics: async () => {
+    try {
+      const response = await fetch('/api/v1/golden-content/analytics');
+      if (!response.ok) throw new Error('Failed to fetch analytics');
+      const analytics = await response.json();
+      set({ goldenContentAnalytics: analytics });
+    } catch (error) {
+      console.error('Failed to fetch golden content analytics:', error);
+      get().addToast({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to load analytics',
+        duration: 5000
+      });
+    }
   }
 }));
