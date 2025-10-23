@@ -678,13 +678,16 @@ async def create_golden_pair_from_audit(
         # 2. Survey JSON from raw_response
         survey_json = None
         if audit_record.raw_response:
-            if isinstance(audit_record.raw_response, dict):
+            # Parse raw_response string to dict first
+            parsed_response = parse_raw_response(audit_record.raw_response)
+            
+            if isinstance(parsed_response, dict):
                 # Check for final_output structure
-                if 'final_output' in audit_record.raw_response:
-                    survey_json = audit_record.raw_response['final_output']
+                if 'final_output' in parsed_response:
+                    survey_json = parsed_response['final_output']
                 # Or direct structure
-                elif 'sections' in audit_record.raw_response or 'questions' in audit_record.raw_response:
-                    survey_json = audit_record.raw_response
+                elif 'sections' in parsed_response or 'questions' in parsed_response:
+                    survey_json = parsed_response
         
         if not survey_json:
             raise HTTPException(status_code=400, detail="Cannot extract survey JSON from audit record")

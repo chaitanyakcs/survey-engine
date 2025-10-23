@@ -50,6 +50,30 @@ class LLMAuditService:
             # Not a Python dictionary string, return as-is
             return raw_response
 
+    def _parse_raw_response_to_dict(self, raw_response: str) -> Any:
+        """
+        Parse raw response string to dictionary for inspection
+        """
+        if not raw_response:
+            return None
+        
+        try:
+            # Try to parse as JSON first
+            import json
+            return json.loads(raw_response)
+        except json.JSONDecodeError:
+            try:
+                # Try to parse as Python dictionary string
+                import ast
+                parsed_dict = ast.literal_eval(raw_response)
+                if isinstance(parsed_dict, dict):
+                    return parsed_dict
+                else:
+                    return raw_response
+            except (ValueError, SyntaxError, TypeError):
+                # Not a dictionary, return as-is
+                return raw_response
+
     async def log_llm_interaction(
         self,
         interaction_id: str,
@@ -654,18 +678,21 @@ class LLMAuditContext:
         # Check for survey JSON
         has_survey = False
         if audit_record.raw_response:
-            if isinstance(audit_record.raw_response, dict):
-                has_survey = bool('final_output' in audit_record.raw_response or 
-                                'sections' in audit_record.raw_response or 
-                                'questions' in audit_record.raw_response)
+            # Parse raw_response string to dict first
+            parsed_response = self._parse_raw_response_to_dict(audit_record.raw_response)
+            if isinstance(parsed_response, dict):
+                has_survey = bool('final_output' in parsed_response or 
+                                'sections' in parsed_response or 
+                                'questions' in parsed_response)
         
         if not has_survey:
             return {"can_create": False, "reason": "No survey JSON available", "warnings": []}
         
         # Check quality score
         quality_score = None
-        if isinstance(audit_record.raw_response, dict):
-            final_output = audit_record.raw_response.get('final_output', audit_record.raw_response)
+        parsed_response = self._parse_raw_response_to_dict(audit_record.raw_response)
+        if isinstance(parsed_response, dict):
+            final_output = parsed_response.get('final_output', parsed_response)
             if isinstance(final_output, dict):
                 metadata = final_output.get('metadata', {})
                 if isinstance(metadata, dict):
