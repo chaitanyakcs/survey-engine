@@ -110,7 +110,8 @@ function App() {
     restoreDocumentProcessingState();
     restoreEnhancedRfqState(false); // Restore without showing toast on app load
     restoreGoldenExampleState(); // Add this
-  }, [recoverWorkflowState, restoreDocumentProcessingState, restoreEnhancedRfqState, restoreGoldenExampleState]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty dependency array - only run once on mount
 
   // Load survey from URL parameters when on preview page
   useEffect(() => {

@@ -1135,38 +1135,43 @@ RESEARCH OBJECTIVES FIELDS (High Priority):
 ADVANCED CLASSIFICATION FIELDS (High Priority):
 16. industry_classification - Industry type (free text - extract from company background, product context)
 17. respondent_classification - Target respondent type (free text - extract from research audience, demographics)
+18. methodology_tags - Methodology tags and labels (as array)
 
 METHODOLOGY FIELDS (High Priority):
-18. primary_method - Research methodology (van_westendorp, gabor_granger, conjoint, basic_survey)
-19. stimuli_details - Concept details, price ranges, stimuli information
-20. methodology_requirements - Additional methodology notes and requirements
-21. complexity_level - Research complexity (simple, standard, advanced)
-22. required_methodologies - Specific methodologies required (as array)
-23. sample_size_target - Target number of respondents
+19. primary_method - Research methodology (van_westendorp, gabor_granger, conjoint, basic_survey)
+20. stimuli_details - Concept details, price ranges, stimuli information
+21. methodology_requirements - Additional methodology notes and requirements
+22. complexity_level - Research complexity (simple, standard, advanced)
+23. required_methodologies - Specific methodologies required (as array)
+24. sample_size_target - Target number of respondents
 
 SURVEY REQUIREMENTS FIELDS (Medium Priority):
-24. sample_plan - Sample structure, LOI, recruiting criteria
-25. must_have_questions - Must-have questions per respondent type (as array)
-26. completion_time_target - Target completion time (5_10_min, 10_15_min, 15_25_min, 25_plus_min)
-27. device_compatibility - Device requirements (mobile_first, desktop_first, both)
-28. accessibility_requirements - Accessibility needs (standard, enhanced, full_compliance)
-29. data_quality_requirements - Data quality standards (basic, standard, premium)
+25. sample_plan - Sample structure, LOI, recruiting criteria
+26. must_have_questions - Must-have questions per respondent type (as array)
+27. screener_requirements - Screener and respondent qualification requirements, tagging rules, piping logic
+28. completion_time_target - Target completion time (5_10_min, 10_15_min, 15_25_min, 25_plus_min)
+29. device_compatibility - Device requirements (mobile_first, desktop_first, both)
+30. accessibility_requirements - Accessibility needs (standard, enhanced, full_compliance)
+31. data_quality_requirements - Data quality standards (basic, standard, premium)
 
 SURVEY STRUCTURE FIELDS (Medium Priority):
-30. qnr_sections_detected - Required QNR sections (as array)
-31. text_requirements_detected - Required text introductions (as array)
+32. qnr_sections_detected - Required QNR sections (as array)
+33. text_requirements_detected - Required text introductions (as array)
 
 SURVEY LOGIC FIELDS (Medium Priority):
-32. requires_piping_logic - Whether piping/carry-forward logic is needed (boolean)
-33. requires_sampling_logic - Whether sampling/randomization logic is needed (boolean)
-34. requires_screener_logic - Whether screener/qualification logic is needed (boolean)
-35. custom_logic_requirements - Custom logic requirements and specifications
+34. requires_piping_logic - Whether piping/carry-forward logic is needed (boolean)
+35. requires_sampling_logic - Whether sampling/randomization logic is needed (boolean)
+36. requires_screener_logic - Whether screener/qualification logic is needed (boolean)
+37. custom_logic_requirements - Custom logic requirements and specifications
 
 BRAND USAGE FIELDS (Medium Priority):
-36. brand_recall_required - Whether brand recall questions are needed (boolean)
-37. brand_awareness_funnel - Whether brand awareness funnel is needed (boolean)
-38. brand_product_satisfaction - Whether brand/product satisfaction is needed (boolean)
-39. usage_frequency_tracking - Whether usage frequency tracking is needed (boolean)
+38. brand_recall_required - Whether brand recall questions are needed (boolean)
+39. brand_awareness_funnel - Whether brand awareness funnel is needed (boolean)
+40. brand_product_satisfaction - Whether brand/product satisfaction is needed (boolean)
+41. usage_frequency_tracking - Whether usage frequency tracking is needed (boolean)
+
+RULES AND DEFINITIONS FIELDS (Medium Priority):
+42. rules_and_definitions - Rules, definitions, jargon feed, special terms, terminology requirements
 
 SIMPLIFIED FIELD-SPECIFIC EXTRACTION GUIDANCE:
 
@@ -1259,6 +1264,12 @@ RESPONDENT_CLASSIFICATION (High Priority):
 - Strategy: Extract respondent type from research audience, demographics, target market descriptions
 - Examples: "B2C Consumers", "B2B Professionals", "Healthcare Workers", "Students", "General Public"
 
+METHODOLOGY_TAGS (High Priority):
+- Keywords: "methodology", "approach", "technique", "method", "conjoint", "van westendorp", "gabor granger", "pricing", "choice modeling"
+- Patterns: "Conjoint analysis", "Van Westendorp pricing", "Gabor-Granger method", "Choice modeling", "Price sensitivity"
+- Strategy: Extract methodology names and map to standardized tags
+- Examples: ["conjoint", "van_westendorp", "gabor_granger", "choice_modeling", "pricing"]
+
 PRIMARY_METHOD (High Priority):
 - Keywords: "van westendorp", "gabor granger", "conjoint", "survey", "interview"
 - Patterns: "Use van westendorp", "Conjoint analysis", "Price sensitivity"
@@ -1319,6 +1330,11 @@ DATA_QUALITY_REQUIREMENTS (Medium Priority):
 - Patterns: "Data quality standards", "Quality requirements", "Validation needed"
 - Strategy: Extract data quality requirements and map to options
 
+SCREENER_REQUIREMENTS (Medium Priority):
+- Keywords: "screener", "qualification", "eligibility", "criteria", "filter", "piping", "tagging"
+- Patterns: "Screener requirements", "Qualification criteria", "Eligibility rules", "Respondent tagging", "Piping logic"
+- Strategy: Extract screener and qualification requirements, tagging rules, piping logic specifications
+
 QNR_SECTIONS_DETECTED (Medium Priority):
 - Keywords: "sections", "questionnaire", "survey", "screener", "demographics"
 - Patterns: "Survey sections", "Questionnaire structure", "Required sections"
@@ -1368,6 +1384,11 @@ USAGE_FREQUENCY_TRACKING (Medium Priority):
 - Keywords: "how often", "frequency", "usage", "habits", "occasions"
 - Patterns: "Usage frequency", "How often", "Usage habits"
 - Strategy: Detect usage frequency tracking requirements
+
+RULES_AND_DEFINITIONS (Medium Priority):
+- Keywords: "rules", "definitions", "terminology", "jargon", "terms", "glossary", "specifications"
+- Patterns: "Rules and definitions", "Terminology requirements", "Jargon feed", "Special terms", "Definitions needed"
+- Strategy: Extract rules, definitions, terminology requirements, jargon specifications, special terms that need definition
 
 SURVEY STRUCTURE FIELDS (methodology-driven):
 
@@ -1873,6 +1894,22 @@ COMPLETE JSON EXAMPLE:
       "source": "Total Sample Size: 800-1,200 respondents",
       "reasoning": "Explicit sample size range provided",
       "priority": "high"
+    }},
+    {{
+      "field": "screener_requirements",
+      "value": "Qualified respondents must be current contact lens wearers, age 18-45, with monthly replacement usage. Include piping logic for brand awareness questions.",
+      "confidence": 0.85,
+      "source": "Screener requirements: Current contact lens wearers only, age 18-45, monthly replacement users",
+      "reasoning": "Explicit screener criteria and piping logic requirements mentioned",
+      "priority": "medium"
+    }},
+    {{
+      "field": "rules_and_definitions",
+      "value": "Define 'premium comfort' as enhanced moisture retention and all-day comfort. 'Price sensitivity' refers to willingness to pay premium prices for superior comfort features.",
+      "confidence": 0.80,
+      "source": "Key terms requiring definition: premium comfort, price sensitivity, enhanced features",
+      "reasoning": "Specialized terminology requiring clear definitions for survey consistency",
+      "priority": "medium"
     }}
   ],
   "unmapped_context": "Any additional useful information from the document that doesn't fit into the structured fields above but could be valuable for survey generation. This might include methodology preferences, tone requirements, special constraints, stakeholder notes, or other contextual details. Keep this concise (maximum 200 words) and focus on information that would help create better surveys."

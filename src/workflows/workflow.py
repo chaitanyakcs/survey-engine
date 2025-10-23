@@ -487,29 +487,13 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     def should_retry(state: SurveyGenerationState) -> str:
         """
         Determine if we should retry generation or proceed to completion
+        RETRIES DISABLED: Always route to completion_handler
         """
-        import time
-        
         logger.info(f"🔄 [Workflow] should_retry called - retry_count: {state.retry_count}, max_retries: {state.max_retries}, quality_gate_passed: {state.quality_gate_passed}")
         
-        # CRITICAL SAFEGUARD: Prevent infinite loops
-        # If we've been retrying for more than 5 minutes, force completion
-        if hasattr(state, 'workflow_start_time'):
-            elapsed_time = time.time() - state.workflow_start_time
-            if elapsed_time > 300:  # 5 minutes
-                logger.error(f"❌ [Workflow] SAFEGUARD TRIGGERED: Workflow running for {elapsed_time:.1f}s, forcing completion to prevent infinite loop")
-                return "completion_handler"
-        
-        if state.error_message:
-            logger.info(f"🔄 [Workflow] Error detected, routing to completion_handler")
-            return "completion_handler"  # Send to completion on error
-            
-        if not state.quality_gate_passed:
-            logger.warning(f"❌ [Workflow] Quality gate failed, exiting workflow immediately (no retries)")
-            return "completion_handler"  # Exit immediately on quality failure
-        
-        logger.info(f"✅ [Workflow] Quality gate passed, routing to completion_handler")
-        return "completion_handler"  # Quality gate passed, ready for completion
+        # RETRIES DISABLED: Always route to completion_handler
+        logger.info(f"🚫 [Workflow] Retries disabled - routing to completion_handler")
+        return "completion_handler"
     
     workflow.add_conditional_edges(
         "validate",
@@ -541,7 +525,7 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
                 progress_data["message"] = f"Survey generation failed: {state.error_message}"
                 progress_data["error"] = True
                 await ws_client.send_progress_update(state.workflow_id, progress_data)
-                return {"workflow_completed": True, "workflow_paused": False, "error": True, "error_message": state.error_message}
+                return {"workflow_completed": True, "workflow_paused": False, "error": True}
             else:
                 # Workflow completed normally
                 logger.info(f"✅ [Workflow] Workflow completed successfully: {state.workflow_id}")
@@ -551,7 +535,7 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
                 return {"workflow_completed": True, "workflow_paused": False}
         except Exception as e:
             logger.error(f"❌ [Workflow] Error in completion handler: {str(e)}")
-            return {"workflow_completed": True, "workflow_paused": False, "error_message": str(e)}
+            return {"workflow_completed": True, "workflow_paused": False, "error": True}
 
     workflow.add_node("completion_handler", completion_handler)
 

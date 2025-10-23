@@ -66,7 +66,7 @@ export const AnnotationSidePane: React.FC<AnnotationSidePaneProps> = ({
 
     switch (annotationType) {
       case 'question':
-        return `Question Annotation`;
+        return `Question Annotation`; // Restored title for questions
       case 'section':
         return `Section Annotation`;
       case 'survey':
@@ -81,7 +81,7 @@ export const AnnotationSidePane: React.FC<AnnotationSidePaneProps> = ({
 
     switch (annotationType) {
       case 'question':
-        return 'Question selected - details shown in left pane';
+        return ''; // Removed subtitle for questions
       case 'section':
         return annotationTarget.title || annotationTarget.section_title || 'Section';
       case 'survey':

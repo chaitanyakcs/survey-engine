@@ -40,3 +40,13 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+def get_independent_db_session() -> Session:
+    """
+    Get an independent database session for operations that should not be 
+    affected by parent transaction rollbacks (e.g., audit logging).
+    
+    The caller is responsible for closing this session.
+    """
+    return SessionLocal()

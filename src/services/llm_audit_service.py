@@ -96,7 +96,10 @@ class LLMAuditService:
         error_message: str = None
     ) -> str:
         """
-        Log an LLM interaction to the audit system
+        Log an LLM interaction to the audit system using an independent database session.
+        
+        This method always uses an independent database session to ensure audit records
+        are persisted even if the parent workflow transaction is rolled back.
         
         Args:
             interaction_id: Unique identifier for this interaction
@@ -121,7 +124,15 @@ class LLMAuditService:
         Returns:
             The ID of the created audit record
         """
+        # CRITICAL: Always use an independent database session for audit logging
+        # This ensures audit records persist even if the parent transaction is rolled back
+        from src.database.connection import get_independent_db_session
+        
+        audit_session = None
         try:
+            # Create an independent session that won't be affected by parent rollbacks
+            audit_session = get_independent_db_session()
+            
             # Log the parameters being passed for debugging
             logger.info(f"🔍 [LLMAuditService] Logging LLM interaction:")
             logger.info(f"🔍 [LLMAuditService] Interaction ID: {interaction_id}")
@@ -130,6 +141,7 @@ class LLMAuditService:
             logger.info(f"🔍 [LLMAuditService] Parent RFQ ID: {parent_rfq_id}")
             logger.info(f"🔍 [LLMAuditService] Parent Workflow ID: {parent_workflow_id}")
             logger.info(f"🔍 [LLMAuditService] Context Type: {context_type}")
+            logger.info(f"🔍 [LLMAuditService] Using independent session: {id(audit_session)}")
             
             # Extract hyperparameters
             hyperparams = hyperparameters or {}
@@ -189,35 +201,31 @@ class LLMAuditService:
                 tags=tags or []
             )
             
-            self.db_session.add(audit_record)
+            # Add and commit using the independent session
+            audit_session.add(audit_record)
+            audit_session.commit()
             
-            # Commit the audit record to ensure it's persisted
-            try:
-                self.db_session.commit()
-                logger.info(f"✅ [LLMAuditService] Logged LLM interaction: {interaction_id} ({purpose})")
-                return str(audit_record.id)
-            except Exception as commit_error:
-                logger.warning(f"⚠️ [LLMAuditService] Failed to commit audit record, rolling back: {str(commit_error)}")
-                self.db_session.rollback()
-                # Try to create a new session for audit logging
-                try:
-                    from src.database.connection import get_db
-                    audit_session = next(get_db())
-                    audit_session.add(audit_record)
-                    audit_session.commit()
-                    logger.info(f"✅ [LLMAuditService] Logged LLM interaction with new session: {interaction_id} ({purpose})")
-                    return str(audit_record.id)
-                except Exception as retry_error:
-                    logger.error(f"❌ [LLMAuditService] Failed to log with new session: {str(retry_error)}")
-                    raise
+            logger.info(f"✅ [LLMAuditService] Logged LLM interaction: {interaction_id} ({purpose})")
+            audit_record_id = str(audit_record.id)
+            
+            return audit_record_id
             
         except Exception as e:
             logger.error(f"❌ [LLMAuditService] Failed to log LLM interaction: {str(e)}")
-            try:
-                self.db_session.rollback()
-            except:
-                pass  # Ignore rollback errors
+            if audit_session:
+                try:
+                    audit_session.rollback()
+                except:
+                    pass  # Ignore rollback errors
             raise
+        finally:
+            # Always close the independent session
+            if audit_session:
+                try:
+                    audit_session.close()
+                    logger.debug(f"🔒 [LLMAuditService] Closed independent audit session: {id(audit_session)}")
+                except:
+                    pass  # Ignore close errors
     
     async def get_hyperparameter_config(
         self,

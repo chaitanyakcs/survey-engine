@@ -69,10 +69,10 @@ http {
     keepalive_timeout 65;
     
     # Global timeout settings for ML model loading
-    proxy_connect_timeout       600s;
-    proxy_send_timeout          600s;
-    proxy_read_timeout          600s;
-    send_timeout               600s;
+    proxy_connect_timeout       900s;
+    proxy_send_timeout          900s;
+    proxy_read_timeout          900s;
+    send_timeout               900s;
     
     server {
         listen 80;
@@ -106,9 +106,9 @@ http {
             proxy_buffering off;
             proxy_cache off;
             # Increase timeouts for ML model loading
-            proxy_connect_timeout       600s;
-            proxy_send_timeout          600s;
-            proxy_read_timeout          600s;
+            proxy_connect_timeout       900s;
+            proxy_send_timeout          900s;
+            proxy_read_timeout          900s;
         }
 
         # WebSocket proxy to FastAPI server (consolidated)

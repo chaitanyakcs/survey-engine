@@ -476,10 +476,8 @@ class GoldenValidatorNode:
             # Structure validation NEVER blocks generation
             # It only provides quality scoring and flagging
             
-            # Increment retry count if validation fails (but not for structure issues)
+            # Retries disabled - keep retry count unchanged
             updated_retry_count = state.retry_count
-            if not quality_gate_passed:
-                updated_retry_count += 1
             
             # Prepare response
             response = {
@@ -487,7 +485,8 @@ class GoldenValidatorNode:
                 "golden_similarity_score": similarity_score,
                 "quality_gate_passed": quality_gate_passed,
                 "retry_count": updated_retry_count,
-                "error_message": None
+                # Don't clear error_message if it was set by a previous node
+                "error_message": state.error_message if state.error_message else None
             }
             
             # Add structure validation results if available
@@ -885,7 +884,8 @@ class ValidatorAgent:
                     "validation_results": {"schema_valid": False, "methodology_compliant": False},
                     "retry_count": state.retry_count,
                     "workflow_should_continue": True,
-                    "error_message": None,
+                    # Don't clear error_message if it was set by a previous node
+                    "error_message": state.error_message if state.error_message else None,
                     "evaluation_skipped": True
                 }
 
@@ -964,12 +964,12 @@ class ValidatorAgent:
                         self.logger.warning(f"⚠️ [ValidatorAgent] Basic validation failed (non-blocking): {validation_error}")
                         validation_results["schema_warnings"] = [f"Validation error: {str(validation_error)}"]
 
-                # Don't increment retry count - let user decide whether to retry
+                # Retries disabled - keep retry count unchanged
                 # Evaluation is informational, not blocking
                 updated_retry_count = state.retry_count
 
                 if not quality_gate_passed:
-                    self.logger.info(f"🔍 [ValidatorAgent] Quality below threshold ({weighted_score:.1%}), but continuing workflow - user can choose to retry")
+                    self.logger.info(f"🔍 [ValidatorAgent] Quality below threshold ({weighted_score:.1%}), but continuing workflow - retries disabled")
                 else:
                     self.logger.info(f"✅ [ValidatorAgent] Quality above threshold ({weighted_score:.1%})")
 
@@ -979,7 +979,8 @@ class ValidatorAgent:
                     "validation_results": validation_results,
                     "retry_count": updated_retry_count,  # Unchanged
                     "workflow_should_continue": True,  # Always continue regardless of quality
-                    "error_message": None
+                    # Don't clear error_message if it was set by a previous node
+                    "error_message": state.error_message if state.error_message else None
                 }
 
                 self.logger.info(f"🏛️ [ValidatorAgent] Returning result with quality_gate_passed: {quality_gate_passed}")
@@ -1072,7 +1073,8 @@ class ValidatorAgent:
                 "validation_results": validation_results,
                 "retry_count": state.retry_count,
                 "workflow_should_continue": True,
-                "error_message": None,
+                # Don't clear error_message if it was set by a previous node
+                "error_message": state.error_message if state.error_message else None,
                 "evaluation_mode": "basic"
             }
             

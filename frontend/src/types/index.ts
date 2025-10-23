@@ -516,7 +516,6 @@ export interface GoldenExampleRequest {
 export interface GoldenExampleFormState {
   formData: GoldenExampleRequest;
   autoGenerateRfq: boolean;
-  inputMode: 'upload' | 'manual';
   rfqInputMode: 'text' | 'upload';
   timestamp: number;
 }

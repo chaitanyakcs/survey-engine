@@ -32,6 +32,12 @@ class ProgressTracker:
         "evaluating_pillars": (80, 90),     # Updated: 80-90% for evaluating pillars
         "finalizing": (90, 95),             # Updated: 90-95% for finalizing
         "completed": (95, 100),
+        
+        # Substeps for building_context (10-25%)
+        "parsing_rfq": (10, 15),            # RFQ parsing and analysis
+        "generating_embeddings": (15, 18),  # Embedding generation
+        "matching_examples": (18, 22),      # Golden example matching
+        "building_context": (22, 25),       # Context building completion
 
         # Document parsing workflow
         "extracting_document": (0, 25),     # Document text extraction
@@ -62,30 +68,33 @@ class ProgressTracker:
         Get the appropriate progress percentage for a given step.
         Ensures progress only moves forward and stays within step ranges.
         """
-        if step not in self.PROGRESS_RANGES:
-            logger.warning(f"⚠️ [ProgressTracker] Unknown step: {step}")
+        # Use substep if provided and it has its own range, otherwise use main step
+        target_step = substep if substep and substep in self.PROGRESS_RANGES else step
+        
+        if target_step not in self.PROGRESS_RANGES:
+            logger.warning(f"⚠️ [ProgressTracker] Unknown step: {target_step}")
             return self.current_progress
 
-        min_progress, max_progress = self.PROGRESS_RANGES[step]
+        min_progress, max_progress = self.PROGRESS_RANGES[target_step]
 
         # If this is a new step, ensure we don't go backward
-        if self.current_step != step:
+        if self.current_step != target_step:
             # CRITICAL FIX: Prevent backward progress movement
             new_progress = max(min_progress, self.current_progress)
 
             # If the new step's minimum is less than current progress, use current progress
             if new_progress > min_progress:
-                logger.info(f"🛡️ [ProgressTracker] Prevented backward progress: keeping {self.current_progress}% instead of {min_progress}% for step '{step}'")
+                logger.info(f"🛡️ [ProgressTracker] Prevented backward progress: keeping {self.current_progress}% instead of {min_progress}% for step '{target_step}'")
 
-            self.current_step = step
+            self.current_step = target_step
             self.current_progress = new_progress
             self.step_history.append({
-                "step": step,
+                "step": target_step,
                 "substep": substep,
                 "progress": self.current_progress,
                 "timestamp": self._get_timestamp()
             })
-            logger.info(f"📊 [ProgressTracker] Started step '{step}' at {self.current_progress}%")
+            logger.info(f"📊 [ProgressTracker] Started step '{target_step}' at {self.current_progress}%")
             return self.current_progress
         
         # If same step, increment within range
@@ -143,6 +152,11 @@ class ProgressTracker:
             "evaluating_pillars": "Analyzing quality across all pillars...",
             "finalizing": "Processing results and finalizing survey...",
             "completed": "Survey generation completed successfully!",
+            
+            # Substeps for building_context
+            "parsing_rfq": "Analyzing your requirements and research objectives...",
+            "generating_embeddings": "Processing text for template matching...",
+            "matching_examples": "Finding templates and matching relevant examples...",
 
             # Document parsing workflow
             "extracting_document": "Extracting text from document...",
@@ -162,11 +176,13 @@ class ProgressTracker:
             "extraction_complete": "Field extraction completed!"
         }
         
-        base_message = messages.get(step, f"Processing {step}...")
-        
-        if substep:
-            return f"{base_message} ({substep})"
-        return base_message
+        # Use substep message if available, otherwise use main step message
+        if substep and substep in messages:
+            return messages[substep]
+        elif step in messages:
+            return messages[step]
+        else:
+            return f"Processing {step}..."
     
     def get_progress_data(self, step: str, substep: Optional[str] = None, **kwargs: Any) -> Dict[str, Any]:
         """Get complete progress data for a step."""

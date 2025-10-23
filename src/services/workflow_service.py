@@ -193,15 +193,15 @@ class WorkflowService:
                         title, description, product_category, target_segment,
                         research_goal, workflow_id, survey_id
                     ),
-                    timeout=600.0  # 10 minute timeout
+                    timeout=900.0  # 15 minute timeout
                 )
             except asyncio.TimeoutError:
-                logger.error(f"❌ [WorkflowService] Workflow {workflow_id} timed out after 10 minutes")
+                logger.error(f"❌ [WorkflowService] Workflow {workflow_id} timed out after 15 minutes")
                 # Send failure notification
                 try:
                     await self.ws_client.send_progress_update(workflow_id, {
                         "type": "error",
-                        "message": "Workflow timed out after 10 minutes",
+                        "message": "Workflow timed out after 15 minutes",
                         "error": "timeout"
                     })
                 except Exception:

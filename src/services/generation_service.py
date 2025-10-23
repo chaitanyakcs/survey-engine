@@ -30,9 +30,10 @@ logger = logging.getLogger(__name__)
 
 class SurveyGenerationError(UserFriendlyError):
     """Exception raised when survey generation fails"""
-    def __init__(self, message: str, error_code: str = None, details: Dict[str, Any] = None):
+    def __init__(self, message: str, error_code: str = None, details: Dict[str, Any] = None, raw_response: str = None):
         self.error_code = error_code
         self.details = details or {}
+        self.raw_response = raw_response
         super().__init__(
             message=message,
             technical_details=f"Error Code: {error_code}" if error_code else None,
@@ -297,6 +298,20 @@ class GenerationService:
 
                 except Exception as api_error:
                     logger.error(f"❌ [GenerationService] API call failed: {str(api_error)}")
+                    
+                    # Try to capture raw response even if generation failed
+                    try:
+                        # Check if it's a SurveyGenerationError with raw response
+                        if isinstance(api_error, SurveyGenerationError) and api_error.raw_response:
+                            audit_context.set_raw_response(api_error.raw_response)
+                            logger.info(f"🔍 [GenerationService] Raw response captured from SurveyGenerationError (length: {len(api_error.raw_response)})")
+                        # Check for other error types with raw response
+                        elif hasattr(api_error, 'raw_response') and api_error.raw_response:
+                            audit_context.set_raw_response(api_error.raw_response)
+                            logger.info(f"🔍 [GenerationService] Raw response captured from error context (length: {len(api_error.raw_response)})")
+                    except Exception as e:
+                        logger.debug(f"⚠️ [GenerationService] Could not capture raw response from error: {e}")
+                    
                     audit_context.set_output(
                         output_content="",
                     )
@@ -663,8 +678,35 @@ class GenerationService:
         """
         logger.debug(f"🔍 [GenerationService] Starting JSON extraction from raw text (length: {len(raw_text)})")
         
-        # Use the centralized JSON parsing utility
-        result = parse_llm_json_response(raw_text, service_name="GenerationService")
+        # Use the centralized JSON parsing utility with comprehensive strategies
+        from src.utils.json_generation_utils import JSONGenerationUtils, JSONParseStrategy
+        
+        # Try parsing with all strategies including the new broken JSON recovery
+        strategies = [
+            JSONParseStrategy.DIRECT,
+            JSONParseStrategy.MARKDOWN_EXTRACT,
+            JSONParseStrategy.BOUNDARY_EXTRACT,
+            JSONParseStrategy.SANITIZE_AND_PARSE,
+            JSONParseStrategy.AGGRESSIVE_SANITIZE,
+            JSONParseStrategy.REPLICATE_EXTRACT,
+            JSONParseStrategy.ESCAPED_JSON_HANDLE,
+            JSONParseStrategy.LARGE_JSON_PARSE,
+            JSONParseStrategy.PARTIAL_JSON_RECOVERY,
+            JSONParseStrategy.BROKEN_JSON_RECOVERY,  # New strategy for severely broken JSON
+        ]
+        
+        parse_result = JSONGenerationUtils.parse_json_from_response(
+            raw_text, 
+            expected_schema=JSONGenerationUtils.get_survey_generation_schema(),
+            strategies=strategies
+        )
+        
+        if parse_result.success:
+            result = parse_result.data
+            logger.info(f"✅ [GenerationService] JSON parsing succeeded using strategy: {parse_result.strategy_used.value}")
+        else:
+            result = None
+            logger.error(f"❌ [GenerationService] All JSON parsing strategies failed: {parse_result.error}")
         
         if result is not None:
             logger.debug(f"✅ [GenerationService] JSON parsing succeeded! Keys: {list(result.keys())}")
@@ -685,7 +727,7 @@ class GenerationService:
                 problem_chars = [f"0x{ord(c):02x}" for c in raw_text[:100] if ord(c) < 32 and c not in '\n\r\t']
                 logger.error(f"❌ [GenerationService] Control characters found: {problem_chars}")
 
-            # Hard fail for LLM generation failures - no minimal survey fallback
+            # Hard fail for LLM generation failures
             raise SurveyGenerationError(
                 "LLM generation failed - unable to parse response as valid survey JSON. "
                 "Please try again with a different model or check your input parameters.",
@@ -694,7 +736,8 @@ class GenerationService:
                     "raw_response_length": len(raw_text),
                     "response_preview": raw_text[:500],
                     "suggestion": "Try selecting a different model or retry the generation"
-                }
+                },
+                raw_response=raw_text
             )
 
     def _extract_direct_json(self, sanitized_text: str) -> Optional[Dict[str, Any]]:
@@ -2153,15 +2196,43 @@ class GenerationService:
             progress_data = progress_tracker.get_progress_data("llm_processing")
             await self.ws_client.send_progress_update(self.workflow_id, progress_data)
 
-        output = await self.replicate_client.async_run(
-            self.model,
-            input={
-                "prompt": prompt,
-                "temperature": 0.7,
-                "max_tokens": 8000,
-                "top_p": 0.9
-            }
-        )
+        try:
+            # Add timeout to prevent hanging on long prompts
+            output = await asyncio.wait_for(
+                self.replicate_client.async_run(
+                    self.model,
+                    input={
+                        "prompt": prompt,
+                        "temperature": 0.7,
+                        "max_tokens": 8000,
+                        "top_p": 0.9
+                    }
+                ),
+                timeout=900.0  # 15 minute timeout for API call
+            )
+        except Exception as api_error:
+            logger.error(f"❌ [GenerationService] Replicate API call failed: {str(api_error)}")
+            logger.error(f"❌ [GenerationService] API error type: {type(api_error)}")
+            
+            # Check if it's a timeout error
+            if "timeout" in str(api_error).lower() or "readtimeout" in str(api_error).lower():
+                raise SurveyGenerationError(
+                    "LLM generation timed out - the model took too long to respond. Please try again with a shorter prompt or different model.",
+                    error_code="GEN_002",
+                    details={
+                        "error_type": "timeout",
+                        "suggestion": "Try reducing prompt length or using a different model"
+                    }
+                )
+            else:
+                raise SurveyGenerationError(
+                    f"LLM generation failed: {str(api_error)}",
+                    error_code="GEN_003",
+                    details={
+                        "error_type": str(type(api_error)),
+                        "suggestion": "Check your API configuration and try again"
+                    }
+                )
 
         if isinstance(output, list):
             output_text = "\n".join(str(item) for item in output)

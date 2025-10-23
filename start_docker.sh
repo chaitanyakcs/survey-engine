@@ -191,9 +191,9 @@ http {
             proxy_cache off;
             
             # Timeouts for ML operations
-            proxy_connect_timeout 600s;
-            proxy_send_timeout 600s;
-            proxy_read_timeout 600s;
+            proxy_connect_timeout 900s;
+            proxy_send_timeout 900s;
+            proxy_read_timeout 900s;
         }
         
         # WebSocket support
@@ -251,7 +251,7 @@ start_application() {
     
     # Step 6: Start FastAPI
     log_info "Starting FastAPI server..."
-    exec python3 -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 600 --workers 1
+    exec python3 -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 900 --workers 1
 }
 
 # Main execution

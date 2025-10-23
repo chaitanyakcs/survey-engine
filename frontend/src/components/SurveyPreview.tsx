@@ -4,12 +4,7 @@ import { Question, Survey, SurveySection, QuestionAnnotation, SectionAnnotation,
 import AnnotationMode from './AnnotationMode';
 import AnnotationSidePane from './AnnotationSidePane';
 import SurveyTextBlock from './SurveyTextBlock';
-import MatrixLikert from './MatrixLikert';
-import ConstantSum from './ConstantSum';
-import GaborGranger from './GaborGranger';
-import NumericGrid from './NumericGrid';
-import NumericOpen from './NumericOpen';
-import { QuestionEditor } from './question/QuestionEditor';
+import QuestionCard from './QuestionCard';
 import { useSurveyEdit } from '../hooks/useSurveyEdit';
 import { PencilIcon, ChevronDownIcon, ChevronRightIcon, TagIcon, TrashIcon, ChevronUpIcon, PlusIcon } from '@heroicons/react/24/outline';
 
@@ -17,369 +12,6 @@ import { PencilIcon, ChevronDownIcon, ChevronRightIcon, TagIcon, TrashIcon, Chev
 // Helper function to check if survey uses sections format
 const hasSections = (survey: Survey): boolean => {
   return !!survey.sections && survey.sections.length > 0;
-};
-
-const QuestionCard: React.FC<{ 
-  question: Question; 
-  index: number; 
-  onUpdate: (updatedQuestion: Question) => void; 
-  onDelete: () => void;
-  onMove: (questionId: string, direction: 'up' | 'down') => void;
-  canMoveUp: boolean;
-  canMoveDown: boolean;
-  isEditingSurvey: boolean;
-  isAnnotationMode: boolean;
-  onOpenAnnotation?: (question: Question) => void;
-  annotation?: QuestionAnnotation;
-}> = ({ question, index, onUpdate, onDelete, onMove, canMoveUp, canMoveDown, isEditingSurvey, isAnnotationMode, onOpenAnnotation, annotation }) => {
-  const { selectedQuestionId, setSelectedQuestion } = useAppStore();
-  const isSelected = selectedQuestionId === question.id;
-  
-  const [isEditing, setIsEditing] = useState(false);
-  const [editedQuestion, setEditedQuestion] = useState<Question>(question);
-
-  // Auto-enable edit mode when isEditingSurvey is true
-  useEffect(() => {
-    if (isEditingSurvey && !isEditing) {
-      setIsEditing(true);
-    } else if (!isEditingSurvey && isEditing) {
-      setIsEditing(false);
-    }
-  }, [isEditingSurvey, isEditing]);
-
-  const handleSaveEdit = async (updatedQuestion: Question) => {
-    // In survey edit mode, just update local state - no immediate API call
-    await onUpdate(updatedQuestion);
-    // Only exit edit mode if not in survey edit mode
-    if (!isEditingSurvey) {
-      setIsEditing(false);
-    }
-  };
-
-  const handleCancelEdit = () => {
-    setEditedQuestion(question);
-    // Only exit edit mode if not in survey edit mode
-    if (!isEditingSurvey) {
-      setIsEditing(false);
-    }
-  };
-
-
-  return (
-    <div 
-      className={`
-        border rounded-lg p-4 cursor-pointer transition-all duration-200
-        ${isSelected ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-gray-300'}
-      `}
-      onClick={() => {
-        if (isAnnotationMode && onOpenAnnotation) {
-          // Open annotation pane
-          onOpenAnnotation(question);
-        } else {
-          // Normal selection behavior
-          setSelectedQuestion(isSelected ? undefined : question.id);
-        }
-      }}
-    >
-      {/* Question Header */}
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center space-x-2">
-          {question.type !== 'instruction' && (
-            <span className="text-sm font-medium text-gray-500">Q{index + 1}</span>
-          )}
-          {question.methodology && question.type !== 'instruction' && (
-            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-              {question.methodology}
-            </span>
-          )}
-          <span className={`
-            inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
-            ${question.category === 'screening' ? 'bg-yellow-100 text-yellow-800' :
-              question.category === 'pricing' ? 'bg-green-100 text-green-800' :
-              question.category === 'features' ? 'bg-blue-100 text-blue-800' :
-              'bg-gray-100 text-gray-800'}
-          `}>
-            {question.category}
-          </span>
-          {annotation && (
-            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-              <TagIcon className="w-3 h-3 mr-1" />
-              Annotated
-            </span>
-          )}
-          {/* Display auto-detected labels */}
-          {question.labels && question.labels.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1">
-              {question.labels.map((label, index) => (
-                <span 
-                  key={index}
-                  className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
-                >
-                  {label}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          {isEditingSurvey && (
-            <>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete();
-                }}
-                className="p-1 text-gray-400 hover:text-red-600"
-              >
-                <TrashIcon className="h-4 w-4" />
-              </button>
-              <div className="flex flex-col space-y-1">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onMove(question.id, 'up');
-                  }}
-                  disabled={!canMoveUp}
-                  className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-50"
-                >
-                  <ChevronUpIcon className="h-3 w-3" />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onMove(question.id, 'down');
-                  }}
-                  disabled={!canMoveDown}
-                  className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-50"
-                >
-                  <ChevronDownIcon className="h-3 w-3" />
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Question Content */}
-      <div className="mb-4">
-        {isEditing ? (
-          <QuestionEditor
-            question={editedQuestion}
-            onSave={handleSaveEdit}
-            onCancel={handleCancelEdit}
-            isLoading={false}
-            hideSaveButton={isEditingSurvey}
-          />
-        ) : (
-          <div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              {question.text}
-            </h3>
-            <p className="text-sm text-gray-600 mb-3">
-              Type: {question.type}{question.category && ` • Category: ${question.category}`}
-            </p>
-            
-            {/* AI Annotation Information */}
-            {annotation && annotation.aiGenerated && (
-              <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center space-x-2">
-                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                      🤖 AI Annotated
-                    </span>
-                    {annotation.aiConfidence && (
-                      <span className="text-xs text-blue-600">
-                        Confidence: {Math.round(annotation.aiConfidence * 100)}%
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center space-x-2 text-xs text-gray-600">
-                    <span>Quality: {annotation.quality}/5</span>
-                    <span>•</span>
-                    <span>Relevant: {annotation.relevant}/5</span>
-                  </div>
-                </div>
-                {annotation.comment && (
-                  <p className="text-sm text-gray-700 italic">
-                    "{annotation.comment}"
-                  </p>
-                )}
-                <div className="mt-2 grid grid-cols-5 gap-2 text-xs">
-                  <div className="text-center">
-                    <div className="font-medium text-gray-600">Methodology</div>
-                    <div className="text-blue-600">{annotation.pillars.methodologicalRigor}/5</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="font-medium text-gray-600">Content</div>
-                    <div className="text-blue-600">{annotation.pillars.contentValidity}/5</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="font-medium text-gray-600">Experience</div>
-                    <div className="text-blue-600">{annotation.pillars.respondentExperience}/5</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="font-medium text-gray-600">Analytics</div>
-                    <div className="text-blue-600">{annotation.pillars.analyticalValue}/5</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="font-medium text-gray-600">Business</div>
-                    <div className="text-blue-600">{annotation.pillars.businessImpact}/5</div>
-                  </div>
-                </div>
-                {/* Debug logging for q1 */}
-                {question.id === 'q1' && (
-                  <div className="text-xs text-red-600 mt-1">
-                    DEBUG: Pillars = {JSON.stringify(annotation.pillars)}
-                  </div>
-                )}
-              </div>
-            )}
-            
-            {/* Specialized Question Type Components */}
-            {question.type === 'matrix_likert' && (
-              <MatrixLikert 
-                question={question} 
-                isPreview={true}
-              />
-            )}
-            
-            {question.type === 'constant_sum' && (
-              <ConstantSum 
-                question={question} 
-                isPreview={true}
-              />
-            )}
-            
-            {question.type === 'gabor_granger' && (
-              <GaborGranger 
-                question={question} 
-                isPreview={true}
-              />
-            )}
-            
-            {question.type === 'numeric_grid' && (
-              <NumericGrid 
-                question={question} 
-                isPreview={true}
-              />
-            )}
-            
-            {question.type === 'numeric_open' && (
-              <NumericOpen 
-                question={question} 
-                isPreview={true}
-              />
-            )}
-            
-            {question.type === 'maxdiff' && question.features && question.features.length > 0 && (
-              <div className="space-y-3">
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <p className="text-sm font-medium text-blue-900 mb-4">
-                    Select ONE feature as MOST important and ONE as LEAST important:
-                  </p>
-                  
-                  {/* Header row */}
-                  <div className="grid grid-cols-[1fr_auto_auto] gap-4 mb-2 pb-2 border-b border-blue-300">
-                    <div className="text-xs font-semibold text-blue-900">Feature</div>
-                    <div className="text-xs font-semibold text-green-700 text-center w-20">MOST</div>
-                    <div className="text-xs font-semibold text-red-700 text-center w-20">LEAST</div>
-                  </div>
-                  
-                  {/* Feature rows */}
-                  <div className="space-y-1">
-                    {question.features.map((feature, idx) => (
-                      <div key={idx} className="grid grid-cols-[1fr_auto_auto] gap-4 items-center p-2 bg-white rounded hover:bg-gray-50">
-                        <span className="text-sm text-gray-700">{feature}</span>
-                        <div className="flex justify-center w-20">
-                          <input 
-                            type="radio" 
-                            name={`${question.id}_most`} 
-                            value={feature}
-                            disabled 
-                            className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300" 
-                          />
-                        </div>
-                        <div className="flex justify-center w-20">
-                          <input 
-                            type="radio" 
-                            name={`${question.id}_least`} 
-                            value={feature}
-                            disabled 
-                            className="h-4 w-4 text-red-600 focus:ring-red-500 border-gray-300" 
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Multiple Select Questions */}
-            {question.type === 'multiple_select' && question.options && question.options.length > 0 && (
-              <div className="space-y-2">
-                <h4 className="text-sm font-medium text-gray-700">Options:</h4>
-                {question.options.map((option, idx) => (
-                  <div key={idx} className="flex items-center p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                    <input
-                      type="checkbox"
-                      disabled
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mr-3"
-                    />
-                    <span className="text-sm text-gray-700">{option}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Standard Question Types */}
-            {!['matrix_likert', 'constant_sum', 'gabor_granger', 'numeric_grid', 'numeric_open', 'likert', 'multiple_select'].includes(question.type) && (
-              <>
-                {/* Question Options */}
-                {question.options && question.options.length > 0 && (
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-medium text-gray-700">Options:</h4>
-                    {question.options.map((option, idx) => (
-                      <div key={idx} className="flex items-center p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                        <div className="flex items-center justify-center w-6 h-6 bg-primary-100 text-primary-600 rounded-full text-sm font-medium mr-3">
-                          {idx + 1}
-                        </div>
-                        <span className="text-sm text-gray-700">{option}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Special Question Types */}
-                {question.type === 'instruction' && (
-                  <div className="bg-secondary-50 border-l-4 border-secondary-400 p-4 rounded-r-lg">
-                    <h4 className="text-sm font-medium text-secondary-800 mb-2">Instruction</h4>
-                    <p className="text-sm text-secondary-700">{question.text}</p>
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* Unknown Question Type */}
-            {!['multiple_choice', 'scale', 'ranking', 'text', 'instruction', 'single_choice', 'matrix', 'numeric', 'date', 'boolean', 'open_text', 'multiple_select', 'matrix_likert', 'constant_sum', 'numeric_grid', 'numeric_open', 'likert', 'open_end', 'display_only', 'single_open', 'multiple_open', 'open_ended', 'gabor_granger', 'maxdiff'].includes(question.type) && (
-              <div className="bg-warning-50 border border-warning-200 rounded-lg p-4">
-                <div className="flex items-center space-x-2">
-                  <svg className="w-5 h-5 text-warning-600" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                  </svg>
-                  <span className="text-sm font-medium text-warning-800">Unknown Question Type: {question.type}</span>
-                </div>
-                <p className="text-xs text-warning-700 mt-2">
-                  This question type is not yet supported for preview. Please review the raw JSON.
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
 };
 
 const SectionCard: React.FC<{
@@ -814,7 +446,6 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
   const [editedSurvey, setEditedSurvey] = useState<Survey | null>(null);
   const [isEditModeActive, setIsEditModeActive] = useState(isInEditMode);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   
   // Initialize survey edit hook
   const { updateQuestion, updateSection, createSection, deleteSection, reorderSections, reorderQuestions } = useSurveyEdit({
@@ -907,14 +538,14 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
   // All changes are now saved immediately, so this function just calls onSaveAndExit
   const handleSaveAllChanges = useCallback(async () => {
     console.log('🚪 [Save] All changes are already saved immediately, just exiting');
-    
-    // Call onSaveAndExit if provided (for separate edit route)
-    if (onSaveAndExit) {
-      onSaveAndExit();
-    } else {
-      // Fallback to old behavior (exit edit mode)
-      setIsEditModeActive(false);
-    }
+      
+      // Call onSaveAndExit if provided (for separate edit route)
+      if (onSaveAndExit) {
+        onSaveAndExit();
+      } else {
+        // Fallback to old behavior (exit edit mode)
+        setIsEditModeActive(false);
+      }
   }, [onSaveAndExit]);
 
   // Expose save function to parent component - only when onSaveTrigger changes
@@ -1675,29 +1306,18 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
               <div className="flex items-center space-x-3">
                 <button
                   onClick={handleCancelChanges}
-                  disabled={isSaving}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSaveAllChanges}
-                  disabled={isSaving}
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
                 >
-                  {isSaving ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      <span>Saving...</span>
-                    </>
-                  ) : (
-                    <>
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12" />
                       </svg>
-                      <span>Exit</span>
-                    </>
-                  )}
+                  <span>Exit</span>
                 </button>
               </div>
             )}

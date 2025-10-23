@@ -7,6 +7,7 @@ import {
 } from '../types';
 import { useAppStore } from '../store/useAppStore';
 import AnnotationSidePane from './AnnotationSidePane';
+import QuestionCard from './QuestionCard';
 
 interface AnnotationModeProps {
   survey: any;
@@ -160,56 +161,6 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
 
   const getSectionAnnotation = (sectionId: string) => {
     return currentAnnotations?.sectionAnnotations?.find((sa: SectionAnnotation) => sa.sectionId === sectionId);
-  };
-
-
-  // Render selected question details inline
-  const renderSelectedQuestionDetails = (question: any) => {
-    const questionId = question.question_id || question.id;
-    const isSelectedQuestion = annotationPane.type === 'question' && selectedQuestion === questionId;
-    if (!isSelectedQuestion) return null;
-
-    return (
-      <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg mx-3 mb-2">
-        <div className="flex items-center justify-between mb-3">
-          <h4 className="text-lg font-semibold text-amber-800">Question Details</h4>
-        </div>
-        <div className="mb-4">
-          <p className="text-gray-800 text-sm leading-relaxed">
-            {question.question_text || question.text || 'No text available'}
-          </p>
-          {question.options && question.options.length > 0 && (
-            <div className="mt-3">
-              <h5 className="text-sm font-medium text-gray-700 mb-2">Options:</h5>
-              <ul className="text-sm text-gray-600 space-y-1">
-                {question.options.map((option: any, index: number) => (
-                  <li key={index} className="flex items-start">
-                    <span className="text-gray-400 mr-2">•</span>
-                    <span>{option}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {/* Display auto-detected labels */}
-          {question.labels && question.labels.length > 0 && (
-            <div className="mt-3">
-              <h5 className="text-sm font-medium text-gray-700 mb-2">Auto-detected Labels:</h5>
-              <div className="flex flex-wrap gap-1">
-                {question.labels.map((label: string, index: number) => (
-                  <span 
-                    key={index}
-                    className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
-                  >
-                    {label}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
   };
 
   return (
@@ -376,8 +327,24 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
                                   })()}
                                 </div>
                               </div>
-                              {/* Show question details inline if this question is selected */}
-                              {renderSelectedQuestionDetails(question)}
+                              {/* Show question details using QuestionCard if this question is selected */}
+                              {selectedQuestion === questionId && (
+                                <div className="mx-3 mb-2">
+                                  <QuestionCard
+                                    question={question}
+                                    index={section.questions.indexOf(question)}
+                                    onUpdate={() => {}} // No-op for annotation mode
+                                    onDelete={() => {}} // No-op for annotation mode
+                                    onMove={() => {}} // No-op for annotation mode
+                                    canMoveUp={false}
+                                    canMoveDown={false}
+                                    isEditingSurvey={false} // Read-only in annotation mode
+                                    isAnnotationMode={true}
+                                    annotation={getQuestionAnnotation(questionId)}
+                                    disableHighlighting={true} // Disable highlighting in left pane
+                                  />
+                                </div>
+                              )}
                             </div>
                           );
                         })

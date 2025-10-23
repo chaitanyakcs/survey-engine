@@ -2152,7 +2152,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
       // Add timeout to prevent hanging indefinitely
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout for LLM processing
+      const timeoutId = setTimeout(() => controller.abort(), 900000); // 15 minute timeout for LLM processing
 
       const response = await fetch('/api/v1/rfq/upload-document', {
         method: 'POST',
@@ -2220,7 +2220,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
       // Handle timeout errors
       if (error instanceof Error && error.name === 'AbortError') {
-        errorMessage = 'Document processing timed out after 5 minutes. The document may be too complex. Please try again or contact support.';
+        errorMessage = 'Document processing timed out after 15 minutes. The document may be too complex. Please try again or contact support.';
       }
 
       // Enhance error messages with user guidance

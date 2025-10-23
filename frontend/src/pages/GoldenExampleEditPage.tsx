@@ -2,17 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from '../components/Sidebar';
 import { SurveyPreview } from '../components/SurveyPreview';
 import { useAppStore } from '../store/useAppStore';
-import { GoldenExample, GoldenExampleRequest } from '../types';
+import { GoldenExample } from '../types';
 import { useSidebarLayout } from '../hooks/useSidebarLayout';
-import MethodologyTagsInput from '../components/MethodologyTagsInput';
 import { 
   ArrowLeftIcon, 
   DocumentTextIcon, 
   CodeBracketIcon, 
   EyeIcon,
-  PencilIcon,
-  CheckIcon,
-  XMarkIcon,
   DocumentIcon,
   ClipboardDocumentListIcon
 } from '@heroicons/react/24/outline';
@@ -30,23 +26,14 @@ export const GoldenExampleEditPage: React.FC = () => {
   };
   
   const [id] = useState<string | null>(getGoldenExampleId());
-  const { fetchGoldenExamples, updateGoldenExample, loadAnnotations } = useAppStore();
+  const { fetchGoldenExamples, loadAnnotations } = useAppStore();
   const { mainContentClasses } = useSidebarLayout();
   
   const [example, setExample] = useState<GoldenExample | null>(null);
   const [actualSurvey, setActualSurvey] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isEditing, setIsEditing] = useState(false);
   const [activeMainTab, setActiveMainTab] = useState<'rfq' | 'survey'>('survey');
   const [activeSurveyTab, setActiveSurveyTab] = useState<'preview' | 'json' | 'docx'>('preview');
-  const [formData, setFormData] = useState<GoldenExampleRequest>({
-    rfq_text: '',
-    survey_json: { survey_id: '', title: '', description: '', estimated_time: 10, confidence_score: 0.8, methodologies: [], golden_examples: [], questions: [], metadata: { target_responses: 0, methodology: [] } },
-    methodology_tags: [],
-    industry_category: '',
-    research_goal: '',
-    quality_score: undefined
-  });
 
   const loadGoldenExample = useCallback(async () => {
     if (!id) {
@@ -129,14 +116,6 @@ export const GoldenExampleEditPage: React.FC = () => {
           console.log('🔍 [GoldenExampleEdit] Using golden example ID as survey_id:', actualSurvey.survey_id);
         }
         
-        setFormData({
-          rfq_text: foundExample.rfq_text,
-          survey_json: actualSurvey,
-          methodology_tags: foundExample.methodology_tags,
-          industry_category: foundExample.industry_category || '',
-          research_goal: foundExample.research_goal || '',
-          quality_score: foundExample.quality_score
-        });
 
         // Load annotations for this survey if it has a survey_id
         if (actualSurvey?.survey_id) {
@@ -165,37 +144,6 @@ export const GoldenExampleEditPage: React.FC = () => {
     loadGoldenExample();
   }, [loadGoldenExample]);
 
-  const handleSave = async () => {
-    if (!example) return;
-    
-    try {
-      await updateGoldenExample(example.id, formData);
-      setIsEditing(false);
-      await loadGoldenExample(); // Refresh data
-    } catch (error) {
-      console.error('Failed to update golden example:', error);
-    }
-  };
-
-  const handleCancel = () => {
-    if (example && actualSurvey) {
-      // Ensure the generated survey_id is preserved when canceling
-      const surveyToUse = { ...actualSurvey };
-      if (!surveyToUse.survey_id) {
-        surveyToUse.survey_id = example.id;  // Use the golden example ID directly as UUID
-      }
-      
-      setFormData({
-        rfq_text: example.rfq_text,
-        survey_json: surveyToUse,
-        methodology_tags: example.methodology_tags,
-        industry_category: example.industry_category || '',
-        research_goal: example.research_goal || '',
-        quality_score: example.quality_score
-      });
-    }
-    setIsEditing(false);
-  };
 
   const handleViewChange = (view: 'survey' | 'golden-examples' | 'rules' | 'surveys' | 'settings' | 'annotation-insights' | 'llm-review') => {
     if (view === 'survey') {
@@ -272,112 +220,52 @@ export const GoldenExampleEditPage: React.FC = () => {
                 </div>
                 <div>
                   <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
-                    {isEditing ? 'Edit Reference Example' : 'Reference Example'}
+                    Reference Example
                   </h1>
                   <p className="text-gray-600 mt-1">
-                    {isEditing ? 'Modify the reference example details' : 'View and edit reference example'}
+                    View reference example details
                   </p>
                 </div>
               </div>
               </div>
               
-              {/* Stats and Actions Section */}
-              <div className="flex flex-col lg:flex-row lg:items-center space-y-4 lg:space-y-0 lg:space-x-8">
-                {/* Stats Cards */}
-                <div className="flex flex-wrap gap-4">
-                  {/* Quality Score Card */}
-                  <div className="bg-gradient-to-br from-yellow-50 to-amber-50 border border-yellow-200 rounded-xl p-4 min-w-[120px]">
-                    <div className="flex items-center space-x-2 mb-1">
-                      <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                      <span className="text-xs font-medium text-yellow-700 uppercase tracking-wide">Quality</span>
-                    </div>
-                    <div className="text-2xl font-bold text-yellow-800">
-                      {example.quality_score ? example.quality_score.toFixed(2) : 'N/A'}
-                    </div>
-                  </div>
+              {/* Stats and Methodologies Section */}
+              <div className="space-y-4">
+                {/* Compact Stats and Methodologies */}
+                <div className="flex flex-wrap gap-2">
+                  {/* Quality Score Tag */}
+                  <span className="px-3 py-1.5 bg-gradient-to-r from-yellow-100 to-amber-100 text-yellow-800 rounded-lg text-sm font-medium border border-yellow-300 flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                    <span>Quality: {example.quality_score ? example.quality_score.toFixed(2) : 'N/A'}</span>
+                  </span>
 
-                  {/* Usage Count Card */}
-                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4 min-w-[120px]">
-                    <div className="flex items-center space-x-2 mb-1">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                      <span className="text-xs font-medium text-blue-700 uppercase tracking-wide">Usage</span>
-                    </div>
-                    <div className="text-2xl font-bold text-blue-800">
-                      {example.usage_count}
-                    </div>
-                  </div>
+                  {/* Usage Count Tag */}
+                  <span className="px-3 py-1.5 bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-800 rounded-lg text-sm font-medium border border-blue-300 flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                    <span>Usage: {example.usage_count}</span>
+                  </span>
 
-                  {/* Industry Card */}
-                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-xl p-4 min-w-[140px]">
-                    <div className="flex items-center space-x-2 mb-1">
-                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                      <span className="text-xs font-medium text-green-700 uppercase tracking-wide">Industry</span>
-                    </div>
-                    <div className="text-lg font-semibold text-green-800 truncate">
-                      {example.industry_category || 'N/A'}
-                    </div>
-                  </div>
+                  {/* Industry Tag */}
+                  <span className="px-3 py-1.5 bg-gradient-to-r from-green-100 to-emerald-100 text-green-800 rounded-lg text-sm font-medium border border-green-300 flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <span>Industry: {example.industry_category || 'N/A'}</span>
+                  </span>
 
-                  {/* Research Goal Card */}
-                  <div className="bg-gradient-to-br from-purple-50 to-violet-50 border border-purple-200 rounded-xl p-4 min-w-[160px]">
-                    <div className="flex items-center space-x-2 mb-1">
-                      <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-                      <span className="text-xs font-medium text-purple-700 uppercase tracking-wide">Research Goal</span>
-                    </div>
-                    <div className="text-lg font-semibold text-purple-800 truncate">
-                      {example.research_goal || 'N/A'}
-                    </div>
-                  </div>
-                </div>
+                  {/* Research Goal Tag */}
+                  <span className="px-3 py-1.5 bg-gradient-to-r from-purple-100 to-violet-100 text-purple-800 rounded-lg text-sm font-medium border border-purple-300 flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                    <span>Goal: {example.research_goal || 'N/A'}</span>
+                  </span>
 
-                {/* Methodology Tags Section */}
-                {example.methodology_tags.length > 0 && (
-                  <div className="flex flex-col space-y-2">
-                    <div className="flex items-center space-x-2">
-                      <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
-                      <span className="text-xs font-medium text-gray-700 uppercase tracking-wide">Methodologies</span>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {example.methodology_tags.map((tag, index) => (
-                        <span 
-                          key={tag} 
-                          className="px-3 py-1.5 bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 rounded-lg text-sm font-medium border border-gray-300 hover:from-gray-200 hover:to-gray-300 transition-all duration-200"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Action Buttons */}
-                <div className="flex items-center space-x-3 lg:ml-auto">
-                  {isEditing ? (
-                    <>
-                      <button
-                        onClick={handleCancel}
-                        className="px-6 py-3 text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-all duration-200 flex items-center space-x-2 font-medium"
-                      >
-                        <XMarkIcon className="h-4 w-4" />
-                        <span>Cancel</span>
-                      </button>
-                      <button
-                        onClick={handleSave}
-                        className="px-6 py-3 bg-gradient-to-r from-yellow-600 to-amber-600 text-white rounded-xl hover:from-yellow-700 hover:to-amber-700 transition-all duration-200 flex items-center space-x-2 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-                      >
-                        <CheckIcon className="h-4 w-4" />
-                        <span>Save Changes</span>
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      onClick={() => setIsEditing(true)}
-                      className="px-6 py-3 bg-gradient-to-r from-yellow-600 to-amber-600 text-white rounded-xl hover:from-yellow-700 hover:to-amber-700 transition-all duration-200 flex items-center space-x-2 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                  {/* Methodology Tags */}
+                  {example.methodology_tags.map((tag, index) => (
+                    <span 
+                      key={tag} 
+                      className="px-3 py-1.5 bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 rounded-lg text-sm font-medium border border-gray-300"
                     >
-                      <PencilIcon className="h-4 w-4" />
-                      <span>Edit</span>
-                    </button>
-                  )}
+                      {tag}
+                    </span>
+                  ))}
                 </div>
               </div>
             </div>
@@ -468,17 +356,13 @@ export const GoldenExampleEditPage: React.FC = () => {
                             console.log('🔍 [GoldenExampleEdit] activeSurveyTab:', activeSurveyTab);
                             console.log('🔍 [GoldenExampleEdit] actualSurvey exists:', !!actualSurvey);
                             console.log('🔍 [GoldenExampleEdit] actualSurvey:', actualSurvey);
-                            console.log('🔍 [GoldenExampleEdit] isEditing:', isEditing);
-                            console.log('🔍 [GoldenExampleEdit] formData.survey_json:', formData.survey_json);
-                            console.log('🔍 [GoldenExampleEdit] Survey to pass to SurveyPreview:', isEditing ? formData.survey_json : actualSurvey);
                             console.log('🔍 [GoldenExampleEdit] ===== END RENDERING LOGIC =====');
                             
                             return actualSurvey ? (
                               <div>
                                 <SurveyPreview 
-                                  survey={isEditing ? formData.survey_json : actualSurvey}
-                                  isEditable={isEditing}
-                                  onSurveyChange={isEditing ? (survey) => setFormData({ ...formData, survey_json: survey }) : undefined}
+                                  survey={actualSurvey}
+                                  isEditable={false}
                                   hideHeader={true}
                                 />
                               </div>
@@ -498,7 +382,7 @@ export const GoldenExampleEditPage: React.FC = () => {
                         <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-xl p-6 overflow-x-auto border border-gray-700">
                           {actualSurvey ? (
                             <pre className="text-green-400 text-sm leading-relaxed">
-                              {JSON.stringify(isEditing ? formData.survey_json : actualSurvey, null, 2)}
+                              {JSON.stringify(actualSurvey, null, 2)}
                             </pre>
                           ) : (
                             <div className="text-center py-12">
@@ -538,118 +422,57 @@ export const GoldenExampleEditPage: React.FC = () => {
                     {/* RFQ Text Section */}
                     <div className="space-y-4">
                       <h3 className="text-lg font-medium text-gray-800">RFQ Text</h3>
-                      {isEditing ? (
-                        <textarea
-                          value={formData.rfq_text}
-                          onChange={(e) => setFormData({ ...formData, rfq_text: e.target.value })}
-                          className="w-full h-96 border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                          placeholder="Enter the RFQ description..."
-                        />
-                      ) : (
-                        <div className="prose max-w-none">
-                          <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
-                            <pre className="text-gray-700 whitespace-pre-wrap leading-relaxed text-sm font-mono">
-                              {example.rfq_text}
-                            </pre>
+                      <div className="prose max-w-none">
+                        <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+                          <pre className="text-gray-700 whitespace-pre-wrap leading-relaxed text-sm font-mono">
+                            {example.rfq_text}
+                          </pre>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Metadata Section */}
+                    <div className="space-y-4 pt-6 border-t border-gray-200">
+                      <h3 className="text-lg font-medium text-gray-800">Metadata</h3>
+                      
+                      {/* Industry Category */}
+                      <div className="flex items-center space-x-3">
+                        <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
+                        <span className="text-xs font-medium text-gray-700 uppercase tracking-wide">Industry</span>
+                        <div className="text-sm text-gray-600">
+                          {example.industry_category || 'N/A'}
+                        </div>
+                      </div>
+
+                      {/* Research Goal */}
+                      <div className="flex items-center space-x-3">
+                        <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
+                        <span className="text-xs font-medium text-gray-700 uppercase tracking-wide">Research Goal</span>
+                        <div className="text-sm text-gray-600">
+                          {example.research_goal || 'N/A'}
+                        </div>
+                      </div>
+
+                      {/* Methodology Tags */}
+                      {example.methodology_tags.length > 0 && (
+                        <div className="flex flex-col space-y-2">
+                          <div className="flex items-center space-x-2">
+                            <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
+                            <span className="text-xs font-medium text-gray-700 uppercase tracking-wide">Methodologies</span>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {example.methodology_tags.map((tag, index) => (
+                              <span 
+                                key={tag} 
+                                className="px-3 py-1.5 bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 rounded-lg text-sm font-medium border border-gray-300 hover:from-gray-200 hover:to-gray-300 transition-all duration-200"
+                              >
+                                {tag}
+                              </span>
+                            ))}
                           </div>
                         </div>
                       )}
                     </div>
-
-                    {/* Metadata Section - Only show when editing */}
-                    {isEditing && (
-                      <div className="space-y-6 pt-6 border-t border-gray-200">
-                        <h3 className="text-lg font-medium text-gray-800">Metadata</h3>
-                        
-                        {/* Industry Category */}
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Industry Category
-                          </label>
-                          <input
-                            type="text"
-                            value={formData.industry_category}
-                            onChange={(e) => setFormData({ ...formData, industry_category: e.target.value })}
-                            className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all duration-200"
-                            placeholder="Enter industry category (e.g., Consumer Electronics, Healthcare, Finance)"
-                          />
-                        </div>
-
-                        {/* Research Goal */}
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Research Goal
-                          </label>
-                          <input
-                            type="text"
-                            value={formData.research_goal}
-                            onChange={(e) => setFormData({ ...formData, research_goal: e.target.value })}
-                            className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all duration-200"
-                            placeholder="Enter research goal (e.g., Pricing Research, Product Development, Market Segmentation)"
-                          />
-                        </div>
-
-                        {/* Methodology Tags */}
-                        <div className="relative">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Methodology Tags
-                          </label>
-                          <MethodologyTagsInput
-                            tags={formData.methodology_tags}
-                            onTagsChange={(tags) => setFormData({ ...formData, methodology_tags: tags })}
-                            placeholder="Add methodology tags..."
-                            maxTags={20}
-                            showDropdownMenu={true}
-                            extractedTags={[]}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Display metadata when not editing */}
-                    {!isEditing && (
-                      <div className="space-y-4 pt-6 border-t border-gray-200">
-                        <h3 className="text-lg font-medium text-gray-800">Metadata</h3>
-                        
-                        {/* Industry Category */}
-                        <div className="flex items-center space-x-3">
-                          <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
-                          <span className="text-xs font-medium text-gray-700 uppercase tracking-wide">Industry</span>
-                          <div className="text-sm text-gray-600">
-                            {example.industry_category || 'N/A'}
-                          </div>
-                        </div>
-
-                        {/* Research Goal */}
-                        <div className="flex items-center space-x-3">
-                          <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
-                          <span className="text-xs font-medium text-gray-700 uppercase tracking-wide">Research Goal</span>
-                          <div className="text-sm text-gray-600">
-                            {example.research_goal || 'N/A'}
-                          </div>
-                        </div>
-
-                        {/* Methodology Tags */}
-                        {example.methodology_tags.length > 0 && (
-                          <div className="flex flex-col space-y-2">
-                            <div className="flex items-center space-x-2">
-                              <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
-                              <span className="text-xs font-medium text-gray-700 uppercase tracking-wide">Methodologies</span>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              {example.methodology_tags.map((tag, index) => (
-                                <span 
-                                  key={tag} 
-                                  className="px-3 py-1.5 bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 rounded-lg text-sm font-medium border border-gray-300 hover:from-gray-200 hover:to-gray-300 transition-all duration-200"
-                                >
-                                  {tag}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
                 )}
               </div>

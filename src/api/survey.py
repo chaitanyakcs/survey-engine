@@ -474,10 +474,37 @@ async def update_question(
         if not question_found:
             raise HTTPException(status_code=404, detail="Question not found")
         
+        # Create a completely new dictionary to force SQLAlchemy to detect the change
+        new_final_output = dict(survey_data)
+        
+        # Deep copy sections if they exist
+        if 'sections' in survey_data:
+            new_final_output['sections'] = []
+            for section in survey_data['sections']:
+                new_section = dict(section)
+                if 'questions' in section:
+                    new_section['questions'] = [dict(question) for question in section['questions']]
+                new_final_output['sections'].append(new_section)
+        
+        # Deep copy questions if they exist (legacy format)
+        if 'questions' in survey_data:
+            new_final_output['questions'] = [dict(question) for question in survey_data['questions']]
+        
         # Save the updated survey data
-        survey.final_output = survey_data
+        logger.info(f"💾 [Survey API] Before save - question text: {new_final_output['sections'][0]['questions'][0]['text'] if 'sections' in new_final_output and new_final_output['sections'] else 'N/A'}")
+        
+        survey.final_output = new_final_output
         survey.updated_at = datetime.now()
+        
+        # Explicitly tell SQLAlchemy that the JSONB field has changed
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(survey, 'final_output')
+        
+        # Force the database to recognize the change
+        db.flush()  # Flush changes to database without committing
         db.commit()
+        
+        logger.info(f"💾 [Survey API] After commit - question text: {survey.final_output['sections'][0]['questions'][0]['text'] if 'sections' in survey.final_output and survey.final_output['sections'] else 'N/A'}")
         
         # Sync to golden pair if this is a reference survey
         if survey.status == "reference":

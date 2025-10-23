@@ -5,8 +5,6 @@ import {
 } from '../types';
 import LikertScale from './LikertScale';
 import EnhancedLabelsInput from './EnhancedLabelsInput';
-import TabGroup from './TabGroup';
-import ProgressIndicator from './ProgressIndicator';
 import PillarTooltip from './PillarTooltip';
 import { useAppStore } from '../store/useAppStore';
 
@@ -30,9 +28,10 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
 
   // Single state object for all form data - no circular dependencies
   const [formData, setFormData] = useState<QuestionAnnotation>(() => {
-    const questionLabels = question.labels || [];
-    const annotationLabels = annotation?.labels || [];
-    const removedLabels = new Set(annotation?.removedLabels || []);
+    // Ensure labels are always arrays
+    const questionLabels = Array.isArray(question.labels) ? question.labels : [];
+    const annotationLabels = Array.isArray(annotation?.labels) ? annotation.labels : [];
+    const removedLabels = new Set(Array.isArray(annotation?.removedLabels) ? annotation.removedLabels : []);
     
     // Merge labels: question labels + annotation labels - removed labels
     const mergedLabels = [...questionLabels, ...annotationLabels]
@@ -69,9 +68,10 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
 
     console.log('🔍 [QuestionAnnotationPanel] Initializing for question:', question.id);
 
-    const questionLabels = question.labels || [];
-    const annotationLabels = annotation?.labels || [];
-    const removedLabels = new Set(annotation?.removedLabels || []);
+    // Ensure labels are always arrays
+    const questionLabels = Array.isArray(question.labels) ? question.labels : [];
+    const annotationLabels = Array.isArray(annotation?.labels) ? annotation.labels : [];
+    const removedLabels = new Set(Array.isArray(annotation?.removedLabels) ? annotation.removedLabels : []);
     
     // Merge labels: question labels + annotation labels - removed labels
     const mergedLabels = [...questionLabels, ...annotationLabels]
@@ -104,9 +104,9 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
 
   // Calculate current merged labels on-demand - no useMemo circular dependency
   const getCurrentMergedLabels = useCallback(() => {
-    const questionLabels = question.labels || [];
-    const currentLabels = formData.labels || [];
-    const removedLabels = new Set(formData.removedLabels || []);
+    const questionLabels = Array.isArray(question.labels) ? question.labels : [];
+    const currentLabels = Array.isArray(formData.labels) ? formData.labels : [];
+    const removedLabels = new Set(Array.isArray(formData.removedLabels) ? formData.removedLabels : []);
     
     // Start with question labels (auto-generated)
     let merged = [...questionLabels];
@@ -159,12 +159,11 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
       
       // If labels field is updated, recalculate merged labels
       if (field === 'labels') {
-        const questionLabels = question.labels || [];
-        const newLabels = value || [];
-        const removedLabels = new Set(prev.removedLabels || []);
+        const newLabels = Array.isArray(value) ? value : [];
+        const removedLabels = new Set(Array.isArray(prev.removedLabels) ? prev.removedLabels : []);
         
         // Calculate what was removed and what was added back
-        const previousLabels = prev.labels || [];
+        const previousLabels = Array.isArray(prev.labels) ? prev.labels : [];
         const removed = previousLabels.filter((label: string) => !newLabels.includes(label));
         const addedBack = newLabels.filter((label: string) => !previousLabels.includes(label));
         
@@ -205,10 +204,10 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
   // Debug logging
   console.log('🔍 [QuestionAnnotationPanel] Render with:', {
     questionId: question.id,
-    questionLabels: question?.labels,
-    annotationLabels: annotation?.labels,
+    questionLabels: Array.isArray(question?.labels) ? question.labels : [],
+    annotationLabels: Array.isArray(annotation?.labels) ? annotation.labels : [],
     currentMergedLabels,
-    removedLabels: formData.removedLabels,
+    removedLabels: Array.isArray(formData.removedLabels) ? formData.removedLabels : [],
     annotationId: annotation?.id
   });
 
@@ -232,16 +231,14 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
 
   return (
     <div className="h-full flex flex-col bg-white">
-      {/* Header */}
+      {/* Header - Simplified */}
       <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-medium text-gray-900">
               Question Annotation
             </h3>
-            <p className="text-sm text-gray-500 mt-1">
-              Question ID: {question.id}
-            </p>
+            {/* Removed Question ID - keeping only the title */}
           </div>
           <div className="flex items-center space-x-2">
             {annotation?.id && (
@@ -316,9 +313,9 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
                   placeholder="Add labels..."
                 />
                 <div className="mt-2 text-xs text-gray-500">
-                  Auto-generated labels: {question.labels?.length || 0} | 
-                  User-defined: {(currentMergedLabels.length - (question.labels?.length || 0))} |
-                  Removed: {formData.removedLabels?.length || 0}
+                  Auto-generated labels: {Array.isArray(question.labels) ? question.labels.length : 0} | 
+                  User-defined: {(currentMergedLabels.length - (Array.isArray(question.labels) ? question.labels.length : 0))} |
+                  Removed: {Array.isArray(formData.removedLabels) ? formData.removedLabels.length : 0}
                 </div>
               </div>
 

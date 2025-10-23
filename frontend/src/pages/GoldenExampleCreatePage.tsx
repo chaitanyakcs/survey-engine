@@ -16,7 +16,6 @@ export const GoldenExampleCreatePage: React.FC = () => {
     persistGoldenExampleState,
     restoreGoldenExampleState,
     clearGoldenExampleState,
-    goldenExampleState,
     addToast
   } = useAppStore();
   const [isLoading, setIsLoading] = useState(false);
@@ -42,7 +41,6 @@ export const GoldenExampleCreatePage: React.FC = () => {
   const [parseError, setParseError] = useState<string>('');
   const [showJsonPreview, setShowJsonPreview] = useState(false);
   const [extractedText, setExtractedText] = useState<string>('');
-  const [inputMode, setInputMode] = useState<'upload' | 'manual'>('upload');
   const [rfqInputMode, setRfqInputMode] = useState<'text' | 'upload'>('text');
   const [isUploadingRfq, setIsUploadingRfq] = useState(false);
   const [extractedMethodologyTags, setExtractedMethodologyTags] = useState<string[]>([]);
@@ -63,27 +61,42 @@ export const GoldenExampleCreatePage: React.FC = () => {
       
       const restored = await restoreGoldenExampleState();
       console.log('🔄 [GoldenExampleCreatePage] Restore result:', restored);
-      console.log('🔄 [GoldenExampleCreatePage] Golden example state:', goldenExampleState);
       
-      if (restored && goldenExampleState) {
-        console.log('✅ [GoldenExampleCreatePage] Restoring form data:', goldenExampleState.formData);
-        setFormData(goldenExampleState.formData);
-        setAutoGenerateRfq(goldenExampleState.autoGenerateRfq);
-        setInputMode(goldenExampleState.inputMode);
-        setRfqInputMode(goldenExampleState.rfqInputMode);
-        // Show toast notification
+      // Get the current state after restoration
+      const currentState = useAppStore.getState().goldenExampleState;
+      console.log('🔄 [GoldenExampleCreatePage] Golden example state:', currentState);
+      
+      if (restored && currentState) {
+        console.log('✅ [GoldenExampleCreatePage] Restoring form data:', currentState.formData);
+        setFormData(currentState.formData);
+        setAutoGenerateRfq(currentState.autoGenerateRfq);
+        setRfqInputMode(currentState.rfqInputMode);
+        // Show toast notification with specific details about what was restored
+        const hasRfq = currentState.formData?.rfq_text && currentState.formData.rfq_text.trim().length > 0;
+        const hasSurvey = currentState.formData?.survey_json?.questions && currentState.formData.survey_json.questions.length > 0;
+        const hasMetadata = currentState.formData?.industry_category || currentState.formData?.research_goal || (currentState.formData?.methodology_tags && currentState.formData.methodology_tags.length > 0);
+        
+        let restoredItems = [];
+        if (hasRfq) restoredItems.push('RFQ text');
+        if (hasSurvey) restoredItems.push('survey template');
+        if (hasMetadata) restoredItems.push('metadata fields');
+        
+        const restoredText = restoredItems.length > 0 
+          ? `Restored: ${restoredItems.join(', ')}`
+          : 'Previous form data restored';
+        
         addToast({
           type: 'info',
-          title: 'Progress Restored',
-          message: 'Your previous work has been restored',
-          duration: 3000
+          title: 'Form Restored',
+          message: restoredText,
+          duration: 4000
         });
       } else {
         console.log('⚠️ [GoldenExampleCreatePage] No state to restore');
       }
     };
     restoreState();
-  }, [addToast, goldenExampleState, restoreGoldenExampleState, sessionId]);
+  }, [addToast, restoreGoldenExampleState, sessionId]);
 
   // Auto-save state on changes (debounced)
   useEffect(() => {
@@ -101,7 +114,6 @@ export const GoldenExampleCreatePage: React.FC = () => {
         persistGoldenExampleState(sessionId, {
           formData,
           autoGenerateRfq,
-          inputMode,
           rfqInputMode,
           timestamp: Date.now()
         });
@@ -109,7 +121,7 @@ export const GoldenExampleCreatePage: React.FC = () => {
     }, 1000); // Debounce 1 second
     
     return () => clearTimeout(timeoutId);
-  }, [formData, autoGenerateRfq, inputMode, rfqInputMode, sessionId, persistGoldenExampleState]);
+  }, [formData, autoGenerateRfq, rfqInputMode, sessionId, persistGoldenExampleState]);
 
   // Handle field extraction results
   const handleFieldsExtracted = (fields: any) => {
@@ -560,11 +572,22 @@ export const GoldenExampleCreatePage: React.FC = () => {
             </div>
 
             {/* Create Form */}
-            <div className="bg-white rounded-2xl p-8 w-full border border-gray-200 shadow-lg">
-              <div className="space-y-6">
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <label className="block text-sm font-medium text-gray-700">RFQ Text</label>
+            <div className="bg-white rounded-2xl p-8 w-full border border-gray-200 shadow-lg relative">
+              {isLoading && (
+                <div className="absolute inset-0 bg-white/80 backdrop-blur-sm rounded-2xl flex items-center justify-center z-10">
+                  <div className="text-center">
+                    <div className="w-16 h-16 border-4 border-yellow-200 rounded-full mb-4 mx-auto">
+                      <div className="w-16 h-16 border-4 border-yellow-600 rounded-full border-t-transparent animate-spin"></div>
+                    </div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Creating Golden Example</h3>
+                    <p className="text-sm text-gray-600">Please wait while we process your request...</p>
+                  </div>
+                </div>
+              )}
+              <div className="space-y-8">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-lg font-semibold text-gray-900">RFQ Text</label>
                     <div className="flex items-center space-x-4">
                       <div className="flex items-center space-x-2">
                         <input
@@ -577,7 +600,8 @@ export const GoldenExampleCreatePage: React.FC = () => {
                               setFormData({ ...formData, rfq_text: '' });
                             }
                           }}
-                          className="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300 rounded"
+                          disabled={isLoading}
+                          className="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed"
                         />
                         <label htmlFor="auto-generate-rfq" className="text-xs text-gray-600">
                           Auto-generate from survey
@@ -597,25 +621,27 @@ export const GoldenExampleCreatePage: React.FC = () => {
                         <div className="flex space-x-2">
                           <button
                             type="button"
-                            onClick={() => setRfqInputMode('text')}
-                            className={`px-3 py-1 text-xs rounded-lg font-medium transition-all duration-200 ${
-                              rfqInputMode === 'text'
-                                ? 'bg-yellow-600 text-white shadow-sm'
-                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                            }`}
-                          >
-                            Text Input
-                          </button>
-                          <button
-                            type="button"
                             onClick={() => setRfqInputMode('upload')}
-                            className={`px-3 py-1 text-xs rounded-lg font-medium transition-all duration-200 ${
+                            disabled={isLoading}
+                            className={`px-4 py-2 text-sm rounded-lg font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 ${
                               rfqInputMode === 'upload'
-                                ? 'bg-yellow-600 text-white shadow-sm'
-                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                ? 'bg-yellow-600 text-white shadow-lg'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 hover:shadow-md'
                             }`}
                           >
                             Upload DOCX
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRfqInputMode('text')}
+                            disabled={isLoading}
+                            className={`px-4 py-2 text-sm rounded-lg font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 ${
+                              rfqInputMode === 'text'
+                                ? 'bg-yellow-600 text-white shadow-lg'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 hover:shadow-md'
+                            }`}
+                          >
+                            Manual Entry
                           </button>
                         </div>
                       )}
@@ -627,20 +653,21 @@ export const GoldenExampleCreatePage: React.FC = () => {
                       <textarea
                         value={formData.rfq_text}
                         onChange={(e) => setFormData({ ...formData, rfq_text: e.target.value })}
-                        className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all duration-200"
-                        rows={3}
+                        disabled={isLoading}
+                        className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-50 placeholder-gray-400"
+                        rows={4}
                         placeholder="Enter the RFQ description..."
                       />
                     ) : (
                       <div className="space-y-3">
-                        <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-yellow-400 hover:bg-yellow-50/30 transition-all duration-200">
+                        <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-yellow-400 hover:bg-yellow-50/30 transition-all duration-300 group">
                           <input
                             type="file"
                             accept=".docx"
                             onChange={handleRfqFileUpload}
                             className="hidden"
                             id="rfq-docx-upload"
-                            disabled={isUploadingRfq}
+                            disabled={isUploadingRfq || isLoading}
                           />
                           <label htmlFor="rfq-docx-upload" className="cursor-pointer">
                             {isUploadingRfq ? (
@@ -651,19 +678,19 @@ export const GoldenExampleCreatePage: React.FC = () => {
                                 </div>
                                 <div className="text-center">
                                   <p className="text-sm font-medium text-gray-900">Processing document...</p>
-                                  <p className="text-xs text-gray-500">Please wait while we extract the RFQ text</p>
+                                  <p className="text-xs text-gray-500">Processing your RFQ document...</p>
                                 </div>
                               </div>
                             ) : (
-                              <div className="flex flex-col items-center">
-                                <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center mb-3">
-                                  <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <div className="flex flex-col items-center group-hover:scale-105 transition-transform duration-200">
+                                <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center mb-3 group-hover:bg-yellow-200 transition-colors duration-200">
+                                  <svg className="w-6 h-6 text-yellow-600 group-hover:text-yellow-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                                   </svg>
                                 </div>
                                 <div className="text-center">
-                                  <p className="text-sm font-medium text-gray-900">Upload DOCX file</p>
-                                  <p className="text-xs text-gray-500">Click to browse or drag and drop your DOCX file here</p>
+                                  <p className="text-sm font-medium text-gray-900 group-hover:text-gray-800">Drop a DOCX file here or click to browse</p>
+                                  <p className="text-xs text-gray-500 group-hover:text-gray-600">RFQ documents will be processed automatically</p>
                                 </div>
                               </div>
                             )}
@@ -718,159 +745,119 @@ export const GoldenExampleCreatePage: React.FC = () => {
                   )}
                 </div>
                 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-3">Survey JSON Template</label>
-                  
-                  <div className="mb-4">
-                    <div className="flex space-x-2">
-                      <button
-                        type="button"
-                        onClick={() => setInputMode('upload')}
-                        className={`px-4 py-2 text-sm rounded-lg font-medium transition-all duration-200 ${
-                          inputMode === 'upload' 
-                            ? 'bg-yellow-600 text-white shadow-lg' 
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                      >
-                        Upload DOCX
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setInputMode('manual')}
-                        className={`px-4 py-2 text-sm rounded-lg font-medium transition-all duration-200 ${
-                          inputMode === 'manual' 
-                            ? 'bg-yellow-600 text-white shadow-lg' 
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                      >
-                        Manual Entry
-                      </button>
-                    </div>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-lg font-semibold text-gray-900">Survey Document</label>
                   </div>
 
-                  {inputMode === 'upload' ? (
-                    <div className="space-y-4">
-                      <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-yellow-400 hover:bg-yellow-50/30 transition-all duration-200">
-                        <input
-                          type="file"
-                          accept=".docx"
-                          onChange={handleFileUpload}
-                          className="hidden"
-                          id="docx-upload"
-                          disabled={isParsingDocument}
-                        />
-                        <label htmlFor="docx-upload" className="cursor-pointer">
-                          {isParsingDocument ? (
-                            <div className="flex flex-col items-center">
-                              <div className="relative mb-4">
-                                <div className="w-16 h-16 border-4 border-yellow-200 rounded-full"></div>
-                                <div className="absolute top-0 left-0 w-16 h-16 border-4 border-yellow-600 rounded-full border-t-transparent animate-spin"></div>
-                              </div>
-                              <div className="text-center">
-                                <p className="text-sm font-medium text-gray-700 mb-1">Processing Document</p>
-                                <p className="text-xs text-gray-500">Converting your DOCX to survey JSON...</p>
-                                <p className="text-xs text-yellow-600 mt-2 bg-yellow-50 px-2 py-1 rounded">
-                                  ⏱️ This process typically takes 5-10 minutes
-                                </p>
-                                {retryCount > 0 && (
-                                  <p className="text-xs text-yellow-600 mt-1">Retry attempt {retryCount + 1}</p>
-                                )}
-                              </div>
+                  <div className="space-y-4">
+                    <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-yellow-400 hover:bg-yellow-50/30 transition-all duration-300 group">
+                      <input
+                        type="file"
+                        accept=".docx"
+                        onChange={handleFileUpload}
+                        className="hidden"
+                        id="docx-upload"
+                        disabled={isParsingDocument || isLoading}
+                      />
+                      <label htmlFor="docx-upload" className="cursor-pointer">
+                        {isParsingDocument ? (
+                          <div className="flex flex-col items-center">
+                            <div className="relative mb-4">
+                              <div className="w-16 h-16 border-4 border-yellow-200 rounded-full"></div>
+                              <div className="absolute top-0 left-0 w-16 h-16 border-4 border-yellow-600 rounded-full border-t-transparent animate-spin"></div>
                             </div>
-                          ) : (
-                            <div className="flex flex-col items-center">
-                              <svg className="w-8 h-8 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                              </svg>
-                              <p className="text-sm text-gray-600 mb-1">Drop a DOCX file here or click to browse</p>
-                              <p className="text-xs text-gray-500">Survey documents will be converted to JSON automatically</p>
-                            </div>
-                          )}
-                        </label>
-                      </div>
-
-                      {parseError && (
-                        <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                          <div className="flex">
-                            <svg className="h-5 w-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <div className="ml-3">
-                              <h3 className="text-sm font-medium text-red-800">Parse Error</h3>
-                              <p className="text-sm text-red-700 mt-1">{parseError}</p>
-                              {retryCount < 3 && (
-                                <button
-                                  onClick={() => lastUploadedFile && parseDocument(lastUploadedFile)}
-                                  className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
-                                >
-                                  Retry parsing
-                                </button>
+                            <div className="text-center">
+                              <p className="text-sm font-medium text-gray-700 mb-1">Processing Document</p>
+                              <p className="text-xs text-gray-500">Processing your survey document...</p>
+                              <p className="text-xs text-yellow-600 mt-2 bg-yellow-50 px-2 py-1 rounded">
+                                ⏱️ This process typically takes 5-15 minutes
+                              </p>
+                              <p className="text-xs text-red-600 mt-1 bg-red-50 px-2 py-1 rounded">
+                                ⚠️ Please do not navigate away from this page during processing
+                              </p>
+                              {retryCount > 0 && (
+                                <p className="text-xs text-yellow-600 mt-1">Retry attempt {retryCount + 1}</p>
                               )}
                             </div>
                           </div>
-                        </div>
-                      )}
+                        ) : (
+                          <div className="flex flex-col items-center group-hover:scale-105 transition-transform duration-200">
+                            <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mb-3 group-hover:bg-yellow-200 transition-colors duration-200">
+                              <svg className="w-8 h-8 text-yellow-600 group-hover:text-yellow-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                              </svg>
+                            </div>
+                            <p className="text-sm font-medium text-gray-900 group-hover:text-gray-800 mb-1">Drop a DOCX file here or click to browse</p>
+                            <p className="text-xs text-gray-500 group-hover:text-gray-600">Survey documents will be processed automatically</p>
+                          </div>
+                        )}
+                      </label>
+                    </div>
 
-                      {showJsonPreview && extractedText && (
-                        <div className="space-y-4">
+                    {parseError && (
+                      <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                        <div className="flex">
+                          <svg className="h-5 w-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <div className="ml-3">
+                            <h3 className="text-sm font-medium text-red-800">Parse Error</h3>
+                            <p className="text-sm text-red-700 mt-1">{parseError}</p>
+                            {retryCount < 3 && (
+                              <button
+                                onClick={() => lastUploadedFile && parseDocument(lastUploadedFile)}
+                                className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
+                              >
+                                Retry parsing
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {showJsonPreview && extractedText && (
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium text-gray-700">Extracted Text Preview</label>
+                            <button
+                              onClick={() => setShowJsonPreview(false)}
+                              className="text-sm text-gray-500 hover:text-gray-700"
+                            >
+                              Hide
+                            </button>
+                          </div>
+                          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 max-h-40 overflow-y-auto">
+                            <pre className="text-xs text-gray-600 whitespace-pre-wrap">{extractedText}</pre>
+                          </div>
+                        </div>
+
+                        {/* Comment Metadata Display */}
+                        {formData.survey_json?.comment_metadata && (
                           <div className="space-y-2">
                             <div className="flex items-center justify-between">
-                              <label className="text-sm font-medium text-gray-700">Extracted Text Preview</label>
-                              <button
-                                onClick={() => setShowJsonPreview(false)}
-                                className="text-sm text-gray-500 hover:text-gray-700"
-                              >
-                                Hide
-                              </button>
+                              <label className="text-sm font-medium text-gray-700">Comment Metadata</label>
+                              <span className="text-xs text-gray-500">
+                                {formData.survey_json.comment_metadata.total_comments} comments found
+                              </span>
                             </div>
-                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 max-h-40 overflow-y-auto">
-                              <pre className="text-xs text-gray-600 whitespace-pre-wrap">{extractedText}</pre>
-                            </div>
-                          </div>
-
-                          {/* Comment Metadata Display */}
-                          {formData.survey_json?.comment_metadata && (
-                            <div className="space-y-2">
-                              <div className="flex items-center justify-between">
-                                <label className="text-sm font-medium text-gray-700">Comment Metadata</label>
-                                <span className="text-xs text-gray-500">
-                                  {formData.survey_json.comment_metadata.total_comments} comments found
-                                </span>
-                              </div>
-                              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                                <div className="space-y-2">
-                                  <div className="text-xs text-blue-800">
-                                    <strong>Categories:</strong> {formData.survey_json.comment_metadata.comment_categories?.join(', ')}
-                                  </div>
-                                  <div className="text-xs text-blue-800">
-                                    <strong>Extracted:</strong> {new Date(formData.survey_json.comment_metadata.extraction_timestamp).toLocaleString()}
-                                  </div>
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                              <div className="space-y-2">
+                                <div className="text-xs text-blue-800">
+                                  <strong>Categories:</strong> {formData.survey_json.comment_metadata.comment_categories?.join(', ')}
+                                </div>
+                                <div className="text-xs text-blue-800">
+                                  <strong>Extracted:</strong> {new Date(formData.survey_json.comment_metadata.extraction_timestamp).toLocaleString()}
                                 </div>
                               </div>
                             </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <textarea
-                        value={JSON.stringify(formData.survey_json, null, 2)}
-                        onChange={(e) => {
-                          try {
-                            const parsed = JSON.parse(e.target.value);
-                            setFormData({ ...formData, survey_json: parsed });
-                          } catch (error) {
-                            // Invalid JSON, but let user continue typing
-                          }
-                        }}
-                        className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm font-mono focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all duration-200"
-                        rows={12}
-                        placeholder="Enter survey JSON manually..."
-                      />
-                      <p className="text-xs text-gray-500">Enter valid JSON for the survey structure</p>
-                    </div>
-                  )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Intelligent Field Extraction */}
@@ -892,7 +879,8 @@ export const GoldenExampleCreatePage: React.FC = () => {
                       type="text"
                       value={formData.industry_category}
                       onChange={(e) => setFormData({ ...formData, industry_category: e.target.value })}
-                      className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all duration-200"
+                      disabled={isLoading}
+                      className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-50 placeholder-gray-400"
                       placeholder="Enter industry category (e.g., Consumer Electronics, Healthcare, Finance)"
                     />
                   </div>
@@ -903,7 +891,8 @@ export const GoldenExampleCreatePage: React.FC = () => {
                       type="text"
                       value={formData.research_goal}
                       onChange={(e) => setFormData({ ...formData, research_goal: e.target.value })}
-                      className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all duration-200"
+                      disabled={isLoading}
+                      className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-50 placeholder-gray-400"
                       placeholder="Enter research goal (e.g., Pricing Research, Product Development, Market Segmentation)"
                     />
                   </div>
@@ -925,22 +914,31 @@ export const GoldenExampleCreatePage: React.FC = () => {
                     maxTags={20}
                     showDropdownMenu={true}
                     extractedTags={extractedMethodologyTags}
+                    disabled={isLoading}
                   />
                 </div>
 
                 <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
                   <button
                     onClick={() => window.location.href = '/golden-examples'}
-                    className="px-6 py-3 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all duration-200 font-semibold"
+                    disabled={isLoading}
+                    className="px-6 py-3 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all duration-200 font-semibold disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 active:scale-95"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleCreateExample}
                     disabled={isLoading}
-                    className="px-6 py-3 bg-gradient-to-r from-yellow-600 to-orange-600 text-white rounded-xl hover:from-yellow-700 hover:to-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                    className="px-6 py-3 bg-gradient-to-r from-yellow-600 to-orange-600 text-white rounded-xl hover:from-yellow-700 hover:to-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 hover:scale-105 active:scale-95 flex items-center space-x-2"
                   >
-                    {isLoading ? 'Saving...' : 'Create Example'}
+                    {isLoading ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        <span>Creating Golden Example...</span>
+                      </>
+                    ) : (
+                      'Create Example'
+                    )}
                   </button>
                 </div>
               </div>

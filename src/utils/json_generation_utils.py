@@ -26,6 +26,7 @@ class JSONParseStrategy(Enum):
     ESCAPED_JSON_HANDLE = "escaped_json_handle"
     LARGE_JSON_PARSE = "large_json_parse"
     PARTIAL_JSON_RECOVERY = "partial_json_recovery"
+    BROKEN_JSON_RECOVERY = "broken_json_recovery"
 
 
 @dataclass
@@ -287,6 +288,8 @@ Your response must be parseable by json.loads() without any modification."""
                 return JSONGenerationUtils._parse_large_json(content)
             elif strategy == JSONParseStrategy.PARTIAL_JSON_RECOVERY:
                 return JSONGenerationUtils._partial_json_recovery(content)
+            elif strategy == JSONParseStrategy.BROKEN_JSON_RECOVERY:
+                return JSONGenerationUtils._broken_json_recovery(content)
             else:
                 return JSONParseResult(success=False, error=f"Unknown strategy: {strategy}")
         except Exception as e:
@@ -400,6 +403,11 @@ Your response must be parseable by json.loads() without any modification."""
                     # Try to parse the sanitized JSON
                     data = json.loads(sanitized_content)
                     return JSONParseResult(success=True, data=data)
+                else:
+                    # json_output exists but is not a dict or valid JSON string
+                    # Try to extract the actual survey data from the response
+                    logger.warning(f"⚠️ [JSONGenerationUtils] json_output field found but not in expected format: {type(json_content)}")
+                    # Fall through to other strategies
             
             # If the entire parsed_dict looks like survey data, return it directly
             if isinstance(parsed_dict, dict):
@@ -720,6 +728,149 @@ Your response must be parseable by json.loads() without any modification."""
             
         except Exception as e:
             return JSONParseResult(success=False, error=f"Partial JSON recovery exception: {e}")
+
+    @staticmethod
+    def _broken_json_recovery(content: str) -> JSONParseResult:
+        """Attempt to recover from severely broken JSON with scattered text and malformed structure"""
+        try:
+            logger.info(f"🔧 [JSONGenerationUtils] Attempting broken JSON recovery on {len(content)} characters")
+            
+            # First, try to extract any complete JSON objects
+            json_objects = []
+            
+            # Look for complete JSON objects within the content
+            start = 0
+            while start < len(content):
+                obj_start = content.find('{', start)
+                if obj_start == -1:
+                    break
+                
+                # Try to find the matching closing brace
+                brace_count = 0
+                obj_end = obj_start
+                for i in range(obj_start, len(content)):
+                    if content[i] == '{':
+                        brace_count += 1
+                    elif content[i] == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            obj_end = i + 1
+                            break
+                
+                if brace_count == 0:
+                    # Found a complete object, try to parse it
+                    obj_content = content[obj_start:obj_end]
+                    try:
+                        # Apply aggressive sanitization first
+                        sanitized = JSONGenerationUtils._aggressive_sanitize_content(obj_content)
+                        obj_data = json.loads(sanitized)
+                        json_objects.append(obj_data)
+                        logger.info(f"✅ [JSONGenerationUtils] Recovered JSON object with keys: {list(obj_data.keys()) if isinstance(obj_data, dict) else 'not dict'}")
+                    except json.JSONDecodeError as e:
+                        logger.debug(f"⚠️ [JSONGenerationUtils] Failed to parse object: {e}")
+                        # Try to fix common issues and parse again
+                        try:
+                            # Fix common broken JSON patterns
+                            fixed_content = obj_content
+                            
+                            # Fix missing quotes around keys
+                            fixed_content = re.sub(r'([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1"\2":', fixed_content)
+                            
+                            # Fix single quotes to double quotes
+                            fixed_content = re.sub(r"'([^']*)'", r'"\1"', fixed_content)
+                            
+                            # Fix Python-style booleans and nulls
+                            fixed_content = re.sub(r'\bTrue\b', 'true', fixed_content)
+                            fixed_content = re.sub(r'\bFalse\b', 'false', fixed_content)
+                            fixed_content = re.sub(r'\bNone\b', 'null', fixed_content)
+                            
+                            # Fix trailing commas
+                            fixed_content = re.sub(r',\s*}', '}', fixed_content)
+                            fixed_content = re.sub(r',\s*]', ']', fixed_content)
+                            
+                            # Try parsing the fixed content
+                            obj_data = json.loads(fixed_content)
+                            json_objects.append(obj_data)
+                            logger.info(f"✅ [JSONGenerationUtils] Fixed and recovered JSON object with keys: {list(obj_data.keys()) if isinstance(obj_data, dict) else 'not dict'}")
+                        except json.JSONDecodeError as e2:
+                            logger.debug(f"⚠️ [JSONGenerationUtils] Failed to fix object: {e2}")
+                
+                start = obj_end + 1
+            
+            # If we found valid JSON objects, try to merge them or use the best one
+            if json_objects:
+                # Find the object with the most survey-like structure
+                best_object = None
+                best_score = 0
+                
+                for obj in json_objects:
+                    score = 0
+                    if isinstance(obj, dict):
+                        # Score based on survey-like fields
+                        if 'title' in obj:
+                            score += 10
+                        if 'sections' in obj:
+                            score += 20
+                        if 'questions' in obj:
+                            score += 15
+                        if 'metadata' in obj:
+                            score += 5
+                        
+                        # Check for question arrays
+                        if 'sections' in obj and isinstance(obj['sections'], list):
+                            for section in obj['sections']:
+                                if isinstance(section, dict) and 'questions' in section:
+                                    score += len(section['questions']) * 2
+                        
+                        if 'questions' in obj and isinstance(obj['questions'], list):
+                            score += len(obj['questions']) * 2
+                    
+                    if score > best_score:
+                        best_score = score
+                        best_object = obj
+                
+                if best_object and best_score > 0:
+                    logger.info(f"✅ [JSONGenerationUtils] Broken JSON recovery succeeded with score {best_score}")
+                    return JSONParseResult(success=True, data=best_object)
+            
+            # If no valid JSON objects found, try to extract survey data using text patterns
+            # This is a last resort - try to build a minimal survey structure
+            logger.warning(f"⚠️ [JSONGenerationUtils] No complete JSON objects found, attempting text pattern extraction")
+            
+            # Look for common survey patterns in the text
+            survey_data = {}
+            
+            # Try to extract title
+            title_match = re.search(r'"title"\s*:\s*"([^"]*)"', content)
+            if title_match:
+                survey_data['title'] = title_match.group(1)
+            
+            # Try to extract description
+            desc_match = re.search(r'"description"\s*:\s*"([^"]*)"', content)
+            if desc_match:
+                survey_data['description'] = desc_match.group(1)
+            
+            # Try to extract sections count
+            sections_match = re.search(r'"sections_count"\s*:\s*(\d+)', content)
+            if sections_match:
+                survey_data['sections_count'] = int(sections_match.group(1))
+            
+            # Try to extract methodology tags
+            tags_match = re.search(r'"methodology_tags"\s*:\s*\[(.*?)\]', content, re.DOTALL)
+            if tags_match:
+                tags_text = tags_match.group(1)
+                # Extract individual tags
+                tag_matches = re.findall(r'"([^"]*)"', tags_text)
+                survey_data['methodology_tags'] = tag_matches
+            
+            if survey_data:
+                logger.info(f"✅ [JSONGenerationUtils] Extracted partial survey data: {list(survey_data.keys())}")
+                return JSONParseResult(success=True, data=survey_data)
+            
+            return JSONParseResult(success=False, error="No recoverable JSON structure found in broken content")
+            
+        except Exception as e:
+            return JSONParseResult(success=False, error=f"Broken JSON recovery exception: {e}")
 
     @staticmethod
     def _validate_against_schema(data: Dict[str, Any], schema: Dict[str, Any]) -> JSONParseResult:

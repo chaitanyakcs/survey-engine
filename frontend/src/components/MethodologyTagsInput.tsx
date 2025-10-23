@@ -14,6 +14,7 @@ interface MethodologyTagsInputProps {
   maxTags?: number;
   showDropdownMenu?: boolean;
   extractedTags?: string[];
+  disabled?: boolean;
 }
 
 // Standard methodology tags with categories
@@ -81,7 +82,8 @@ const MethodologyTagsInput: React.FC<MethodologyTagsInputProps> = ({
   placeholder = "Add methodology tags...",
   maxTags = 20,
   showDropdownMenu = true,
-  extractedTags = []
+  extractedTags = [],
+  disabled = false
 }) => {
   const [inputValue, setInputValue] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
@@ -173,8 +175,8 @@ const MethodologyTagsInput: React.FC<MethodologyTagsInputProps> = ({
             onKeyPress={handleKeyPress}
             onFocus={handleInputFocus}
             placeholder={placeholder}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
-            disabled={tags.length >= maxTags}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-50"
+            disabled={disabled || tags.length >= maxTags}
           />
           {tags.length >= maxTags && (
             <div className="absolute right-2 top-1/2 transform -translate-y-1/2 text-xs text-gray-500">
@@ -188,7 +190,7 @@ const MethodologyTagsInput: React.FC<MethodologyTagsInputProps> = ({
             e.preventDefault();
             handleAddTag();
           }}
-          disabled={!inputValue.trim() || tags.includes(inputValue.trim()) || tags.length >= maxTags}
+          disabled={disabled || !inputValue.trim() || tags.includes(inputValue.trim()) || tags.length >= maxTags}
           className="flex items-center justify-center w-8 h-8 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
         >
           <PlusIcon className="w-4 h-4" />
@@ -197,7 +199,8 @@ const MethodologyTagsInput: React.FC<MethodologyTagsInputProps> = ({
           <button
             type="button"
             onClick={() => setShowDropdown(!showDropdown)}
-            className="flex items-center justify-center w-8 h-8 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"
+            disabled={disabled}
+            className="flex items-center justify-center w-8 h-8 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <ChevronDownIcon className={`w-4 h-4 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
           </button>
@@ -251,7 +254,8 @@ const MethodologyTagsInput: React.FC<MethodologyTagsInputProps> = ({
                           e.preventDefault();
                           handleAddTag(tag.name);
                         }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-yellow-50 rounded-md transition-colors"
+                        disabled={disabled}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-yellow-50 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <div className="font-medium text-gray-900">{tag.name}</div>
                         <div className="text-xs text-gray-500">{tag.description}</div>
@@ -279,7 +283,8 @@ const MethodologyTagsInput: React.FC<MethodologyTagsInputProps> = ({
                   key={`extracted-${tag}`}
                   type="button"
                   onClick={() => handleAddTag(tag)}
-                  className="px-3 py-1 text-sm rounded-full bg-green-100 text-green-700 hover:bg-green-200 border border-green-300 transition-colors"
+                  disabled={disabled}
+                  className="px-3 py-1 text-sm rounded-full bg-green-100 text-green-700 hover:bg-green-200 border border-green-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {tag} +
                 </button>
@@ -304,7 +309,8 @@ const MethodologyTagsInput: React.FC<MethodologyTagsInputProps> = ({
                 <button
                   type="button"
                   onClick={() => handleRemoveTag(tag)}
-                  className="ml-1 hover:bg-yellow-200 rounded-full p-0.5 transition-colors"
+                  disabled={disabled}
+                  className="ml-1 hover:bg-yellow-200 rounded-full p-0.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <XMarkIcon className="w-3 h-3" />
                 </button>

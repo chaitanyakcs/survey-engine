@@ -172,7 +172,7 @@ start_fastapi() {
     log_info "Starting FastAPI server on port $port..."
     
     # Manual deployment only - no auto-reload
-    if ! $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 600; then
+    if ! $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 900; then
         log_error "Failed to start FastAPI server"
         exit 1
     fi
@@ -233,7 +233,7 @@ start_consolidated() {
     log_info "🔄 Step 2: Starting FastAPI server on port $fastapi_port..."
     log_success "🚀 All services ready! Starting FastAPI..."
     # Manual deployment only - no auto-reload
-    $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $fastapi_port --timeout-keep-alive 600
+    $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $fastapi_port --timeout-keep-alive 900
 }
 
 # Function to start WebSocket server
@@ -249,7 +249,7 @@ generate_nginx_config() {
     local nginx_port=${PORT:-80}
     log_info "Generating nginx config for port $nginx_port"
     
-    printf 'user app;\nworker_processes auto;\npid /app/nginx.pid;\n\nevents {\n    worker_connections 1024;\n}\n\nhttp {\n    include /etc/nginx/mime.types;\n    default_type application/octet-stream;\n    \n    sendfile on;\n    keepalive_timeout 65;\n    \n    # Global timeout settings for ML model loading\n    proxy_connect_timeout       600s;\n    proxy_send_timeout          600s;\n    proxy_read_timeout          600s;\n    send_timeout               600s;\n    \n    server {\n        listen %s;\n        server_name _;\n        root /app/frontend/build;\n        index index.html;\n\n        # Serve React app\n        location / {\n            try_files $uri $uri/ /index.html;\n        }\n\n        # API health check - direct proxy to FastAPI\n        location = /api/health {\n            proxy_pass http://127.0.0.1:8000/health;\n            proxy_set_header Host $host;\n            proxy_set_header X-Real-IP $remote_addr;\n            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n            proxy_set_header X-Forwarded-Proto $scheme;\n        }\n\n        # All API routes to FastAPI server\n        location /api/ {\n            proxy_pass http://127.0.0.1:8000;\n            proxy_set_header Host $host;\n            proxy_set_header X-Real-IP $remote_addr;\n            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n            proxy_set_header X-Forwarded-Proto $scheme;\n            proxy_set_header Connection "";\n            proxy_http_version 1.1;\n            proxy_buffering off;\n            proxy_cache off;\n            # Increase timeouts for ML model loading\n            proxy_connect_timeout       600s;\n            proxy_send_timeout          600s;\n            proxy_read_timeout          600s;\n        }\n\n        # WebSocket proxy to FastAPI server (consolidated)\n        location /ws/ {\n            proxy_pass http://127.0.0.1:8000/ws/;\n            proxy_http_version 1.1;\n            proxy_set_header Upgrade $http_upgrade;\n            proxy_set_header Connection "upgrade";\n            proxy_set_header Host $host;\n            proxy_set_header X-Real-IP $remote_addr;\n            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n            proxy_set_header X-Forwarded-Proto $scheme;\n        }\n\n        # Health check endpoint - proxy to FastAPI (exact match)\n        location = /health {\n            proxy_pass http://127.0.0.1:8000/health;\n            proxy_set_header Host $host;\n            proxy_set_header X-Real-IP $remote_addr;\n            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n            proxy_set_header X-Forwarded-Proto $scheme;\n        }\n    }\n}\n' "$nginx_port" > /etc/nginx/nginx.conf
+    printf 'user app;\nworker_processes auto;\npid /app/nginx.pid;\n\nevents {\n    worker_connections 1024;\n}\n\nhttp {\n    include /etc/nginx/mime.types;\n    default_type application/octet-stream;\n    \n    sendfile on;\n    keepalive_timeout 65;\n    \n    # Global timeout settings for ML model loading\n    proxy_connect_timeout       900s;\n    proxy_send_timeout          900s;\n    proxy_read_timeout          900s;\n    send_timeout               900s;\n    \n    server {\n        listen %s;\n        server_name _;\n        root /app/frontend/build;\n        index index.html;\n\n        # Serve React app\n        location / {\n            try_files $uri $uri/ /index.html;\n        }\n\n        # API health check - direct proxy to FastAPI\n        location = /api/health {\n            proxy_pass http://127.0.0.1:8000/health;\n            proxy_set_header Host $host;\n            proxy_set_header X-Real-IP $remote_addr;\n            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n            proxy_set_header X-Forwarded-Proto $scheme;\n        }\n\n        # All API routes to FastAPI server\n        location /api/ {\n            proxy_pass http://127.0.0.1:8000;\n            proxy_set_header Host $host;\n            proxy_set_header X-Real-IP $remote_addr;\n            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n            proxy_set_header X-Forwarded-Proto $scheme;\n            proxy_set_header Connection "";\n            proxy_http_version 1.1;\n            proxy_buffering off;\n            proxy_cache off;\n            # Increase timeouts for ML model loading\n            proxy_connect_timeout       900s;\n            proxy_send_timeout          900s;\n            proxy_read_timeout          900s;\n        }\n\n        # WebSocket proxy to FastAPI server (consolidated)\n        location /ws/ {\n            proxy_pass http://127.0.0.1:8000/ws/;\n            proxy_http_version 1.1;\n            proxy_set_header Upgrade $http_upgrade;\n            proxy_set_header Connection "upgrade";\n            proxy_set_header Host $host;\n            proxy_set_header X-Real-IP $remote_addr;\n            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n            proxy_set_header X-Forwarded-Proto $scheme;\n        }\n\n        # Health check endpoint - proxy to FastAPI (exact match)\n        location = /health {\n            proxy_pass http://127.0.0.1:8000/health;\n            proxy_set_header Host $host;\n            proxy_set_header X-Real-IP $remote_addr;\n            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n            proxy_set_header X-Forwarded-Proto $scheme;\n        }\n    }\n}\n' "$nginx_port" > /etc/nginx/nginx.conf
     log_success "Generated nginx config for port $nginx_port"
 }
 
@@ -291,13 +291,13 @@ start_both() {
     # Start FastAPI in background
     log_info "Starting FastAPI server..."
     local port=8000
-    log_info "FastAPI command: $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 600"
+    log_info "FastAPI command: $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 900"
     
     # Start FastAPI and capture output for debugging
-    log_info "Starting FastAPI with command: $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 600"
+    log_info "Starting FastAPI with command: $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 900"
     
     # Manual deployment only - no auto-reload
-    $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 600 > /tmp/fastapi.log 2>&1 &
+    $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 900 > /tmp/fastapi.log 2>&1 &
     FASTAPI_PID=$!
     log_success "FastAPI server started with PID $FASTAPI_PID"
     
