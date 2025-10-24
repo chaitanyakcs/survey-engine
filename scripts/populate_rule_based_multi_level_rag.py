@@ -128,8 +128,8 @@ class RuleBasedRAGPopulator:
                 try:
                     stats['annotated_surveys_processed'] += 1
                     
-                    if not survey.survey_json:
-                        logger.warning(f"⚠️ Survey {survey.id} has no survey_json, skipping")
+                    if not survey.final_output:
+                        logger.warning(f"⚠️ Survey {survey.id} has no final_output, skipping")
                         continue
                     
                     # Extract sections and questions from survey
@@ -164,8 +164,8 @@ class RuleBasedRAGPopulator:
                 try:
                     stats['quality_surveys_processed'] += 1
                     
-                    if not survey.survey_json:
-                        logger.warning(f"⚠️ Survey {survey.id} has no survey_json, skipping")
+                    if not survey.final_output:
+                        logger.warning(f"⚠️ Survey {survey.id} has no final_output, skipping")
                         continue
                     
                     # Extract sections and questions from survey
@@ -202,8 +202,8 @@ class RuleBasedRAGPopulator:
                 try:
                     stats['other_surveys_processed'] += 1
                     
-                    if not survey.survey_json:
-                        logger.warning(f"⚠️ Survey {survey.id} has no survey_json, skipping")
+                    if not survey.final_output:
+                        logger.warning(f"⚠️ Survey {survey.id} has no final_output, skipping")
                         continue
                     
                     # Extract sections and questions from survey
@@ -464,15 +464,20 @@ class RuleBasedRAGPopulator:
                 
                 if not dry_run:
                     golden_section = GoldenSection(
+                        section_id=f"s_{i}_{survey.id}",
                         survey_id=str(survey.id),
-                        section_index=i,
+                        golden_pair_id=None,  # Surveys don't have golden_pair_id
+                        annotation_id=None,   # No annotation link for survey sections
                         section_title=section.get('title', ''),
                         section_text=section_text,
                         section_type=self._detect_section_type(section_text),
                         methodology_tags=self._extract_methodology_tags(section_text),
                         industry_keywords=self._extract_industry_keywords(section_text),
+                        question_patterns=[],
                         quality_score=quality_score,
                         usage_count=0,
+                        human_verified=False,
+                        labels={},
                         created_at=survey.created_at or datetime.now()
                     )
                     
@@ -528,8 +533,10 @@ class RuleBasedRAGPopulator:
                     )
                     
                     golden_question = GoldenQuestion(
+                        question_id=f"q_{i}_{survey.id}",
                         survey_id=str(survey.id),
-                        question_index=i,
+                        golden_pair_id=None,  # Surveys don't have golden_pair_id
+                        annotation_id=None,   # No annotation link for survey questions
                         question_text=question_text,
                         question_type=question_type,
                         question_subtype=question_subtype,
@@ -538,6 +545,8 @@ class RuleBasedRAGPopulator:
                         question_patterns=self._extract_question_patterns(question_text),
                         quality_score=quality_score,
                         usage_count=0,
+                        human_verified=False,
+                        labels={},
                         created_at=survey.created_at or datetime.now()
                     )
                     

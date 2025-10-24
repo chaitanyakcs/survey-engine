@@ -7,6 +7,7 @@ import SurveyTextBlock from './SurveyTextBlock';
 import QuestionCard from './QuestionCard';
 import { useSurveyEdit } from '../hooks/useSurveyEdit';
 import { PencilIcon, ChevronDownIcon, ChevronRightIcon, TagIcon, TrashIcon, ChevronUpIcon, PlusIcon } from '@heroicons/react/24/outline';
+import { SurveyMetadataModal } from './SurveyMetadataModal';
 
 
 // Helper function to check if survey uses sections format
@@ -466,6 +467,9 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
     target: null as any
   });
 
+  // Metadata modal state
+  const [isMetadataModalOpen, setIsMetadataModalOpen] = useState(false);
+
 
 
   const handleSurveyLevelAnnotation = async (annotation: SurveyLevelAnnotation) => {
@@ -636,15 +640,6 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
     }
   };
 
-  const handleViewLLMAudits = () => {
-    if (!surveyToDisplay?.survey_id) {
-      alert('No survey ID available');
-      return;
-    }
-
-    // Navigate to LLM Audit page with survey ID
-    window.location.href = `/?view=llm-audit-survey&surveyId=${surveyToDisplay.survey_id}`;
-  };
 
   const handleExportJSON = () => {
     if (surveyToDisplay) {
@@ -1472,8 +1467,23 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
               Save as Reference
             </button>
             <button
-              onClick={handleViewLLMAudits}
+              onClick={() => setIsMetadataModalOpen(true)}
               className="w-full flex items-center gap-2 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors text-sm"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              View RFQ Used
+            </button>
+            <button
+              onClick={() => {
+                if (!survey?.survey_id) {
+                  alert('No survey ID available');
+                  return;
+                }
+                window.location.href = `/?view=llm-audit-survey&surveyId=${survey.survey_id}`;
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -1508,37 +1518,176 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
           </div>
         </div>
 
-        {/* AI Evaluation Analysis Section */}
-        {surveyToDisplay?.pillar_scores && (
+        {/* Evaluation Analysis Section */}
+        {surveyToDisplay?.pillar_scores && Object.keys(surveyToDisplay.pillar_scores).length > 0 && (
           <div className="p-4">
             <div className="bg-white rounded-lg border border-gray-200 p-4">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
-                  <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <h3 className="text-base font-semibold text-gray-900">AI Evaluation Analysis</h3>
-              </div>
+              {(() => {
+                // Determine evaluation type based on data
+                const pillarScores = surveyToDisplay.pillar_scores;
+                const hasValidScores = pillarScores.weighted_score !== undefined && pillarScores.weighted_score > 0;
+                const isAIAnalysis = pillarScores.summary && (
+                  pillarScores.summary.includes('Single-Call') || 
+                  pillarScores.summary.includes('Multiple-Call') ||
+                  pillarScores.summary.includes('Chain-of-Thought') ||
+                  pillarScores.summary.includes('AI')
+                );
+                const isBasicAnalysis = pillarScores.summary && pillarScores.summary.includes('Basic');
+                const isSkipped = pillarScores.summary && pillarScores.summary.includes('skipped');
+                
+                let evaluationType = 'Evaluation Analysis';
+                let evaluationIcon = '🔍';
+                let evaluationColor = 'blue';
+                let evaluationDescription = 'Survey quality assessment';
+                
+                if (isSkipped || !hasValidScores) {
+                  evaluationType = 'Evaluation Disabled';
+                  evaluationIcon = '⏭️';
+                  evaluationColor = 'gray';
+                  evaluationDescription = 'AI evaluation was disabled for this survey';
+                } else if (isAIAnalysis) {
+                  evaluationType = 'AI Evaluation Analysis';
+                  evaluationIcon = '🤖';
+                  evaluationColor = 'blue';
+                  evaluationDescription = 'AI-powered quality assessment';
+                } else if (isBasicAnalysis) {
+                  evaluationType = 'Basic Evaluation Analysis';
+                  evaluationIcon = '📊';
+                  evaluationColor = 'green';
+                  evaluationDescription = 'Heuristic-based quality assessment';
+                }
 
-              {/* Overall Assessment */}
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-medium text-gray-700">Overall Assessment</span>
-                  <span className="px-2 py-1 bg-red-100 text-red-800 text-xs font-medium rounded-full">Grade B+</span>
-                </div>
-                <p className="text-xs text-gray-600 mb-2">Single-Call Comprehensive Analysis | Overall Score: {Math.round((surveyToDisplay.pillar_scores.weighted_score || 0) * 100)}% (Grade B+)</p>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-blue-600">Score: {Math.round((surveyToDisplay.pillar_scores.weighted_score || 0) * 100)}%</span>
-                  <span className="text-xs text-gray-500">•</span>
-                  <span className="text-xs text-blue-600">Chain-of-Thought Evaluation</span>
-                </div>
-              </div>
+                const iconColorClass = evaluationColor === 'blue' ? 'bg-blue-100 text-blue-600' : 
+                                     evaluationColor === 'green' ? 'bg-green-100 text-green-600' : 
+                                     'bg-gray-100 text-gray-600';
 
-              {/* Pillar Analysis */}
-              <div className="space-y-3 mb-4">
-                <h4 className="text-xs font-medium text-gray-900">Pillar Analysis</h4>
-                {surveyToDisplay.pillar_scores.pillar_breakdown?.slice(0, 3).map((pillar, index) => {
+                return (
+                  <>
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className={`w-6 h-6 ${iconColorClass} rounded-full flex items-center justify-center`}>
+                        <span className="text-sm">{evaluationIcon}</span>
+                      </div>
+                      <div>
+                        <h3 className="text-base font-semibold text-gray-900">{evaluationType}</h3>
+                        <p className="text-xs text-gray-500">{evaluationDescription}</p>
+                      </div>
+                    </div>
+
+                    {/* Overall Assessment - only show if we have valid scores */}
+                    {hasValidScores && (
+                      <div className="mb-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-medium text-gray-700">Overall Assessment</span>
+                          <span className={`px-2 py-1 text-xs font-medium rounded-full ${(() => {
+                            // Calculate grade if missing
+                            let grade = pillarScores.overall_grade;
+                            if (!grade || grade === 'N/A') {
+                              const score = pillarScores.weighted_score || 0;
+                              if (score >= 0.9) grade = 'A';
+                              else if (score >= 0.8) grade = 'B';
+                              else if (score >= 0.7) grade = 'C';
+                              else if (score >= 0.6) grade = 'D';
+                              else grade = 'F';
+                            }
+                            
+                            // Return color class based on grade
+                            switch (grade) {
+                              case 'A': return 'bg-green-100 text-green-800';
+                              case 'B': return 'bg-blue-100 text-blue-800';
+                              case 'C': return 'bg-yellow-100 text-yellow-800';
+                              case 'D': return 'bg-orange-100 text-orange-800';
+                              default: return 'bg-red-100 text-red-800';
+                            }
+                          })()}`}>
+                            Grade {(() => {
+                              // Calculate grade if missing
+                              if (pillarScores.overall_grade && pillarScores.overall_grade !== 'N/A') {
+                                return pillarScores.overall_grade;
+                              }
+                              const score = pillarScores.weighted_score || 0;
+                              if (score >= 0.9) return 'A';
+                              if (score >= 0.8) return 'B';
+                              if (score >= 0.7) return 'C';
+                              if (score >= 0.6) return 'D';
+                              return 'F';
+                            })()}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-600 mb-2">
+                          {pillarScores.summary || 'Quality Assessment'} | Overall Score: {Math.round((pillarScores.weighted_score || 0) * 100)}% (Grade {(() => {
+                            // Calculate grade if missing
+                            if (pillarScores.overall_grade && pillarScores.overall_grade !== 'N/A') {
+                              return pillarScores.overall_grade;
+                            }
+                            const score = pillarScores.weighted_score || 0;
+                            if (score >= 0.9) return 'A';
+                            if (score >= 0.8) return 'B';
+                            if (score >= 0.7) return 'C';
+                            if (score >= 0.6) return 'D';
+                            return 'F';
+                          })()})
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium text-blue-600">Score: {Math.round((pillarScores.weighted_score || 0) * 100)}%</span>
+                          {isAIAnalysis && (
+                            <>
+                              <span className="text-xs text-gray-500">•</span>
+                              <span className="text-xs text-blue-600">AI-Powered Analysis</span>
+                            </>
+                          )}
+                          {isBasicAnalysis && (
+                            <>
+                              <span className="text-xs text-gray-500">•</span>
+                              <span className="text-xs text-green-600">Heuristic Analysis</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Show message when evaluation is disabled */}
+                    {!hasValidScores && (
+                      <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                        <p className="text-sm text-gray-600">
+                          {isSkipped ? 'AI evaluation was disabled for this survey generation.' : 'No evaluation data available for this survey.'}
+                        </p>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+
+              {/* Pillar Analysis - show if we have pillar breakdown data */}
+              {(() => {
+                const pillarScores = surveyToDisplay.pillar_scores;
+                const hasValidScores = pillarScores.weighted_score !== undefined && pillarScores.weighted_score > 0;
+                const hasPillarBreakdown = pillarScores.pillar_breakdown && Array.isArray(pillarScores.pillar_breakdown) && pillarScores.pillar_breakdown.length > 0;
+                
+                // Debug logging
+                console.log('Pillar Analysis Debug:', {
+                  hasValidScores,
+                  hasPillarBreakdown,
+                  pillarBreakdown: pillarScores.pillar_breakdown,
+                  weightedScore: pillarScores.weighted_score
+                });
+                
+                if (!hasPillarBreakdown) {
+                  return (
+                    <div className="space-y-3 mb-4">
+                      <h4 className="text-xs font-medium text-gray-900">Pillar Analysis</h4>
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <p className="text-sm text-gray-600">
+                          {hasValidScores ? 'Pillar breakdown data not available for this evaluation.' : 'No evaluation data available.'}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                }
+                
+                return (
+                  <div className="space-y-3 mb-4">
+                    <h4 className="text-xs font-medium text-gray-900">Pillar Analysis</h4>
+                    {pillarScores.pillar_breakdown.slice(0, 3).map((pillar, index) => {
                   const score = pillar.score || 0;
                   const percentage = Math.round(score * 100);
                   const grade = percentage >= 90 ? 'A' : percentage >= 80 ? 'B' : percentage >= 70 ? 'C' : percentage >= 60 ? 'D' : 'F';
@@ -1569,54 +1718,55 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
                     </div>
                   );
                 })}
-              </div>
+                  </div>
+                );
+              })()}
 
-              {/* AI Recommendations */}
-              <div className="space-y-3">
-                <h4 className="text-xs font-medium text-gray-900">AI Recommendations</h4>
-                <div className="space-y-2">
-                  <div className="p-2 bg-blue-50 border border-blue-200 rounded-lg">
-                    <div className="flex items-start gap-2">
-                      <div className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center mt-0.5 flex-shrink-0">
-                        <svg className="w-2 h-2 text-white" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
+              {/* Recommendations - show section with helpful message if no recommendations */}
+              {(() => {
+                const pillarScores = surveyToDisplay.pillar_scores;
+                const hasValidScores = pillarScores.weighted_score !== undefined && pillarScores.weighted_score > 0;
+                const hasRecommendations = pillarScores.recommendations && pillarScores.recommendations.length > 0;
+                
+                return (
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-medium text-gray-900">Recommendations</h4>
+                    {hasRecommendations ? (
+                      <div className="space-y-2">
+                        {pillarScores.recommendations.slice(0, 4).map((recommendation, index) => {
+                          const colors = ['blue', 'yellow', 'green', 'purple'] as const;
+                          const color = colors[index % colors.length];
+                          const colorClasses: Record<string, string> = {
+                            blue: 'bg-blue-50 border-blue-200 text-blue-800',
+                            yellow: 'bg-yellow-50 border-yellow-200 text-yellow-800',
+                            green: 'bg-green-50 border-green-200 text-green-800',
+                            purple: 'bg-purple-50 border-purple-200 text-purple-800'
+                          };
+                          
+                          return (
+                            <div key={index} className={`p-2 ${colorClasses[color]} border rounded-lg`}>
+                              <div className="flex items-start gap-2">
+                                <div className={`w-4 h-4 bg-${color}-500 rounded-full flex items-center justify-center mt-0.5 flex-shrink-0`}>
+                                  <svg className="w-2 h-2 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                  </svg>
+                                </div>
+                                <p className={`text-xs ${colorClasses[color].split(' ')[2]}`}>{recommendation}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                      <p className="text-xs text-blue-800">Consider adding more demographic questions to improve respondent segmentation</p>
-                    </div>
-                  </div>
-                  <div className="p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <div className="flex items-start gap-2">
-                      <div className="w-4 h-4 bg-yellow-500 rounded-full flex items-center justify-center mt-0.5 flex-shrink-0">
-                        <svg className="w-2 h-2 text-white" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                        </svg>
+                    ) : (
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <p className="text-sm text-gray-600">
+                          {hasValidScores ? 'No specific recommendations available for this evaluation.' : 'No evaluation data available.'}
+                        </p>
                       </div>
-                      <p className="text-xs text-yellow-800">Some questions may be too complex for mobile completion</p>
-                    </div>
+                    )}
                   </div>
-                  <div className="p-2 bg-green-50 border border-green-200 rounded-lg">
-                    <div className="flex items-start gap-2">
-                      <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center mt-0.5 flex-shrink-0">
-                        <svg className="w-2 h-2 text-white" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      </div>
-                      <p className="text-xs text-green-800">Good use of skip logic and branching improves user experience</p>
-                    </div>
-                  </div>
-                  <div className="p-2 bg-purple-50 border border-purple-200 rounded-lg">
-                    <div className="flex items-start gap-2">
-                      <div className="w-4 h-4 bg-purple-500 rounded-full flex items-center justify-center mt-0.5 flex-shrink-0">
-                        <svg className="w-2 h-2 text-white" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      </div>
-                      <p className="text-xs text-purple-800">Consider adding validation rules for numeric inputs</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
+                );
+              })()}
             </div>
           </div>
         )}
@@ -1651,6 +1801,13 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
         )}
       </div>
 
+      {/* Metadata Modal */}
+      <SurveyMetadataModal
+        isOpen={isMetadataModalOpen}
+        onClose={() => setIsMetadataModalOpen(false)}
+        surveyId={survey?.survey_id || ''}
+        rfqData={survey?.rfq_data}
+      />
     </div>
   );
 };

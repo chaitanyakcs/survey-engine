@@ -374,34 +374,45 @@ Your response must be parseable by json.loads() without any modification."""
     def _replicate_extract(content: str) -> JSONParseResult:
         """Extract JSON from Replicate API response format"""
         try:
+            logger.info(f"🔧 [JSONGenerationUtils] Replicate extract on {len(content)} chars")
+            
             # Handle Python dictionary string representation from Replicate
             # This handles cases like: "{'json_output': {'description': '...', 'sections': [...]}}"
             
             # First, try to parse as Python dict string representation
             import ast
             parsed_dict = ast.literal_eval(content)
+            logger.info(f"🔍 [JSONGenerationUtils] ast.literal_eval succeeded, type: {type(parsed_dict)}")
+            
+            if isinstance(parsed_dict, dict):
+                logger.info(f"🔍 [JSONGenerationUtils] Parsed dict keys: {list(parsed_dict.keys())}")
             
             # Check if it's a Replicate response with 'text' field
             if isinstance(parsed_dict, dict) and 'text' in parsed_dict:
                 text_content = parsed_dict['text']
+                logger.info(f"🔍 [JSONGenerationUtils] Found 'text' field, type: {type(text_content)}")
                 if isinstance(text_content, str) and text_content.strip().startswith('{'):
                     # Apply sanitization to fix common JSON issues
                     sanitized_content = JSONGenerationUtils._gentle_sanitize(text_content.strip())
                     # Try to parse the sanitized JSON
                     data = json.loads(sanitized_content)
+                    logger.info(f"✅ [JSONGenerationUtils] Parsed text field as JSON")
                     return JSONParseResult(success=True, data=data)
             
             # Check if it's a Replicate response with 'json_output' field
             if isinstance(parsed_dict, dict) and 'json_output' in parsed_dict:
                 json_content = parsed_dict['json_output']
+                logger.info(f"🔍 [JSONGenerationUtils] Found 'json_output' field, type: {type(json_content)}")
                 if isinstance(json_content, dict):
                     # The json_output is already a dictionary, return it directly
+                    logger.info(f"✅ [JSONGenerationUtils] Found json_output dict with keys: {list(json_content.keys())}")
                     return JSONParseResult(success=True, data=json_content)
                 elif isinstance(json_content, str) and json_content.strip().startswith('{'):
                     # Apply sanitization to fix common JSON issues
                     sanitized_content = JSONGenerationUtils._gentle_sanitize(json_content.strip())
                     # Try to parse the sanitized JSON
                     data = json.loads(sanitized_content)
+                    logger.info(f"✅ [JSONGenerationUtils] Parsed json_output string as JSON")
                     return JSONParseResult(success=True, data=data)
                 else:
                     # json_output exists but is not a dict or valid JSON string
@@ -409,12 +420,23 @@ Your response must be parseable by json.loads() without any modification."""
                     logger.warning(f"⚠️ [JSONGenerationUtils] json_output field found but not in expected format: {type(json_content)}")
                     # Fall through to other strategies
             
-            # If the entire parsed_dict looks like survey data, return it directly
+            # Enhanced: Check for nested response structures
+            # Handle cases where the response might be wrapped in additional layers
             if isinstance(parsed_dict, dict):
-                # Check if it has survey-like structure
+                # Look for any field that contains survey-like data
+                for key, value in parsed_dict.items():
+                    if isinstance(value, dict):
+                        # Check if this nested dict has survey structure
+                        if any(survey_key in value for survey_key in ['title', 'description', 'sections', 'questions', 'metadata']):
+                            logger.info(f"✅ [JSONGenerationUtils] Found survey data in nested field '{key}' with keys: {list(value.keys())}")
+                            return JSONParseResult(success=True, data=value)
+                
+                # Check if the entire parsed_dict looks like survey data
                 if any(key in parsed_dict for key in ['title', 'description', 'sections', 'questions', 'metadata']):
+                    logger.info(f"✅ [JSONGenerationUtils] Found survey data in root dict with keys: {list(parsed_dict.keys())}")
                     return JSONParseResult(success=True, data=parsed_dict)
             
+            logger.warning(f"⚠️ [JSONGenerationUtils] No valid JSON found in Replicate response")
             return JSONParseResult(success=False, error="No valid JSON found in Replicate response")
         except (ValueError, SyntaxError, TypeError, json.JSONDecodeError) as e:
             # If ast.literal_eval fails, try alternative approaches

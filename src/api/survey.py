@@ -27,6 +27,8 @@ class SurveyResponse(BaseModel):
     validation_results: Optional[Dict[str, Any]]
     edit_suggestions: Optional[Dict[str, Any]]
     pillar_scores: Optional[Dict[str, Any]]
+    rfq_data: Optional[Dict[str, Any]] = None  # NEW
+    rfq_id: Optional[str] = None  # NEW
 
 
 class EditRequest(BaseModel):
@@ -162,6 +164,10 @@ async def get_survey(
             logger.warning(f"❌ [Survey API] Survey not found in database: survey_id={survey_id}")
             raise HTTPException(status_code=404, detail="Survey not found")
         
+        # Query the related RFQ
+        rfq = survey.rfq if survey else None
+        logger.info(f"🔍 [Survey API] RFQ found: {rfq is not None}")
+        
         logger.info(f"✅ [Survey API] Survey found: id={survey.id}, status={survey.status}")
         logger.info(f"🔍 [Survey API] Survey data keys: {list(survey.__dict__.keys()) if survey else 'None'}")
         
@@ -182,7 +188,9 @@ async def get_survey(
             golden_similarity_score=float(survey.golden_similarity_score) if survey.golden_similarity_score else None,  # type: ignore
             validation_results=validation_results,
             edit_suggestions=edit_suggestions,
-            pillar_scores=survey.pillar_scores  # type: ignore
+            pillar_scores=survey.pillar_scores,  # type: ignore
+            rfq_id=str(survey.rfq_id) if survey.rfq_id else None,
+            rfq_data=rfq.enhanced_rfq_data if rfq else None
         )
         
         logger.info(f"🎉 [Survey API] Returning survey response: status={response.status}")

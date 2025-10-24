@@ -343,6 +343,8 @@ export interface Survey {
     }>;
     recommendations: string[];
   };
+  rfq_data?: EnhancedRFQRequest;  // NEW
+  rfq_id?: string;  // NEW
 }
 
 export interface SurveyListItem {

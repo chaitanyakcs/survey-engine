@@ -239,8 +239,8 @@ class AIAnnotationService:
             logger.error(f"❌ Error getting AI annotations: {str(e)}")
             return {"question_annotations": [], "section_annotations": []}
     
-    def mark_annotation_as_verified(self, annotation_id: int, annotation_type: str) -> bool:
-        """Mark an AI-generated annotation as human verified"""
+    async def mark_annotation_as_verified(self, annotation_id: int, annotation_type: str) -> bool:
+        """Mark an AI-generated annotation as human verified and sync to RAG"""
         try:
             if annotation_type == "question":
                 annotation = self.db_session.query(QuestionAnnotation).filter(
@@ -259,6 +259,25 @@ class AIAnnotationService:
                 annotation.updated_at = datetime.now()
                 self.db_session.commit()
                 logger.info(f"✅ Marked {annotation_type} annotation {annotation_id} as verified")
+                
+                # Sync to RAG after verification
+                try:
+                    from src.services.annotation_rag_sync_service import AnnotationRAGSyncService
+                    sync_service = AnnotationRAGSyncService(self.db_session)
+                    
+                    if annotation_type == "question":
+                        result = await sync_service.sync_question_annotation(annotation_id)
+                    else:  # section
+                        result = await sync_service.sync_section_annotation(annotation_id)
+                    
+                    if result.get("success"):
+                        logger.info(f"🎉 Synced verified {annotation_type} annotation {annotation_id} to RAG: {result.get('action')}")
+                    else:
+                        logger.warning(f"⚠️ Failed to sync verified {annotation_type} annotation {annotation_id}: {result.get('error')}")
+                        
+                except Exception as sync_error:
+                    logger.warning(f"⚠️ RAG sync failed for verified annotation {annotation_id} (non-critical): {str(sync_error)}")
+                
                 return True
             else:
                 logger.error(f"❌ Annotation {annotation_id} not found")

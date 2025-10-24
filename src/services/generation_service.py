@@ -681,18 +681,18 @@ class GenerationService:
         # Use the centralized JSON parsing utility with comprehensive strategies
         from src.utils.json_generation_utils import JSONGenerationUtils, JSONParseStrategy
         
-        # Try parsing with all strategies including the new broken JSON recovery
+        # Try parsing with all strategies
         strategies = [
+            JSONParseStrategy.REPLICATE_EXTRACT,  # Standard replicate extract (should work)
             JSONParseStrategy.DIRECT,
             JSONParseStrategy.MARKDOWN_EXTRACT,
             JSONParseStrategy.BOUNDARY_EXTRACT,
             JSONParseStrategy.SANITIZE_AND_PARSE,
             JSONParseStrategy.AGGRESSIVE_SANITIZE,
-            JSONParseStrategy.REPLICATE_EXTRACT,
             JSONParseStrategy.ESCAPED_JSON_HANDLE,
             JSONParseStrategy.LARGE_JSON_PARSE,
             JSONParseStrategy.PARTIAL_JSON_RECOVERY,
-            JSONParseStrategy.BROKEN_JSON_RECOVERY,  # New strategy for severely broken JSON
+            JSONParseStrategy.BROKEN_JSON_RECOVERY,
         ]
         
         parse_result = JSONGenerationUtils.parse_json_from_response(

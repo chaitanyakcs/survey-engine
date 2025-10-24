@@ -273,10 +273,9 @@ class EvaluatorService:
         """Evaluation using pillar-scores API"""
         try:
             from src.api.pillar_scores import _evaluate_with_advanced_system
-            # Prevent circular fallback by disabling aira_v1
             survey_id = getattr(self, 'survey_id', None)
             rfq_id = getattr(self, 'rfq_id', None)
-            result = await _evaluate_with_advanced_system(survey_data, rfq_text, self.db_session, survey_id=survey_id, rfq_id=rfq_id, allow_aira_v1=False)
+            result = await _evaluate_with_advanced_system(survey_data, rfq_text, self.db_session, survey_id=survey_id, rfq_id=rfq_id)
             return self._format_api_result(result)
         except Exception as e:
             logger.error(f"❌ [EvaluatorService] API evaluation error: {e}")

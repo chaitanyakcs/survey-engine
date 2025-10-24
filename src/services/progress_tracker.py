@@ -36,8 +36,11 @@ class ProgressTracker:
         # Substeps for building_context (10-25%)
         "parsing_rfq": (10, 15),            # RFQ parsing and analysis
         "generating_embeddings": (15, 18),  # Embedding generation
-        "matching_examples": (18, 22),      # Golden example matching
-        "building_context": (22, 25),       # Context building completion
+        "matching_examples": (18, 22),      # Golden example matching (legacy name)
+        "matching_golden_examples": (18, 22),  # Golden example matching (frontend expects this)
+        "planning_methodologies": (20, 22), # Methodology planning
+        "building_context": (22, 25),       # Context building completion (legacy name)
+        "build_context": (22, 25),          # Context building completion (frontend expects this)
 
         # Document parsing workflow
         "extracting_document": (0, 25),     # Document text extraction

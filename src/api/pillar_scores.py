@@ -108,7 +108,7 @@ def _cleanup_evaluation_lock(survey_id: str):
         if survey_id in _evaluation_locks:
             del _evaluation_locks[survey_id]
 
-async def _evaluate_with_advanced_system(survey_data: Dict[str, Any], rfq_text: str, db: Session, survey_id: str = None, rfq_id: str = None, allow_aira_v1: bool = True) -> OverallPillarScoreResponse:
+async def _evaluate_with_advanced_system(survey_data: Dict[str, Any], rfq_text: str, db: Session, survey_id: str = None, rfq_id: str = None) -> OverallPillarScoreResponse:
     """
     Evaluate survey using the appropriate evaluator based on settings
     """
@@ -130,13 +130,8 @@ async def _evaluate_with_advanced_system(survey_data: Dict[str, Any], rfq_text: 
             # Use multiple-call evaluator for detailed analysis
             evaluator = PillarBasedEvaluator(llm_client=llm_client, db_session=db)
             result = await evaluator.evaluate_survey(survey_data, rfq_text, survey_id, rfq_id)
-        elif evaluation_mode == "aira_v1" and allow_aira_v1:
-            # Use AiRA v1 evaluator (only if allowed to prevent circular fallback)
-            from evaluations.modules.aira_v1_evaluator import AiRAV1Evaluator
-            evaluator = AiRAV1Evaluator(llm_client=llm_client, db_session=db)
-            result = await evaluator.evaluate_survey(survey_data, rfq_text, survey_id, rfq_id)
-        else:  # hybrid or fallback
-            # Use single-call for now (can implement hybrid later)
+        else:  # fallback for unknown modes
+            # Use single-call for fallback
             evaluator = SingleCallEvaluator(llm_client=llm_client, db_session=db)
             result = await evaluator.evaluate_survey(survey_data, rfq_text, survey_id, rfq_id)
         
@@ -706,7 +701,7 @@ async def verify_ai_annotation(
         from src.services.ai_annotation_service import AIAnnotationService
         ai_service = AIAnnotationService(db)
         
-        success = ai_service.mark_annotation_as_verified(request_data.annotation_id, request_data.annotation_type)
+        success = await ai_service.mark_annotation_as_verified(request_data.annotation_id, request_data.annotation_type)
         
         if success:
             return {"status": "success", "message": "Annotation marked as verified"}
@@ -766,35 +761,3 @@ async def get_pillar_rules_summary(db: Session = Depends(get_db)):
         logger.error(f"❌ [Pillar Scores API] Error getting pillar rules summary: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get pillar rules summary: {str(e)}")
 
-async def _evaluate_with_aira_v1_system(survey_data: Dict[str, Any], rfq_text: str, db: Session, survey_id: str = None, rfq_id: str = None):
-    """
-    Evaluate survey using AiRA v1 comprehensive framework
-    """
-    logger.info(f"🎯 [AiRA v1] Starting comprehensive evaluation for survey_id={survey_id}")
-
-    try:
-        # Initialize LLM client for AiRA v1 evaluator
-        from evaluations.llm_client import create_evaluation_llm_client
-        llm_client = create_evaluation_llm_client(db_session=db)
-
-        # Use AiRA v1 evaluator
-        from evaluations.modules.aira_v1_evaluator import AiRAV1Evaluator
-        evaluator = AiRAV1Evaluator(llm_client=llm_client, db_session=db)
-
-        # Perform comprehensive evaluation
-        aira_result = await evaluator.evaluate_survey(survey_data, rfq_text, survey_id, rfq_id)
-
-        # Convert to API response format
-        from .aira_v1_models import convert_aira_result_to_api
-        api_response = convert_aira_result_to_api(aira_result, include_detailed_questions=True)
-
-        logger.info(f"✅ [AiRA v1] Evaluation completed: {api_response.overall_grade} ({api_response.overall_score:.2f})")
-
-        return api_response
-
-    except Exception as e:
-        logger.error(f"❌ [AiRA v1] Evaluation failed: {str(e)}", exc_info=True)
-
-        # Fallback to standard evaluation (prevent circular fallback)
-        logger.info("🔄 [AiRA v1] Falling back to standard evaluation")
-        return await _evaluate_with_advanced_system(survey_data, rfq_text, db, survey_id, rfq_id, allow_aira_v1=False)

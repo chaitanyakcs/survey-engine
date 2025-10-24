@@ -50,6 +50,8 @@ class APIService {
         })).sort((a: any, b: any) => (a.order || 0) - (b.order || 0)) // Sort questions by order
       })).sort((a: any, b: any) => (a.order || 0) - (b.order || 0)), // Include sections, sorted by order
       pillar_scores: backendResponse.pillar_scores || null, // Use cached pillar scores if available
+      rfq_data: backendResponse.rfq_data,  // NEW
+      rfq_id: backendResponse.rfq_id,      // NEW
       metadata: {
         target_responses: backendResponse.final_output?.target_responses || 100,
         methodology: backendResponse.final_output?.methodologies || [],

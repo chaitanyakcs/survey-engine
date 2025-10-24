@@ -124,7 +124,7 @@ class SettingsService:
                     return False
             
             # Validate specific values
-            if settings["evaluation_mode"] not in ["single_call", "multiple_calls", "hybrid", "aira_v1"]:
+            if settings["evaluation_mode"] not in ["single_call", "multiple_calls"]:
                 logger.error(f"❌ [SettingsService] Invalid evaluation_mode: {settings['evaluation_mode']}")
                 return False
                 

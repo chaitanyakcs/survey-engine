@@ -5,119 +5,118 @@ interface GaborGrangerProps {
     id: string;
     text: string;
     options?: string[];
+    scale_labels?: Record<string, string>;
     required?: boolean;
   };
   isPreview?: boolean;
 }
 
 const GaborGranger: React.FC<GaborGrangerProps> = ({ question, isPreview = true }) => {
-  // Extract price points from question text or use provided options
-  const extractPricePoints = (text: string): string[] => {
-    // Look for price patterns like $249, $299, etc.
-    const pricePattern = /\$[\d,]+(?:\.\d{2})?/g;
-    const prices = text.match(pricePattern);
+  // Extract metadata
+  const extractMetadata = () => {
+    const text = question.text;
     
-    if (prices && prices.length > 0) {
-      return prices;
+    // Product name from question or text
+    const productMatch = text.match(/purchase\s+(Product_[A-Z]|GoPro[^\s?]+)/i);
+    const product = productMatch ? productMatch[1] : 'this product';
+    
+    // Clean question text
+    let cleanText = text
+      .replace(/\[.*?\]/g, '')
+      .replace(/On a scale of.*?purchase[',]/gi, '')
+      .replace(/\$[\d,]+(?:\.\d{2})?/g, '')
+      .trim();
+    
+    // If text is messy, create simple version
+    if (cleanText.length > 150 || cleanText.includes('CQ0')) {
+      cleanText = `How likely would you be to purchase ${product}?`;
     }
     
-    // Fallback: look for comma-separated values that might be prices
-    const commaPattern = /[\w\s]+(?:\s*,\s*[\w\s]+)+/g;
-    const matches = text.match(commaPattern);
-    
-    if (matches && matches.length > 0) {
-      // Take the longest match (most likely to be the price list)
-      const longestMatch = matches.reduce((a, b) => a.length > b.length ? a : b);
-      return longestMatch
-        .split(',')
-        .map(price => price.trim())
-        .filter(price => price.length > 0);
-    }
-    
-    return [];
+    return { product, cleanText };
   };
-
-  const pricePoints = question.options && question.options.length > 0 
-    ? question.options 
-    : extractPricePoints(question.text);
-
-  // Default price points if none found
-  const defaultPricePoints = ["$249", "$299", "$349", "$399", "$449", "$499", "$549", "$599"];
-  const finalPricePoints = pricePoints.length > 0 ? pricePoints : defaultPricePoints;
-
-  const likelihoodScale = [
-    "Definitely Not",
-    "Probably Not", 
-    "Maybe",
-    "Probably Yes",
-    "Definitely Yes"
-  ];
-
-  if (finalPricePoints.length === 0) {
+  
+  const { cleanText } = extractMetadata();
+  
+  // Price points from options
+  const pricePoints = question.options || [];
+  
+  // Scale labels
+  const scaleLabels = question.scale_labels || {
+    '1': 'Definitely will not purchase',
+    '2': 'Probably will not purchase',
+    '3': 'May or may not purchase',
+    '4': 'Probably will purchase',
+    '5': 'Definitely will purchase'
+  };
+  
+  if (pricePoints.length === 0) {
     return (
       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-        <div className="flex items-center space-x-2">
-          <svg className="w-5 h-5 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-          </svg>
-          <span className="text-yellow-800 text-sm">
-            Unable to parse price points from question text. Please ensure price points are clearly specified.
-          </span>
-        </div>
+        <p className="text-sm text-yellow-800">
+          No price points specified for this Gabor-Granger question.
+        </p>
       </div>
     );
   }
-
+  
   return (
-    <div className="overflow-x-auto">
-      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-        <div className="text-sm font-medium text-gray-800 mb-4">
-          Gabor-Granger Price Sensitivity Question
+    <div className="space-y-4">
+      {/* Clean question text */}
+      <div className="text-base font-medium text-gray-900">
+        {cleanText}
+      </div>
+      
+      {/* Scale legend */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+        <div className="text-sm font-medium text-blue-900 mb-2">Purchase Likelihood Scale:</div>
+        <div className="grid grid-cols-5 gap-2 text-xs text-blue-800">
+          {Object.entries(scaleLabels).map(([num, label]) => (
+            <div key={num} className="text-center">
+              <span className="font-semibold">{num}</span> = {label}
+            </div>
+          ))}
         </div>
-        
-        <div className="text-sm text-gray-600 mb-4">
-          Please indicate your purchase likelihood at each price point:
-        </div>
-
-        <div className="min-w-full">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="border-b border-gray-300">
-                <th className="text-left py-3 px-4 font-medium text-gray-700 bg-gray-100">
-                  Price Point
-                </th>
-                <th className="text-center py-3 px-2 font-medium text-gray-700 bg-gray-100">
-                  Purchase Likelihood
-                </th>
+      </div>
+      
+      {/* Price point grid */}
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse bg-white rounded-lg overflow-hidden shadow-sm">
+          <thead>
+            <tr className="bg-gray-100 border-b border-gray-300">
+              <th className="text-left py-3 px-4 font-semibold text-gray-700">
+                Price Point
+              </th>
+              <th className="text-center py-3 px-4 font-semibold text-gray-700">
+                Purchase Likelihood (1-5)
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {pricePoints.map((price, idx) => (
+              <tr key={idx} className="border-b border-gray-200 hover:bg-gray-50">
+                <td className="py-3 px-4 font-medium text-gray-900">
+                  {price}
+                </td>
+                <td className="py-3 px-4">
+                  <div className="flex justify-center gap-4">
+                    {['1', '2', '3', '4', '5'].map((value) => (
+                      <label key={value} className="flex flex-col items-center cursor-pointer">
+                        <input
+                          type="radio"
+                          name={`${question.id}_${idx}`}
+                          value={value}
+                          disabled={isPreview}
+                          className="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                        />
+                        <span className="text-xs text-gray-600 mt-1">{value}</span>
+                      </label>
+                    ))}
+                  </div>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {finalPricePoints.map((price, priceIndex) => (
-                <tr key={priceIndex} className="border-b border-gray-200 hover:bg-gray-50">
-                  <td className="py-3 px-4 text-sm text-gray-700 font-medium">
-                    {price}
-                  </td>
-                  <td className="py-3 px-2">
-                    <div className="flex flex-wrap gap-2 justify-center">
-                      {likelihoodScale.map((option, optionIndex) => (
-                        <label key={optionIndex} className="flex items-center text-xs">
-                          <input
-                            type="radio"
-                            name={`${question.id}_${priceIndex}`}
-                            value={optionIndex}
-                            disabled={isPreview}
-                            className="h-3 w-3 text-amber-600 border-gray-300 focus:ring-amber-500 mr-1"
-                          />
-                          <span className="text-gray-600">{option}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );

@@ -2148,3 +2148,69 @@ async def seed_core_generation_rules(db: Session = Depends(get_db)):
             status_code=500,
             detail=f"Complete database bootstrap failed: {str(e)}"
         )
+
+
+@router.post("/match-rfq-to-surveys")
+async def match_rfq_to_surveys(
+    time_window_minutes: int = 30,
+    dry_run: bool = True,
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """Match RFQs to surveys based on timestamp proximity"""
+    from src.database.models import Survey, RFQ
+    from datetime import timedelta
+    
+    try:
+        logger.info(f"🔍 [Admin API] Starting RFQ-Survey matching: time_window={time_window_minutes}min, dry_run={dry_run}")
+        
+        # Find surveys without RFQ
+        unmatched_surveys = db.query(Survey).filter(Survey.rfq_id.is_(None)).all()
+        logger.info(f"📊 [Admin API] Found {len(unmatched_surveys)} surveys without RFQ")
+        
+        matches = []
+        
+        for survey in unmatched_surveys:
+            # Find RFQs within time window
+            time_delta = timedelta(minutes=time_window_minutes)
+            rfqs = db.query(RFQ).filter(
+                RFQ.created_at >= survey.created_at - time_delta,
+                RFQ.created_at <= survey.created_at + time_delta
+            ).all()
+            
+            if rfqs:
+                # Find closest by timestamp
+                closest_rfq = min(rfqs, key=lambda r: abs((r.created_at - survey.created_at).total_seconds()))
+                time_diff = abs((closest_rfq.created_at - survey.created_at).total_seconds())
+                
+                matches.append({
+                    'survey_id': str(survey.id),
+                    'rfq_id': str(closest_rfq.id),
+                    'time_diff_seconds': time_diff,
+                    'survey_created': survey.created_at.isoformat(),
+                    'rfq_created': closest_rfq.created_at.isoformat()
+                })
+                
+                if not dry_run:
+                    survey.rfq_id = closest_rfq.id
+                    logger.info(f"✅ [Admin API] Matched survey {survey.id} to RFQ {closest_rfq.id}")
+        
+        if not dry_run:
+            db.commit()
+            logger.info(f"💾 [Admin API] Committed {len(matches)} RFQ-Survey matches to database")
+        
+        logger.info(f"🎉 [Admin API] Matching completed: {len(matches)} matches found")
+        
+        return {
+            'matched_count': len(matches),
+            'dry_run': dry_run,
+            'time_window_minutes': time_window_minutes,
+            'matches': matches
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ [Admin API] RFQ-Survey matching failed: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"RFQ-Survey matching failed: {str(e)}"
+        )

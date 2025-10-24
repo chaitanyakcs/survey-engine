@@ -312,6 +312,412 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
 """
         return prompt
     
+    def _post_process_question(self, question: Dict[str, Any]) -> Dict[str, Any]:
+        """Clean up questions extracted from documents."""
+        import copy
+        import re
+        
+        original_question = copy.deepcopy(question)  # Preserve original
+        q_type = question.get('type')
+        
+        try:
+            if q_type == 'gabor_granger':
+                return self._post_process_gabor_granger(question)
+            elif q_type == 'maxdiff':
+                return self._post_process_maxdiff(question)
+            elif q_type == 'matrix' or q_type == 'matrix_likert':
+                return self._post_process_matrix(question)
+            elif q_type == 'instruction':
+                return self._post_process_instruction(question)
+            elif q_type == 'van_westendorp':
+                return self._post_process_van_westendorp(question)
+            elif q_type == 'dropdown':
+                return self._post_process_dropdown(question)
+            elif q_type == 'conjoint':
+                return self._post_process_conjoint(question)
+            elif q_type == 'yes_no':
+                return self._post_process_yes_no(question)
+            else:
+                return self._clean_programming_instructions(question)
+        except Exception as e:
+            logger.error(f"Error post-processing {q_type} question {question.get('id')}: {e}", exc_info=True)
+            return original_question  # Always return original on error
+
+    def _clean_programming_instructions(self, question: Dict[str, Any]) -> Dict[str, Any]:
+        """Remove common programming instructions from any question."""
+        import re
+        
+        text = question.get('text', '')
+        
+        # Remove brackets with instructions
+        text = re.sub(r'\[SHOW HYPERLINK[^\]]*\]', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\[HYPERLINK[^\]]*\]', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\[RANDOMIZE[^\]]*\]', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\[IF RESPONSE[^\]]*\]', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\[CAPTURE[^\]]*\]', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\[SELECT ONE[^\]]*\]', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\[ALLOW ONLY[^\]]*\]', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\[ANCHOR[^\]]*\]', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\[TERMINATE[^\]]*\]', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\[Thank & Terminate\]', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\[RECRUIT\]', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\[EXCLUSIVE\]', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\[COLLECT OE\]', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'QUOTAS:.*?(?=\n|$)', '', text, flags=re.IGNORECASE)
+        
+        # Clean up whitespace
+        text = re.sub(r'\s+', ' ', text).strip()
+        question['text'] = text
+        
+        return question
+
+    def _post_process_gabor_granger(self, question: Dict[str, Any]) -> Dict[str, Any]:
+        """Clean Gabor-Granger questions - extract prices, scale, product."""
+        import copy
+        import re
+        
+        original_question = copy.deepcopy(question)
+        text = question.get('text', '')
+        
+        try:
+            # Extract scale mapping
+            scale_pattern = r'(?:scale of|from)\s*(\d+)\s*to\s*(\d+)\s*:?\s*where\s*(\d+)\s*is\s*[\'"]([^\'\"]+)[\'"].*?(?:and\s*)?(\d+)\s*is\s*[\'"]([^\'\"]+)[\'"]'
+            scale_match = re.search(scale_pattern, text, re.IGNORECASE | re.DOTALL)
+            
+            if scale_match:
+                _, _, low_num, low_label, high_num, high_label = scale_match.groups()
+                question['scale_labels'] = {
+                    low_num: low_label.strip(),
+                    high_num: high_label.strip()
+                }
+            
+            # Extract product name
+            product_pattern = r'purchase\s+(Product_[A-Z]|GoPro[^?]+?)\??'
+            product_match = re.search(product_pattern, text, re.IGNORECASE)
+            product_name = product_match.group(1).strip() if product_match else 'this product'
+            
+            # Extract price points (pipe-delimited or space-separated)
+            # Look for pattern like "Product_A at $249 | $299 | ..."
+            price_section_pattern = rf'{re.escape(product_name)}\s+at\s+([\$\d\s\|,]+)'
+            price_section_match = re.search(price_section_pattern, text, re.IGNORECASE)
+            
+            if price_section_match:
+                price_text = price_section_match.group(1)
+                prices = re.findall(r'\$[\d,]+(?:\.\d{2})?', price_text)
+                # Remove duplicates while preserving order
+                seen = set()
+                unique_prices = []
+                for price in prices:
+                    if price not in seen:
+                        seen.add(price)
+                        unique_prices.append(price)
+                question['options'] = unique_prices
+            
+            # Create clean question text
+            clean_text = f"How likely would you be to purchase {product_name}?"
+            
+            # Add hyperlink context if present
+            if 'click here to review' in text.lower():
+                clean_text += " Click here to review the concept."
+            
+            question['text'] = clean_text
+            
+            # Safety checks
+            if len(question.get('options', [])) == 0 and '$' in text:
+                logger.warning(f"Price extraction failed for {question.get('id')}, keeping original")
+                return original_question
+                
+            if len(question.get('text', '')) < 10:
+                logger.warning(f"Cleaned text too short for {question.get('id')}, keeping original")
+                return original_question
+            
+            logger.info(f"Successfully post-processed gabor_granger question {question.get('id')}")
+            return question
+            
+        except Exception as e:
+            logger.error(f"Error post-processing gabor_granger {question.get('id')}: {e}", exc_info=True)
+            return original_question
+
+    def _post_process_maxdiff(self, question: Dict[str, Any]) -> Dict[str, Any]:
+        """Clean MaxDiff questions - extract features if highlighted."""
+        import copy
+        import re
+        
+        original_question = copy.deepcopy(question)
+        text = question.get('text', '')
+        
+        try:
+            # Remove programming instructions
+            text = re.sub(r'\[SHOW CONCEPT[^\]]*\]', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\[ALLOW RESPONDENTS[^\]]*\]', '', text, flags=re.IGNORECASE)
+            
+            # Extract product name
+            product_pattern = r'(Product_[A-Z]|GoPro[^\s]+)'
+            product_match = re.search(product_pattern, text)
+            product_name = product_match.group(1) if product_match else 'the concept'
+            
+            # Create clean question
+            clean_text = f"Please select the MOST IMPORTANT and LEAST IMPORTANT features of {product_name}."
+            
+            question['text'] = clean_text
+            
+            # Note: features array should be populated by generation service
+            # from concept description, not from question text
+            
+            logger.info(f"Successfully post-processed maxdiff question {question.get('id')}")
+            return question
+            
+        except Exception as e:
+            logger.error(f"Error post-processing maxdiff {question.get('id')}: {e}", exc_info=True)
+            return original_question
+
+    def _post_process_matrix(self, question: Dict[str, Any]) -> Dict[str, Any]:
+        """Clean matrix questions - remove routing/quota logic."""
+        import copy
+        import re
+        
+        original_question = copy.deepcopy(question)
+        text = question.get('text', '')
+        
+        try:
+            # Remove routing logic
+            text = re.sub(r'\[IF [^\]]+\]', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'CLASSIFY AS[^\]]+', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'QUOTAS:[^$]+?(?=\[|$)', '', text, flags=re.IGNORECASE)
+            
+            # Clean up
+            text = re.sub(r'\s+', ' ', text).strip()
+            question['text'] = text
+            
+            result = self._clean_programming_instructions(question)
+            logger.info(f"Successfully post-processed matrix question {question.get('id')}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error post-processing matrix {question.get('id')}: {e}", exc_info=True)
+            return original_question
+
+    def _post_process_instruction(self, question: Dict[str, Any]) -> Dict[str, Any]:
+        """Clean instruction questions - hide technical/termination screens."""
+        import copy
+        import re
+        
+        original_question = copy.deepcopy(question)
+        text = question.get('text', '')
+        
+        try:
+            # Flag technical instructions (not respondent-facing)
+            technical_keywords = [
+                'TERMINATING SCREEN',
+                'RESPONDENT TYPE',
+                'QUOTA',
+                'CLASSIFICATION',
+                'Thank & Terminate',
+                'PROGRAMMING NOTE',
+                'RANDOMIZATION:',
+                'Implementation:'
+            ]
+            
+            is_technical = any(keyword.lower() in text.lower() for keyword in technical_keywords)
+            
+            if is_technical:
+                question['label'] = question.get('label', '') or 'Technical_Note'
+                question['description'] = 'Programming instruction - not displayed to respondents'
+            
+            # Remove instruction markers
+            text = re.sub(r'\[TERMINATING SCREEN\]', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\[Show to [^\]]+\]', '', text, flags=re.IGNORECASE)
+            
+            question['text'] = text.strip()
+            
+            logger.info(f"Successfully post-processed instruction question {question.get('id')}")
+            return question
+            
+        except Exception as e:
+            logger.error(f"Error post-processing instruction {question.get('id')}: {e}", exc_info=True)
+            return original_question
+
+    def _post_process_van_westendorp(self, question: Dict[str, Any]) -> Dict[str, Any]:
+        """Clean Van Westendorp questions - extract price sensitivity context."""
+        import copy
+        import re
+        
+        original_question = copy.deepcopy(question)
+        text = question.get('text', '')
+        
+        try:
+            # Remove programming instructions
+            text = re.sub(r'\[SHOW HYPERLINK[^\]]*\]', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\[RANDOMIZE[^\]]*\]', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\[CAPTURE[^\]]*\]', '', text, flags=re.IGNORECASE)
+            
+            # Extract currency if present
+            currency_match = re.search(r'[£$€¥₹]', text)
+            currency = currency_match.group(0) if currency_match else '$'
+            
+            # Clean up text
+            text = re.sub(r'\s+', ' ', text).strip()
+            question['text'] = text
+            
+            # Add currency context
+            if currency != '$':
+                question['currency'] = currency
+            
+            logger.info(f"Successfully post-processed van_westendorp question {question.get('id')}")
+            return question
+            
+        except Exception as e:
+            logger.error(f"Error post-processing van_westendorp {question.get('id')}: {e}", exc_info=True)
+            return original_question
+
+    def _post_process_dropdown(self, question: Dict[str, Any]) -> Dict[str, Any]:
+        """Clean dropdown questions - ensure options are properly formatted."""
+        import copy
+        import re
+        
+        original_question = copy.deepcopy(question)
+        text = question.get('text', '')
+        
+        try:
+            # Remove programming instructions
+            text = re.sub(r'\[SHOW HYPERLINK[^\]]*\]', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\[RANDOMIZE[^\]]*\]', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\[SELECT ONE[^\]]*\]', '', text, flags=re.IGNORECASE)
+            
+            # Clean up text
+            text = re.sub(r'\s+', ' ', text).strip()
+            question['text'] = text
+            
+            # Ensure options are clean
+            if 'options' in question and question['options']:
+                cleaned_options = []
+                for option in question['options']:
+                    # Remove any programming markers from options
+                    clean_option = re.sub(r'\[.*?\]', '', str(option)).strip()
+                    if clean_option:
+                        cleaned_options.append(clean_option)
+                question['options'] = cleaned_options
+            
+            logger.info(f"Successfully post-processed dropdown question {question.get('id')}")
+            return question
+            
+        except Exception as e:
+            logger.error(f"Error post-processing dropdown {question.get('id')}: {e}", exc_info=True)
+            return original_question
+
+    def _post_process_conjoint(self, question: Dict[str, Any]) -> Dict[str, Any]:
+        """Clean conjoint questions - extract attribute combinations."""
+        import copy
+        import re
+        
+        original_question = copy.deepcopy(question)
+        text = question.get('text', '')
+        
+        try:
+            # Remove programming instructions
+            text = re.sub(r'\[SHOW CONCEPT[^\]]*\]', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\[RANDOMIZE[^\]]*\]', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\[ALLOW RESPONDENTS[^\]]*\]', '', text, flags=re.IGNORECASE)
+            
+            # Extract product name if present
+            product_pattern = r'(Product_[A-Z]|GoPro[^\s]+)'
+            product_match = re.search(product_pattern, text)
+            product_name = product_match.group(1) if product_match else 'the product'
+            
+            # Create clean question
+            clean_text = f"Please evaluate the following {product_name} combinations:"
+            
+            question['text'] = clean_text
+            
+            logger.info(f"Successfully post-processed conjoint question {question.get('id')}")
+            return question
+            
+        except Exception as e:
+            logger.error(f"Error post-processing conjoint {question.get('id')}: {e}", exc_info=True)
+            return original_question
+
+    def _post_process_yes_no(self, question: Dict[str, Any]) -> Dict[str, Any]:
+        """Clean yes/no questions - remove programming instructions and ensure proper options."""
+        import copy
+        import re
+        
+        original_question = copy.deepcopy(question)
+        text = question.get('text', '')
+        
+        try:
+            # Remove programming instructions
+            text = re.sub(r'\[FOR US ONLY\][^]]*', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\[FOR UK ONLY\][^]]*', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\[FOR JP ONLY\][^]]*', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\[SHOW HYPERLINK[^\]]*\]', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\[RANDOMIZE[^\]]*\]', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\[CAPTURE[^\]]*\]', '', text, flags=re.IGNORECASE)
+            
+            # Clean up whitespace
+            text = re.sub(r'\s+', ' ', text).strip()
+            question['text'] = text
+            
+            # Ensure standard yes/no options if not present
+            if 'options' not in question or not question['options']:
+                question['options'] = ['Yes', 'No']
+            elif len(question['options']) == 2:
+                # Clean up existing options
+                cleaned_options = []
+                for option in question['options']:
+                    clean_option = re.sub(r'\[.*?\]', '', str(option)).strip()
+                    if clean_option:
+                        cleaned_options.append(clean_option)
+                question['options'] = cleaned_options
+            
+            logger.info(f"Successfully post-processed yes_no question {question.get('id')}")
+            return question
+            
+        except Exception as e:
+            logger.error(f"Error post-processing yes_no {question.get('id')}: {e}", exc_info=True)
+            return original_question
+
+    def _post_process_text_block(self, text_block: Dict[str, Any]) -> Dict[str, Any]:
+        """Clean text blocks - ensure proper structure and remove programming instructions."""
+        import copy
+        import re
+        
+        original_text_block = copy.deepcopy(text_block)
+        
+        try:
+            # Handle different text block structures
+            text_content = text_block.get('text') or text_block.get('content', '')
+            
+            if not text_content:
+                return original_text_block
+            
+            # Remove programming instructions
+            text_content = re.sub(r'\[FOR US ONLY\][^]]*', '', text_content, flags=re.IGNORECASE)
+            text_content = re.sub(r'\[FOR UK ONLY\][^]]*', '', text_content, flags=re.IGNORECASE)
+            text_content = re.sub(r'\[FOR JP ONLY\][^]]*', '', text_content, flags=re.IGNORECASE)
+            text_content = re.sub(r'\[SHOW HYPERLINK[^\]]*\]', '', text_content, flags=re.IGNORECASE)
+            text_content = re.sub(r'\[RANDOMIZE[^\]]*\]', '', text_content, flags=re.IGNORECASE)
+            text_content = re.sub(r'\[CAPTURE[^\]]*\]', '', text_content, flags=re.IGNORECASE)
+            
+            # Clean up whitespace
+            text_content = re.sub(r'\s+', ' ', text_content).strip()
+            
+            # Update the text content
+            if 'text' in text_block:
+                text_block['text'] = text_content
+            if 'content' in text_block:
+                text_block['content'] = text_content
+            
+            # Ensure we have a text property for the UI
+            if 'text' not in text_block and 'content' in text_block:
+                text_block['text'] = text_block['content']
+            
+            logger.info(f"Successfully post-processed text block")
+            return text_block
+            
+        except Exception as e:
+            logger.error(f"Error post-processing text block: {e}", exc_info=True)
+            return original_text_block
+    
     async def convert_to_json(self, document_text: str, comments: List[Dict[str, Any]] = None, session_id: str = None) -> Dict[str, Any]:
         """Convert document text to JSON using LLM with detailed progress updates."""
         logger.info(f"🤖 [Document Parser] Starting LLM conversion with model: {self.model}")
@@ -2469,11 +2875,25 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
                 if "questions" in validated_survey and validated_survey["questions"]:
                     questions_to_process = validated_survey["questions"]
                     logger.info(f"💬 [Document Parser] Found questions directly in survey_json")
+                    
+                    # Post-process questions in direct array
+                    logger.info(f"🔧 [Document Parser] Post-processing {len(questions_to_process)} questions from direct array...")
+                    for i, question in enumerate(questions_to_process):
+                        if isinstance(question, dict):
+                            processed_question = self._post_process_question(question)
+                            validated_survey["questions"][i] = processed_question
                 
                 # Check final_output questions
                 elif "final_output" in validated_survey and "questions" in validated_survey["final_output"] and validated_survey["final_output"]["questions"]:
                     questions_to_process = validated_survey["final_output"]["questions"]
                     logger.info(f"💬 [Document Parser] Found questions in final_output")
+                    
+                    # Post-process questions in final_output
+                    logger.info(f"🔧 [Document Parser] Post-processing {len(questions_to_process)} questions from final_output...")
+                    for i, question in enumerate(questions_to_process):
+                        if isinstance(question, dict):
+                            processed_question = self._post_process_question(question)
+                            validated_survey["final_output"]["questions"][i] = processed_question
                 
                 # Check sections for questions (NEW: Handle sections format)
                 elif "sections" in validated_survey and validated_survey["sections"]:
@@ -2482,17 +2902,39 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
                         if isinstance(section, dict) and "questions" in section and section["questions"]:
                             all_questions.extend(section["questions"])
                     
-                    if all_questions:
-                        questions_to_process = all_questions
-                        logger.info(f"💬 [Document Parser] Found {len(all_questions)} questions across {len(validated_survey['sections'])} sections")
-                
-                # Check raw_output for questions (for golden pairs)
-                elif "raw_output" in validated_survey and "questions" in validated_survey["raw_output"] and validated_survey["raw_output"]["questions"]:
-                    questions_to_process = validated_survey["raw_output"]["questions"]
-                    logger.info(f"💬 [Document Parser] Found questions in raw_output")
-                
-                else:
-                    logger.warning(f"⚠️ [Document Parser] No questions found in any expected location")
+                    # Post-process all questions in sections
+                    logger.info(f"🔧 [Document Parser] Post-processing {len(all_questions)} questions from sections...")
+                    for question in all_questions:
+                        if isinstance(question, dict):
+                            processed_question = self._post_process_question(question)
+                            # Update the question in the section
+                            for section in validated_survey["sections"]:
+                                if isinstance(section, dict) and "questions" in section:
+                                    for i, q in enumerate(section["questions"]):
+                                        if q == question:
+                                            section["questions"][i] = processed_question
+                                            break
+
+                    # Post-process textBlocks in sections
+                    logger.info(f"🔧 [Document Parser] Post-processing textBlocks in sections...")
+                    for section in validated_survey.get("sections", []):
+                        if isinstance(section, dict) and "textBlocks" in section:
+                            processed_text_blocks = []
+                            for text_block in section["textBlocks"]:
+                                if isinstance(text_block, dict):
+                                    processed_text_block = self._post_process_text_block(text_block)
+                                    processed_text_blocks.append(processed_text_block)
+                                else:
+                                    processed_text_blocks.append(text_block)
+                            section["textBlocks"] = processed_text_blocks
+
+            # Check raw_output for questions (for golden pairs)
+            if "raw_output" in validated_survey and "questions" in validated_survey["raw_output"] and validated_survey["raw_output"]["questions"]:
+                questions_to_process = validated_survey["raw_output"]["questions"]
+                logger.info(f"💬 [Document Parser] Found questions in raw_output")
+            
+            if not questions_to_process:
+                logger.warning(f"⚠️ [Document Parser] No questions found in any expected location")
             
             if questions_to_process:
                 survey_id = validated_survey.get("survey_id", str(uuid.uuid4()))

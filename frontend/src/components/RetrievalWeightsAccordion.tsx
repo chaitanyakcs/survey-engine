@@ -159,6 +159,8 @@ export const RetrievalWeightsAccordion: React.FC<RetrievalWeightsAccordionProps>
                             <span>Semantic: {Math.round(weight.semantic_weight * 100)}%</span>
                             <span>Methodology: {Math.round(weight.methodology_weight * 100)}%</span>
                             <span>Industry: {Math.round(weight.industry_weight * 100)}%</span>
+                            <span>Quality: {Math.round(weight.quality_weight * 100)}%</span>
+                            <span>Annotation: {Math.round(weight.annotation_weight * 100)}%</span>
                           </div>
                         </div>
                       </div>

@@ -136,16 +136,33 @@ export const SurveyCard: React.FC<SurveyCardProps> = ({
               >
                 <EyeIcon className="h-4 w-4" />
               </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete();
-                }}
-                className="p-2 text-gray-400 hover:text-error-600 hover:bg-error-50 rounded-xl transition-all duration-200 group-hover:bg-error-50"
-                title="Delete Survey"
-              >
-                <TrashIcon className="h-4 w-4" />
-              </button>
+              {survey.status === 'reference' ? (
+                <div className="relative group">
+                  <button
+                    disabled
+                    className="p-2 text-gray-300 cursor-not-allowed rounded-xl transition-all duration-200"
+                    title="Reference surveys cannot be deleted directly. They are automatically removed when their corresponding golden example is deleted."
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </button>
+                  {/* Tooltip */}
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+                    Reference surveys cannot be deleted directly. They are automatically removed when their corresponding golden example is deleted.
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete();
+                  }}
+                  className="p-2 text-gray-400 hover:text-error-600 hover:bg-error-50 rounded-xl transition-all duration-200 group-hover:bg-error-50"
+                  title="Delete Survey"
+                >
+                  <TrashIcon className="h-4 w-4" />
+                </button>
+              )}
             </div>
           </div>
           

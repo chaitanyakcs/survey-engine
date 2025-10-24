@@ -3,7 +3,7 @@ import { SurveyTextContent, TextContentType } from '../types';
 import { InformationCircleIcon, ShieldCheckIcon, DocumentTextIcon, UserGroupIcon } from '@heroicons/react/24/outline';
 
 interface SurveyTextBlockProps {
-  textContent: SurveyTextContent;
+  textContent: SurveyTextContent | { text: string } | string;
   className?: string;
   showLabel?: boolean; // Whether to show the AiRA label for debugging
 }
@@ -13,6 +13,31 @@ const SurveyTextBlock: React.FC<SurveyTextBlockProps> = ({
   className = '',
   showLabel = false
 }) => {
+  // Handle both SurveyTextContent structure and simple text blocks
+  const getTextContent = () => {
+    if (typeof textContent === 'string') {
+      return textContent;
+    }
+    if ('content' in textContent && textContent.content) {
+      return textContent.content;
+    }
+    if ('text' in textContent && textContent.text) {
+      return textContent.text;
+    }
+    return '';
+  };
+
+  const getTextType = (): TextContentType => {
+    if (typeof textContent === 'string') {
+      return 'instruction';
+    }
+    if ('type' in textContent && textContent.type) {
+      return textContent.type;
+    }
+    // Default to instruction for simple text blocks
+    return 'instruction';
+  };
+
   const getTextTypeIcon = (type: TextContentType) => {
     switch (type) {
       case 'study_intro':
@@ -66,9 +91,11 @@ const SurveyTextBlock: React.FC<SurveyTextBlockProps> = ({
     }
   };
 
-  const icon = getTextTypeIcon(textContent.type);
-  const typeLabel = getTextTypeLabel(textContent.type);
-  const typeStyles = getTextTypeStyles(textContent.type);
+  const textType = getTextType();
+  const typeLabel = getTextTypeLabel(textType);
+  const typeStyles = getTextTypeStyles(textType);
+  const icon = getTextTypeIcon(textType);
+  const content = getTextContent();
 
   return (
     <div className={`${typeStyles} border rounded-lg p-6 mb-6 ${className}`}>
@@ -82,7 +109,7 @@ const SurveyTextBlock: React.FC<SurveyTextBlockProps> = ({
           </div>
           
           {/* Small purple tag (label) */}
-          {textContent.label && (
+          {typeof textContent === 'object' && 'label' in textContent && textContent.label && (
             <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded ml-6 w-fit">
               {textContent.label}
             </span>
@@ -90,7 +117,7 @@ const SurveyTextBlock: React.FC<SurveyTextBlockProps> = ({
         </div>
 
         {/* Show mandatory indicator */}
-        {textContent.mandatory && (
+        {typeof textContent === 'object' && 'mandatory' in textContent && textContent.mandatory && (
           <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">
             Required
           </span>
@@ -100,7 +127,7 @@ const SurveyTextBlock: React.FC<SurveyTextBlockProps> = ({
       {/* Text content */}
       <div className="prose prose-sm max-w-none">
         <p className="leading-relaxed whitespace-pre-wrap">
-          {textContent.content}
+          {content}
         </p>
       </div>
 
@@ -108,9 +135,9 @@ const SurveyTextBlock: React.FC<SurveyTextBlockProps> = ({
       {process.env.NODE_ENV === 'development' && showLabel && (
         <div className="mt-4 pt-4 border-t border-opacity-20 border-gray-400">
           <div className="text-xs text-opacity-70 space-y-1">
-            <div>ID: {textContent.id}</div>
-            {textContent.section_id && <div>Section: {textContent.section_id}</div>}
-            {textContent.order !== undefined && <div>Order: {textContent.order}</div>}
+            {typeof textContent === 'object' && 'id' in textContent && textContent.id && <div>ID: {textContent.id}</div>}
+            {typeof textContent === 'object' && 'section_id' in textContent && textContent.section_id && <div>Section: {textContent.section_id}</div>}
+            {typeof textContent === 'object' && 'order' in textContent && textContent.order !== undefined && <div>Order: {textContent.order}</div>}
           </div>
         </div>
       )}

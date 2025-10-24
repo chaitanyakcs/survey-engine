@@ -275,7 +275,8 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       <div className="mb-4">
         <div>
           {/* Question Text - Inline Editable */}
-          {question.type !== 'instruction' && (
+          {question.type !== 'instruction' && 
+           !['yes_no', 'van_westendorp', 'dropdown', 'conjoint', 'matrix_likert', 'constant_sum', 'gabor_granger', 'numeric_grid', 'numeric_open'].includes(question.type) && (
             <div className="mb-3">
               {isEditingSurvey && isEditingText ? (
                 <div className="flex items-start space-x-2">
@@ -805,71 +806,227 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
                 {/* Special Question Types - Instruction */}
                 {question.type === 'instruction' && (
-                  <div className="bg-secondary-50 border-l-4 border-secondary-400 p-4 rounded-r-lg">
-                    <h4 className="text-sm font-medium text-secondary-800 mb-2">Instruction</h4>
-                    {isEditingSurvey && isEditingText ? (
-                      <div className="flex items-start space-x-2">
-                        <textarea
-                          value={editedText}
-                          onChange={(e) => setEditedText(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && e.ctrlKey) {
-                              handleTextSave();
-                            } else if (e.key === 'Escape') {
-                              handleTextCancel();
-                            }
-                          }}
-                          className="flex-1 text-sm text-secondary-700 bg-white border border-blue-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                          rows={3}
-                          autoFocus
-                          disabled={isSaving}
-                        />
-                        <div className="flex flex-col space-y-1">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleTextSave();
-                            }}
-                            disabled={isSaving}
-                            className="text-green-600 hover:text-green-800 disabled:opacity-50"
-                            title="Save"
-                          >
-                            ✓
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleTextCancel();
-                            }}
-                            disabled={isSaving}
-                            className="text-red-600 hover:text-red-800 disabled:opacity-50"
-                            title="Cancel"
-                          >
-                            ✕
-                          </button>
+                  <>
+                    {question.label && (question.label.includes('Technical') || question.label.includes('Programmer')) ? (
+                      // Technical instruction - distinct styling
+                      <div className="bg-gray-100 border-l-4 border-gray-500 p-4 rounded-r-lg">
+                        <div className="mb-2">
+                          <h4 className="text-sm font-semibold text-gray-700">Technical Note / Programming Instruction</h4>
                         </div>
+                        {isEditingSurvey && isEditingText ? (
+                          <div className="flex items-start space-x-2">
+                            <textarea
+                              value={editedText}
+                              onChange={(e) => setEditedText(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && e.ctrlKey) {
+                                  handleTextSave();
+                                } else if (e.key === 'Escape') {
+                                  handleTextCancel();
+                                }
+                              }}
+                              className="flex-1 text-xs text-gray-700 font-mono bg-white border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                              rows={3}
+                              autoFocus
+                              disabled={isSaving}
+                            />
+                            <div className="flex flex-col space-y-1">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTextSave();
+                                }}
+                                disabled={isSaving}
+                                className="text-green-600 hover:text-green-800 disabled:opacity-50"
+                                title="Save"
+                              >
+                                ✓
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTextCancel();
+                                }}
+                                disabled={isSaving}
+                                className="text-red-600 hover:text-red-800 disabled:opacity-50"
+                                title="Cancel"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-700 font-mono whitespace-pre-wrap bg-white p-3 rounded border border-gray-300">
+                            {question.text}
+                          </p>
+                        )}
+                        {question.description && (
+                          <p className="text-xs text-gray-500 italic mt-2">
+                            {question.description}
+                          </p>
+                        )}
                       </div>
                     ) : (
-                      <p 
-                        className={`text-sm text-secondary-700 ${isEditingSurvey ? 'cursor-pointer hover:bg-secondary-100 px-2 py-1 rounded' : ''}`}
-                        onClick={(e) => {
-                          if (isEditingSurvey) {
-                            e.stopPropagation();
-                            setIsEditingText(true);
-                          }
-                        }}
-                        title={isEditingSurvey ? "Click to edit instruction text" : ""}
-                      >
-                        {question.text}
-                      </p>
+                      // Regular respondent-facing instruction - friendly styling
+                      <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-lg">
+                        <div className="flex items-center gap-2 mb-2">
+                          <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd"/>
+                          </svg>
+                          <h4 className="text-sm font-semibold text-blue-800">Instruction</h4>
+                        </div>
+                        {isEditingSurvey && isEditingText ? (
+                          <div className="flex items-start space-x-2">
+                            <textarea
+                              value={editedText}
+                              onChange={(e) => setEditedText(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && e.ctrlKey) {
+                                  handleTextSave();
+                                } else if (e.key === 'Escape') {
+                                  handleTextCancel();
+                                }
+                              }}
+                              className="flex-1 text-sm text-blue-700 bg-white border border-blue-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                              rows={3}
+                              autoFocus
+                              disabled={isSaving}
+                            />
+                            <div className="flex flex-col space-y-1">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTextSave();
+                                }}
+                                disabled={isSaving}
+                                className="text-green-600 hover:text-green-800 disabled:opacity-50"
+                                title="Save"
+                              >
+                                ✓
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTextCancel();
+                                }}
+                                disabled={isSaving}
+                                className="text-red-600 hover:text-red-800 disabled:opacity-50"
+                                title="Cancel"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p 
+                            className={`text-sm text-blue-700 ${isEditingSurvey ? 'cursor-pointer hover:bg-blue-100 px-2 py-1 rounded' : ''}`}
+                            onClick={(e) => {
+                              if (isEditingSurvey) {
+                                e.stopPropagation();
+                                setIsEditingText(true);
+                              }
+                            }}
+                            title={isEditingSurvey ? "Click to edit instruction text" : ""}
+                          >
+                            {question.text}
+                          </p>
+                        )}
+                      </div>
                     )}
-                  </div>
+                  </>
                 )}
               </>
             )}
 
+            {/* Van Westendorp Questions */}
+            {question.type === 'van_westendorp' && (
+              <div className="space-y-3">
+                <div className="text-base font-medium text-gray-900">
+                  {question.text}
+                </div>
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                  <div className="text-sm font-medium text-orange-900 mb-2">Van Westendorp Price Sensitivity</div>
+                  <div className="text-xs text-orange-800">
+                    This question helps determine optimal pricing by asking about price perceptions.
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm text-gray-600">Price:</span>
+                  <input
+                    type="text"
+                    disabled={true}
+                    className="border border-gray-300 rounded px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                    placeholder="$0.00"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Dropdown Questions */}
+            {question.type === 'dropdown' && (
+              <div className="space-y-3">
+                <div className="text-base font-medium text-gray-900">
+                  {question.text}
+                </div>
+                <div className="relative">
+                  <select
+                    disabled={true}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                  >
+                    <option value="">Select an option...</option>
+                    {question.options?.map((option, index) => (
+                      <option key={index} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* Conjoint Questions */}
+            {question.type === 'conjoint' && (
+              <div className="space-y-3">
+                <div className="text-base font-medium text-gray-900">
+                  {question.text}
+                </div>
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                  <div className="text-sm font-medium text-purple-900 mb-2">Conjoint Analysis</div>
+                  <div className="text-xs text-purple-800">
+                    This question presents product combinations to understand feature preferences.
+                  </div>
+                </div>
+                <div className="text-sm text-gray-600">
+                  Conjoint analysis requires specialized presentation. Please review the raw JSON for detailed configuration.
+                </div>
+              </div>
+            )}
+
+            {/* Yes/No Questions */}
+            {question.type === 'yes_no' && (
+              <div className="space-y-3">
+                <div className="text-base font-medium text-gray-900">
+                  {question.text}
+                </div>
+                <div className="space-y-2">
+                  {question.options?.map((option, index) => (
+                    <label key={index} className="flex items-center space-x-3 cursor-pointer">
+                      <input
+                        type="radio"
+                        name={question.id}
+                        value={option}
+                        disabled={true}
+                        className="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700">{option}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Unknown Question Type */}
-            {!['multiple_choice', 'scale', 'ranking', 'text', 'instruction', 'single_choice', 'matrix', 'numeric', 'date', 'boolean', 'open_text', 'multiple_select', 'matrix_likert', 'constant_sum', 'numeric_grid', 'numeric_open', 'likert', 'open_end', 'display_only', 'single_open', 'multiple_open', 'open_ended', 'gabor_granger', 'maxdiff'].includes(question.type) && (
+            {!['multiple_choice', 'scale', 'ranking', 'text', 'instruction', 'single_choice', 'matrix', 'numeric', 'date', 'boolean', 'open_text', 'multiple_select', 'matrix_likert', 'constant_sum', 'numeric_grid', 'numeric_open', 'likert', 'open_end', 'display_only', 'single_open', 'multiple_open', 'open_ended', 'gabor_granger', 'maxdiff', 'van_westendorp', 'dropdown', 'conjoint', 'yes_no'].includes(question.type) && (
               <div className="bg-warning-50 border border-warning-200 rounded-lg p-4">
                 <div className="flex items-center space-x-2">
                   <svg className="w-5 h-5 text-warning-600" fill="currentColor" viewBox="0 0 20 20">

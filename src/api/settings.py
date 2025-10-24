@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from src.database import get_db
 from src.services.settings_service import SettingsService
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from typing import Dict, Any, Optional, List
 import logging
 import json
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
 class EvaluationSettings(BaseModel):
-    evaluation_mode: str  # 'single_call', 'multiple_calls', 'hybrid', 'aira_v1'
+    evaluation_mode: str  # 'single_call', 'multiple_calls'
     enable_cost_tracking: bool
     enable_parallel_processing: bool
     enable_ab_testing: bool
@@ -41,6 +41,13 @@ class EvaluationSettings(BaseModel):
     generation_model: str = app_settings.generation_model
     evaluation_model: str = app_settings.generation_model
     embedding_model: str = app_settings.embedding_model
+    
+    @field_validator('evaluation_mode')
+    @classmethod
+    def validate_evaluation_mode(cls, v):
+        if v not in ['single_call', 'multiple_calls']:
+            raise ValueError('evaluation_mode must be "single_call" or "multiple_calls"')
+        return v
 
 class RFQParsingSettings(BaseModel):
     parsing_model: str = "openai/gpt-4o-mini"
@@ -184,8 +191,8 @@ async def update_evaluation_settings(settings: EvaluationSettings, db: Session =
     logger.info(f"🔧 [Settings API] Updating evaluation settings: {settings.evaluation_mode}")
     try:
         # Validate settings
-        if settings.evaluation_mode not in ['single_call', 'multiple_calls', 'hybrid', 'aira_v1']:
-            raise HTTPException(status_code=400, detail="Invalid evaluation_mode")
+        if settings.evaluation_mode not in ['single_call', 'multiple_calls']:
+            raise HTTPException(status_code=400, detail="Invalid evaluation_mode. Must be 'single_call' or 'multiple_calls'")
         
         if settings.fallback_mode not in ['basic', 'multiple_calls', 'disabled']:
             raise HTTPException(status_code=400, detail="Invalid fallback_mode")

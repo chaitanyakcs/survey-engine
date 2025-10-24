@@ -354,6 +354,12 @@ export const SurveysPage: React.FC = () => {
 
   const handleSurveySelect = (surveyId: string) => {
     if (isMultiSelectMode) {
+      // Prevent selection of reference surveys
+      const survey = surveys.find(s => s.id === surveyId);
+      if (survey && survey.status === 'reference') {
+        return;
+      }
+      
       setSelectedSurveys(prev => {
         const newSet = new Set(prev);
         if (newSet.has(surveyId)) {
@@ -373,10 +379,26 @@ export const SurveysPage: React.FC = () => {
   const handleBulkDelete = async () => {
     if (selectedSurveys.size === 0) return;
     
-    console.log('🗑️ [SurveysPage] Starting bulk delete for surveys:', Array.from(selectedSurveys));
+    // Filter out reference surveys from deletion
+    const surveysToDelete = Array.from(selectedSurveys).filter(surveyId => {
+      const survey = surveys.find(s => s.id === surveyId);
+      return survey && survey.status !== 'reference';
+    });
+    
+    if (surveysToDelete.length === 0) {
+      addToast({
+        type: 'warning',
+        title: 'No Surveys to Delete',
+        message: 'No surveys can be deleted. Reference surveys are automatically managed.',
+        duration: 5000
+      });
+      return;
+    }
+    
+    console.log('🗑️ [SurveysPage] Starting bulk delete for surveys:', surveysToDelete);
     
     try {
-      const deletePromises = Array.from(selectedSurveys).map(async (surveyId) => {
+      const deletePromises = surveysToDelete.map(async (surveyId) => {
         console.log(`🗑️ [SurveysPage] Deleting survey: ${surveyId}`);
         const response = await fetch(`/api/v1/survey/${surveyId}`, { method: 'DELETE' });
         
@@ -394,8 +416,8 @@ export const SurveysPage: React.FC = () => {
       
       console.log('✅ [SurveysPage] All surveys deleted successfully');
       
-      setSurveys(prev => prev.filter(s => !selectedSurveys.has(s.id)));
-      if (selectedSurvey && selectedSurveys.has(selectedSurvey.id)) {
+      setSurveys(prev => prev.filter(s => !surveysToDelete.includes(s.id)));
+      if (selectedSurvey && surveysToDelete.includes(selectedSurvey.id)) {
         setSelectedSurvey(null);
       }
       setSelectedSurveys(new Set());
@@ -405,7 +427,7 @@ export const SurveysPage: React.FC = () => {
       addToast({
         type: 'success',
         title: 'Surveys Deleted',
-        message: `Successfully deleted ${selectedSurveys.size} survey(s)`,
+        message: `Successfully deleted ${surveysToDelete.length} survey(s)`,
         duration: 3000
       });
       
@@ -416,10 +438,13 @@ export const SurveysPage: React.FC = () => {
   };
 
   const handleSelectAll = () => {
-    if (selectedSurveys.size === filteredSurveys.length) {
+    // Filter out reference surveys from selection
+    const selectableSurveys = filteredSurveys.filter(s => s.status !== 'reference');
+    
+    if (selectedSurveys.size === selectableSurveys.length) {
       setSelectedSurveys(new Set());
     } else {
-      setSelectedSurveys(new Set(filteredSurveys.map(s => s.id)));
+      setSelectedSurveys(new Set(selectableSurveys.map(s => s.id)));
     }
   };
 
@@ -751,15 +776,30 @@ export const SurveysPage: React.FC = () => {
                           {/* Checkbox for multi-select */}
                           {isMultiSelectMode && (
                             <div className="flex-shrink-0">
-                              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                                selectedSurveys.has(survey.id)
-                                  ? 'bg-blue-600 border-blue-600'
-                                  : 'border-gray-300'
-                              }`}>
-                                {selectedSurveys.has(survey.id) && (
-                                  <CheckIcon className="w-3 h-3 text-white" />
-                                )}
-                              </div>
+                              {survey.status === 'reference' ? (
+                                <div className="relative group">
+                                  <div className="w-5 h-5 rounded border-2 border-gray-200 bg-gray-100 flex items-center justify-center cursor-not-allowed">
+                                    <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
+                                    </svg>
+                                  </div>
+                                  {/* Tooltip */}
+                                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+                                    Reference surveys cannot be selected for deletion
+                                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                                  selectedSurveys.has(survey.id)
+                                    ? 'bg-blue-600 border-blue-600'
+                                    : 'border-gray-300'
+                                }`}>
+                                  {selectedSurveys.has(survey.id) && (
+                                    <CheckIcon className="w-3 h-3 text-white" />
+                                  )}
+                                </div>
+                              )}
                             </div>
                           )}
                           
@@ -853,16 +893,33 @@ export const SurveysPage: React.FC = () => {
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                     </svg>
                                   </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setShowDeleteConfirm(survey.id);
-                                    }}
-                                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                    title="Delete Survey"
-                                  >
-                                    <TrashIcon className="w-5 h-5" />
-                                  </button>
+                                  {survey.status === 'reference' ? (
+                                    <div className="relative group">
+                                      <button
+                                        disabled
+                                        className="p-2 text-gray-300 cursor-not-allowed rounded-lg transition-colors"
+                                        title="Reference surveys cannot be deleted directly. They are automatically removed when their corresponding golden example is deleted."
+                                      >
+                                        <TrashIcon className="w-5 h-5" />
+                                      </button>
+                                      {/* Tooltip */}
+                                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+                                        Reference surveys cannot be deleted directly. They are automatically removed when their corresponding golden example is deleted.
+                                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setShowDeleteConfirm(survey.id);
+                                      }}
+                                      className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                      title="Delete Survey"
+                                    >
+                                      <TrashIcon className="w-5 h-5" />
+                                    </button>
+                                  )}
                                 </div>
                               )}
                             </div>

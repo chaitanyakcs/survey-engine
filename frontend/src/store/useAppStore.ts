@@ -923,7 +923,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         type: 'success',
         title: 'Success',
         message: 'Golden example created successfully',
-        duration: 4000
+        duration: 2000
       });
       
       console.log('🎉 [Store] Golden example creation completed successfully');
@@ -962,7 +962,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         type: 'success',
         title: 'Updated',
         message: 'Golden example updated successfully',
-        duration: 4000
+        duration: 2000
       });
     } catch (error) {
       console.error('Failed to update golden example:', error);
@@ -991,7 +991,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         type: 'success',
         title: 'Deleted',
         message: 'Golden example deleted successfully',
-        duration: 4000
+        duration: 2000
       });
     } catch (error) {
       console.error('Failed to delete golden example:', error);
@@ -1032,8 +1032,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
             analytical_value: qa.pillars.analyticalValue,
             business_impact: qa.pillars.businessImpact,
             comment: qa.comment,
-            labels: qa.labels,
-            removed_labels: qa.removedLabels,
+            labels: Array.isArray(qa.labels) ? qa.labels : [],
+            removed_labels: Array.isArray(qa.removedLabels) ? qa.removedLabels : [],
             annotator_id: qa.annotatorId || "current-user"
           };
         }),
@@ -1047,7 +1047,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           analytical_value: sa.pillars.analyticalValue,
           business_impact: sa.pillars.businessImpact,
           comment: sa.comment,
-          labels: sa.labels,
+          labels: Array.isArray(sa.labels) ? sa.labels : [],
           annotator_id: sa.annotatorId || "current-user",
           // Advanced labeling fields
           section_classification: sa.section_classification,
@@ -1131,7 +1131,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         type: 'success',
         title: 'Annotations Saved',
         message: 'Survey annotations saved successfully',
-        duration: 4000
+        duration: 2000
       });
       
     } catch (error) {
@@ -1342,7 +1342,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         type: 'success',
         title: 'Annotation Verified',
         message: `${annotationType} annotation verified successfully`,
-        duration: 3000
+        duration: 1500
       });
       
     } catch (error) {
@@ -1383,7 +1383,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         type: 'success',
         title: 'Advanced Labeling Applied',
         message: `Processed ${data.results.processed_questions} questions and ${data.results.processed_sections} sections`,
-        duration: 5000
+        duration: 3000
       });
 
       // Reload annotations to get the new data

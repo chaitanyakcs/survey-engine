@@ -86,66 +86,72 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
         <div className="mb-8">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Pre-Generation Preview</h1>
-              <p className="text-gray-600">Review your research requirements before generation</p>
+              <h1 className="text-3xl font-bold text-gray-900">
+                {onGenerate || onEdit ? 'Pre-Generation Preview' : 'RFQ Preview'}
+              </h1>
+              <p className="text-gray-600">
+                {onGenerate || onEdit ? 'Review your research requirements before generation' : 'Original request for quotation that generated this survey'}
+              </p>
             </div>
           </div>
 
-          {/* Tab Navigation with Action Buttons */}
-          <div className="border-b border-gray-200">
-            <div className="flex items-center justify-between">
-              <nav className="-mb-px flex space-x-8">
-                <button
-                  onClick={() => setActiveTab('overview')}
-                  className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ${
-                    activeTab === 'overview'
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  <span className="text-xl mr-2">📋</span>
-                  Overview
-                </button>
-                <button
-                  onClick={() => setActiveTab('prompt')}
-                  className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ${
-                    activeTab === 'prompt'
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  <span className="text-xl mr-2">🤖</span>
-                  AI Prompt Preview
-                </button>
-              </nav>
-              
-              {/* Action Buttons */}
-              <div className="flex space-x-3">
-                <button
-                  onClick={onEdit}
-                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={handleGenerate}
-                  disabled={isLoading}
-                  className={`px-6 py-2 rounded-lg font-semibold transition-all duration-300 text-sm ${
-                    isLoading
-                      ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-yellow-600 to-amber-600 text-white hover:shadow-lg transform hover:scale-105'
-                  }`}
-                >
-                  {isLoading ? 'Generating...' : 'Generate'}
-                </button>
+          {/* Tab Navigation with Action Buttons - Only show if onGenerate/onEdit are provided */}
+          {(onGenerate || onEdit) && (
+            <div className="border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <nav className="-mb-px flex space-x-8">
+                  <button
+                    onClick={() => setActiveTab('overview')}
+                    className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ${
+                      activeTab === 'overview'
+                        ? 'border-blue-500 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <span className="text-xl mr-2">📋</span>
+                    Overview
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('prompt')}
+                    className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ${
+                      activeTab === 'prompt'
+                        ? 'border-blue-500 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <span className="text-xl mr-2">🤖</span>
+                    AI Prompt Preview
+                  </button>
+                </nav>
+                
+                {/* Action Buttons */}
+                <div className="flex space-x-3">
+                  <button
+                    onClick={onEdit}
+                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={handleGenerate}
+                    disabled={isLoading}
+                    className={`px-6 py-2 rounded-lg font-semibold transition-all duration-300 text-sm ${
+                      isLoading
+                        ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-yellow-600 to-amber-600 text-white hover:shadow-lg transform hover:scale-105'
+                    }`}
+                  >
+                    {isLoading ? 'Generating...' : 'Generate'}
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         <div className="max-w-6xl mx-auto">
           {/* Tab Content */}
-          {activeTab === 'overview' && (
+          {(activeTab === 'overview' || (!onGenerate && !onEdit)) && (
             <div className="space-y-6">
 
             {/* Project Overview */}
@@ -901,7 +907,7 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
             </div>
           )}
 
-          {activeTab === 'prompt' && (
+          {activeTab === 'prompt' && (onGenerate || onEdit) && (
             <div className="space-y-6">
               <PromptPreview rfq={rfq} />
             </div>

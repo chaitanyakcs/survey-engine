@@ -538,20 +538,28 @@ export const SettingsPage: React.FC = () => {
                   </div>
                   {expandedSections.aiModels && (
                     <div className="p-6">
+                      <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <div className="flex items-center">
+                          <svg className="w-5 h-5 text-yellow-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                          </svg>
+                          <p className="text-sm text-yellow-800 font-medium">AI Model settings are read-only and cannot be modified</p>
+                        </div>
+                      </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {/* Generation Model */}
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">Survey Generation</label>
                           <select
                             value={settings.generation_model}
-                            onChange={(e) => setSettings({ ...settings, generation_model: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            disabled
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed"
                           >
                             {generationModels.map((m) => (
                               <option key={m} value={m}>{m}</option>
                             ))}
                           </select>
-                          <p className="text-xs text-gray-500 mt-1">Generates surveys</p>
+                          <p className="text-xs text-gray-500 mt-1">Generates surveys (Read-only)</p>
                         </div>
 
                         {/* Embedding Model */}
@@ -559,14 +567,14 @@ export const SettingsPage: React.FC = () => {
                           <label className="block text-sm font-medium text-gray-700 mb-2">Embeddings</label>
                           <select
                             value={settings.embedding_model}
-                            onChange={(e) => setSettings({ ...settings, embedding_model: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            disabled
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed"
                           >
                             {embeddingModels.map((m) => (
                               <option key={m} value={m}>{m}</option>
                             ))}
                           </select>
-                          <p className="text-xs text-gray-500 mt-1">Semantic search</p>
+                          <p className="text-xs text-gray-500 mt-1">Semantic search (Read-only)</p>
                         </div>
 
                         {/* RFQ Parsing Model */}
@@ -574,14 +582,14 @@ export const SettingsPage: React.FC = () => {
                           <label className="block text-sm font-medium text-gray-700 mb-2">RFQ Parsing</label>
                           <select
                             value={rfqParsing.parsing_model}
-                            onChange={(e) => setRfqParsing({ ...rfqParsing, parsing_model: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            disabled
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed"
                           >
                             {rfqModels.map((m) => (
                               <option key={m} value={m}>{m}</option>
                             ))}
                           </select>
-                          <p className="text-xs text-gray-500 mt-1">Parses documents</p>
+                          <p className="text-xs text-gray-500 mt-1">Parses documents (Read-only)</p>
                         </div>
                       </div>
                     </div>
@@ -856,6 +864,15 @@ export const SettingsPage: React.FC = () => {
                     <BeakerIcon className="w-6 h-6 text-purple-600" />
                     <h2 className="text-xl font-semibold text-gray-900">Evaluation AI Models</h2>
                   </div>
+                  
+                  <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="flex items-center">
+                      <svg className="w-5 h-5 text-yellow-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                      </svg>
+                      <p className="text-sm text-yellow-800 font-medium">Evaluation settings are read-only and cannot be modified</p>
+                    </div>
+                  </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Evaluation Model */}
@@ -863,14 +880,14 @@ export const SettingsPage: React.FC = () => {
                       <label className="block text-sm font-medium text-gray-700 mb-2">Evaluation Model</label>
                       <select
                         value={settings.evaluation_model}
-                        onChange={(e) => setSettings({ ...settings, evaluation_model: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                        disabled
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed"
                       >
                         {evaluationModels.map((m) => (
                           <option key={m} value={m}>{m}</option>
                         ))}
                       </select>
-                      <p className="text-xs text-gray-500 mt-1">Evaluates survey quality</p>
+                      <p className="text-xs text-gray-500 mt-1">Evaluates survey quality (Read-only)</p>
                     </div>
                   </div>
                 </div>
@@ -904,38 +921,30 @@ export const SettingsPage: React.FC = () => {
                     {settings.enable_llm_evaluation && (
                       <div className="space-y-4">
                         <h3 className="text-lg font-medium text-gray-900">Evaluation Mode</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {[
                             {
                               value: 'single_call',
                               title: 'Single Call',
-                              description: 'Single evaluation call for faster processing',
+                              description: 'Fast evaluation with generic independent criteria',
                               icon: '⚡',
                               recommended: true
                             },
                             {
                               value: 'multiple_calls',
                               title: 'Multiple Calls',
-                              description: 'Multiple evaluation calls for comprehensive analysis',
+                              description: 'Detailed evaluation using customizable generation rules',
                               icon: '🔄',
-                              recommended: false
-                            },
-                            {
-                              value: 'aira_v1',
-                              title: 'AiRA v1',
-                              description: 'Original AiRA evaluation framework',
-                              icon: '🧪',
                               recommended: false
                             }
                           ].map((mode) => (
                             <div
                               key={mode.value}
-                              className={`border-2 rounded-xl p-4 cursor-pointer transition-all duration-200 ${
+                              className={`border-2 rounded-xl p-4 cursor-not-allowed transition-all duration-200 ${
                                 settings.evaluation_mode === mode.value
                                   ? 'border-green-500 bg-gradient-to-br from-green-50 to-emerald-50'
-                                  : 'border-gray-200 hover:border-green-300 hover:bg-green-50'
+                                  : 'border-gray-200 bg-gray-50'
                               }`}
-                              onClick={() => setSettings({ ...settings, evaluation_mode: mode.value as any })}
                             >
                               <div className="flex items-center space-x-3 mb-2">
                                 <input
@@ -943,7 +952,7 @@ export const SettingsPage: React.FC = () => {
                                   name="evaluation_mode"
                                   value={mode.value}
                                   checked={settings.evaluation_mode === mode.value}
-                                  onChange={() => setSettings({ ...settings, evaluation_mode: mode.value as any })}
+                                  disabled
                                   className="w-4 h-4 text-green-600"
                                 />
                                 <span className="text-2xl">{mode.icon}</span>
@@ -952,7 +961,7 @@ export const SettingsPage: React.FC = () => {
                                   <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Recommended</span>
                                 )}
                               </div>
-                              <p className="text-gray-600 text-sm ml-7">{mode.description}</p>
+                              <p className="text-gray-600 text-sm ml-7">{mode.description} (Read-only)</p>
                             </div>
                           ))}
                         </div>

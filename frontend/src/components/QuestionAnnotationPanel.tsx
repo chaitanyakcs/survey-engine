@@ -30,11 +30,11 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
   const [formData, setFormData] = useState<QuestionAnnotation>(() => {
     // Ensure labels are always arrays
     const questionLabels = Array.isArray(question.labels) ? question.labels : [];
-    const annotationLabels = Array.isArray(annotation?.labels) ? annotation.labels : [];
-    const removedLabels = new Set(Array.isArray(annotation?.removedLabels) ? annotation.removedLabels : []);
+    const annotationLabels = Array.isArray(annotation?.labels) ? annotation?.labels : [];
+    const removedLabels = new Set(Array.isArray(annotation?.removedLabels) ? annotation?.removedLabels : []);
     
     // Merge labels: question labels + annotation labels - removed labels
-    const mergedLabels = [...questionLabels, ...annotationLabels]
+    const mergedLabels = [...questionLabels, ...(annotationLabels || [])]
       .filter((label, index, arr) => arr.indexOf(label) === index) // Remove duplicates
       .filter(label => !removedLabels.has(label)); // Remove user-removed labels
     
@@ -70,11 +70,11 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
 
     // Ensure labels are always arrays
     const questionLabels = Array.isArray(question.labels) ? question.labels : [];
-    const annotationLabels = Array.isArray(annotation?.labels) ? annotation.labels : [];
-    const removedLabels = new Set(Array.isArray(annotation?.removedLabels) ? annotation.removedLabels : []);
+    const annotationLabels = Array.isArray(annotation?.labels) ? annotation?.labels : [];
+    const removedLabels = new Set(Array.isArray(annotation?.removedLabels) ? annotation?.removedLabels : []);
     
     // Merge labels: question labels + annotation labels - removed labels
-    const mergedLabels = [...questionLabels, ...annotationLabels]
+    const mergedLabels = [...questionLabels, ...(annotationLabels || [])]
       .filter((label, index, arr) => arr.indexOf(label) === index) // Remove duplicates
       .filter(label => !removedLabels.has(label)); // Remove user-removed labels
 
@@ -205,7 +205,7 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
   console.log('🔍 [QuestionAnnotationPanel] Render with:', {
     questionId: question.id,
     questionLabels: Array.isArray(question?.labels) ? question.labels : [],
-    annotationLabels: Array.isArray(annotation?.labels) ? annotation.labels : [],
+    annotationLabels: Array.isArray(annotation?.labels) ? annotation?.labels : [],
     currentMergedLabels,
     removedLabels: Array.isArray(formData.removedLabels) ? formData.removedLabels : [],
     annotationId: annotation?.id

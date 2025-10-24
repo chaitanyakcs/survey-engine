@@ -49,6 +49,20 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
         ws_client = _NoopWS()
     
     # Create wrapper functions that send progress updates
+    async def initialize_workflow_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
+        """Send initializing workflow progress update"""
+        progress_tracker = get_progress_tracker(state.workflow_id)
+        
+        try:
+            progress_data = progress_tracker.get_progress_data("initializing_workflow")
+            logger.info(f"📡 [Workflow] Sending progress update: initializing_workflow for workflow_id={state.workflow_id}")
+            await ws_client.send_progress_update(state.workflow_id, progress_data)
+            logger.info(f"✅ [Workflow] Progress update sent: initializing_workflow")
+        except Exception as e:
+            logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
+        
+        return {}
+    
     async def parse_rfq_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
         """Parse RFQ with progress update"""
         progress_tracker = get_progress_tracker(state.workflow_id)
@@ -88,8 +102,8 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
         progress_tracker = get_progress_tracker(state.workflow_id)
         
         try:
-            logger.info(f"📡 [Workflow] Sending progress update: matching_examples for workflow_id={state.workflow_id}")
-            progress_data = progress_tracker.get_progress_data("building_context", "matching_examples")
+            logger.info(f"📡 [Workflow] Sending progress update: matching_golden_examples for workflow_id={state.workflow_id}")
+            progress_data = progress_tracker.get_progress_data("building_context", "matching_golden_examples")
             progress_data["message"] = "Finding templates and matching relevant examples..."
             await ws_client.send_progress_update(state.workflow_id, progress_data)
             logger.info(f"✅ [Workflow] Progress update sent successfully: matching_golden_examples")
@@ -119,8 +133,7 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
         
         try:
             logger.info(f"📡 [Workflow] Sending progress update: planning_methodologies for workflow_id={state.workflow_id}")
-            progress_data = progress_tracker.get_progress_data("building_context", "generating_embeddings")
-            progress_data["message"] = "Planning methods and selecting research approaches..."
+            progress_data = progress_tracker.get_progress_data("building_context", "planning_methodologies")
             await ws_client.send_progress_update(state.workflow_id, progress_data)
             logger.info(f"✅ [Workflow] Progress update sent successfully: planning_methodologies")
         except Exception as e:
@@ -131,7 +144,7 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
         # Send build context completion progress
         try:
             logger.info(f"📡 [Workflow] Sending progress update: build_context for workflow_id={state.workflow_id}")
-            progress_data = progress_tracker.get_progress_data("building_context", "building_context")
+            progress_data = progress_tracker.get_progress_data("building_context", "build_context")
             progress_data["message"] = "Finalizing context and templates..."
             await ws_client.send_progress_update(state.workflow_id, progress_data)
             logger.info(f"✅ [Workflow] Progress update sent successfully: build_context")
@@ -344,6 +357,7 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     
     
     # Add nodes to workflow
+    workflow.add_node("initialize_workflow", initialize_workflow_with_progress)
     workflow.add_node("parse_rfq", parse_rfq_with_progress)
     workflow.add_node("retrieve_golden", retrieve_golden_with_progress)
     workflow.add_node("build_context", build_context_with_progress)
@@ -352,10 +366,11 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     workflow.add_node("detect_labels", detect_labels_with_progress)
     workflow.add_node("validate", validate_with_progress)
     
-    # Set entry point
-    workflow.set_entry_point("parse_rfq")
+    # Set entry point to initialization
+    workflow.set_entry_point("initialize_workflow")
     
     # Add sequential edges
+    workflow.add_edge("initialize_workflow", "parse_rfq")
     workflow.add_edge("parse_rfq", "retrieve_golden")
     workflow.add_edge("retrieve_golden", "build_context")
     workflow.add_edge("build_context", "prompt_review")
