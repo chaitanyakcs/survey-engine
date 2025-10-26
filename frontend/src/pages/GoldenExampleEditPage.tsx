@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from '../components/Sidebar';
 import { SurveyPreview } from '../components/SurveyPreview';
+import AnnotationMode from '../components/AnnotationMode';
 import { useAppStore } from '../store/useAppStore';
 import { GoldenExample } from '../types';
 import { useSidebarLayout } from '../hooks/useSidebarLayout';
@@ -26,7 +27,7 @@ export const GoldenExampleEditPage: React.FC = () => {
   };
   
   const [id] = useState<string | null>(getGoldenExampleId());
-  const { fetchGoldenExamples, loadAnnotations } = useAppStore();
+  const { fetchGoldenExamples, loadAnnotations, isAnnotationMode, setAnnotationMode, currentAnnotations, saveAnnotations } = useAppStore();
   const { mainContentClasses } = useSidebarLayout();
   
   const [example, setExample] = useState<GoldenExample | null>(null);
@@ -161,6 +162,62 @@ export const GoldenExampleEditPage: React.FC = () => {
     }
   };
 
+  // Annotation handlers
+  const handleQuestionAnnotation = async (annotation: any) => {
+    try {
+      const currentAnns = currentAnnotations || {
+        surveyId: actualSurvey?.survey_id || id || '',
+        questionAnnotations: [],
+        sectionAnnotations: []
+      };
+      const updatedAnns = {
+        ...currentAnns,
+        questionAnnotations: [...(currentAnns.questionAnnotations || []), annotation]
+      };
+      await saveAnnotations(updatedAnns);
+    } catch (error) {
+      console.error('Failed to save question annotation:', error);
+    }
+  };
+
+  const handleSectionAnnotation = async (annotation: any) => {
+    try {
+      const currentAnns = currentAnnotations || {
+        surveyId: actualSurvey?.survey_id || id || '',
+        questionAnnotations: [],
+        sectionAnnotations: []
+      };
+      const updatedAnns = {
+        ...currentAnns,
+        sectionAnnotations: [...(currentAnns.sectionAnnotations || []), annotation]
+      };
+      await saveAnnotations(updatedAnns);
+    } catch (error) {
+      console.error('Failed to save section annotation:', error);
+    }
+  };
+
+  const handleSurveyLevelAnnotation = async (annotation: any) => {
+    try {
+      const currentAnns = currentAnnotations || {
+        surveyId: actualSurvey?.survey_id || id || '',
+        questionAnnotations: [],
+        sectionAnnotations: []
+      };
+      const updatedAnns = {
+        ...currentAnns,
+        surveyLevelAnnotation: annotation
+      };
+      await saveAnnotations(updatedAnns);
+    } catch (error) {
+      console.error('Failed to save survey level annotation:', error);
+    }
+  };
+
+  const handleExitAnnotationMode = () => {
+    setAnnotationMode(false);
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-white flex">
@@ -190,6 +247,42 @@ export const GoldenExampleEditPage: React.FC = () => {
               Back to Reference Examples
             </button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // If in annotation mode, show full screen annotation interface
+  if (isAnnotationMode && actualSurvey) {
+    return (
+      <div className="w-full h-screen flex flex-col">
+        {/* Header with Back button */}
+        <div className="bg-white border-b border-gray-200 px-6 py-4">
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={handleExitAnnotationMode}
+              className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all duration-200 group"
+            >
+              <svg className="h-5 w-5 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {actualSurvey.title || 'Reference Example Annotation'}
+            </h1>
+          </div>
+        </div>
+        
+        {/* Annotation Mode in full screen */}
+        <div className="flex-1 overflow-hidden">
+          <AnnotationMode
+            survey={actualSurvey}
+            currentAnnotations={currentAnnotations}
+            onQuestionAnnotation={handleQuestionAnnotation}
+            onSectionAnnotation={handleSectionAnnotation}
+            onSurveyLevelAnnotation={handleSurveyLevelAnnotation}
+            onExitAnnotationMode={handleExitAnnotationMode}
+          />
         </div>
       </div>
     );

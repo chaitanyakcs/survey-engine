@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useAppStore } from './store/useAppStore';
-import { SurveyGeneratorPage, SurveyPreviewPage, GoldenExamplesPage, SurveyEditPage, SurveyViewPage } from './pages';
+import { SurveyGeneratorPage, SurveyPreviewPage, GoldenExamplesPage, SurveyEditPage, SurveyViewPage, SurveyInsightsPage } from './pages';
 import { SettingsPage } from './pages/SettingsPage';
 import { SurveysPage } from './pages/SurveysPage';
 import { GoldenExampleEditPage } from './pages/GoldenExampleEditPage';
@@ -73,7 +73,11 @@ function App() {
       console.log('✅ [App] Detected survey-edit route');
       return 'survey-edit';
     }
-    if (path.startsWith('/surveys/') && !path.includes('/edit')) {
+    if (path.startsWith('/surveys/') && path.includes('/insights')) {
+      console.log('✅ [App] Detected survey-insights route');
+      return 'survey-insights';
+    }
+    if (path.startsWith('/surveys/') && !path.includes('/edit') && !path.includes('/insights')) {
       console.log('✅ [App] Detected survey-view route');
       return 'survey-view';
     }
@@ -149,6 +153,8 @@ function App() {
           <SurveyEditPage />
         ) : currentPage === 'survey-view' ? (
           <SurveyViewPage />
+        ) : currentPage === 'survey-insights' ? (
+          <SurveyInsightsPage />
         ) : currentPage === 'golden-examples' ? (
           <GoldenExamplesPage />
         ) : currentPage === 'golden-edit' ? (

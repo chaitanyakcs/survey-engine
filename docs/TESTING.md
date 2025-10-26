@@ -134,6 +134,7 @@ Test individual components in isolation:
 - **Utility Functions**: Helper functions, validators
 - **Data Models**: Pydantic models, database models
 - **Helper Classes**: Configuration, error handling
+- **Async/Await Compliance**: Ensure all async methods are properly awaited
 
 ### Integration Tests (`tests/integration/`)
 
@@ -258,6 +259,110 @@ jobs:
         run: python3 tests/run_tests.py --coverage
 ```
 
+## 🔄 Async/Await Testing
+
+### Testing Async Methods
+
+The Survey Engine uses extensive async/await patterns. Here's how to test them properly:
+
+#### Basic Async Test Pattern
+
+```python
+import pytest
+from unittest.mock import AsyncMock, patch
+
+@pytest.mark.asyncio
+async def test_async_service_method():
+    """Test that async service methods work correctly"""
+    # Mock the async service
+    mock_service = AsyncMock()
+    mock_service.async_method.return_value = "expected_result"
+    
+    # Test the async method
+    result = await mock_service.async_method("test_param")
+    
+    assert result == "expected_result"
+    mock_service.async_method.assert_called_once_with("test_param")
+```
+
+#### Testing Async Error Handling
+
+```python
+@pytest.mark.asyncio
+async def test_async_error_handling():
+    """Test that async methods handle errors gracefully"""
+    mock_service = AsyncMock()
+    mock_service.async_method.side_effect = Exception("Test error")
+    
+    with pytest.raises(Exception, match="Test error"):
+        await mock_service.async_method("test_param")
+```
+
+#### Testing Workflow Nodes
+
+```python
+@pytest.mark.asyncio
+async def test_workflow_node_async():
+    """Test that workflow nodes properly await async calls"""
+    from src.workflows.nodes import HumanPromptReviewNode
+    from src.workflows.state import SurveyGenerationState
+    
+    # Mock dependencies
+    with patch('src.workflows.nodes.PromptService') as mock_prompt_class:
+        mock_prompt_service = AsyncMock()
+        mock_prompt_service.create_survey_generation_prompt.return_value = "Test prompt"
+        mock_prompt_class.return_value = mock_prompt_service
+        
+        # Create node and test state
+        node = HumanPromptReviewNode(Mock())
+        state = SurveyGenerationState(
+            workflow_id="test",
+            rfq_text="Test RFQ",
+            context={},
+            golden_examples=[],
+            methodology_blocks=[]
+        )
+        
+        # Execute and verify
+        result = await node(state)
+        assert "prompt_approved" in result
+        mock_prompt_service.create_survey_generation_prompt.assert_called_once()
+```
+
+### Common Async Testing Pitfalls
+
+1. **Missing `@pytest.mark.asyncio`**: Always mark async tests with this decorator
+2. **Forgetting to await**: Always use `await` when calling async methods in tests
+3. **Mocking async methods**: Use `AsyncMock()` for async methods, not regular `Mock()`
+4. **Testing timeouts**: Use `asyncio.wait_for()` to test timeout scenarios
+
+### Async Test Utilities
+
+```python
+# Test async timeout handling
+@pytest.mark.asyncio
+async def test_async_timeout():
+    async def slow_operation():
+        await asyncio.sleep(2)
+        return "Success"
+    
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(slow_operation(), timeout=0.1)
+
+# Test concurrent async operations
+@pytest.mark.asyncio
+async def test_concurrent_async():
+    async def operation(name):
+        await asyncio.sleep(0.1)
+        return f"Operation {name}"
+    
+    tasks = [operation("A"), operation("B"), operation("C")]
+    results = await asyncio.gather(*tasks)
+    
+    assert len(results) == 3
+    assert "Operation A" in results
+```
+
 ## 📚 Best Practices
 
 1. **Test Isolation**: Each test should be independent
@@ -268,6 +373,8 @@ jobs:
 6. **Keep Tests Fast**: Unit tests should run quickly
 7. **Maintain Test Data**: Use factories for consistent test data
 8. **Document Complex Tests**: Add comments for complex test scenarios
+9. **Always Await Async Methods**: Never call async methods without `await`
+10. **Use AsyncMock for Async Dependencies**: Properly mock async service methods
 
 ## 🎉 Success Metrics
 

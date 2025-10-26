@@ -18,7 +18,7 @@ export const SurveyMetadataModal: React.FC<SurveyMetadataModalProps> = ({
   if (!isOpen) return null;
   
   return (
-    <div className="fixed inset-0 bg-white z-50 flex flex-col">
+    <div className="fixed inset-0 bg-white z-[9998] flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b bg-gray-50">
         <h2 className="text-xl font-bold text-gray-900">RFQ Used</h2>

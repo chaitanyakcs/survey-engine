@@ -283,6 +283,56 @@ describe('ProgressStepper Component', () => {
         expect(activeSubstep).toHaveClass('active'); // Assuming active substeps have this class
       });
     });
+
+    it('should use current_substep when available for substep matching', async () => {
+      const testStore = {
+        ...mockStore,
+        workflow: {
+          status: 'in_progress' as const,
+          current_step: 'building_context',
+          current_substep: 'parsing_rfq', // This should be used for substep matching
+          progress: 15,
+          message: 'Analyzing and understanding your requirements...'
+        }
+      };
+      
+      mockUseAppStore.mockReturnValue(testStore as any);
+      
+      render(<ProgressStepper />);
+      
+      await waitFor(() => {
+        // Verify the substep with backendStep 'parsing_rfq' is highlighted
+        const activeSubstep = screen.getByTestId('substep-parsing_rfq');
+        expect(activeSubstep).toBeInTheDocument();
+        // The substep should be active because current_substep matches backendStep
+        expect(activeSubstep).toHaveClass('bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 shadow-sm');
+      });
+    });
+
+    it('should fall back to current_step when current_substep is not available', async () => {
+      const testStore = {
+        ...mockStore,
+        workflow: {
+          status: 'in_progress' as const,
+          current_step: 'parsing_rfq', // This should be used as fallback
+          current_substep: undefined, // No substep provided
+          progress: 15,
+          message: 'Analyzing and understanding your requirements...'
+        }
+      };
+      
+      mockUseAppStore.mockReturnValue(testStore as any);
+      
+      render(<ProgressStepper />);
+      
+      await waitFor(() => {
+        // Verify the substep with backendStep 'parsing_rfq' is still highlighted
+        const activeSubstep = screen.getByTestId('substep-parsing_rfq');
+        expect(activeSubstep).toBeInTheDocument();
+        // The substep should be active because current_step matches backendStep
+        expect(activeSubstep).toHaveClass('bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 shadow-sm');
+      });
+    });
   });
 
   describe('Error Handling Tests', () => {

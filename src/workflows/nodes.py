@@ -1,4 +1,5 @@
 from typing import Dict, Any
+from uuid import UUID
 from sqlalchemy.orm import Session
 from .state import SurveyGenerationState
 from src.utils.error_messages import UserFriendlyError
@@ -119,8 +120,35 @@ class GoldenRetrieverNode:
                         fresh_retrieval_service = ServiceClass(fresh_db)
                     # Extract industry from enhanced RFQ data if available
                     industry = None
-                    if state.enhanced_rfq_data and 'industry_category' in state.enhanced_rfq_data:
-                        industry = state.enhanced_rfq_data['industry_category']
+                    if state.enhanced_rfq_data:
+                        # Check for industry_category first (standard field)
+                        if 'industry_category' in state.enhanced_rfq_data:
+                            industry = state.enhanced_rfq_data['industry_category']
+                        
+                        # If not found, also check advanced_classification
+                        elif 'advanced_classification' in state.enhanced_rfq_data:
+                            adv_class = state.enhanced_rfq_data['advanced_classification']
+                            if 'industry_classification' in adv_class:
+                                industry_classification = adv_class['industry_classification']
+                                # Map free text to standardized industry codes
+                                if industry_classification:
+                                    industry_lower = industry_classification.lower()
+                                    if any(keyword in industry_lower for keyword in ['food', 'beverage', 'drink', 'alcohol', 'beer', 'wine', 'vodka']):
+                                        industry = 'food_beverage'
+                                    elif 'health' in industry_lower or 'medical' in industry_lower:
+                                        industry = 'healthcare'
+                                    elif 'tech' in industry_lower or 'software' in industry_lower:
+                                        industry = 'technology'
+                                    # Add more mappings as needed
+                                    else:
+                                        industry = industry_classification
+                    
+                    # If still no industry detected, try to detect from RFQ text
+                    if not industry and state.rfq_text:
+                        rfq_lower = state.rfq_text.lower()
+                        if any(keyword in rfq_lower for keyword in ['food', 'beverage', 'drink', 'alcohol', 'beer', 'wine', 'vodka', 'restaurant', 'cafe', 'dining']):
+                            industry = 'food_beverage'
+                            logger.info(f"🏷️ [GoldenRetriever] Detected industry: {industry} from RFQ text")
                     
                     golden_examples = await fresh_retrieval_service.retrieve_golden_pairs(
                         embedding=state.rfq_embedding,
@@ -135,12 +163,69 @@ class GoldenRetrieverNode:
                         industry=industry,
                         limit=5
                     )
-                    golden_questions = await fresh_retrieval_service.retrieve_golden_questions(
-                        embedding=state.rfq_embedding,
-                        methodology_tags=None,
-                        industry=industry,
-                        limit=5
-                    )
+                    
+                    # PHASE 3: Smart label-based question retrieval
+                    # Extract methodology and industry from enhanced RFQ data
+                    methodology_tags = None
+                    if state.enhanced_rfq_data and 'methodology_tags' in state.enhanced_rfq_data:
+                        methodology_tags = state.enhanced_rfq_data['methodology_tags']
+                        if isinstance(methodology_tags, str):
+                            methodology_tags = [methodology_tags]
+                    
+                    # Get required QNR labels for screener section (most critical)
+                    required_labels = []
+                    try:
+                        from src.services.qnr_label_service import QNRLabelService
+                        from src.services.rule_based_multi_level_rag_service import RuleBasedMultiLevelRAGService
+                        
+                        qnr_service = QNRLabelService(fresh_db)
+                        
+                        # Get required labels for screener section (section_id=2)
+                        # This is the most important section with mandatory questions
+                        screener_labels = qnr_service.get_required_labels(
+                            section_id=2,
+                            methodology=methodology_tags,
+                            industry=industry
+                        )
+                        
+                        # Extract label names - get ALL mandatory labels (typically 8-11)
+                        required_labels = [label['name'] for label in screener_labels]
+                        
+                        # Limit retrieval to 8 questions max to avoid prompt bloat
+                        # but ensure we get at least 1 question for the most critical labels
+                        limit = min(len(required_labels), 8)
+                        
+                        logger.info(f"🏷️ [GoldenRetriever] Required QNR labels for retrieval: {required_labels}")
+                        
+                        # Use label-based retrieval if we have required labels
+                        if required_labels:
+                            rag_service = RuleBasedMultiLevelRAGService(fresh_db)
+                            golden_questions = await rag_service.retrieve_golden_questions_by_labels(
+                                required_labels=required_labels,
+                                methodology_tags=methodology_tags,
+                                industry=industry,
+                                limit=limit  # Dynamic limit based on required labels
+                            )
+                            logger.info(f"✅ [GoldenRetriever] Retrieved {len(golden_questions)} label-matched questions for {len(required_labels)} required labels")
+                        else:
+                            # Fallback to regular retrieval
+                            logger.info("⚠️ [GoldenRetriever] No required labels found, using regular retrieval")
+                            golden_questions = await fresh_retrieval_service.retrieve_golden_questions(
+                                embedding=state.rfq_embedding,
+                                methodology_tags=None,
+                                industry=industry,
+                                limit=5
+                            )
+                    except Exception as label_error:
+                        logger.error(f"❌ [GoldenRetriever] Label-based retrieval failed: {str(label_error)}")
+                        logger.exception(label_error)
+                        # Fallback to regular retrieval
+                        golden_questions = await fresh_retrieval_service.retrieve_golden_questions(
+                            embedding=state.rfq_embedding,
+                            methodology_tags=None,
+                            industry=industry,
+                            limit=5
+                        )
                 
                 # Tier 2: Methodology blocks
                 methodology_blocks = []
@@ -175,7 +260,9 @@ class GoldenRetrieverNode:
             state.golden_questions = golden_questions
             state.methodology_blocks = methodology_blocks
             state.template_questions = template_questions
-            state.used_golden_examples = [ex["id"] for ex in golden_examples]
+            state.used_golden_examples = [UUID(ex["id"]) for ex in golden_examples if "id" in ex]
+            state.used_golden_questions = [UUID(q["id"]) for q in golden_questions if "id" in q]
+            state.used_golden_sections = [UUID(s["id"]) for s in golden_sections if "id" in s]
             
             return {
                 "golden_examples": golden_examples,
@@ -570,7 +657,7 @@ class HumanPromptReviewNode:
                 # Generate the system prompt with timeout protection
                 try:
                     prompt_service = PromptService()
-                    system_prompt = prompt_service.create_survey_generation_prompt(
+                    system_prompt = await prompt_service.create_survey_generation_prompt(
                         rfq_text=state.rfq_text,
                         context=state.context or {},
                         golden_examples=state.golden_examples or [],
@@ -963,6 +1050,35 @@ class ValidatorAgent:
                     except Exception as validation_error:
                         self.logger.warning(f"⚠️ [ValidatorAgent] Basic validation failed (non-blocking): {validation_error}")
                         validation_results["schema_warnings"] = [f"Validation error: {str(validation_error)}"]
+                
+                # Run golden similarity analysis (non-AI, always runs)
+                golden_similarity_analysis = None
+                if state.generated_survey and state.golden_examples:
+                    try:
+                        from src.services.golden_similarity_analysis_service import GoldenSimilarityAnalysisService
+                        
+                        # Extract RFQ context for better analysis
+                        rfq_context = {
+                            "industry_category": state.product_category,
+                            "methodology_tags": state.research_goal.split(", ") if state.research_goal else [],
+                            "research_goal": state.research_goal
+                        }
+                        
+                        similarity_service = GoldenSimilarityAnalysisService(db_session=fresh_db)
+                        golden_similarity_analysis = await similarity_service.analyze_survey_similarity(
+                            survey=state.generated_survey,
+                            golden_examples=state.golden_examples,
+                            rfq_context=rfq_context
+                        )
+                        
+                        self.logger.info(f"🎯 [ValidatorAgent] Golden similarity analysis complete: avg={golden_similarity_analysis.get('overall_average', 0):.3f}")
+                        
+                        # Store in state for persistence
+                        if state.pillar_scores:
+                            state.pillar_scores["golden_similarity_analysis"] = golden_similarity_analysis
+                        
+                    except Exception as similarity_error:
+                        self.logger.warning(f"⚠️ [ValidatorAgent] Golden similarity analysis failed (non-blocking): {similarity_error}")
 
                 # Retries disabled - keep retry count unchanged
                 # Evaluation is informational, not blocking

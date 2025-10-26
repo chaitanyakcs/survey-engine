@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { ChevronDownIcon, ChevronRightIcon, TagIcon } from '@heroicons/react/24/outline';
 import {
   QuestionAnnotation,
@@ -33,6 +33,11 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
     type: null as 'question' | 'section' | 'survey' | null,
     target: null as any
   });
+
+  // Resizable divider state
+  const [leftPanelWidth, setLeftPanelWidth] = useState(60); // percentage
+  const [isResizing, setIsResizing] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   
   // Debug: Log survey data structure
   // Remove excessive debug logging - only keep essential logs
@@ -163,33 +168,56 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
     return currentAnnotations?.sectionAnnotations?.find((sa: SectionAnnotation) => sa.sectionId === sectionId);
   };
 
-  return (
-    <div className="w-full h-screen flex flex-col bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-3 h-3 bg-yellow-400 rounded-full"></div>
-            <h2 className="heading-3">Annotation Mode</h2>
-            <div className="text-sm text-gray-500">
-              {sectionsToUse.reduce((total: number, section: any) => total + (section.questions?.length || 0), 0)} questions • {sectionsToUse.length} sections
-            </div>
-          </div>
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={onExitAnnotationMode}
-              className="px-4 py-2 bg-gray-600 text-white text-sm font-medium rounded-lg hover:bg-gray-700"
-            >
-              Exit
-            </button>
-          </div>
-        </div>
-      </div>
+  // Resizable divider handlers
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  }, []);
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Panel - Survey Structure with Question Details (60%) */}
-        <div className="w-[60%] bg-white overflow-y-auto">
-          <div className="p-4">
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!isResizing || !containerRef.current) return;
+    
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const newLeftWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100;
+    
+    // Constrain between 20% and 80%
+    const constrainedWidth = Math.min(Math.max(newLeftWidth, 20), 80);
+    setLeftPanelWidth(constrainedWidth);
+  }, [isResizing]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsResizing(false);
+  }, []);
+
+  // Add global mouse event listeners
+  useEffect(() => {
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    } else {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing, handleMouseMove, handleMouseUp]);
+
+  return (
+    <div className="w-full h-full flex flex-col bg-gray-50">
+      <div ref={containerRef} className="flex-1 flex overflow-hidden">
+        {/* Left Panel - Survey Structure with Question Details */}
+        <div 
+          className="bg-white overflow-y-auto"
+          style={{ width: `${leftPanelWidth}%` }}
+        >
+          <div className="p-4 pr-0">
             <h3 
               className="heading-4 mb-4 cursor-pointer hover:text-primary-600 transition-colors flex items-center gap-2"
               onClick={() => setAnnotationPane({ type: 'survey', target: survey })}
@@ -304,24 +332,27 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
                                   {(() => {
                                     const annotation = getQuestionAnnotation(questionId);
                                     if (annotation) {
-                                      if (annotation.aiGenerated) {
-                                        return (
-                                          <div className="flex items-center space-x-1 flex-shrink-0 ml-2">
-                                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                              🤖 AI
-                                            </span>
-                                            {annotation.aiConfidence && (
-                                              <span className="text-xs text-blue-600">
-                                                {Math.round(annotation.aiConfidence * 100)}%
+                                      return (
+                                        <div className="flex items-center space-x-1 flex-shrink-0 ml-2">
+                                          {/* Always show yellow Annotated tag */}
+                                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                            <TagIcon className="w-3 h-3" />
+                                          </span>
+                                          {/* Show AI indicator if AI generated */}
+                                          {annotation.aiGenerated && (
+                                            <>
+                                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                🤖 AI
                                               </span>
-                                            )}
-                                          </div>
-                                        );
-                                      } else {
-                                        return (
-                                          <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0 ml-2"></div>
-                                        );
-                                      }
+                                              {annotation.aiConfidence && (
+                                                <span className="text-xs text-blue-600">
+                                                  {Math.round(annotation.aiConfidence * 100)}%
+                                                </span>
+                                              )}
+                                            </>
+                                          )}
+                                        </div>
+                                      );
                                     }
                                     return null;
                                   })()}
@@ -362,8 +393,19 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
           </div>
         </div>
 
-        {/* Right Panel - Annotation Interface (40%) */}
-        <div className="w-[40%]">
+        {/* Resizable Divider */}
+        <div
+          className={`w-2 bg-gray-200 hover:bg-gray-300 cursor-col-resize flex-shrink-0 transition-colors ${
+            isResizing ? 'bg-gray-300' : ''
+          }`}
+          onMouseDown={handleMouseDown}
+        />
+
+        {/* Right Panel - Annotation Interface */}
+        <div 
+          className="flex-shrink-0"
+          style={{ width: `${100 - leftPanelWidth}%` }}
+        >
           <AnnotationSidePane
             key={`${annotationPane.type}-${selectedQuestion || annotationPane.target?.id || 'none'}`}
             annotationType={annotationPane.type}

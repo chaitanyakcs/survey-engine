@@ -345,6 +345,9 @@ export interface Survey {
   };
   rfq_data?: EnhancedRFQRequest;  // NEW
   rfq_id?: string;  // NEW
+  used_golden_examples?: string[];  // NEW
+  used_golden_questions?: string[];  // NEW
+  used_golden_sections?: string[];  // NEW
 }
 
 export interface SurveyListItem {
@@ -364,6 +367,12 @@ export interface Question {
   id: string;
   text: string;
   type: 'multiple_choice' | 'single_choice' | 'yes_no' | 'dropdown' | 'scale' | 'text' | 'ranking' | 'instruction' | 'matrix' | 'numeric' | 'date' | 'boolean' | 'open_text' | 'multiple_select' | 'matrix_likert' | 'constant_sum' | 'numeric_grid' | 'numeric_open' | 'likert' | 'open_end' | 'display_only' | 'single_open' | 'multiple_open' | 'open_ended' | 'gabor_granger' | 'maxdiff' | 'van_westendorp' | 'conjoint' | 'unknown';
+  // Enhanced numeric question properties
+  numeric_type?: 'currency' | 'age' | 'quantity' | 'rating' | 'percentage' | 'measurement' | 'generic';
+  unit?: string;
+  min_value?: number;
+  max_value?: number;
+  decimal_places?: number;
   options?: string[];
   features?: string[]; // For MaxDiff questions
   scale_labels?: Record<string, string>;
@@ -390,6 +399,7 @@ export interface SurveyMetadata {
 export interface ProgressMessage {
   type: 'progress' | 'completed' | 'error' | 'human_review_required' | 'workflow_resuming' | 'llm_content_update';
   step?: string;
+  substep?: string; // Substep information for detailed progress tracking
   percent?: number;
   message?: string;
   survey_id?: string;
@@ -424,6 +434,7 @@ export interface WorkflowState {
   workflow_id?: string;
   survey_id?: string;
   current_step?: string;
+  current_substep?: string; // Current substep for detailed progress tracking
   progress?: number;
   message?: string;
   error?: string;
@@ -1249,6 +1260,23 @@ export interface GoldenQuestion {
   labels: Record<string, any>;
   created_at: string;
   updated_at: string;
+  last_used_at?: string;
+}
+
+export interface QuestionUsage {
+  survey_id: string;
+  survey_title?: string;
+  rfq_title?: string;
+  used_at: string;
+  golden_pair_id?: string;
+}
+
+export interface SectionUsage {
+  survey_id: string;
+  survey_title?: string;
+  rfq_title?: string;
+  used_at: string;
+  golden_pair_id?: string;
 }
 
 export interface GoldenContentAnalytics {

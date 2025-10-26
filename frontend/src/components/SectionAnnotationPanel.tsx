@@ -7,6 +7,7 @@ import {
 import LikertScale from './LikertScale';
 import EnhancedLabelsInput from './EnhancedLabelsInput';
 import { useAppStore } from '../store/useAppStore';
+import { TagIcon } from '@heroicons/react/24/outline';
 
 interface SectionAnnotationPanelProps {
   section: SurveySection;
@@ -114,14 +115,68 @@ const SectionAnnotationPanel: React.FC<SectionAnnotationPanelProps> = ({
   const missingElements = mandatoryElements.missing || [];
 
   return (
-    <div className="card-highlighted mt-4">
-      {/* Header */}
-      <div className="card-default-sm mb-6">
-        <div className="flex justify-between items-start">
-          {/* Left side - AI Status */}
-          <div className="flex-1">
-            {/* AI Status Card */}
-            {annotation?.aiGenerated && (
+    <div className="h-full flex flex-col bg-white">
+      {/* Header - Icon, Title, and Verify button */}
+      <div className="flex-shrink-0 px-4 py-3 border-b border-gray-200">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <TagIcon className="w-5 h-5 text-primary-600" />
+            <h2 className="text-lg font-semibold text-gray-900">Section Annotation</h2>
+          </div>
+          {annotation?.aiGenerated && (
+            <button
+              onClick={async () => {
+                try {
+                  setIsVerifying(true);
+                  const { verifyAIAnnotation, currentSurvey } = useAppStore.getState();
+                  if (currentSurvey?.survey_id && annotation?.id) {
+                    console.log('🔍 [SectionAnnotationPanel] Verifying annotation:', { surveyId: currentSurvey.survey_id, annotationId: annotation.id });
+                    await verifyAIAnnotation(currentSurvey.survey_id, annotation.id, 'section');
+                    setIsVerified(true);
+                  } else {
+                    console.error('🔍 [SectionAnnotationPanel] Missing survey ID or annotation ID:', { surveyId: currentSurvey?.survey_id, annotationId: annotation?.id });
+                  }
+                } catch (error) {
+                  console.error('Failed to verify annotation:', error);
+                } finally {
+                  setIsVerifying(false);
+                }
+              }}
+              disabled={isVerifying || isVerified}
+              className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200 ${
+                isVerified
+                  ? 'bg-green-100 text-green-800 border border-green-200'
+                  : isVerifying
+                  ? 'bg-yellow-100 text-yellow-800 border border-yellow-200'
+                  : 'bg-primary-600 text-white hover:bg-primary-700 border border-transparent'
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
+            >
+              {isVerifying ? (
+                <div className="flex items-center">
+                  <div className="animate-spin -ml-1 mr-2 h-3 w-3 text-current">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  </div>
+                  Verifying...
+                </div>
+              ) : isVerified ? (
+                'Verified'
+              ) : (
+                'Verify AI Annotation'
+              )}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="card-highlighted mt-2">
+          {/* AI Status Card */}
+          {annotation?.aiGenerated && (
+            <div className="card-default-sm mb-4">
               <div className="inline-flex items-center px-3 py-2 bg-blue-100 border border-blue-200 rounded-lg shadow-sm">
                 <div className="flex items-center space-x-2">
                   <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
@@ -136,49 +191,13 @@ const SectionAnnotationPanel: React.FC<SectionAnnotationPanelProps> = ({
                   )}
                 </div>
               </div>
-            )}
-          </div>
-
-          {/* Right side - Action Buttons */}
-          <div className="flex items-center gap-2 ml-4">
-            {annotation?.aiGenerated && !isVerified && (
-              <button
-                onClick={async () => {
-                  try {
-                    setIsVerifying(true);
-                    const { verifyAIAnnotation, currentSurvey } = useAppStore.getState();
-                    if (currentSurvey?.survey_id && annotation?.id) {
-                      console.log('🔍 [SectionAnnotationPanel] Verifying annotation:', { surveyId: currentSurvey.survey_id, annotationId: annotation.id });
-                      await verifyAIAnnotation(currentSurvey.survey_id, annotation.id, 'section');
-                      setIsVerified(true);
-                    } else {
-                      console.error('🔍 [SectionAnnotationPanel] Missing survey ID or annotation ID:', { surveyId: currentSurvey?.survey_id, annotationId: annotation?.id });
-                    }
-                  } catch (error) {
-                    console.error('Failed to verify annotation:', error);
-                  } finally {
-                    setIsVerifying(false);
-                  }
-                }}
-                disabled={isVerifying}
-                className="px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isVerifying ? 'Verifying...' : 'Mark as Reviewed'}
-              </button>
-            )}
-            {annotation?.aiGenerated && isVerified && (
-              <div className="px-4 py-2 bg-green-100 text-green-800 text-sm font-medium rounded-lg border border-green-200">
-                ✓ Human Verified
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+            </div>
+          )}
 
       {/* Main Content Grid */}
-      <div className="space-y-4">
+      <div className="space-y-3">
         {/* Basic Ratings - Each in its own row */}
-        <div className="space-y-3">
+        <div className="space-y-2">
           {/* Quality Rating */}
           <div className="bg-white rounded-lg p-3 shadow-sm border border-gray-200">
             <LikertScale
@@ -379,12 +398,38 @@ const SectionAnnotationPanel: React.FC<SectionAnnotationPanelProps> = ({
           <textarea
             value={formData.comment}
             onChange={(e) => updateField('comment', e.target.value)}
-            placeholder="Share your thoughts on this section's structure, flow, question grouping, or any other observations that would help improve the survey..."
+            placeholder="Analyze section structure and flow. Explain WHY the sequencing works or doesn't work, and HOW to improve respondent experience. Focus on logical progression, cognitive load, and survey flow."
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-none"
             rows={4}
           />
+          <div className="mt-2 text-xs text-gray-500 space-y-2">
+            <div className="font-semibold text-gray-700 mb-1">Write actionable section comments that:</div>
+            <div className="space-y-1">
+              <div className="flex items-start gap-1">
+                <span className="text-green-600 font-medium">✓</span>
+                <span><strong>Analyze flow logic:</strong> "Questions flow from general awareness to specific preferences, reducing respondent fatigue by building context gradually"</span>
+              </div>
+              <div className="flex items-start gap-1">
+                <span className="text-green-600 font-medium">✓</span>
+                <span><strong>Identify structural issues:</strong> "Demographics placed too early - move after main questions to avoid priming effects on responses"</span>
+              </div>
+              <div className="flex items-start gap-1">
+                <span className="text-green-600 font-medium">✓</span>
+                <span><strong>Suggest improvements:</strong> "Add transition text between topics to help respondents understand the shift from product awareness to purchase intent"</span>
+              </div>
+              <div className="flex items-start gap-1">
+                <span className="text-red-600 font-medium">✗</span>
+                <span><strong>Avoid vague assessments:</strong> "Section looks good" or "Flow is fine" (provides no specific guidance)</span>
+              </div>
+              <div className="flex items-start gap-1">
+                <span className="text-red-600 font-medium">✗</span>
+                <span><strong>Avoid generic criticism:</strong> "This section is bad" or "Poor structure" (doesn't explain what's wrong or how to fix it)</span>
+              </div>
+            </div>
+          </div>
         </div>
-
+        </div>
+        </div>
       </div>
     </div>
   );

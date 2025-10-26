@@ -128,6 +128,115 @@ class SectionManager:
         
         return PromptSection("unmapped_context", content, order=4.5)
 
+    def build_golden_questions_section(self, golden_questions: List[Dict[str, Any]]) -> PromptSection:
+        """Build golden questions section with expert comments and QNR label hints"""
+        if not golden_questions:
+            return PromptSection("golden_questions", [], order=4.2, required=False)
+        
+        content = [
+            "## 📝 EXPERT QUESTION GUIDANCE (QNR Label-Matched Questions):",
+            "The following high-quality questions match required QNR labels for this survey.",
+            "Each question shows which requirement it satisfies and includes expert annotations.",
+            ""
+        ]
+        
+        # Group questions by label for better organization
+        labeled_questions = []
+        unlabeled_questions = []
+        
+        for question in golden_questions[:5]:  # Limit to top 5
+            if question.get('primary_label'):
+                labeled_questions.append(question)
+            else:
+                unlabeled_questions.append(question)
+        
+        # Display labeled questions first (these match specific requirements)
+        for i, question in enumerate(labeled_questions, 1):
+            question_text = question.get('question_text', '')
+            question_type = question.get('question_type', 'unknown')
+            quality_score = question.get('quality_score', 0.0)
+            human_verified = question.get('human_verified', False)
+            annotation_comment = question.get('annotation_comment', '')
+            
+            # QNR Label metadata
+            primary_label = question.get('primary_label', '')
+            label_description = question.get('label_description', '')
+            label_mandatory = question.get('label_mandatory', False)
+            label_section_id = question.get('label_section_id', '')
+            label_category = question.get('label_category', '')
+            
+            # Section names for context
+            section_names = {
+                1: "Sample Plan", 2: "Screener", 3: "Brand/Product", 
+                4: "Concept", 5: "Methodology", 6: "Additional", 7: "Programmer Instructions"
+            }
+            section_name = section_names.get(label_section_id, f"Section {label_section_id}")
+            
+            # Build label header with context
+            label_header = f"**{primary_label}**"
+            if label_category:
+                label_header += f" ({section_name}"
+                if label_mandatory:
+                    label_header += " - MANDATORY"
+                label_header += ")"
+            
+            content.extend([
+                f"### {label_header}",
+                f"**Label Purpose:** {label_description}" if label_description else "",
+                f"**Example Question:** \"{question_text}\"",
+                f"**Type:** {question_type}",
+                f"**Quality:** {quality_score:.2f}/1.0",
+                f"**Verified:** {'✅ Human Verified' if human_verified else '🤖 AI Generated'}"
+            ])
+            
+            # Remove empty strings
+            content = [c for c in content if c]
+            
+            if annotation_comment:
+                content.extend([
+                    f"**Expert Guidance:** {annotation_comment}",
+                    ""
+                ])
+            else:
+                content.append("")
+        
+        # Display unlabeled questions (high-quality fallbacks)
+        if unlabeled_questions:
+            if labeled_questions:
+                content.append("### Additional High-Quality Questions:")
+            
+            for i, question in enumerate(unlabeled_questions, len(labeled_questions) + 1):
+                question_text = question.get('question_text', '')
+                question_type = question.get('question_type', 'unknown')
+                quality_score = question.get('quality_score', 0.0)
+                human_verified = question.get('human_verified', False)
+                annotation_comment = question.get('annotation_comment', '')
+                
+                content.extend([
+                    f"**Question {i}:** \"{question_text}\"",
+                    f"**Type:** {question_type} | **Quality:** {quality_score:.2f}/1.0",
+                ])
+                
+                if annotation_comment:
+                    content.extend([
+                        f"**Expert Guidance:** {annotation_comment}",
+                        ""
+                    ])
+                else:
+                    content.append("")
+        
+        content.extend([
+            "",
+            "**USAGE INSTRUCTIONS:**",
+            "- Questions with QNR labels show which survey requirements they satisfy",
+            "- MANDATORY labels must be included in your generated survey",
+            "- Use these as templates, adapting the wording to match your specific RFQ context",
+            "- Pay special attention to expert guidance comments for best practices",
+            ""
+        ])
+        
+        return PromptSection("golden_questions", content, order=4.2)
+
     def build_current_task_section(self, rfq_details: Dict[str, Any]) -> PromptSection:
         """Build current RFQ task section"""
         content = [
@@ -532,6 +641,12 @@ class PromptBuilder:
             self.section_manager.add_section("rag_context",
                 self.section_manager.build_rag_context_section(rag_context))
 
+        # Add golden questions section if available
+        golden_questions = context.get("golden_questions", [])
+        if golden_questions:
+            self.section_manager.add_section("golden_questions",
+                self.section_manager.build_golden_questions_section(golden_questions))
+
         # Add unmapped context section if available
         unmapped_context = context.get("unmapped_context", "")
         if unmapped_context:
@@ -750,6 +865,36 @@ class PromptBuilder:
                     content.append(f"✅ **{section_name}**: REQUIRED")
 
                 content.extend(["", "⚠️ **IMPORTANT**: Only include the sections listed above. Do NOT include unselected sections."])
+                
+                # Add QNR Label Requirements from context if available
+                enhanced_rfq_data = context.get("enhanced_rfq_data")
+                if enhanced_rfq_data:
+                    methodology_tags = enhanced_rfq_data.get("methodology_tags", [])
+                    industry = enhanced_rfq_data.get("industry")
+                    
+                    # Get required QNR labels from database
+                    try:
+                        from src.services.qnr_label_service import QNRLabelService
+                        qnr_service = QNRLabelService(db_session=self.db_session)
+                        
+                        # Add requirements for screener section
+                        if "screener" in qnr_sections:
+                            screener_labels = qnr_service.get_required_labels(
+                                section_id=2,
+                                methodology=methodology_tags,
+                                industry=industry
+                            )
+                            if screener_labels:
+                                content.extend([
+                                    "",
+                                    "### 📋 SCREENER SECTION REQUIREMENTS (Section 2):",
+                                    "",
+                                    "**MANDATORY QUESTION TYPES to include:**"
+                                ])
+                                for label in screener_labels[:10]:  # Limit to 10 for prompt size
+                                    content.append(f"• **{label['name']}**: {label['description']}")
+                    except Exception as e:
+                        logger.warning(f"Failed to get QNR label requirements: {e}")
 
             # Survey Logic Requirements
             logic_requirements = []
@@ -1070,14 +1215,32 @@ class PromptBuilder:
                         ""
                     ])
             
+            # Add actionable comments from high-quality annotations
+            if guidelines.get("actionable_comments"):
+                content.extend([
+                    "## 📝 EXPERT ANNOTATION GUIDANCE:",
+                    "",
+                    "From high-quality annotated questions, apply these specific principles:",
+                    ""
+                ])
+                
+                for comment_data in guidelines["actionable_comments"][:5]:  # Top 5 actionable comments
+                    verified_badge = "✓ Human Verified" if comment_data.get("human_verified") else ""
+                    score_badge = f"(Score: {comment_data.get('quality_score', 0):.1f}/5)"
+                    content.extend([
+                        f"- \"{comment_data['comment']}\" {verified_badge} {score_badge}",
+                        ""
+                    ])
+            
             content.extend([
                 "## 🎯 IMPLEMENTATION GUIDELINES:",
                 "",
                 "1. **Follow High-Quality Patterns**: Use the examples above as templates for similar questions",
-                "2. **Avoid Problematic Patterns**: Steer clear of the patterns that consistently score low",
-                "3. **Address Common Issues**: Be mindful of the issues experts frequently flag",
-                "4. **Quality Over Speed**: Take time to craft clear, unbiased questions",
-                "5. **Test for Clarity**: Ensure questions are easy to understand and answer",
+                "2. **Apply Expert Guidance**: Incorporate the specific principles from annotated questions",
+                "3. **Avoid Problematic Patterns**: Steer clear of the patterns that consistently score low",
+                "4. **Address Common Issues**: Be mindful of the issues experts frequently flag",
+                "5. **Quality Over Speed**: Take time to craft clear, unbiased questions",
+                "6. **Test for Clarity**: Ensure questions are easy to understand and answer",
                 ""
             ])
             

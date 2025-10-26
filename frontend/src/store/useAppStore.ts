@@ -479,6 +479,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         console.log('🔔 [Frontend] WebSocket message received:', message);
         console.log('🔍 [Frontend] Message type:', message.type);
         console.log('🔍 [Frontend] Message step:', message.step);
+        console.log('🔍 [Frontend] Message substep:', message.substep);
         console.log('🔍 [Frontend] Message percent:', message.percent);
         console.log('🔍 [Frontend] Message workflow_paused:', message.workflow_paused);
         console.log('🔍 [Frontend] Message pending_human_review:', message.pending_human_review);
@@ -486,6 +487,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         if (message.type === 'progress') {
           console.log('📊 [Frontend] Progress update received:', {
             step: message.step,
+            substep: message.substep,
             percent: message.percent,
             message: message.message
           });
@@ -507,6 +509,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
                 ...state.workflow,
                 status: 'completed',
                 current_step: message.step,
+                current_substep: message.substep,
                 progress: message.percent,
                 message: message.message
               }
@@ -540,22 +543,24 @@ export const useAppStore = create<AppStore>((set, get) => ({
             console.log('✅ [Frontend] Workflow marked as completed via progress message');
           } else {
           // Normal progress update
-          console.log('🔍 [Frontend] Updating workflow state with step:', message.step, 'progress:', message.percent);
+          console.log('🔍 [Frontend] Updating workflow state with step:', message.step, 'substep:', message.substep, 'progress:', message.percent);
           const newWorkflowState = {
             current_step: message.step,
+            current_substep: message.substep,
             progress: message.percent,
             message: message.message
           };
           
           // Use setWorkflowState to get progress smoothing
           get().setWorkflowState(newWorkflowState);
-          console.log('✅ [Frontend] Workflow state updated with step:', message.step, 'progress:', message.percent);
+          console.log('✅ [Frontend] Workflow state updated with step:', message.step, 'substep:', message.substep, 'progress:', message.percent);
           }
 
           console.log('✅ [Frontend] Progress state updated');
         } else if (message.type === 'llm_content_update') {
           console.log('📝 [Frontend] Streaming content update received:', {
             step: message.step,
+            substep: message.substep,
             percent: message.percent,
             data: message.data
           });
@@ -565,6 +570,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
             workflow: {
               ...state.workflow,
               current_step: message.step,
+              current_substep: message.substep,
               progress: message.percent,
               message: message.message,
               streamingStats: {
@@ -2765,40 +2771,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
       enhancedUpdates.survey_structure.qnr_sections = Array.from(qnrSections);
     }
 
-    // Auto-configure text requirements based on methodology
+    // Auto-configure text requirements - enable all text blocks by default
     if (!enhancedUpdates.survey_structure.text_requirements || enhancedUpdates.survey_structure.text_requirements.length === 0) {
-      const textRequirements = new Set<string>();
-
-      // Always include Study_Intro (mandatory)
-      textRequirements.add('Study_Intro');
-
-      // Add methodology-specific text requirements
-      methodologies.forEach(methodology => {
-        switch (methodology.toLowerCase()) {
-          case 'concept_test':
-          case 'ad_test':
-          case 'monadic':
-          case 'sequential':
-            textRequirements.add('Concept_Intro');
-            break;
-          case 'conjoint':
-          case 'segmentation':
-            textRequirements.add('Confidentiality_Agreement');
-            break;
-          case 'product_test':
-          case 'package_test':
-          case 'brand_tracker':
-          case 'u_and_a':
-          case 'pricing':
-          case 'van_westendorp':
-          case 'gabor_granger':
-          case 'competitive':
-            textRequirements.add('Product_Usage');
-            break;
-        }
-      });
-
-      enhancedUpdates.survey_structure.text_requirements = Array.from(textRequirements);
+      // Include all text blocks by default
+      enhancedUpdates.survey_structure.text_requirements = [
+        'study_intro',
+        'concept_intro',
+        'product_usage',
+        'confidentiality_agreement',
+        'methodology_instructions',
+        'closing_thank_you'
+      ];
     }
 
     // Auto-configure survey logic based on methodology complexity

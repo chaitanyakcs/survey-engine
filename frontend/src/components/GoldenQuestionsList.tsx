@@ -7,9 +7,11 @@ import {
   PencilIcon,
   TrashIcon,
   CheckCircleIcon,
-  TagIcon
+  TagIcon,
+  ClockIcon
 } from '@heroicons/react/24/outline';
 import { GoldenContentEditModal } from './GoldenContentEditModal';
+import { QuestionUsageModal } from './QuestionUsageModal';
 
 export const GoldenQuestionsList: React.FC = () => {
   const { 
@@ -28,6 +30,7 @@ export const GoldenQuestionsList: React.FC = () => {
   const [humanVerifiedFilter, setHumanVerifiedFilter] = useState<string>('all');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<GoldenQuestion | null>(null);
+  const [showUsageModal, setShowUsageModal] = useState<GoldenQuestion | null>(null);
 
   const loadQuestions = useCallback(async () => {
     setIsLoading(true);
@@ -216,10 +219,9 @@ export const GoldenQuestionsList: React.FC = () => {
               <div className="p-6">
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center space-x-3 mb-2">
-                      <h3 className="text-lg font-semibold text-gray-900 truncate">
-                        Question {question.question_id}
-                      </h3>
+                    {/* Compact Header - Status Badges Only */}
+                    <div className="flex items-center space-x-3 mb-3">
+                      {/* Status Badges */}
                       {question.human_verified && (
                         <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
                           <CheckCircleIcon className="w-3 h-3 mr-1" />
@@ -234,80 +236,106 @@ export const GoldenQuestionsList: React.FC = () => {
                       )}
                     </div>
                     
-                    <div className="flex items-center space-x-4 mb-3">
-                      <div className="flex items-center space-x-2">
-                        {question.question_type && (
-                          <span className="px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">
-                            {question.question_type.replace('_', ' ')}
-                          </span>
-                        )}
-                        {question.question_subtype && (
-                          <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
-                            {question.question_subtype.replace('_', ' ')}
-                          </span>
-                        )}
-                        <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-full">
-                          Used {question.usage_count} times
-                        </span>
-                      </div>
-                      
-                      <div className="flex items-center space-x-4 text-sm text-gray-500">
-                        <span>{question.methodology_tags?.length || 0} methodologies</span>
-                        <span>•</span>
-                        <span>{new Date(question.created_at).toLocaleDateString()}</span>
-                      </div>
-                    </div>
-                    
+                    {/* Question Text */}
                     <p className="text-gray-700 text-sm mb-3 line-clamp-2">
                       {question.question_text}
                     </p>
                     
-                    {/* Question Patterns */}
-                    {question.question_patterns && question.question_patterns.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mb-2">
-                        <span className="text-xs text-gray-500 font-medium">Patterns:</span>
-                        {question.question_patterns.slice(0, 3).map((pattern, index) => (
-                          <span key={index} className="px-2 py-1 text-xs bg-purple-100 text-purple-700 rounded-md">
-                            {pattern}
-                          </span>
-                        ))}
-                        {question.question_patterns.length > 3 && (
-                          <span className="px-2 py-1 text-xs bg-purple-100 text-purple-700 rounded-md">
-                            +{question.question_patterns.length - 3} more
-                          </span>
-                        )}
+                    {/* Tags Row */}
+                    <div className="flex items-center space-x-2 mb-3">
+                      {/* Question Type Tags */}
+                      {question.question_type && (
+                        <span className="px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">
+                          {question.question_type.replace('_', ' ')}
+                        </span>
+                      )}
+                      {question.question_subtype && (
+                        <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
+                          {question.question_subtype.replace('_', ' ')}
+                        </span>
+                      )}
+                      
+                      {/* Usage Count */}
+                      <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-full">
+                        Used {question.usage_count} times
+                      </span>
+                      
+                      {/* Methodology Tags (first 2 + hover for more) */}
+                      {question.methodology_tags && question.methodology_tags.length > 0 && (
+                        <div className="flex items-center space-x-1">
+                          {question.methodology_tags.slice(0, 2).map((tag, index) => (
+                            <span key={index} className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded-md">
+                              {tag}
+                            </span>
+                          ))}
+                          {question.methodology_tags.length > 2 && (
+                            <div className="group relative">
+                              <span className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded-md cursor-help">
+                                +{question.methodology_tags.length - 2} more
+                              </span>
+                              <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block z-10">
+                                <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap">
+                                  {question.methodology_tags.slice(2).join(', ')}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Recently Used Section */}
+                    {question.last_used_at && (
+                      <div className="flex items-center space-x-2 text-sm text-gray-500 mb-2">
+                        <ClockIcon className="w-4 h-4" />
+                        <span>Last used: {new Date(question.last_used_at).toLocaleDateString()}</span>
+                        <button
+                          onClick={() => setShowUsageModal(question)}
+                          className="text-yellow-600 hover:text-yellow-700 hover:underline"
+                        >
+                          View usage history
+                        </button>
                       </div>
                     )}
                     
-                    {/* Methodology Tags */}
-                    {question.methodology_tags && question.methodology_tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mb-2">
-                        {question.methodology_tags.slice(0, 4).map((tag, index) => (
-                          <span key={index} className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded-md">
-                            {tag}
-                          </span>
-                        ))}
-                        {question.methodology_tags.length > 4 && (
-                          <span className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded-md">
-                            +{question.methodology_tags.length - 4} more
-                          </span>
-                        )}
+                    {/* Question ID and Creation Date */}
+                    <div className="flex items-center space-x-3 text-xs text-gray-500">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-mono bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                          {question.question_id}
+                        </span>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(question.question_id);
+                            // Could add toast notification here
+                          }}
+                          className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                          title="Copy Question ID"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                        </button>
                       </div>
-                    )}
+                      <div>
+                        Created: {new Date(question.created_at).toLocaleDateString()}
+                      </div>
+                    </div>
                   </div>
                   
-                  {/* Actions */}
+                  {/* Right Side Actions */}
                   <div className="flex items-center space-x-2 ml-4">
-                    <div className="text-right mr-4">
-                      <div className={`text-sm font-medium ${
-                        question.quality_score === null || question.quality_score === undefined 
-                          ? 'text-gray-500' 
-                          : 'text-gray-900'
-                      }`}>
-                        {formatQualityScore(question.quality_score)}
+                    {/* Suitability Score (only if exists) */}
+                    {question.quality_score !== null && question.quality_score !== undefined && (
+                      <div className="text-right mr-4">
+                        <div className="text-sm font-medium text-gray-900">
+                          {formatQualityScore(question.quality_score)}
+                        </div>
+                        <div className="text-xs text-gray-500" title="Combines quality rating and relevance assessment">
+                          Suitability
+                        </div>
                       </div>
-                      <div className="text-xs text-gray-500">Quality</div>
-                    </div>
+                    )}
                     
                     <button
                       onClick={() => handleEditClick(question)}
@@ -377,6 +405,16 @@ export const GoldenQuestionsList: React.FC = () => {
         type="question"
         onSave={handleUpdateQuestion}
       />
+
+      {/* Usage History Modal */}
+      {showUsageModal && (
+        <QuestionUsageModal
+          isOpen={true}
+          onClose={() => setShowUsageModal(null)}
+          questionId={showUsageModal.id}
+          questionText={showUsageModal.question_text}
+        />
+      )}
     </div>
   );
 };

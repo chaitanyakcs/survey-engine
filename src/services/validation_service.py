@@ -62,30 +62,68 @@ class ValidationService:
     ) -> float:
         """
         Calculate similarity score between generated survey and golden examples
+        
+        Returns:
+            Average similarity score (0.0-1.0) for backward compatibility
+        """
+        try:
+            detailed = await self.calculate_golden_similarity_detailed(survey, golden_examples)
+            return detailed.get("average_similarity", 0.0)
+            
+        except Exception as e:
+            raise Exception(f"Similarity calculation failed: {str(e)}")
+
+    async def calculate_golden_similarity_detailed(
+        self,
+        survey: Dict[str, Any],
+        golden_examples: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Calculate detailed similarity breakdown between generated survey and golden examples
+        
+        Returns:
+            Dictionary with average similarity and individual scores
         """
         try:
             if not golden_examples:
-                return 0.0
+                return {
+                    "average_similarity": 0.0,
+                    "individual_similarities": [],
+                    "total_examples": 0
+                }
             
             # Generate embedding for the generated survey
             survey_text = self._survey_to_text(survey)
             survey_embedding = await self.embedding_service.get_embedding(survey_text)
             
             # Calculate similarity with each golden example
-            similarities = []
+            individual_similarities = []
             for example in golden_examples:
-                golden_text = self._survey_to_text(example["survey_json"])
+                golden_text = self._survey_to_text(example.get("survey_json", {}))
                 golden_embedding = await self.embedding_service.get_embedding(golden_text)
                 
                 # Cosine similarity
                 similarity = self._cosine_similarity(survey_embedding, golden_embedding)
-                similarities.append(similarity)
+                
+                individual_similarities.append({
+                    "golden_id": str(example.get("id")),
+                    "similarity": round(similarity, 3),
+                    "methodology_tags": example.get("methodology_tags", []),
+                    "industry_category": example.get("industry_category"),
+                    "title": example.get("title", "Unknown")
+                })
             
-            # Return average similarity
-            return sum(similarities) / len(similarities)
+            # Calculate average
+            average_similarity = sum(s['similarity'] for s in individual_similarities) / len(individual_similarities)
+            
+            return {
+                "average_similarity": round(average_similarity, 3),
+                "individual_similarities": individual_similarities,
+                "total_examples": len(individual_similarities)
+            }
             
         except Exception as e:
-            raise Exception(f"Similarity calculation failed: {str(e)}")
+            raise Exception(f"Detailed similarity calculation failed: {str(e)}")
     
     def _validate_schema(self, survey: Dict[str, Any]) -> Dict[str, Any]:
         """

@@ -27,7 +27,7 @@ class GoldenSectionResponse(BaseModel):
     quality_score: Optional[float]
     usage_count: int
     human_verified: bool
-    labels: Dict[str, Any]
+    labels: List[str]
     created_at: str
     updated_at: str
 
@@ -46,7 +46,7 @@ class GoldenQuestionResponse(BaseModel):
     quality_score: Optional[float]
     usage_count: int
     human_verified: bool
-    labels: Dict[str, Any]
+    labels: List[str]
     created_at: str
     updated_at: str
 
@@ -73,7 +73,7 @@ class SectionUpdateRequest(BaseModel):
     question_patterns: Optional[List[str]] = None
     quality_score: Optional[float] = None
     human_verified: Optional[bool] = None
-    labels: Optional[Dict[str, Any]] = None
+    labels: Optional[List[str]] = None
 
 
 class QuestionUpdateRequest(BaseModel):
@@ -85,7 +85,7 @@ class QuestionUpdateRequest(BaseModel):
     question_patterns: Optional[List[str]] = None
     quality_score: Optional[float] = None
     human_verified: Optional[bool] = None
-    labels: Optional[Dict[str, Any]] = None
+    labels: Optional[List[str]] = None
 
 
 # Sections endpoints
@@ -313,7 +313,7 @@ async def list_golden_questions(
                 quality_score=float(question.quality_score) if question.quality_score else None,
                 usage_count=question.usage_count,
                 human_verified=question.human_verified,
-                labels=question.labels if isinstance(question.labels, dict) else {},
+                labels=question.labels if question.labels else [],
                 created_at=question.created_at.isoformat(),
                 updated_at=question.updated_at.isoformat()
             )

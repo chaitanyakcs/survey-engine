@@ -319,7 +319,34 @@ Return ONLY a JSON object with this exact structure:
 
             if extracted_fields is None:
                 logger.error("❌ [Field Extraction] JSON parsing failed")
-                raise Exception("Failed to parse JSON response from LLM")
+                logger.error(f"❌ [Field Extraction] Raw response (first 1000 chars): {json_content[:1000]}")
+                
+                # Emergency audit logging - ensure raw response is captured
+                try:
+                    from src.utils.emergency_audit import emergency_log_llm_failure
+                    await emergency_log_llm_failure(
+                        raw_response=json_content,
+                        service_name="FieldExtractionService",
+                        error_message="JSON parsing failed for field extraction",
+                        context={
+                            "rfq_length": len(rfq_text),
+                            "survey_keys": list(survey_json.keys()) if isinstance(survey_json, dict) else [],
+                            "json_content_length": len(json_content),
+                        },
+                        model_name=self.model,
+                        model_provider="replicate",
+                        purpose="field_extraction",
+                        input_prompt=prompt[:1000] if len(prompt) > 1000 else prompt,
+                    )
+                except Exception as emergency_error:
+                    logger.error(f"❌ [Field Extraction] Emergency logging failed: {str(emergency_error)}")
+                
+                raise UserFriendlyError(
+                    message="Failed to extract fields from survey content",
+                    technical_details="LLM response was not valid JSON",
+                    action_required="Please try again or manually fill the fields",
+                    raw_response=json_content
+                )
 
             cleaned_fields = self._clean_extracted_fields(extracted_fields)
             logger.info(
@@ -369,7 +396,7 @@ Return ONLY a JSON object with this exact structure:
         valid_industries = [
             'electronics', 'appliances', 'healthcare_technology', 'enterprise_software',
             'automotive', 'financial_services', 'hospitality', 'retail', 'education',
-            'manufacturing', 'other'
+            'manufacturing', 'food_beverage', 'other'
         ]
         if industry_category in valid_industries:
             cleaned['industry_category'] = industry_category

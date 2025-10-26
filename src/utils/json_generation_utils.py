@@ -394,10 +394,22 @@ Your response must be parseable by json.loads() without any modification."""
                 if isinstance(text_content, str) and text_content.strip().startswith('{'):
                     # Apply sanitization to fix common JSON issues
                     sanitized_content = JSONGenerationUtils._gentle_sanitize(text_content.strip())
-                    # Try to parse the sanitized JSON
-                    data = json.loads(sanitized_content)
-                    logger.info(f"✅ [JSONGenerationUtils] Parsed text field as JSON")
-                    return JSONParseResult(success=True, data=data)
+                    try:
+                        # Try to parse the sanitized JSON
+                        data = json.loads(sanitized_content)
+                        logger.info(f"✅ [JSONGenerationUtils] Parsed text field as JSON")
+                        return JSONParseResult(success=True, data=data)
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"⚠️ [JSONGenerationUtils] Text field JSON parsing failed: {e}")
+                        # Try more aggressive sanitization
+                        try:
+                            aggressive_sanitized = JSONGenerationUtils._aggressive_sanitize_content(text_content.strip())
+                            data = json.loads(aggressive_sanitized)
+                            logger.info(f"✅ [JSONGenerationUtils] Parsed text field with aggressive sanitization")
+                            return JSONParseResult(success=True, data=data)
+                        except json.JSONDecodeError as e2:
+                            logger.warning(f"⚠️ [JSONGenerationUtils] Aggressive sanitization also failed: {e2}")
+                            # Continue to other strategies
             
             # Check if it's a Replicate response with 'json_output' field
             if isinstance(parsed_dict, dict) and 'json_output' in parsed_dict:

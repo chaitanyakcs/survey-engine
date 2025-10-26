@@ -30,12 +30,14 @@ interface LLMAuditViewerProps {
   surveyId?: string; // Optional - if provided, filters by survey
   title?: string; // Optional custom title
   showSummary?: boolean; // Whether to show the summary sidebar
+  initialPurposeFilter?: string; // Initial purpose filter value (e.g., 'evaluation', 'generation')
 }
 
 export const LLMAuditViewer: React.FC<LLMAuditViewerProps> = ({ 
   surveyId, 
   title = "LLM Audit Viewer",
-  showSummary = true 
+  showSummary = true,
+  initialPurposeFilter = ''
 }) => {
   const [auditRecords, setAuditRecords] = useState<LLMAuditRecord[]>([]);
   const [summary, setSummary] = useState<LLMAuditSummary | null>(null);
@@ -44,7 +46,7 @@ export const LLMAuditViewer: React.FC<LLMAuditViewerProps> = ({
   const [selectedRecord, setSelectedRecord] = useState<LLMAuditRecord | null>(null);
   const [activeTab, setActiveTab] = useState<'prompt' | 'output' | 'raw_response' | 'metadata'>('prompt');
   const [filters, setFilters] = useState({
-    purpose: '',
+    purpose: initialPurposeFilter,
     model_name: '',
     success: '',
     page: 1,

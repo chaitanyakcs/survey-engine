@@ -52,6 +52,9 @@ class APIService {
       pillar_scores: backendResponse.pillar_scores || null, // Use cached pillar scores if available
       rfq_data: backendResponse.rfq_data,  // NEW
       rfq_id: backendResponse.rfq_id,      // NEW
+      used_golden_examples: backendResponse.used_golden_examples || [],  // NEW
+      used_golden_questions: backendResponse.used_golden_questions || [],  // NEW
+      used_golden_sections: backendResponse.used_golden_sections || [],  // NEW
       metadata: {
         target_responses: backendResponse.final_output?.target_responses || 100,
         methodology: backendResponse.final_output?.methodologies || [],
@@ -77,6 +80,27 @@ class APIService {
     });
     
     return survey;
+  }
+
+  async fetchQualityAnalysis(surveyId: string, forceRefresh: boolean = false): Promise<any> {
+    try {
+      console.log('🔍 [API] Starting quality analysis fetch for survey:', surveyId);
+      const url = `${API_BASE_URL}/v1/surveys/${surveyId}/quality-analysis${forceRefresh ? '?force_refresh=true' : ''}`;
+      
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch quality analysis: ${response.statusText}`);
+      }
+
+      const qualityAnalysis = await response.json();
+      console.log('✅ [API] Quality analysis fetched:', qualityAnalysis);
+      
+      return qualityAnalysis;
+    } catch (error) {
+      console.error('❌ [API] Failed to fetch quality analysis:', error);
+      throw error;
+    }
   }
 
   async fetchPillarScores(surveyId: string): Promise<any> {
@@ -108,6 +132,129 @@ class APIService {
     }
   }
 
+  async getGoldenQuestionUsage(questionId: string): Promise<any[]> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/golden-pairs/questions/${questionId}/usage`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch question usage: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('❌ [API] Failed to fetch question usage:', error);
+      throw error;
+    }
+  }
+
+  async getGoldenSectionUsage(sectionId: string): Promise<any[]> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/golden-pairs/sections/${sectionId}/usage`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch section usage: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('❌ [API] Failed to fetch section usage:', error);
+      throw error;
+    }
+  }
+
+  async fetchGoldenPairs(): Promise<any[]> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/golden-pairs/`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch golden pairs: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('❌ [API] Failed to fetch golden pairs:', error);
+      throw error;
+    }
+  }
+
+  async fetchGoldenQuestions(filters: any = {}): Promise<any[]> {
+    try {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== '') {
+          if (Array.isArray(value)) {
+            params.append(key, value.join(','));
+          } else {
+            params.append(key, String(value));
+          }
+        }
+      });
+      
+      const response = await fetch(`${API_BASE_URL}/v1/golden-content/questions?${params}`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch golden questions: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('❌ [API] Failed to fetch golden questions:', error);
+      throw error;
+    }
+  }
+
+  async fetchGoldenSections(filters: any = {}): Promise<any[]> {
+    try {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== '') {
+          if (Array.isArray(value)) {
+            params.append(key, value.join(','));
+          } else {
+            params.append(key, String(value));
+          }
+        }
+      });
+      
+      const response = await fetch(`${API_BASE_URL}/v1/golden-content/sections?${params}`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch golden sections: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('❌ [API] Failed to fetch golden sections:', error);
+      throw error;
+    }
+  }
+
+  async fetchSurveyLLMAudits(surveyId: string): Promise<any[]> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/surveys/${surveyId}/llm-audits`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch survey LLM audits: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('❌ [API] Failed to fetch survey LLM audits:', error);
+      throw error;
+    }
+  }
+
 }
 
 export const apiService = new APIService();
+
+// Golden content metadata options
+export async function getGoldenMetadataOptions() {
+  const response = await fetch(`${API_BASE_URL}/v1/golden-pairs/metadata-options`);
+  
+  if (!response.ok) {
+    throw new Error(`Failed to fetch metadata options: ${response.statusText}`);
+  }
+  
+  return await response.json();
+}

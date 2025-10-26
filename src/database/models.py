@@ -71,12 +71,33 @@ class GoldenQuestion(Base):
     methodology_tags: Any = Column(ARRAY(Text))  # Array of methodology tags for this question
     industry_keywords: Any = Column(ARRAY(Text))  # Array of industry-specific keywords
     question_patterns: Any = Column(ARRAY(Text))  # Array of question patterns/templates
-    quality_score: Any = Column(DECIMAL(3, 2))  # Average quality from annotations
+    quality_score: Any = Column(DECIMAL(3, 2))  # Suitability score (combines quality and relevance from annotations)
     usage_count = Column(Integer, default=0)
     human_verified = Column(Boolean, default=False)  # True if manually created/verified
     labels = Column(JSONB)  # Labels from annotations
+    section_id = Column(Integer)  # QNR section this question belongs to (1-7)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class GoldenQuestionUsage(Base):
+    """Model for tracking which surveys use which golden questions"""
+    __tablename__ = "golden_question_usage"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    golden_question_id = Column(UUID(as_uuid=True), ForeignKey('golden_questions.id', ondelete='CASCADE'), nullable=False)
+    survey_id = Column(UUID(as_uuid=True), ForeignKey('surveys.id', ondelete='CASCADE'), nullable=False)
+    used_at = Column(DateTime, default=func.now())
+
+
+class GoldenSectionUsage(Base):
+    """Model for tracking which surveys use which golden sections"""
+    __tablename__ = "golden_section_usage"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    golden_section_id = Column(UUID(as_uuid=True), ForeignKey('golden_sections.id', ondelete='CASCADE'), nullable=False)
+    survey_id = Column(UUID(as_uuid=True), ForeignKey('surveys.id', ondelete='CASCADE'), nullable=False)
+    used_at = Column(DateTime, default=func.now())
 
 
 class RetrievalWeights(Base):
@@ -140,6 +161,8 @@ class Survey(Base):
     final_output = Column(JSONB)
     golden_similarity_score: Any = Column(DECIMAL(3, 2))
     used_golden_examples: Any = Column(ARRAY(UUID()))
+    used_golden_questions: Any = Column(ARRAY(UUID()), default=[])
+    used_golden_sections: Any = Column(ARRAY(UUID()), default=[])
     cleanup_minutes_actual = Column(Integer)
     model_version = Column(Text)
     pillar_scores = Column(JSONB)  # Store 5-pillar evaluation scores
@@ -655,3 +678,55 @@ class LLMPromptTemplate(Base):
         Index('idx_llm_prompt_templates_is_active', 'is_active'),
         Index('idx_llm_prompt_templates_is_default', 'is_default'),
     )
+
+
+class QNRSection(Base):
+    """QNR section definitions"""
+    __tablename__ = "qnr_sections"
+    
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+    display_order = Column(Integer, nullable=False)
+    mandatory = Column(Boolean, default=True)
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class QNRLabel(Base):
+    """QNR label definitions"""
+    __tablename__ = "qnr_labels"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(255), unique=True, nullable=False)
+    category = Column(String(50), nullable=False)  # screener, brand, concept, methodology, additional
+    description = Column(Text, nullable=False)
+    mandatory = Column(Boolean, default=False)
+    label_type = Column(String(20), nullable=False)  # Text, QNR, Rules
+    applicable_labels = Column(ARRAY(Text))  # Industries or methodologies this applies to
+    detection_patterns = Column(ARRAY(Text))  # Keywords for auto-detection
+    section_id = Column(Integer, ForeignKey('qnr_sections.id'), nullable=False)
+    display_order = Column(Integer, default=0)
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    section = relationship("QNRSection", backref="labels")
+
+
+class QNRLabelHistory(Base):
+    """Audit trail for QNR label changes"""
+    __tablename__ = "qnr_label_history"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    label_id = Column(Integer, ForeignKey('qnr_labels.id'))
+    changed_by = Column(String(255))
+    change_type = Column(String(50))  # created, updated, deleted
+    old_value = Column(JSONB)
+    new_value = Column(JSONB)
+    changed_at = Column(DateTime, default=func.now())
+    
+    # Relationship
+    label = relationship("QNRLabel", backref="history")

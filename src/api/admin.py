@@ -3,7 +3,7 @@ Admin API endpoints for database management - No Alembic dependency
 All migrations handled directly via SQL
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -266,19 +266,42 @@ async def migrate_all(db: Session = Depends(get_db)):
             # Execute bootstrap (idempotent)
             db.execute(text(bootstrap_sql))
             db.commit()
+            
+            # Run incremental migrations
+            incremental_migrations = [
+                "013_add_golden_content_usage_tracking.sql",
+                "014_create_qnr_taxonomy_tables.sql",
+                "016_add_section_id_to_golden_questions.sql"
+            ]
+            
+            for migration_file in incremental_migrations:
+                logger.info(f"📋 Running incremental migration: {migration_file}")
+                incremental_migration_path = Path(__file__).parent.parent.parent / "migrations" / migration_file
+                
+                if incremental_migration_path.exists():
+                    with open(incremental_migration_path, 'r') as f:
+                        incremental_sql = f.read()
+                    
+                    db.execute(text(incremental_sql))
+                    db.commit()
+                    logger.info(f"✅ Incremental migration completed: {migration_file}")
+                else:
+                    logger.warning(f"⚠️ Incremental migration file not found: {incremental_migration_path}")
+                
         finally:
             # Restore original logging level
             sql_logger.setLevel(original_level)
         
-        logger.info("✅ Consolidated bootstrap completed via migrate-all")
+        logger.info("✅ Consolidated bootstrap + incremental migration completed via migrate-all")
         
         return {
             "status": "success",
-            "message": "Database migrations completed via consolidated bootstrap (idempotent)",
-            "approach": "consolidated_bootstrap",
+            "message": "Database migrations completed via consolidated bootstrap + incremental migration (idempotent)",
+            "approach": "consolidated_bootstrap_with_incremental",
             "schema_file": "migrations/000_bootstrap_complete_schema.sql",
+            "incremental_file": "migrations/013_add_golden_content_usage_tracking.sql",
             "tables_created": 24,
-            "note": "migrate-all now calls consolidated bootstrap for idempotent schema management"
+            "note": "migrate-all now runs bootstrap + incremental migration for complete schema management"
         }
         
     except Exception as e:
@@ -290,6 +313,43 @@ async def migrate_all(db: Session = Depends(get_db)):
                 "status": "error",
                 "message": f"Database migrations failed: {str(e)}",
                 "approach": "consolidated_bootstrap"
+            }
+        )
+
+
+@router.post("/seed-qnr-taxonomy")
+async def seed_qnr_taxonomy(db: Session = Depends(get_db)):
+    """
+    Seed QNR taxonomy with labels from hardcoded data
+    Idempotent - safe to run multiple times
+    """
+    try:
+        logger.info("🌱 [Admin] Starting QNR taxonomy seeding")
+        
+        import sys
+        from pathlib import Path
+        migrations_path = Path(__file__).parent.parent.parent / "migrations"
+        sys.path.insert(0, str(migrations_path))
+        from seed_qnr_labels import seed_qnr_labels
+        
+        count = seed_qnr_labels(db)
+        
+        logger.info(f"✅ QNR taxonomy seeded: {count} labels")
+        
+        return {
+            "status": "success",
+            "message": f"QNR taxonomy seeded successfully. {count} labels loaded.",
+            "labels_count": count
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ QNR taxonomy seeding failed: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "status": "error",
+                "message": f"QNR taxonomy seeding failed: {str(e)}"
             }
         )
 
@@ -479,6 +539,53 @@ async def sync_annotations_to_rag(db: Session = Depends(get_db)) -> Dict[str, An
         raise HTTPException(
             status_code=500,
             detail=f"Annotation sync failed: {str(e)}"
+        )
+
+
+@router.post("/backfill-golden-pair-annotations")
+async def backfill_golden_pair_annotations(
+    golden_pair_id: Optional[str] = None,
+    force_update: bool = False,
+    db: Session = Depends(get_db)
+):
+    """
+    Backfill annotations for golden pairs.
+    
+    Args:
+        golden_pair_id: Optional - process only this specific golden pair (for testing)
+        force_update: If True, update annotations even if label already exists
+    
+    Returns:
+        Statistics about the backfill operation
+    """
+    logger.info(f"🚀 [Admin] Starting golden pair annotation backfill (golden_pair_id={golden_pair_id}, force_update={force_update})")
+    
+    try:
+        # Import the backfill function
+        import sys
+        import os
+        
+        # Add scripts directory to path if not already there
+        scripts_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'scripts')
+        if scripts_path not in sys.path:
+            sys.path.append(scripts_path)
+        
+        from backfill_golden_pair_annotations import backfill_all_golden_pair_annotations
+        
+        # Run the backfill
+        stats = await backfill_all_golden_pair_annotations(golden_pair_id=golden_pair_id, force_update=force_update)
+        
+        return {
+            "success": True,
+            "stats": stats,
+            "message": f"Created {stats['annotations_created']} annotations and updated {stats['annotations_updated']} for {stats['pairs_with_annotations']} golden pairs"
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ [Admin] Backfill failed: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to backfill annotations: {str(e)}"
         )
 
 

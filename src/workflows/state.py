@@ -49,6 +49,8 @@ class SurveyGenerationState(BaseModel):
     
     golden_similarity_score: Optional[float] = None
     used_golden_examples: List[UUID] = []
+    used_golden_questions: List[UUID] = []
+    used_golden_sections: List[UUID] = []
     
     retry_count: int = 0
     max_retries: int = 1  # Reduced to prevent long loops

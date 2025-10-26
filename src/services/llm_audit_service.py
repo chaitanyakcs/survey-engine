@@ -661,6 +661,91 @@ class LLMAuditContext:
         """Set the raw response from the LLM before any processing"""
         self.raw_response = raw_response
     
+    async def log_parsing_failure(
+        self,
+        raw_response: str,
+        service_name: str,
+        error_message: str,
+        interaction_id: Optional[str] = None,
+        model_name: Optional[str] = None,
+        model_provider: Optional[str] = None,
+        purpose: Optional[str] = None,
+        input_prompt: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """
+        Emergency logging for parsing failures.
+        Creates independent session even when parent session is None.
+        
+        Args:
+            raw_response: The raw LLM response that failed to parse
+            service_name: Name of the service that failed
+            error_message: The error message from the failure
+            interaction_id: Optional interaction ID for tracking
+            model_name: Optional model name
+            model_provider: Optional model provider
+            purpose: Optional purpose (survey_generation, evaluation, etc.)
+            input_prompt: Optional input prompt
+            context: Additional context about the failure
+            
+        Returns:
+            The interaction_id (generated if not provided)
+        """
+        import uuid
+        
+        if not interaction_id:
+            interaction_id = f"parsing_failure_{uuid.uuid4().hex[:8]}"
+        
+        logger.warning(
+            f"⚠️ [LLMAuditService] Logging parsing failure: {service_name} - {error_message}"
+        )
+        
+        try:
+            # Use independent session to ensure logging even if parent session fails
+            from src.database.connection import get_independent_db_session
+            
+            audit_session = get_independent_db_session()
+            
+            try:
+                # Create audit record for the failure
+                await self.log_llm_interaction(
+                    interaction_id=interaction_id,
+                    model_name=model_name or "unknown",
+                    model_provider=model_provider or "unknown",
+                    purpose=purpose or "parsing_failure",
+                    input_prompt=input_prompt or "",
+                    output_content="",
+                    raw_response=raw_response,
+                    sub_purpose=f"parsing_failure_{service_name}",
+                    context_type="parsing_failure",
+                    hyperparameters={},
+                    performance_metrics={},
+                    metadata={
+                        "service_name": service_name,
+                        "error_message": error_message,
+                        "parsing_failed": True,
+                        **(context or {}),
+                    },
+                    tags=["parsing_failure", service_name],
+                    success=False,
+                    error_message=error_message,
+                )
+                
+                logger.info(
+                    f"✅ [LLMAuditService] Parsing failure logged: {interaction_id}"
+                )
+                return interaction_id
+                
+            finally:
+                audit_session.close()
+                
+        except Exception as e:
+            logger.error(
+                f"❌ [LLMAuditService] Failed to log parsing failure: {str(e)}"
+            )
+            # Re-raise so emergency_audit can try file logging
+            raise
+    
     def can_create_golden_pair(self, audit_record: LLMAudit) -> dict:
         """
         Check if an audit record can be used to create a golden pair.

@@ -567,6 +567,8 @@ class WorkflowService:
                 survey.final_output = final_state.get("generated_survey")
                 survey.golden_similarity_score = final_state.get("golden_similarity_score")
                 survey.used_golden_examples = final_state.get("used_golden_examples", [])
+                survey.used_golden_questions = final_state.get("used_golden_questions", [])
+                survey.used_golden_sections = final_state.get("used_golden_sections", [])
 
                 # Check if this is a failed survey (minimal fallback due to LLM failure)
                 generated_survey = final_state.get("generated_survey", {})
@@ -582,6 +584,18 @@ class WorkflowService:
 
                 self.db.commit()
                 logger.info(f"✅ [WorkflowService] Survey record updated: status={survey.status}, golden_examples_used={len(survey.used_golden_examples)}")
+                
+                # Track golden content usage (non-blocking, won't fail survey generation)
+                try:
+                    from src.services.golden_content_tracking_service import GoldenContentTrackingService
+                    tracking_service = GoldenContentTrackingService(self.db)
+                    await tracking_service.track_golden_content_usage(
+                        survey_id=survey.id,
+                        question_ids=final_state.get("used_golden_questions", []),
+                        section_ids=final_state.get("used_golden_sections", [])
+                    )
+                except Exception as track_error:
+                    logger.warning(f"⚠️ [WorkflowService] Golden content tracking failed (non-critical): {str(track_error)}")
             except Exception as db_error:
                 logger.error(f"❌ [WorkflowService] Database update failed: {str(db_error)}")
                 self.db.rollback()
@@ -595,6 +609,8 @@ class WorkflowService:
                         survey.final_output = final_state.get("generated_survey")
                         survey.golden_similarity_score = final_state.get("golden_similarity_score")
                         survey.used_golden_examples = final_state.get("used_golden_examples", [])
+                        survey.used_golden_questions = final_state.get("used_golden_questions", [])
+                        survey.used_golden_sections = final_state.get("used_golden_sections", [])
 
                         # Check if this is a failed survey (minimal fallback due to LLM failure)
                         generated_survey = final_state.get("generated_survey", {})

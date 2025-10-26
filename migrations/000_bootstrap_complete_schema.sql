@@ -49,6 +49,8 @@ CREATE TABLE IF NOT EXISTS surveys (
     final_output JSONB,
     golden_similarity_score DECIMAL(3,2),
     used_golden_examples UUID[],
+    used_golden_questions UUID[] DEFAULT '{}',
+    used_golden_sections UUID[] DEFAULT '{}',
     cleanup_minutes_actual INTEGER,
     model_version TEXT,
     pillar_scores JSONB,
@@ -150,6 +152,7 @@ CREATE TABLE IF NOT EXISTS golden_questions (
     industry_keywords TEXT[],
     question_patterns TEXT[],
     quality_score DECIMAL(3,2),
+    relevance_score DECIMAL(3,2),
     usage_count INTEGER DEFAULT 0,
     human_verified BOOLEAN DEFAULT FALSE,
     labels JSONB,
@@ -162,6 +165,38 @@ CREATE INDEX IF NOT EXISTS idx_golden_questions_question_type ON golden_question
 CREATE INDEX IF NOT EXISTS idx_golden_questions_methodology_tags 
     ON golden_questions USING GIN(methodology_tags);
 CREATE INDEX IF NOT EXISTS idx_golden_questions_quality_score ON golden_questions(quality_score);
+
+-- Golden Question Usage Tracking Table
+CREATE TABLE IF NOT EXISTS golden_question_usage (
+    id SERIAL PRIMARY KEY,
+    golden_question_id UUID NOT NULL REFERENCES golden_questions(id) ON DELETE CASCADE,
+    survey_id UUID NOT NULL REFERENCES surveys(id) ON DELETE CASCADE,
+    used_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT unique_question_survey_usage UNIQUE (golden_question_id, survey_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_golden_question_usage_question_id 
+    ON golden_question_usage(golden_question_id);
+CREATE INDEX IF NOT EXISTS idx_golden_question_usage_survey_id 
+    ON golden_question_usage(survey_id);
+CREATE INDEX IF NOT EXISTS idx_golden_question_usage_used_at 
+    ON golden_question_usage(used_at DESC);
+
+-- Golden Section Usage Tracking Table
+CREATE TABLE IF NOT EXISTS golden_section_usage (
+    id SERIAL PRIMARY KEY,
+    golden_section_id UUID NOT NULL REFERENCES golden_sections(id) ON DELETE CASCADE,
+    survey_id UUID NOT NULL REFERENCES surveys(id) ON DELETE CASCADE,
+    used_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT unique_section_survey_usage UNIQUE (golden_section_id, survey_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_golden_section_usage_section_id 
+    ON golden_section_usage(golden_section_id);
+CREATE INDEX IF NOT EXISTS idx_golden_section_usage_survey_id 
+    ON golden_section_usage(survey_id);
+CREATE INDEX IF NOT EXISTS idx_golden_section_usage_used_at 
+    ON golden_section_usage(used_at DESC);
 
 -- Golden Example States Table
 CREATE TABLE IF NOT EXISTS golden_example_states (
@@ -586,45 +621,10 @@ CREATE INDEX IF NOT EXISTS idx_llm_prompt_templates_is_active ON llm_prompt_temp
 CREATE INDEX IF NOT EXISTS idx_llm_prompt_templates_is_default ON llm_prompt_templates(is_default);
 
 -- ============================================================================
--- QNR LABEL TAXONOMY TABLES
+-- QNR TAXONOMY TABLES (Replaced with newer implementation below)
 -- ============================================================================
-
--- QNR Label Definitions Table
-CREATE TABLE IF NOT EXISTS qnr_label_definitions (
-    id SERIAL PRIMARY KEY,
-    label_name VARCHAR(100) NOT NULL UNIQUE,
-    label_type VARCHAR(50) NOT NULL,
-    description TEXT,
-    detection_patterns TEXT[],
-    requirements JSONB,
-    is_mandatory BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_qnr_label_definitions_name ON qnr_label_definitions(label_name);
-CREATE INDEX IF NOT EXISTS idx_qnr_label_definitions_type ON qnr_label_definitions(label_type);
-CREATE INDEX IF NOT EXISTS idx_qnr_label_definitions_mandatory ON qnr_label_definitions(is_mandatory);
-CREATE INDEX IF NOT EXISTS idx_qnr_label_definitions_patterns 
-    ON qnr_label_definitions USING GIN(detection_patterns);
-
--- QNR Tag Definitions Table
-CREATE TABLE IF NOT EXISTS qnr_tag_definitions (
-    id SERIAL PRIMARY KEY,
-    tag_name VARCHAR(100) NOT NULL UNIQUE,
-    tag_category VARCHAR(50) NOT NULL,
-    description TEXT,
-    detection_criteria JSONB,
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_qnr_tag_definitions_name ON qnr_tag_definitions(tag_name);
-CREATE INDEX IF NOT EXISTS idx_qnr_tag_definitions_category ON qnr_tag_definitions(tag_category);
-CREATE INDEX IF NOT EXISTS idx_qnr_tag_definitions_active ON qnr_tag_definitions(is_active);
-
-COMMENT ON TABLE qnr_tag_definitions IS 'Stores QNR tag definitions for metadata categorization';
+-- Note: Old qnr_label_definitions and qnr_tag_definitions tables removed
+-- New QNR taxonomy uses qnr_sections, qnr_labels, qnr_label_history tables
 
 -- ============================================================================
 -- PERFORMANCE INDEXES FOR AI ANNOTATIONS
@@ -643,6 +643,67 @@ CREATE INDEX IF NOT EXISTS idx_section_annotations_ai_overridden ON section_anno
 CREATE INDEX IF NOT EXISTS idx_section_annotations_annotator_current_user ON section_annotations (annotator_id) WHERE annotator_id = 'current-user';
 
 -- ============================================================================
+-- QNR TAXONOMY TABLES
+-- ============================================================================
+
+-- QNR Sections Table
+CREATE TABLE IF NOT EXISTS qnr_sections (
+    id INTEGER PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    display_order INTEGER NOT NULL,
+    mandatory BOOLEAN DEFAULT TRUE,
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- QNR Labels Table
+CREATE TABLE IF NOT EXISTS qnr_labels (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) UNIQUE NOT NULL,
+    category VARCHAR(50) NOT NULL,
+    description TEXT NOT NULL,
+    mandatory BOOLEAN DEFAULT FALSE,
+    label_type VARCHAR(20) NOT NULL,
+    applicable_labels TEXT[],
+    detection_patterns TEXT[],
+    section_id INTEGER NOT NULL REFERENCES qnr_sections(id),
+    display_order INTEGER DEFAULT 0,
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- QNR Label History Table (Audit Trail)
+CREATE TABLE IF NOT EXISTS qnr_label_history (
+    id SERIAL PRIMARY KEY,
+    label_id INTEGER REFERENCES qnr_labels(id),
+    changed_by VARCHAR(255),
+    change_type VARCHAR(50),
+    old_value JSONB,
+    new_value JSONB,
+    changed_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Indexes for QNR tables
+CREATE INDEX IF NOT EXISTS idx_qnr_labels_category ON qnr_labels(category);
+CREATE INDEX IF NOT EXISTS idx_qnr_labels_section_id ON qnr_labels(section_id);
+CREATE INDEX IF NOT EXISTS idx_qnr_labels_mandatory ON qnr_labels(mandatory);
+CREATE INDEX IF NOT EXISTS idx_qnr_labels_active ON qnr_labels(active);
+
+-- Seed QNR Sections (idempotent)
+INSERT INTO qnr_sections (id, name, description, display_order, mandatory) VALUES
+(1, 'Sample Plan', 'Sample plan and quotas', 1, TRUE),
+(2, 'Screener Recruitment', 'Screening and qualification questions', 2, TRUE),
+(3, 'Brand/Product Awareness & Usage', 'Brand awareness and product usage', 3, TRUE),
+(4, 'Concept Exposure', 'Concept testing and evaluation', 4, TRUE),
+(5, 'Methodology', 'Pricing and methodology-specific questions', 5, TRUE),
+(6, 'Additional Questions', 'Demographics and psychographics', 6, TRUE),
+(7, 'Programmer Instructions', 'Programming notes and QC', 7, TRUE)
+ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================================
 -- FOREIGN KEY CONSTRAINTS
 -- ============================================================================
 
@@ -653,5 +714,5 @@ CREATE INDEX IF NOT EXISTS idx_section_annotations_annotator_current_user ON sec
 -- COMPLETION MESSAGE
 -- ============================================================================
 
--- This bootstrap schema creates all 24 tables with proper indexes and constraints
+-- This bootstrap schema creates all 27 tables with proper indexes and constraints
 -- All operations are idempotent and safe to run multiple times

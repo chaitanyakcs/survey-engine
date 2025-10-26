@@ -145,6 +145,7 @@ class EvaluationLLMClient:
                 try:
                     # Import audit components when needed to avoid circular imports
                     import sys
+                    import traceback
                     src_path = os.path.join(os.path.dirname(__file__), '..', 'src')
                     if src_path not in sys.path:
                         sys.path.insert(0, src_path)
@@ -153,12 +154,14 @@ class EvaluationLLMClient:
                     from src.services.llm_audit_service import LLMAuditService
                     
                     audit_service = LLMAuditService(self.db_session)
-                    print(f"🔍 [EvaluationLLMClient] Audit service created successfully")
+                    print(f"✅ [EvaluationLLMClient] Audit service created successfully for evaluation")
+                    print(f"🔍 [EvaluationLLMClient] parent_survey_id={parent_survey_id}, parent_rfq_id={parent_rfq_id}")
                 except Exception as e:
-                    print(f"⚠️ [EvaluationLLMClient] Failed to create audit service: {e}")
+                    print(f"❌ [EvaluationLLMClient] Failed to create audit service: {e}")
+                    print(f"❌ [EvaluationLLMClient] Traceback: {traceback.format_exc()}")
                     audit_service = None
             else:
-                print(f"⚠️ [EvaluationLLMClient] No database session available for audit")
+                print(f"⚠️ [EvaluationLLMClient] No database session available for audit (db_session is None)")
             
             if audit_service:
                 async with LLMAuditContext(
@@ -223,8 +226,9 @@ class EvaluationLLMClient:
                     # Store response time in metadata
                     audit_context.metadata['response_time_ms'] = response_time_ms
                     
-                    print(f"🔍 LLM Response content length: {len(content)}")
-                    print(f"🔍 LLM Response content preview: {content[:200]}...")
+                    print(f"✅ [EvaluationLLMClient] LLM Response received, length: {len(content)}")
+                    print(f"🔍 [EvaluationLLMClient] Response preview: {content[:200]}...")
+                    print(f"✅ [EvaluationLLMClient] Audit context will be saved on exit")
                     return LLMResponse(
                         content=content.strip(),
                         success=True,

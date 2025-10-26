@@ -411,3 +411,242 @@ async def delete_golden_example_state(
     except Exception as e:
         logger.error(f"❌ [Golden State] Error deleting state: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error deleting state: {str(e)}")
+
+
+# ============================================================================
+# GOLDEN CONTENT USAGE TRACKING
+# ============================================================================
+
+class QuestionUsageResponse(BaseModel):
+    survey_id: str
+    survey_title: Optional[str]
+    rfq_title: Optional[str]
+    used_at: str
+    golden_pair_id: Optional[str] = None
+
+
+class SectionUsageResponse(BaseModel):
+    survey_id: str
+    survey_title: Optional[str]
+    rfq_title: Optional[str]
+    used_at: str
+    golden_pair_id: Optional[str] = None
+
+
+@router.get("/questions/{question_id}/usage", response_model=List[QuestionUsageResponse])
+async def get_question_usage_history(
+    question_id: UUID,
+    db: Session = Depends(get_db),
+    limit: int = 10
+):
+    """
+    Get usage history for a specific golden question.
+    Returns list of surveys that used this question.
+    """
+    try:
+        from sqlalchemy import text
+        
+        query = text("""
+            SELECT 
+                s.id as survey_id,
+                s.created_at as used_at,
+                r.title as rfq_title,
+                gq.golden_pair_id
+            FROM golden_question_usage gqu
+            JOIN surveys s ON gqu.survey_id = s.id
+            LEFT JOIN rfqs r ON s.rfq_id = r.id
+            LEFT JOIN golden_questions gq ON gqu.golden_question_id = gq.id
+            WHERE gqu.golden_question_id = :question_id
+            ORDER BY gqu.used_at DESC
+            LIMIT :limit
+        """)
+        
+        result = db.execute(query, {"question_id": question_id, "limit": limit})
+        rows = result.fetchall()
+        
+        usage_history = []
+        for row in rows:
+            usage_history.append(QuestionUsageResponse(
+                survey_id=str(row.survey_id),
+                survey_title=None,  # TODO: Extract from survey JSON if needed
+                rfq_title=row.rfq_title,
+                used_at=row.used_at.isoformat() if row.used_at else None,
+                golden_pair_id=str(row.golden_pair_id) if row.golden_pair_id else None
+            ))
+        
+        logger.info(f"📊 Retrieved {len(usage_history)} usage records for question {question_id}")
+        return usage_history
+        
+    except Exception as e:
+        logger.error(f"❌ Error fetching question usage history: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching usage history: {str(e)}")
+
+
+@router.get("/sections/{section_id}/usage", response_model=List[SectionUsageResponse])
+async def get_section_usage_history(
+    section_id: UUID,
+    db: Session = Depends(get_db),
+    limit: int = 10
+):
+    """
+    Get usage history for a specific golden section.
+    Returns list of surveys that used this section.
+    """
+    try:
+        from sqlalchemy import text
+        
+        query = text("""
+            SELECT 
+                s.id as survey_id,
+                s.created_at as used_at,
+                r.title as rfq_title,
+                gs.golden_pair_id
+            FROM golden_section_usage gsu
+            JOIN surveys s ON gsu.survey_id = s.id
+            LEFT JOIN rfqs r ON s.rfq_id = r.id
+            LEFT JOIN golden_sections gs ON gsu.golden_section_id = gs.id
+            WHERE gsu.golden_section_id = :section_id
+            ORDER BY gsu.used_at DESC
+            LIMIT :limit
+        """)
+        
+        result = db.execute(query, {"section_id": section_id, "limit": limit})
+        rows = result.fetchall()
+        
+        usage_history = []
+        for row in rows:
+            usage_history.append(SectionUsageResponse(
+                survey_id=str(row.survey_id),
+                survey_title=None,  # TODO: Extract from survey JSON if needed
+                rfq_title=row.rfq_title,
+                used_at=row.used_at.isoformat() if row.used_at else None,
+                golden_pair_id=str(row.golden_pair_id) if row.golden_pair_id else None
+            ))
+        
+        logger.info(f"📊 Retrieved {len(usage_history)} usage records for section {section_id}")
+        return usage_history
+        
+    except Exception as e:
+        logger.error(f"❌ Error fetching section usage history: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching usage history: {str(e)}")
+
+
+class MetadataOptionsResponse(BaseModel):
+    question_types: List[str]
+    question_subtypes: List[str]
+    methodology_tags: List[str]
+    industry_keywords: List[str]
+    question_patterns: List[str]
+
+
+@router.get("/metadata-options", response_model=MetadataOptionsResponse)
+async def get_metadata_options(
+    db: Session = Depends(get_db)
+):
+    """
+    Get all unique metadata values from existing golden questions and sections.
+    Used to populate dropdown options in the golden question edit UI.
+    """
+    try:
+        from sqlalchemy import text
+        from src.database.models import GoldenQuestion, GoldenSection
+        
+        logger.info("📊 [Golden API] Fetching metadata options")
+        
+        # Predefined common options
+        common_question_types = [
+            'multiple_choice', 'rating_scale', 'open_text', 'yes_no', 
+            'single_choice', 'matrix', 'ranking', 'slider', 'dropdown',
+            'nps', 'van_westendorp', 'gabor_granger', 'conjoint', 'maxdiff',
+            'constant_sum', 'numeric_grid', 'numeric_open', 'matrix_likert'
+        ]
+        
+        common_question_subtypes = [
+            'likert_5', 'likert_7', 'binary', 'text_input', 'dropdown',
+            'radio', 'checkbox', 'nps', 'slider', 'number', 'currency'
+        ]
+        
+        common_methodology_tags = [
+            'mixed_methods', 'quantitative', 'qualitative', 'conjoint_analysis',
+            'van_westendorp', 'max_diff', 'brand_tracking', 'customer_satisfaction',
+            'market_segmentation', 'pricing_research', 'concept_testing', 'nps',
+            'gabor_granger', 'attitudinal', 'behavioral', 'competitive_analysis'
+        ]
+        
+        common_question_patterns = [
+            'likelihood', 'satisfaction', 'frequency', 'awareness', 'preference',
+            'importance', 'agreement', 'recommendation', 'purchase_intent',
+            'usage_behavior', 'demographic', 'screening'
+        ]
+        
+        # Get unique values from database
+        questions_query = text("""
+            SELECT DISTINCT 
+                unnest(methodology_tags) as methodology_tag,
+                unnest(industry_keywords) as industry_keyword,
+                unnest(question_patterns) as question_pattern
+            FROM golden_questions
+            WHERE methodology_tags IS NOT NULL 
+               OR industry_keywords IS NOT NULL
+               OR question_patterns IS NOT NULL
+        """)
+        
+        sections_query = text("""
+            SELECT DISTINCT 
+                unnest(methodology_tags) as methodology_tag,
+                unnest(industry_keywords) as industry_keyword
+            FROM golden_sections
+            WHERE methodology_tags IS NOT NULL 
+               OR industry_keywords IS NOT NULL
+        """)
+        
+        # Execute queries
+        questions_result = db.execute(questions_query).fetchall()
+        sections_result = db.execute(sections_query).fetchall()
+        
+        # Aggregate unique values
+        db_methodology_tags = set()
+        db_industry_keywords = set()
+        db_question_patterns = set()
+        
+        for row in questions_result:
+            if row.methodology_tag:
+                db_methodology_tags.add(row.methodology_tag)
+            if row.industry_keyword:
+                db_industry_keywords.add(row.industry_keyword)
+            if row.question_pattern:
+                db_question_patterns.add(row.question_pattern)
+        
+        for row in sections_result:
+            if row.methodology_tag:
+                db_methodology_tags.add(row.methodology_tag)
+            if row.industry_keyword:
+                db_industry_keywords.add(row.industry_keyword)
+        
+        # Combine common options with database values (deduplicated)
+        methodology_tags = sorted(set(common_methodology_tags) | db_methodology_tags)
+        industry_keywords = sorted(db_industry_keywords)
+        question_patterns = sorted(set(common_question_patterns) | db_question_patterns)
+        
+        response = MetadataOptionsResponse(
+            question_types=common_question_types,
+            question_subtypes=common_question_subtypes,
+            methodology_tags=methodology_tags,
+            industry_keywords=industry_keywords,
+            question_patterns=question_patterns
+        )
+        
+        logger.info(f"✅ [Golden API] Metadata options fetched: {len(methodology_tags)} methodology tags, {len(industry_keywords)} industry keywords, {len(question_patterns)} question patterns")
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"❌ [Golden API] Error fetching metadata options: {str(e)}", exc_info=True)
+        # Return fallback with common options only
+        return MetadataOptionsResponse(
+            question_types=common_question_types,
+            question_subtypes=common_question_subtypes,
+            methodology_tags=common_methodology_tags,
+            industry_keywords=[],
+            question_patterns=common_question_patterns
+        )

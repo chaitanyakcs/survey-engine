@@ -1,0 +1,13 @@
+﻿Label,Applicable_Labels,Descr,Mandatory,Type
+Brand_awareness_funnel,"Consumer Health, Healthcare, MedTech, Patients",What brands are you aware of. Funnel Questions - Aware → Considered → Purchased → Continue → Preferred,Yes,QNR
+Brand_Recall,,Top of the mind brands,Yes,QNR
+Product_Usage,,"What products do you use in the category. ",Yes,Text
+Product_Usage_Frequency,,"Frequency of usage and purchase, Quantity",Yes,QNR
+Category_Usage_Frequency,,How often you use,Yes,QNR
+Product_Usage_Financial,,"How much do you spend and if it is higher, type of purchase - subscription etc, channel info",Yes,QNR
+Brand_Product_Satisfaction,"Consumer Health, Healthcare, MedTech, Patients",With the products used in the past and current,Yes,QNR
+Purchase_Decision,,Who influences purchase decision,No,
+Brand_Usage,,Brands used for the product/category,No,
+Brand_Choice,,Brands used most often,No,
+Brand_Usage_Context,,"Where, when and how brand is used",No,
+Brand_Usage_Style,,What is the brand used with,No,

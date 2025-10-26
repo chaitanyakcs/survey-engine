@@ -6,8 +6,7 @@ import AnnotationSidePane from './AnnotationSidePane';
 import SurveyTextBlock from './SurveyTextBlock';
 import QuestionCard from './QuestionCard';
 import { useSurveyEdit } from '../hooks/useSurveyEdit';
-import { PencilIcon, ChevronDownIcon, ChevronRightIcon, TagIcon, TrashIcon, ChevronUpIcon, PlusIcon } from '@heroicons/react/24/outline';
-import { SurveyMetadataModal } from './SurveyMetadataModal';
+import { PencilIcon, ChevronDownIcon, ChevronRightIcon, TagIcon, TrashIcon, ChevronUpIcon, PlusIcon, TagIcon as LabelIcon } from '@heroicons/react/24/outline';
 
 
 // Helper function to check if survey uses sections format
@@ -178,8 +177,7 @@ const SectionCard: React.FC<{
                 )}
                 {sectionAnnotation && (
                   <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                    <TagIcon className="w-3 h-3 mr-1" />
-                    Annotated
+                    <TagIcon className="w-3 h-3" />
                   </span>
                 )}
               </div>
@@ -467,8 +465,6 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
     target: null as any
   });
 
-  // Metadata modal state
-  const [isMetadataModalOpen, setIsMetadataModalOpen] = useState(false);
 
 
 
@@ -1445,21 +1441,21 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
                 setAnnotationMode(true);
                 openAnnotationPane('survey', surveyToDisplay);
               }}
-              className="w-full flex items-center gap-2 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors text-sm"
+              className="w-full flex items-center gap-2 px-3 py-2 bg-white hover:bg-gray-50 text-purple-600 hover:text-purple-700 border border-purple-200 rounded-lg transition-colors text-sm"
             >
-              <PencilIcon className="w-4 h-4" />
+              <LabelIcon className="w-4 h-4" />
               Annotate Survey
             </button>
             <button
               onClick={handleEditSurvey}
-              className="w-full flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
+              className="w-full flex items-center gap-2 px-3 py-2 bg-white hover:bg-gray-50 text-blue-600 hover:text-blue-700 border border-blue-200 rounded-lg transition-colors text-sm"
             >
               <PencilIcon className="w-4 h-4" />
               Edit Survey
             </button>
             <button
               onClick={handleSaveAsReference}
-              className="w-full flex items-center gap-2 px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors text-sm"
+              className="w-full flex items-center gap-2 px-3 py-2 bg-white hover:bg-gray-50 text-orange-600 hover:text-orange-700 border border-orange-200 rounded-lg transition-colors text-sm"
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
@@ -1467,28 +1463,19 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
               Save as Reference
             </button>
             <button
-              onClick={() => setIsMetadataModalOpen(true)}
-              className="w-full flex items-center gap-2 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors text-sm"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              View RFQ Used
-            </button>
-            <button
               onClick={() => {
                 if (!survey?.survey_id) {
                   alert('No survey ID available');
                   return;
                 }
-                window.location.href = `/?view=llm-audit-survey&surveyId=${survey.survey_id}`;
+                window.location.href = `/surveys/${survey.survey_id}/insights`;
               }}
-              className="w-full flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
+              className="w-full flex items-center gap-2 px-3 py-2 bg-white hover:bg-gray-50 text-indigo-600 hover:text-indigo-700 border border-indigo-200 rounded-lg transition-colors text-sm"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              View LLM Audit
+              View Survey Insights
             </button>
           </div>
         </div>
@@ -1801,13 +1788,6 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
         )}
       </div>
 
-      {/* Metadata Modal */}
-      <SurveyMetadataModal
-        isOpen={isMetadataModalOpen}
-        onClose={() => setIsMetadataModalOpen(false)}
-        surveyId={survey?.survey_id || ''}
-        rfqData={survey?.rfq_data}
-      />
     </div>
   );
 };

@@ -774,7 +774,7 @@ export const GoldenExampleCreatePage: React.FC = () => {
                                 ⏱️ This process typically takes 5-15 minutes
                               </p>
                               <p className="text-xs text-red-600 mt-1 bg-red-50 px-2 py-1 rounded">
-                                ⚠️ Please do not navigate away from this page during processing
+                                ⚠️ Please do not navigate away from this page during processing (you can switch to other tabs/windows)
                               </p>
                               {retryCount > 0 && (
                                 <p className="text-xs text-yellow-600 mt-1">Retry attempt {retryCount + 1}</p>

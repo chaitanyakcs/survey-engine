@@ -346,6 +346,59 @@ We need a comprehensive survey with approximately {len(questions)} questions to 
                 logger.warning(f"⚠️ [GoldenService] Multi-level RAG population failed (non-critical): {str(e)}")
                 # Don't fail golden pair creation if RAG population fails
             
+            # Extract annotations from embedded annotation fields in questions
+            try:
+                logger.info(f"💬 [GoldenService] Extracting annotations from questions")
+                
+                # Get questions from the survey data
+                questions = []
+                if 'questions' in actual_survey_data:
+                    questions = actual_survey_data['questions']
+                elif 'sections' in actual_survey_data:
+                    for section in actual_survey_data['sections']:
+                        if 'questions' in section:
+                            questions.extend(section['questions'])
+                
+                if questions:
+                    # Use DocumentParser's method to extract annotations
+                    from src.services.document_parser import DocumentParser
+                    parser = DocumentParser(self.db)
+                    annotations_created = parser.create_question_annotations_from_comments(
+                        survey_id=str(survey_id),
+                        questions=questions,
+                        comments=[]  # Empty since annotations are embedded in questions
+                    )
+                    logger.info(f"✅ [GoldenService] Created {annotations_created} annotations from embedded data")
+                    
+                    # Sync annotations to RAG if any were created
+                    if annotations_created and annotations_created > 0:
+                        logger.info(f"🔗 [GoldenService] Syncing {annotations_created} annotations to RAG")
+                        try:
+                            from src.services.annotation_rag_sync_service import AnnotationRAGSyncService
+                            from src.database.models import QuestionAnnotation
+                            
+                            sync_service = AnnotationRAGSyncService(self.db)
+                            
+                            # Get all annotations we just created
+                            recent_annotations = self.db.query(QuestionAnnotation).filter(
+                                QuestionAnnotation.survey_id == str(survey_id)
+                            ).all()
+                            
+                            sync_count = 0
+                            for annotation in recent_annotations:
+                                result = await sync_service.sync_question_annotation(annotation.id)
+                                if result.get("success"):
+                                    sync_count += 1
+                            
+                            logger.info(f"🎉 [GoldenService] Synced {sync_count}/{len(recent_annotations)} annotations to RAG")
+                        except Exception as e:
+                            logger.warning(f"⚠️ [GoldenService] Failed to sync annotations to RAG (non-critical): {str(e)}")
+                else:
+                    logger.info(f"ℹ️ [GoldenService] No questions found for annotation extraction")
+                    
+            except Exception as e:
+                logger.warning(f"⚠️ [GoldenService] Failed to extract annotations (non-critical): {str(e)}")
+            
             return golden_pair
             
         except Exception as e:

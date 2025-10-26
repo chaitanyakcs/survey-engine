@@ -61,36 +61,6 @@ export const AnnotationSidePane: React.FC<AnnotationSidePaneProps> = ({
     }
   };
 
-  const getTitle = () => {
-    if (!annotationTarget) return 'Annotation';
-
-    switch (annotationType) {
-      case 'question':
-        return `Question Annotation`; // Restored title for questions
-      case 'section':
-        return `Section Annotation`;
-      case 'survey':
-        return `Survey Annotation`;
-      default:
-        return 'Annotation';
-    }
-  };
-
-  const getSubtitle = () => {
-    if (!annotationTarget) return '';
-
-    switch (annotationType) {
-      case 'question':
-        return ''; // Removed subtitle for questions
-      case 'section':
-        return annotationTarget.title || annotationTarget.section_title || 'Section';
-      case 'survey':
-        return annotationTarget.title || 'Survey';
-      default:
-        return '';
-    }
-  };
-
   const renderAnnotationContent = () => {
     console.log('🔍 [AnnotationSidePane] renderAnnotationContent called with:', {
       annotationTarget,
@@ -159,23 +129,8 @@ export const AnnotationSidePane: React.FC<AnnotationSidePaneProps> = ({
   };
 
   return (
-    <div className="h-full bg-white border-l border-gray-200 flex flex-col">
-      {/* Header */}
-      <div className="border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center space-x-3">
-          <TagIcon className="w-5 h-5 text-primary-600" />
-          <div>
-            <h2 className="heading-3">{getTitle()}</h2>
-            {getSubtitle() && (
-              <p className="text-sm text-gray-600 mt-1 line-clamp-2">
-                {getSubtitle()}
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Content */}
+    <div className="h-full bg-white flex flex-col">
+      {/* Content - No header needed, panels have their own */}
       <div className="flex-1 overflow-y-auto">
         {renderAnnotationContent()}
       </div>

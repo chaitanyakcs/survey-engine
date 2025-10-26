@@ -729,6 +729,27 @@ async def create_golden_pair_from_audit(
         if audit_record.id:
             logger.info(f"Created golden pair {golden_pair.id} from audit record {audit_record.id}")
         
+        # Handle review_notes if provided
+        if request.review_notes and request.review_notes.strip():
+            try:
+                from src.database.models import SurveyAnnotation
+                
+                survey_annotation = SurveyAnnotation(
+                    survey_id=str(golden_pair.id),
+                    overall_comment=request.review_notes,
+                    annotator_id="human_reviewer",
+                    labels=["human_review"],
+                    advanced_metadata={
+                        "source": "golden_pair_creation",
+                        "created_from_audit": interaction_id
+                    }
+                )
+                db.add(survey_annotation)
+                db.commit()
+                logger.info(f"✅ Created survey annotation with review notes for golden pair {golden_pair.id}")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to save review notes (non-critical): {str(e)}")
+        
         return {
             "success": True,
             "golden_pair_id": str(golden_pair.id),

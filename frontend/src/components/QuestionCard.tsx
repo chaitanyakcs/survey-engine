@@ -220,8 +220,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           </span>
           {annotation && (
             <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-              <TagIcon className="w-3 h-3 mr-1" />
-              Annotated
+              <TagIcon className="w-3 h-3" />
             </span>
           )}
           {/* Display auto-detected labels */}
@@ -274,8 +273,8 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       {/* Question Content */}
       <div className="mb-4">
         <div>
-          {/* Question Text - Inline Editable */}
-          {question.type !== 'instruction' && 
+          {/* Question Text - Only show in editing mode, not in annotation mode */}
+          {!isAnnotationMode && question.type !== 'instruction' && 
            !['yes_no', 'van_westendorp', 'dropdown', 'conjoint', 'matrix_likert', 'constant_sum', 'gabor_granger', 'numeric_grid', 'numeric_open'].includes(question.type) && (
             <div className="mb-3">
               {isEditingSurvey && isEditingText ? (
@@ -335,6 +334,65 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                 >
                   {question.text}
                 </h3>
+              )}
+            </div>
+          )}
+
+          {/* AI Annotation Information */}
+          {annotation && annotation.aiGenerated && (
+            <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center space-x-2">
+                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                    🤖 AI Annotated
+                  </span>
+                  {annotation.aiConfidence && (
+                    <span className="text-xs text-blue-600">
+                      Confidence: {Math.round(annotation.aiConfidence * 100)}%
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center space-x-2 text-xs text-gray-600">
+                  <span>Quality: {annotation.quality}/5</span>
+                  <span>•</span>
+                  <span>Relevant: {annotation.relevant}/5</span>
+                </div>
+              </div>
+              {annotation.comment && (
+                <p className="text-sm text-gray-700 italic">
+                  "{annotation.comment}"
+                </p>
+              )}
+              <div className="mt-2 grid grid-cols-5 gap-2 text-xs">
+                <div className="text-center">
+                  <div className="font-medium text-gray-600">Methodology</div>
+                  <div className="text-blue-600">{annotation.pillars.methodologicalRigor}/5</div>
+                </div>
+                <div className="text-center">
+                  <div className="font-medium text-gray-600">Content</div>
+                  <div className="text-blue-600">{annotation.pillars.contentValidity}/5</div>
+                </div>
+                <div className="text-center">
+                  <div className="font-medium text-gray-600">Experience</div>
+                  <div className="text-blue-600">{annotation.pillars.respondentExperience}/5</div>
+                </div>
+                <div className="text-center">
+                  <div className="font-medium text-gray-600">Analytics</div>
+                  <div className="text-blue-600">{annotation.pillars.analyticalValue}/5</div>
+                </div>
+                <div className="text-center">
+                  <div className="font-medium text-gray-600">Business</div>
+                  <div className="text-blue-600">{annotation.pillars.businessImpact}/5</div>
+                </div>
+              </div>
+              {/* Debug logging for q1 */}
+              {question.id === 'q1' && (
+                <div className="text-xs text-red-600 mt-1">
+                  Debug: AI Generated: {annotation.aiGenerated ? 'Yes' : 'No'}, 
+                  Confidence: {annotation.aiConfidence}, 
+                  Quality: {annotation.quality}, 
+                  Relevant: {annotation.relevant}
+                </div>
               )}
             </div>
           )}
@@ -527,62 +585,6 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             </div>
           )}
             
-            {/* AI Annotation Information */}
-            {annotation && annotation.aiGenerated && (
-              <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center space-x-2">
-                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                      🤖 AI Annotated
-                    </span>
-                    {annotation.aiConfidence && (
-                      <span className="text-xs text-blue-600">
-                        Confidence: {Math.round(annotation.aiConfidence * 100)}%
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center space-x-2 text-xs text-gray-600">
-                    <span>Quality: {annotation.quality}/5</span>
-                    <span>•</span>
-                    <span>Relevant: {annotation.relevant}/5</span>
-                  </div>
-                </div>
-                {annotation.comment && (
-                  <p className="text-sm text-gray-700 italic">
-                    "{annotation.comment}"
-                  </p>
-                )}
-                <div className="mt-2 grid grid-cols-5 gap-2 text-xs">
-                  <div className="text-center">
-                    <div className="font-medium text-gray-600">Methodology</div>
-                    <div className="text-blue-600">{annotation.pillars.methodologicalRigor}/5</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="font-medium text-gray-600">Content</div>
-                    <div className="text-blue-600">{annotation.pillars.contentValidity}/5</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="font-medium text-gray-600">Experience</div>
-                    <div className="text-blue-600">{annotation.pillars.respondentExperience}/5</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="font-medium text-gray-600">Analytics</div>
-                    <div className="text-blue-600">{annotation.pillars.analyticalValue}/5</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="font-medium text-gray-600">Business</div>
-                    <div className="text-blue-600">{annotation.pillars.businessImpact}/5</div>
-                  </div>
-                </div>
-                {/* Debug logging for q1 */}
-                {question.id === 'q1' && (
-                  <div className="text-xs text-red-600 mt-1">
-                    DEBUG: Pillars = {JSON.stringify(annotation.pillars)}
-                  </div>
-                )}
-              </div>
-            )}
-            
             {/* Specialized Question Type Components */}
             {question.type === 'matrix_likert' && (
               <MatrixLikert 
@@ -734,7 +736,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             )}
 
             {/* Standard Question Types */}
-            {!['matrix_likert', 'constant_sum', 'gabor_granger', 'numeric_grid', 'numeric_open', 'likert', 'multiple_select'].includes(question.type) && (
+            {!['matrix_likert', 'constant_sum', 'gabor_granger', 'numeric_grid', 'numeric_open', 'likert', 'multiple_select', 'yes_no'].includes(question.type) && (
               <>
                 {/* Question Options */}
                 {question.options && question.options.length > 0 && (
@@ -1004,24 +1006,19 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
             {/* Yes/No Questions */}
             {question.type === 'yes_no' && (
-              <div className="space-y-3">
-                <div className="text-base font-medium text-gray-900">
-                  {question.text}
-                </div>
-                <div className="space-y-2">
-                  {question.options?.map((option, index) => (
-                    <label key={index} className="flex items-center space-x-3 cursor-pointer">
-                      <input
-                        type="radio"
-                        name={question.id}
-                        value={option}
-                        disabled={true}
-                        className="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                      />
-                      <span className="text-sm text-gray-700">{option}</span>
-                    </label>
-                  ))}
-                </div>
+              <div className="space-y-2">
+                {question.options?.map((option, index) => (
+                  <label key={index} className="flex items-center space-x-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      name={question.id}
+                      value={option}
+                      disabled={true}
+                      className="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">{option}</span>
+                  </label>
+                ))}
               </div>
             )}
 

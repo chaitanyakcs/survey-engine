@@ -304,7 +304,7 @@ const SurveyLevelAnnotationPanel: React.FC<SurveyLevelAnnotationPanelProps> = ({
               <input
                 type="number"
                 min="0"
-                max="120"
+                max="45"
                 value={formData.estimatedDuration || 0}
                 onChange={(e) => handleInputChange('estimatedDuration', parseInt(e.target.value) || 0)}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -385,8 +385,33 @@ const SurveyLevelAnnotationPanel: React.FC<SurveyLevelAnnotationPanelProps> = ({
             onChange={(e) => handleInputChange('overallComment', e.target.value)}
             className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
             rows={4}
-            placeholder="Add any overall comments about this survey..."
+            placeholder="Provide comprehensive survey-level analysis. Explain WHY the overall survey design works or doesn't work, and HOW to improve strategic alignment, methodology compliance, and respondent experience."
           />
+          <div className="mt-2 text-xs text-gray-500 space-y-2">
+            <div className="font-semibold text-gray-700 mb-1">Write actionable survey comments that:</div>
+            <div className="space-y-1">
+              <div className="flex items-start gap-1">
+                <span className="text-green-600 font-medium">✓</span>
+                <span><strong>Analyze strategic alignment:</strong> "Survey successfully balances quantitative metrics with qualitative insights, directly addressing all three research objectives"</span>
+              </div>
+              <div className="flex items-start gap-1">
+                <span className="text-green-600 font-medium">✓</span>
+                <span><strong>Identify methodology strengths:</strong> "Van Westendorp implementation follows best practices with proper price point sequencing and clear respondent instructions"</span>
+              </div>
+              <div className="flex items-start gap-1">
+                <span className="text-green-600 font-medium">✓</span>
+                <span><strong>Suggest structural improvements:</strong> "Add demographic questions at the end to avoid priming effects, and include progress indicators to improve completion rates"</span>
+              </div>
+              <div className="flex items-start gap-1">
+                <span className="text-red-600 font-medium">✗</span>
+                <span><strong>Avoid generic assessments:</strong> "Nice survey" or "Looks good" (provides no strategic guidance)</span>
+              </div>
+              <div className="flex items-start gap-1">
+                <span className="text-red-600 font-medium">✗</span>
+                <span><strong>Avoid vague criticism:</strong> "This survey is bad" or "Poor design" (doesn't explain what's wrong or how to fix it)</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Action Buttons */}
@@ -413,7 +438,7 @@ const SurveyLevelAnnotationPanel: React.FC<SurveyLevelAnnotationPanelProps> = ({
 
   if (isModal) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9998] p-4">
         {renderContent()}
       </div>
     );

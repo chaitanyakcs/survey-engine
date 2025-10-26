@@ -8,10 +8,17 @@ logger = logging.getLogger(__name__)
 
 class UserFriendlyError(Exception):
     """Custom exception for user-friendly error messages"""
-    def __init__(self, message: str, technical_details: Optional[str] = None, action_required: Optional[str] = None):
+    def __init__(
+        self, 
+        message: str, 
+        technical_details: Optional[str] = None, 
+        action_required: Optional[str] = None,
+        raw_response: Optional[str] = None
+    ):
         self.message = message
         self.technical_details = technical_details
         self.action_required = action_required
+        self.raw_response = raw_response  # LLM raw response for audit logging
         super().__init__(message)
 
 def get_api_configuration_error() -> Dict[str, Any]:

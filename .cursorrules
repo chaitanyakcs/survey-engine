@@ -32,6 +32,21 @@ This is a full-stack AI-powered survey generation engine that transforms RFQs in
 - **Linting**: Use `flake8` for code quality
 - **Type Checking**: Use `mypy` (strict mode with documented exemptions)
 
+### Async/Await Guidelines
+- **CRITICAL**: Always use `await` when calling async methods
+- **Never call async methods without `await`** - this causes `'coroutine' object is not subscriptable` errors
+- Use `@pytest.mark.asyncio` for async tests
+- Use `AsyncMock()` for mocking async methods in tests
+- Wrap async calls in try/except blocks for proper error handling
+- Use `asyncio.wait_for()` for timeout handling
+- Test both success and failure paths for async operations
+- **Common async methods in this codebase**:
+  - `PromptService.create_survey_generation_prompt()`
+  - `PromptService.build_system_prompt()`
+  - `GenerationService.generate_survey()`
+  - `WorkflowService.process_rfq()`
+  - All service methods starting with `async def`
+
 ### Frontend (React/TypeScript)
 - Use TypeScript strict mode
 - Follow React functional component patterns with hooks
@@ -381,6 +396,17 @@ file_path = await exporter.export(survey_data, output_path)
 - Follow security best practices for API endpoints
 - Update documentation when adding features
 - Run linting and type checking before committing
+
+## Meta-Rule: Regression Documentation
+- **When regressions are discovered, document the learnings and prevention strategies in cursor rules**
+- This creates a self-improving documentation system that captures institutional knowledge
+- **Example**: The async/await regression (2024-10-25) was documented here to prevent future occurrences
+- **Process**:
+  1. Identify the root cause of the regression
+  2. Document the specific error patterns and symptoms
+  3. Add prevention strategies to cursor rules
+  4. Update testing guidelines to catch similar issues
+  5. Add static analysis rules where possible
 
 ## Dependencies Management
 - Use `pyproject.toml` for Python dependencies

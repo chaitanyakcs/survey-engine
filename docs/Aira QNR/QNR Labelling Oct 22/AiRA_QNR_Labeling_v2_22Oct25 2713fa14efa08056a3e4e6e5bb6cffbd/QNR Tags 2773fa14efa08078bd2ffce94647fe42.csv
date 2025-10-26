@@ -1,0 +1,10 @@
+﻿Tag_Name,Descr,Tag_Values
+QNR_Industry,Multiselect,"Banking, Beverage, Consumer Electronics, Consumer Goods, Healthcare, Hospitality, Hospitals / Providers, Insurance, MedTech, Medical Devices, Pharmaceuticals, Retail, Vision Care"
+Respondent_Type,Multiselect,"Admin, Consumer, ECP, HCP, Nursing Staff, Patient"
+QNR_Country,Multiselect,"Canada, EU, France, India, Japan, UK, US"
+QNR_Sections,Yes/No for each section,"Additional Questions, Brand/Product Awareness & Usage, Concept exposure, Feature Priotitization, Methodology, QC, Sample Plan, Screener"
+Methodology,Multiselect,"Conjoint, Feature Importance, Pricing, Sequential Monadic Test, Taste Test"
+Pricing,Multiselect,"Gabor Granger, Van Westendorp"
+Mandatory_Logics,Must have logics in QNR,"Piping Logic, Sampling Logic, Screener Logic"
+Mandatory_Sections,Must have sections in QNR,"Additional Questions, Brand/Product Awareness & Usage, Concept exposure, Methodology, Programmer Instructions, Sample Plan, Screener"
+,,

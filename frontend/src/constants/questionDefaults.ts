@@ -88,10 +88,14 @@ export const QUESTION_TYPE_GROUPS = {
     'conjoint',
     'maxdiff'
   ],
+  'Numeric Questions': [
+    'numeric',
+    'numeric_open',
+    'numeric_grid'
+  ],
   'Other': [
     'instruction',
     'display_only',
-    'numeric',
     'date',
     'boolean',
     'unknown'

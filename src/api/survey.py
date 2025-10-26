@@ -29,6 +29,9 @@ class SurveyResponse(BaseModel):
     pillar_scores: Optional[Dict[str, Any]]
     rfq_data: Optional[Dict[str, Any]] = None  # NEW
     rfq_id: Optional[str] = None  # NEW
+    used_golden_examples: List[str] = []  # NEW
+    used_golden_questions: List[str] = []  # NEW
+    used_golden_sections: List[str] = []  # NEW
 
 
 class EditRequest(BaseModel):
@@ -190,7 +193,10 @@ async def get_survey(
             edit_suggestions=edit_suggestions,
             pillar_scores=survey.pillar_scores,  # type: ignore
             rfq_id=str(survey.rfq_id) if survey.rfq_id else None,
-            rfq_data=rfq.enhanced_rfq_data if rfq else None
+            rfq_data=rfq.enhanced_rfq_data if rfq else None,
+            used_golden_examples=[str(example_id) for example_id in survey.used_golden_examples] if survey.used_golden_examples else [],  # NEW
+            used_golden_questions=[str(question_id) for question_id in survey.used_golden_questions] if survey.used_golden_questions else [],  # NEW
+            used_golden_sections=[str(section_id) for section_id in survey.used_golden_sections] if survey.used_golden_sections else []  # NEW
         )
         
         logger.info(f"🎉 [Survey API] Returning survey response: status={response.status}")

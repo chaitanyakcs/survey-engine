@@ -9,6 +9,7 @@ from .field_extraction import router as field_extraction_router
 from .pillar_scores import router as pillar_scores_router
 from .human_reviews import router as human_reviews_router
 from .annotation_insights import router as annotation_insights_router
+from . import qnr_labels
 __all__ = [
     "rfq_router",
     "survey_router",
@@ -20,5 +21,6 @@ __all__ = [
     "field_extraction_router",
     "pillar_scores_router",
     "human_reviews_router",
-    "annotation_insights_router"
+    "annotation_insights_router",
+    "qnr_labels"
 ]

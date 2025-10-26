@@ -1,0 +1,21 @@
+﻿Label,Applicable_Labels,Descr,Mandatory,Type
+Category_Usage_Frequency,,How often you use,Yes,QNR
+Medical_Conditions_General,"Consumer Health, Healthcare, MedTech, Patients",Multiselect,Yes,QNR
+CoI_Check,,Conflict of Interest check. Terminate,Yes,QNR
+Category_Usage_Financial,,How much you spend now and in future,Yes,QNR
+Demog_Basic,,"Age, Gender. Check categories specific to country",Yes,QNR
+Recent_Participation,,Participated in Market Research study recently. Terminate,Yes,QNR
+Study_Intro,,"Thanks for agreeing, inform eligibility, state LOI",Yes,Text
+Medical_Conditions_Study,"Consumer Health, Healthcare, MedTech, Patients","Current, Past and future",Yes,QNR
+Category_Usage_Consider,,are you considering in the future,Yes,QNR
+User_Categorization_Logic,,"User/Non-User, Continue/Terminate, Other categorization rules",Yes,Rules
+Confidentiality_Agreement,,,Yes,Text
+Category_Usage_Adnl,,Where will you use and how,Yes,
+Socio_HH_Dur,,Socio economic - durables owned household,No,
+Category_Awareness,,What products have you heard of,No,
+"Category_Usage ",,"What products have you used, consumed",No,
+Category_Restrict,,Would never consume/use,No,
+Mobility_Travel,,Travel related questions,No,
+Psychog_Leisure,,Psychograpic questions. What are the leisure activities done,No,
+Socio_Pers_Dur,,Socio economic - durables owned personal,No,
+Online_Activity,,"how much time do you approximately spend on internet in a week,activities that you have done in past 1 month from the list below ",No,

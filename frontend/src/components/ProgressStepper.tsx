@@ -192,7 +192,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
   onShowSurvey,
   onCancelGeneration
 }) => {
-  const { workflow, currentSurvey, activeReview, addToast } = useAppStore();
+  const { workflow, currentSurvey, activeReview } = useAppStore();
   const workflowStatus = workflow.status;
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
@@ -526,10 +526,11 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
 
   const getCurrentSubStep = () => {
     const mainStep = getCurrentMainStep();
-    if (!mainStep || !workflow.current_step) return null;
+    if (!mainStep || (!workflow.current_step && !workflow.current_substep)) return null;
 
-    // Find the substep that matches the current backend step
-    const matchingSubStep = mainStep.subSteps.find(sub => sub.backendStep === workflow.current_step);
+    // Find the substep that matches the current backend step or substep
+    const targetStep = workflow.current_substep || workflow.current_step;
+    const matchingSubStep = mainStep.subSteps.find(sub => sub.backendStep === targetStep);
     return matchingSubStep || mainStep.subSteps[0];
   };
 
@@ -548,6 +549,17 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
 
   const currentMainStep = getCurrentMainStep();
   const currentSubStep = getCurrentSubStep();
+  
+  // Debug logging for current step and substep
+  console.log('🔍 [ProgressStepper] Current workflow state:', {
+    currentStep: workflow.current_step,
+    currentSubstep: workflow.current_substep,
+    workflowStatus,
+    currentMainStepKey: currentMainStep?.key,
+    currentSubStepKey: currentSubStep?.key,
+    currentSubStepBackendStep: currentSubStep?.backendStep
+  });
+  
   const isHumanReviewActive =
     currentMainStep?.key === 'human_review' ||
     !!activeReview ||
@@ -737,16 +749,22 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                         <h3 className="heading-4 mb-4">Process Steps</h3>
                         {currentMainStep.subSteps.map((subStep, index) => {
                           // Check if this substep is currently active
-                          const isActive = (subStep.backendStep === workflow.current_step) && workflowStatus === 'in_progress';
+                          // Use current_substep if available, otherwise fall back to current_step
+                          const isActive = (
+                            (workflow.current_substep && subStep.backendStep === workflow.current_substep) ||
+                            (!workflow.current_substep && subStep.backendStep === workflow.current_step)
+                          ) && workflowStatus === 'in_progress';
                           
                           // Debug logging for substep status
                           if (subStep.key === 'llm_processing') {
                             console.log('🔍 [ProgressStepper] LLM Processing substep check:', {
                               backendStep: subStep.backendStep,
                               currentStep: workflow.current_step,
+                              currentSubstep: workflow.current_substep,
                               workflowStatus,
                               isActive,
                               isMatch: subStep.backendStep === workflow.current_step,
+                              isSubstepMatch: workflow.current_substep && subStep.backendStep === workflow.current_substep,
                               isResumingGeneration: workflow.current_step === 'resuming_generation'
                             });
                           }
@@ -754,11 +772,13 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                           // Mark substeps as completed if:
                           // 1. The entire workflow is completed, OR
                           // 2. We're on a later substep (current step is after this substep)
-                          const currentSubStepIndex = currentMainStep.subSteps.findIndex(s => s.backendStep === workflow.current_step);
+                          const currentSubStepIndex = currentMainStep.subSteps.findIndex(s => 
+                            s.backendStep === (workflow.current_substep || workflow.current_step)
+                          );
                           
                           // Additional check: if we're on a step that comes after this substep in the workflow
                           const stepOrder = ['preparing_generation', 'llm_processing', 'generating_questions', 'resuming_generation', 'parsing_output'];
-                          const currentStepOrderIndex = workflow.current_step ? stepOrder.indexOf(workflow.current_step) : -1;
+                          const currentStepOrderIndex = (workflow.current_substep || workflow.current_step) ? stepOrder.indexOf(workflow.current_substep || workflow.current_step || '') : -1;
                           const thisStepOrderIndex = stepOrder.indexOf(subStep.backendStep);
                           
                           const isCompleted = workflowStatus === 'completed' || 
@@ -773,6 +793,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                               subStepKey: subStep.key,
                               backendStep: subStep.backendStep,
                               currentStep: workflow.current_step,
+                              currentSubstep: workflow.current_substep,
                               currentSubStepIndex,
                               index,
                               currentStepOrderIndex,

@@ -1,0 +1,30 @@
+﻿Label,Applicable_Labels,Descr,Mandatory,Type
+Concept_eval_funnel,,"Likelihood to 
+1. Follow up and learn
+2. New & Different
+3. Meets needs
+4. Recommend to others",No,QNR
+Concept_Feature_Highlight,,Highlight most important & least important words/phrases from the concept descr. Additional text feedback,No,QNR
+Concept_impression,,Overall Impression,Yes,QNR
+Concept_Intro,,Concept Introduction for pricing and reaction with hyperlink,Yes,Text
+Concept_Purchase_Likelihood,,"How likely are you to purchase, how soon will you purchase",Yes,QNR
+Message_reaction,,"Question to check preference for Product/Feature Name, Caption etc",No,QNR
+Survey_Invite,Taste Test,,No,
+Concept_visual_impression,Taste Test,"P1.	Please tell me on an 11 point scale, how much you liked this ",No,
+Concept_visual_like,Taste Test,,No,
+Concept_visual_dislike,Taste Test,,No,
+"Concept_Visual_features ",Taste Test,,No,
+"Concept_Aroma_Check ",Taste Test,,No,
+"Concept_Aroma_impression ",Taste Test,,No,
+"Concept_Aroma_like ",Taste Test,,No,
+"Concept_Aroma_dislike ",Taste Test,,No,
+"Concept_Aroma_features ",Taste Test,,No,
+"Concept_Aroma_Strength ",Taste Test,,No,
+Concept_Aroma_OE,Taste Test,,No,
+Concept_taste_impression,Taste Test,,No,
+Concept_taste_like,Taste Test,,No,
+Concept_taste_dislike,Taste Test,,No,
+Concept_quality_impression,Taste Test,,No,
+Concept_taste_featuers,Taste Test,,No,
+Concept_trial_likelihood,Taste Test,how much would you want to try this,No,
+Concept_choice,Taste Test,"Which concept you rank best, worst",No,

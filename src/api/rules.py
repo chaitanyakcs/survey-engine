@@ -92,43 +92,6 @@ async def get_methodology_guidelines(methodology_name: str):
         raise HTTPException(status_code=500, detail=f"Failed to get guidelines: {str(e)}")
 
 
-@router.get("/system-prompt/generate")
-async def generate_system_prompt(
-    methodology_tags: Optional[List[str]] = None,
-    custom_rules: Optional[Dict[str, Any]] = None
-):
-    """Generate a system prompt with rules (for testing/demo purposes)"""
-    try:
-        prompt_service = PromptService()
-        
-        # Create a sample context for demonstration
-        context = {
-            "rfq_details": {
-                "title": "Sample RFQ",
-                "text": "Sample description",
-                "category": "general",
-                "segment": "general",
-                "goal": "market_research"
-            }
-        }
-        
-        system_prompt = prompt_service.build_system_prompt(
-            context=context,
-            methodology_tags=methodology_tags or [],
-            custom_rules=custom_rules
-        )
-        
-        return {
-            "system_prompt": system_prompt,
-            "methodology_tags": methodology_tags,
-            "custom_rules": custom_rules
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to generate system prompt: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to generate system prompt: {str(e)}")
-
-
 # Quality rule request models removed - no longer needed
 
 

@@ -7,7 +7,7 @@ import logging
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import text, and_, or_
-from src.database.models import GoldenSection, GoldenQuestion
+from src.database.models import GoldenSection, GoldenQuestion, QuestionAnnotation
 from src.utils.database_session_manager import DatabaseSessionManager
 import re
 
@@ -236,9 +236,26 @@ class RuleBasedMultiLevelRAGService:
                     operation_name="retrieve golden questions fallback"
                 )
             
-            # Convert to dict format
+            # Convert to dict format and include annotation comments
             result = []
             for question in questions:
+                # Fetch annotation comment and relevance if available
+                annotation_comment = None
+                annotation_relevance = None
+                if question.annotation_id:
+                    annotation = DatabaseSessionManager.safe_query(
+                        self.db,
+                        lambda: self.db.query(QuestionAnnotation)
+                        .filter(QuestionAnnotation.id == question.annotation_id)
+                        .first(),
+                        fallback_value=None,
+                        operation_name="fetch annotation data"
+                    )
+                    if annotation:
+                        if annotation.comment:
+                            annotation_comment = annotation.comment
+                        annotation_relevance = annotation.relevant  # 1-5 scale
+                
                 result.append({
                     'id': str(question.id),
                     'question_id': question.question_id,
@@ -251,7 +268,9 @@ class RuleBasedMultiLevelRAGService:
                     'industry_keywords': question.industry_keywords or [],
                     'quality_score': float(question.quality_score) if question.quality_score else 0.5,
                     'human_verified': question.human_verified,
-                    'labels': question.labels or {}
+                    'labels': question.labels or {},
+                    'annotation_comment': annotation_comment,  # Include actionable comment
+                    'annotation_relevance': annotation_relevance  # Include for transparency
                 })
             
             logger.info(f"✅ [RuleBasedRAG] Retrieved {len(result)} questions")
@@ -260,6 +279,149 @@ class RuleBasedMultiLevelRAGService:
         except Exception as e:
             logger.error(f"❌ [RuleBasedRAG] Question retrieval failed: {str(e)}")
             return []
+    
+    async def retrieve_golden_questions_by_labels(
+        self,
+        required_labels: List[str],
+        methodology_tags: Optional[List[str]] = None,
+        industry: Optional[str] = None,
+        limit: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieve golden questions matching required QNR labels
+        Returns max 1 question per label, up to limit total
+        
+        Args:
+            required_labels: List of QNR label names to match
+            methodology_tags: Optional methodology filters
+            industry: Optional industry filter
+            limit: Maximum number of questions to return
+            
+        Returns:
+            List of golden questions with label metadata
+        """
+        try:
+            logger.info(f"🏷️ [RuleBasedRAG] Retrieving questions for labels: {required_labels}")
+            
+            if not required_labels:
+                logger.warning("⚠️ [RuleBasedRAG] No required labels provided, falling back to quality-based retrieval")
+                return await self.retrieve_golden_questions(
+                    rfq_text="",
+                    methodology_tags=methodology_tags,
+                    industry=industry,
+                    limit=limit
+                )
+            
+            # Import QNRLabel model for join
+            from src.database.models import QNRLabel
+            
+            # Build query to get questions with matching labels
+            # Strategy: Get 1 question per label, prioritizing quality
+            # Process all required labels (typically 8-11) but limit total questions returned
+            questions_by_label = {}
+            
+            for label_name in required_labels:  # Process ALL labels to see what we can get
+                # Query for questions with this specific label
+                # Using JSONB containment operator @>
+                # Query for questions with this specific label
+                # Labels field is JSONB array of strings like ["Recent_Participation", "CoI_Check"]
+                # Use @> operator to check if label_name is in the array
+                label_name_escaped = label_name.replace("'", "''")  # Escape single quotes for SQL
+                questions = DatabaseSessionManager.safe_query(
+                    self.db,
+                    lambda: self.db.query(GoldenQuestion, QNRLabel)
+                    .join(QNRLabel, QNRLabel.name == label_name)
+                    .filter(
+                        or_(
+                            # Check if labels array contains the label name
+                            GoldenQuestion.labels.op('@>')(text(f'\'["{label_name_escaped}"]\'')),
+                            # Check if labels array contains the label name (alternative syntax)
+                            text(f"golden_questions.labels ? '{label_name_escaped}'")
+                        )
+                    )
+                    .filter(GoldenQuestion.quality_score >= 0.5)
+                    .order_by(GoldenQuestion.human_verified.desc(), GoldenQuestion.quality_score.desc())
+                    .limit(1)
+                    .all(),
+                    fallback_value=[],
+                    operation_name=f"retrieve question for label {label_name}"
+                )
+                
+                if questions:
+                    question, qnr_label = questions[0]
+                    questions_by_label[label_name] = (question, qnr_label)
+                    logger.info(f"✅ [RuleBasedRAG] Found question for label '{label_name}': {question.question_text[:50]}...")
+                else:
+                    logger.warning(f"⚠️ [RuleBasedRAG] No question found for label '{label_name}'")
+            
+            # If we have fewer label-matched questions than the limit, we DON'T fill with fallbacks
+            # This ensures we only return questions that match required labels
+            if len(questions_by_label) == 0:
+                logger.warning(f"⚠️ [RuleBasedRAG] No questions matched required labels, returning empty list")
+            elif len(questions_by_label) < len(required_labels):
+                missing = len(required_labels) - len(questions_by_label)
+                logger.info(f"📊 [RuleBasedRAG] Retrieved {len(questions_by_label)}/{len(required_labels)} label-matched questions ({missing} missing)")
+            
+            # Convert to result format with label metadata
+            result = []
+            for label_key, (question, qnr_label) in questions_by_label.items():
+                # Fetch annotation comment if available
+                annotation_comment = None
+                annotation_relevance = None
+                if question.annotation_id:
+                    annotation = DatabaseSessionManager.safe_query(
+                        self.db,
+                        lambda: self.db.query(QuestionAnnotation)
+                        .filter(QuestionAnnotation.id == question.annotation_id)
+                        .first(),
+                        fallback_value=None,
+                        operation_name="fetch annotation data"
+                    )
+                    if annotation:
+                        if annotation.comment:
+                            annotation_comment = annotation.comment
+                        annotation_relevance = annotation.relevant
+                
+                question_dict = {
+                    'id': str(question.id),
+                    'question_id': question.question_id,
+                    'survey_id': question.survey_id,
+                    'golden_pair_id': str(question.golden_pair_id),
+                    'question_text': question.question_text,
+                    'question_type': question.question_type,
+                    'question_subtype': question.question_subtype,
+                    'methodology_tags': question.methodology_tags or [],
+                    'industry_keywords': question.industry_keywords or [],
+                    'quality_score': float(question.quality_score) if question.quality_score else 0.5,
+                    'human_verified': question.human_verified,
+                    'labels': question.labels or {},
+                    'annotation_comment': annotation_comment,
+                    'annotation_relevance': annotation_relevance,
+                    # Label metadata for prompt building and UI display
+                    'primary_label': qnr_label.name if qnr_label else None,
+                    'label_description': qnr_label.description if qnr_label else None,
+                    'label_mandatory': qnr_label.mandatory if qnr_label else False,
+                    'label_section_id': qnr_label.section_id if qnr_label else question.section_id,
+                    'label_category': qnr_label.category if qnr_label else None
+                }
+                result.append(question_dict)
+            
+            # Return questions, limiting to the requested number but prioritizing label matches
+            limited_result = result[:limit]
+            matched_labels = len([r for r in limited_result if r.get('primary_label')])
+            logger.info(f"✅ [RuleBasedRAG] Returning {len(limited_result)} questions ({matched_labels} label-matched, requested limit: {limit})")
+            return limited_result
+            
+        except Exception as e:
+            logger.error(f"❌ [RuleBasedRAG] Label-based question retrieval failed: {str(e)}")
+            logger.exception(e)
+            # Fallback to regular retrieval
+            return await self.retrieve_golden_questions(
+                rfq_text="",
+                methodology_tags=methodology_tags,
+                industry=industry,
+                limit=limit
+            )
     
     def _detect_section_types(self, text: str) -> List[str]:
         """Detect section types from RFQ text"""

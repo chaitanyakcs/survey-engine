@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { GoldenSection, GoldenQuestion } from '../types';
 import { XMarkIcon, CheckIcon } from '@heroicons/react/24/outline';
+import { EditableCombobox } from './common/EditableCombobox';
+import { getGoldenMetadataOptions } from '../services/api';
 
 interface GoldenContentEditModalProps {
   isOpen: boolean;
@@ -19,6 +21,19 @@ export const GoldenContentEditModal: React.FC<GoldenContentEditModalProps> = ({
 }) => {
   const [formData, setFormData] = useState<Partial<GoldenSection | GoldenQuestion>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [metadataOptions, setMetadataOptions] = useState<{
+    questionTypes: string[];
+    questionSubtypes: string[];
+    methodologyTags: string[];
+    industryKeywords: string[];
+    questionPatterns: string[];
+  }>({
+    questionTypes: [],
+    questionSubtypes: [],
+    methodologyTags: [],
+    industryKeywords: [],
+    questionPatterns: []
+  });
 
   useEffect(() => {
     if (content) {
@@ -31,6 +46,28 @@ export const GoldenContentEditModal: React.FC<GoldenContentEditModalProps> = ({
       });
     }
   }, [content]);
+
+  // Fetch metadata options on mount
+  useEffect(() => {
+    const fetchMetadata = async () => {
+      try {
+        const options = await getGoldenMetadataOptions();
+        setMetadataOptions({
+          questionTypes: options.question_types || [],
+          questionSubtypes: options.question_subtypes || [],
+          methodologyTags: options.methodology_tags || [],
+          industryKeywords: options.industry_keywords || [],
+          questionPatterns: options.question_patterns || []
+        });
+      } catch (error) {
+        console.error('Failed to fetch metadata options:', error);
+      }
+    };
+    
+    if (isOpen) {
+      fetchMetadata();
+    }
+  }, [isOpen]);
 
   const handleSave = async () => {
     if (!content) return;
@@ -46,25 +83,10 @@ export const GoldenContentEditModal: React.FC<GoldenContentEditModalProps> = ({
     }
   };
 
-  const handleMethodologyTagsChange = (value: string) => {
-    const tags = value.split(',').map(tag => tag.trim()).filter(tag => tag);
-    setFormData(prev => ({ ...prev, methodology_tags: tags }));
-  };
-
-  const handleIndustryKeywordsChange = (value: string) => {
-    const keywords = value.split(',').map(keyword => keyword.trim()).filter(keyword => keyword);
-    setFormData(prev => ({ ...prev, industry_keywords: keywords }));
-  };
-
-  const handleQuestionPatternsChange = (value: string) => {
-    const patterns = value.split(',').map(pattern => pattern.trim()).filter(pattern => pattern);
-    setFormData(prev => ({ ...prev, question_patterns: patterns }));
-  };
-
   if (!isOpen || !content) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9998]">
       <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-semibold text-gray-900">
@@ -98,46 +120,24 @@ export const GoldenContentEditModal: React.FC<GoldenContentEditModalProps> = ({
           {/* Question Type (for questions) */}
           {type === 'question' && (
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Question Type
-                </label>
-                <select
-                  value={(formData as GoldenQuestion).question_type || ''}
-                  onChange={(e) => setFormData(prev => ({ ...prev, question_type: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
-                >
-                  <option value="">Select type</option>
-                  <option value="multiple_choice">Multiple Choice</option>
-                  <option value="rating_scale">Rating Scale</option>
-                  <option value="open_text">Open Text</option>
-                  <option value="yes_no">Yes/No</option>
-                  <option value="single_choice">Single Choice</option>
-                  <option value="matrix">Matrix</option>
-                  <option value="ranking">Ranking</option>
-                  <option value="slider">Slider</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Question Subtype
-                </label>
-                <select
-                  value={(formData as GoldenQuestion).question_subtype || ''}
-                  onChange={(e) => setFormData(prev => ({ ...prev, question_subtype: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
-                >
-                  <option value="">Select subtype</option>
-                  <option value="likert_5">Likert 5-Point</option>
-                  <option value="likert_7">Likert 7-Point</option>
-                  <option value="binary">Binary</option>
-                  <option value="text_input">Text Input</option>
-                  <option value="dropdown">Dropdown</option>
-                  <option value="radio">Radio</option>
-                  <option value="checkbox">Checkbox</option>
-                  <option value="nps">NPS Scale</option>
-                </select>
-              </div>
+              <EditableCombobox
+                label="Question Type"
+                value={(formData as GoldenQuestion).question_type || ''}
+                options={metadataOptions.questionTypes}
+                onChange={(value) => setFormData(prev => ({ ...prev, question_type: value as string }))}
+                placeholder="Select or type question type"
+                multiSelect={false}
+                allowCustom={true}
+              />
+              <EditableCombobox
+                label="Question Subtype"
+                value={(formData as GoldenQuestion).question_subtype || ''}
+                options={metadataOptions.questionSubtypes}
+                onChange={(value) => setFormData(prev => ({ ...prev, question_subtype: value as string }))}
+                placeholder="Select or type question subtype"
+                multiSelect={false}
+                allowCustom={true}
+              />
             </div>
           )}
 
@@ -183,53 +183,44 @@ export const GoldenContentEditModal: React.FC<GoldenContentEditModalProps> = ({
           </div>
 
           {/* Methodology Tags */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Methodology Tags
-            </label>
-            <input
-              type="text"
-              value={formData.methodology_tags?.join(', ') || ''}
-              onChange={(e) => handleMethodologyTagsChange(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
-              placeholder="Enter methodology tags separated by commas"
-            />
-          </div>
+          <EditableCombobox
+            label="Methodology Tags"
+            value={formData.methodology_tags || []}
+            options={metadataOptions.methodologyTags}
+            onChange={(value) => setFormData(prev => ({ ...prev, methodology_tags: value as string[] }))}
+            placeholder="Select or add methodology tags"
+            multiSelect={true}
+            allowCustom={true}
+          />
 
           {/* Industry Keywords */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Industry Keywords
-            </label>
-            <input
-              type="text"
-              value={formData.industry_keywords?.join(', ') || ''}
-              onChange={(e) => handleIndustryKeywordsChange(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
-              placeholder="Enter industry keywords separated by commas"
-            />
-          </div>
+          <EditableCombobox
+            label="Industry Keywords"
+            value={formData.industry_keywords || []}
+            options={metadataOptions.industryKeywords}
+            onChange={(value) => setFormData(prev => ({ ...prev, industry_keywords: value as string[] }))}
+            placeholder="Select or add industry keywords"
+            multiSelect={true}
+            allowCustom={true}
+          />
 
           {/* Question Patterns (for questions) */}
           {type === 'question' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Question Patterns
-              </label>
-              <input
-                type="text"
-                value={formData.question_patterns?.join(', ') || ''}
-                onChange={(e) => handleQuestionPatternsChange(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
-                placeholder="Enter question patterns separated by commas"
-              />
-            </div>
+            <EditableCombobox
+              label="Question Patterns"
+              value={formData.question_patterns || []}
+              options={metadataOptions.questionPatterns}
+              onChange={(value) => setFormData(prev => ({ ...prev, question_patterns: value as string[] }))}
+              placeholder="Select or add question patterns"
+              multiSelect={true}
+              allowCustom={true}
+            />
           )}
 
-          {/* Quality Score */}
+          {/* Suitability Score */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Quality Score (0.0 - 1.0)
+              Suitability Score (0.0 - 1.0)
             </label>
             <div className="flex items-center space-x-4">
               <input
@@ -244,6 +235,9 @@ export const GoldenContentEditModal: React.FC<GoldenContentEditModalProps> = ({
               <span className="text-sm font-medium text-gray-700 min-w-[3rem]">
                 {Math.round((formData.quality_score || 0) * 100)}%
               </span>
+            </div>
+            <div className="mt-1 text-xs text-gray-500">
+              Combines quality rating and relevance assessment
             </div>
           </div>
 

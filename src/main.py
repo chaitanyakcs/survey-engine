@@ -1,6 +1,7 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from src.api import rfq_router, survey_router, golden_router, golden_content_router, analytics_router, rules_router, utils_router, field_extraction_router, pillar_scores_router, human_reviews_router, annotation_insights_router, annotations, settings as settings_router, llm_audit, export, admin, retrieval_weights
+from src.api import rfq_router, survey_router, golden_router, golden_content_router, analytics_router, rules_router, utils_router, field_extraction_router, pillar_scores_router, human_reviews_router, annotation_insights_router, annotations, settings as settings_router, llm_audit, export, admin, retrieval_weights, qnr_labels
+from src.api import survey_quality
 from src.config import settings
 import logging
 import asyncio
@@ -102,6 +103,8 @@ app.include_router(settings_router.router, prefix="/api/v1")
 app.include_router(export.router, prefix="/api/v1")
 app.include_router(retrieval_weights.router)
 app.include_router(admin.router)
+app.include_router(qnr_labels.router)
+app.include_router(survey_quality.router)
 
 
 @app.websocket("/ws/survey/{workflow_id}")

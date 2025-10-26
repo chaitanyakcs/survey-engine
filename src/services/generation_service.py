@@ -2022,6 +2022,7 @@ class GenerationService:
             model=self.model,
             input={
                 "prompt": prompt,
+                "response_format": {"type": "json_object"},  # Force JSON output
                 "temperature": 0.7,
                 "max_tokens": 8000,
                 "top_p": 0.9
@@ -2107,7 +2108,29 @@ class GenerationService:
             raise Exception("STREAMING_INSUFFICIENT_CONTENT")
 
         # Parse and return the result
-        survey_data = self._extract_survey_json(accumulated_content)
+        # CRITICAL: Wrap parsing to ensure raw response is attached to exception
+        try:
+            survey_data = self._extract_survey_json(accumulated_content)
+        except Exception as e:
+            logger.error(f"❌ [GenerationService] Streaming JSON parsing failed: {str(e)}")
+            # Attach raw response to exception for audit capture
+            if isinstance(e, SurveyGenerationError):
+                # Already has raw_response, just ensure it's set
+                if not e.raw_response:
+                    e.raw_response = accumulated_content
+            else:
+                # Wrap in SurveyGenerationError with raw response
+                raise SurveyGenerationError(
+                    f"Streaming generation failed - unable to parse response: {str(e)}", 
+                    error_code="GEN_STREAM_PARSE_001",
+                    details={
+                        "raw_response_length": len(accumulated_content),
+                        "response_preview": accumulated_content[:500],
+                        "suggestion": "Try using sync mode or retry the generation"
+                    },
+                    raw_response=accumulated_content
+                ) from e
+            raise
 
         return {
             "survey": survey_data,
@@ -2136,6 +2159,7 @@ class GenerationService:
             model=self.model,
             input={
                 "prompt": prompt,
+                "response_format": {"type": "json_object"},  # Force JSON output
                 "temperature": 0.7,
                 "max_tokens": 8000,
                 "top_p": 0.9
@@ -2203,6 +2227,7 @@ class GenerationService:
                     self.model,
                     input={
                         "prompt": prompt,
+                        "response_format": {"type": "json_object"},  # Force JSON output
                         "temperature": 0.7,
                         "max_tokens": 8000,
                         "top_p": 0.9
@@ -2245,7 +2270,29 @@ class GenerationService:
             progress_data = progress_tracker.get_progress_data("parsing_output")
             await self.ws_client.send_progress_update(self.workflow_id, progress_data)
 
-        survey_data = self._extract_survey_json(output_text)
+        # CRITICAL: Wrap parsing to ensure raw response is attached to exception
+        try:
+            survey_data = self._extract_survey_json(output_text)
+        except Exception as e:
+            logger.error(f"❌ [GenerationService] Sync JSON parsing failed: {str(e)}")
+            # Attach raw response to exception for audit capture
+            if isinstance(e, SurveyGenerationError):
+                # Already has raw_response, just ensure it's set
+                if not e.raw_response:
+                    e.raw_response = output_text
+            else:
+                # Wrap in SurveyGenerationError with raw response
+                raise SurveyGenerationError(
+                    f"Sync generation failed - unable to parse response: {str(e)}", 
+                    error_code="GEN_SYNC_PARSE_001",
+                    details={
+                        "raw_response_length": len(output_text),
+                        "response_preview": output_text[:500],
+                        "suggestion": "Try retrying the generation or check model output"
+                    },
+                    raw_response=output_text
+                ) from e
+            raise
 
         return {
             "survey": survey_data,

@@ -7,6 +7,7 @@ import LikertScale from './LikertScale';
 import EnhancedLabelsInput from './EnhancedLabelsInput';
 import PillarTooltip from './PillarTooltip';
 import { useAppStore } from '../store/useAppStore';
+import { TagIcon } from '@heroicons/react/24/outline';
 
 interface QuestionAnnotationPanelProps {
   question: Question;
@@ -231,39 +232,49 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
 
   return (
     <div className="h-full flex flex-col bg-white">
-      {/* Header - Simplified */}
-      <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200">
+      {/* Header - Icon, Title, and Verify button */}
+      <div className="flex-shrink-0 px-4 py-3 border-b border-gray-200">
         <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-medium text-gray-900">
-              Question Annotation
-            </h3>
-            {/* Removed Question ID - keeping only the title */}
+          <div className="flex items-center space-x-3">
+            <TagIcon className="w-5 h-5 text-primary-600" />
+            <h2 className="text-lg font-semibold text-gray-900">Question Annotation</h2>
           </div>
-          <div className="flex items-center space-x-2">
-            {annotation?.id && (
-              <button
-                onClick={handleVerify}
-                disabled={isVerifying || isVerified}
-                className={`px-3 py-1 text-xs font-medium rounded-full ${
-                  isVerified
-                    ? 'bg-green-100 text-green-800'
-                    : isVerifying
-                    ? 'bg-yellow-100 text-yellow-800'
-                    : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
-                }`}
-              >
-                {isVerified ? 'Verified' : isVerifying ? 'Verifying...' : 'Verify'}
-              </button>
-            )}
-          </div>
+          {annotation?.aiGenerated && (
+            <button
+              onClick={handleVerify}
+              disabled={isVerifying || isVerified}
+              className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200 ${
+                isVerified
+                  ? 'bg-green-100 text-green-800 border border-green-200'
+                  : isVerifying
+                  ? 'bg-yellow-100 text-yellow-800 border border-yellow-200'
+                  : 'bg-primary-600 text-white hover:bg-primary-700 border border-transparent'
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
+            >
+              {isVerifying ? (
+                <div className="flex items-center">
+                  <div className="animate-spin -ml-1 mr-2 h-3 w-3 text-current">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  </div>
+                  Verifying...
+                </div>
+              ) : isVerified ? (
+                'Verified'
+              ) : (
+                'Verify AI Annotation'
+              )}
+            </button>
+          )}
         </div>
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         {/* Question Text */}
-        <div className="p-6 border-b border-gray-200">
+        <div className="p-4 border-b border-gray-200">
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Question Text
           </label>
@@ -274,10 +285,10 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
 
         {/* Tabs */}
         <div className="border-b border-gray-200">
-          <nav className="flex space-x-8 px-6">
+          <nav className="flex space-x-6 px-4">
             <button
               onClick={() => setActiveTab('essential')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              className={`py-3 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'essential'
                   ? 'border-primary-500 text-primary-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -287,7 +298,7 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
             </button>
             <button
               onClick={() => setActiveTab('additional')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              className={`py-3 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'additional'
                   ? 'border-primary-500 text-primary-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -299,7 +310,7 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
         </div>
 
         {/* Tab Content */}
-        <div className="p-6 space-y-6">
+        <div className="p-4 space-y-4">
           {activeTab === 'essential' && (
             <>
               {/* Labels */}
@@ -372,6 +383,45 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
                   <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
                 </label>
               </div>
+
+              {/* Comment */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Comment
+                </label>
+                <textarea
+                  value={formData.comment}
+                  onChange={(e) => updateField('comment', e.target.value)}
+                  placeholder="Provide specific, actionable feedback. Explain WHY the question works or doesn't work, and HOW to improve it. Focus on concrete issues like bias, clarity, structure, or methodology compliance."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500"
+                  rows={4}
+                />
+                <div className="mt-2 text-xs text-gray-500 space-y-2">
+                  <div className="font-semibold text-gray-700 mb-1">Write actionable comments that:</div>
+                  <div className="space-y-1">
+                    <div className="flex items-start gap-1">
+                      <span className="text-green-600 font-medium">✓</span>
+                      <span><strong>Explain the "why":</strong> "Uses neutral framing to avoid leading respondents toward positive responses"</span>
+                    </div>
+                    <div className="flex items-start gap-1">
+                      <span className="text-green-600 font-medium">✓</span>
+                      <span><strong>Provide specific guidance:</strong> "Question combines two concepts - split into separate questions about price sensitivity and feature importance"</span>
+                    </div>
+                    <div className="flex items-start gap-1">
+                      <span className="text-green-600 font-medium">✓</span>
+                      <span><strong>Identify concrete issues:</strong> "Missing scale anchors - respondents need clear definitions of 'satisfied' vs 'very satisfied'"</span>
+                    </div>
+                    <div className="flex items-start gap-1">
+                      <span className="text-red-600 font-medium">✗</span>
+                      <span><strong>Avoid vague praise:</strong> "This is good" or "Looks fine" (provides no actionable guidance)</span>
+                    </div>
+                    <div className="flex items-start gap-1">
+                      <span className="text-red-600 font-medium">✗</span>
+                      <span><strong>Avoid generic criticism:</strong> "This is bad" or "Poor question" (doesn't explain what's wrong or how to fix it)</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </>
           )}
 
@@ -408,51 +458,7 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
                   ))}
                 </div>
               </div>
-
-              {/* Comment */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Comment
-                </label>
-                <textarea
-                  value={formData.comment}
-                  onChange={(e) => updateField('comment', e.target.value)}
-                  placeholder="Add any additional comments..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500"
-                  rows={3}
-                />
-              </div>
             </>
-          )}
-        </div>
-      </div>
-
-      {/* Footer */}
-      <div className="flex-shrink-0 px-6 py-4 border-t border-gray-200">
-        <div className="flex justify-end">
-          {/* Only show verify button if there's an AI-generated annotation */}
-          {annotation?.aiGenerated && (
-            <button
-              onClick={handleVerify}
-              disabled={isVerifying || isVerified}
-              className="px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isVerifying ? (
-                <div className="flex items-center">
-                  <div className="animate-spin -ml-1 mr-2 h-4 w-4 text-white">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                  </div>
-                  Verifying...
-                </div>
-              ) : isVerified ? (
-                'Verified'
-              ) : (
-                'Verify AI Annotation'
-              )}
-            </button>
           )}
         </div>
       </div>

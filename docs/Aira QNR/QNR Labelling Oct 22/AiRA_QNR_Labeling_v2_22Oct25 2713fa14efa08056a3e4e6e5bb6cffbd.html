@@ -1,0 +1,713 @@
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"/><title>AiRA_QNR_Labeling_v2_22Oct25</title><style>
+/* cspell:disable-file */
+/* webkit printing magic: print all background colors */
+html {
+	-webkit-print-color-adjust: exact;
+}
+* {
+	box-sizing: border-box;
+	-webkit-print-color-adjust: exact;
+}
+
+html,
+body {
+	margin: 0;
+	padding: 0;
+}
+@media only screen {
+	body {
+		margin: 2em auto;
+		max-width: 900px;
+		color: rgb(55, 53, 47);
+	}
+}
+
+body {
+	line-height: 1.5;
+	white-space: pre-wrap;
+}
+
+a,
+a.visited {
+	color: inherit;
+	text-decoration: underline;
+}
+
+.pdf-relative-link-path {
+	font-size: 80%;
+	color: #444;
+}
+
+h1,
+h2,
+h3 {
+	letter-spacing: -0.01em;
+	line-height: 1.2;
+	font-weight: 600;
+	margin-bottom: 0;
+}
+
+.page-title {
+	font-size: 2.5rem;
+	font-weight: 700;
+	margin-top: 0;
+	margin-bottom: 0.75em;
+}
+
+h1 {
+	font-size: 1.875rem;
+	margin-top: 1.875rem;
+}
+
+h2 {
+	font-size: 1.5rem;
+	margin-top: 1.5rem;
+}
+
+h3 {
+	font-size: 1.25rem;
+	margin-top: 1.25rem;
+}
+
+.source {
+	border: 1px solid #ddd;
+	border-radius: 3px;
+	padding: 1.5em;
+	word-break: break-all;
+}
+
+.callout {
+	border-radius: 10px;
+	padding: 1rem;
+}
+
+figure {
+	margin: 1.25em 0;
+	page-break-inside: avoid;
+}
+
+figcaption {
+	opacity: 0.5;
+	font-size: 85%;
+	margin-top: 0.5em;
+}
+
+mark {
+	background-color: transparent;
+}
+
+.indented {
+	padding-left: 1.5em;
+}
+
+hr {
+	background: transparent;
+	display: block;
+	width: 100%;
+	height: 1px;
+	visibility: visible;
+	border: none;
+	border-bottom: 1px solid rgba(55, 53, 47, 0.09);
+}
+
+img {
+	max-width: 100%;
+}
+
+@media only print {
+	img {
+		max-height: 100vh;
+		object-fit: contain;
+	}
+}
+
+@page {
+	margin: 1in;
+}
+
+.collection-content {
+	font-size: 0.875rem;
+}
+
+.collection-content td {
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.column-list {
+	display: flex;
+	justify-content: space-between;
+}
+
+.column {
+	padding: 0 1em;
+}
+
+.column:first-child {
+	padding-left: 0;
+}
+
+.column:last-child {
+	padding-right: 0;
+}
+
+.table_of_contents-item {
+	display: block;
+	font-size: 0.875rem;
+	line-height: 1.3;
+	padding: 0.125rem;
+}
+
+.table_of_contents-indent-1 {
+	margin-left: 1.5rem;
+}
+
+.table_of_contents-indent-2 {
+	margin-left: 3rem;
+}
+
+.table_of_contents-indent-3 {
+	margin-left: 4.5rem;
+}
+
+.table_of_contents-link {
+	text-decoration: none;
+	opacity: 0.7;
+	border-bottom: 1px solid rgba(55, 53, 47, 0.18);
+}
+
+table,
+th,
+td {
+	border: 1px solid rgba(55, 53, 47, 0.09);
+	border-collapse: collapse;
+}
+
+table {
+	border-left: none;
+	border-right: none;
+}
+
+th,
+td {
+	font-weight: normal;
+	padding: 0.25em 0.5em;
+	line-height: 1.5;
+	min-height: 1.5em;
+	text-align: left;
+}
+
+th {
+	color: rgba(55, 53, 47, 0.6);
+}
+
+ol,
+ul {
+	margin: 0;
+	margin-block-start: 0.6em;
+	margin-block-end: 0.6em;
+}
+
+li > ol:first-child,
+li > ul:first-child {
+	margin-block-start: 0.6em;
+}
+
+ul > li {
+	list-style: disc;
+}
+
+ul.to-do-list {
+	padding-inline-start: 0;
+}
+
+ul.to-do-list > li {
+	list-style: none;
+}
+
+.to-do-children-checked {
+	text-decoration: line-through;
+	opacity: 0.375;
+}
+
+ul.toggle > li {
+	list-style: none;
+}
+
+ul {
+	padding-inline-start: 1.7em;
+}
+
+ul > li {
+	padding-left: 0.1em;
+}
+
+ol {
+	padding-inline-start: 1.6em;
+}
+
+ol > li {
+	padding-left: 0.2em;
+}
+
+.mono ol {
+	padding-inline-start: 2em;
+}
+
+.mono ol > li {
+	text-indent: -0.4em;
+}
+
+.toggle {
+	padding-inline-start: 0em;
+	list-style-type: none;
+}
+
+/* Indent toggle children */
+.toggle > li > details {
+	padding-left: 1.7em;
+}
+
+.toggle > li > details > summary {
+	margin-left: -1.1em;
+}
+
+.selected-value {
+	display: inline-block;
+	padding: 0 0.5em;
+	background: rgba(206, 205, 202, 0.5);
+	border-radius: 3px;
+	margin-right: 0.5em;
+	margin-top: 0.3em;
+	margin-bottom: 0.3em;
+	white-space: nowrap;
+}
+
+.collection-title {
+	display: inline-block;
+	margin-right: 1em;
+}
+
+.page-description {
+	margin-bottom: 2em;
+}
+
+.simple-table {
+	margin-top: 1em;
+	font-size: 0.875rem;
+	empty-cells: show;
+}
+.simple-table td {
+	height: 29px;
+	min-width: 120px;
+}
+
+.simple-table th {
+	height: 29px;
+	min-width: 120px;
+}
+
+.simple-table-header-color {
+	background: rgb(247, 246, 243);
+	color: black;
+}
+.simple-table-header {
+	font-weight: 500;
+}
+
+time {
+	opacity: 0.5;
+}
+
+.icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	max-width: 1.2em;
+	max-height: 1.2em;
+	text-decoration: none;
+	vertical-align: text-bottom;
+	margin-right: 0.5em;
+}
+
+img.icon {
+	border-radius: 3px;
+}
+
+.callout img.notion-static-icon {
+	width: 1em;
+	height: 1em;
+}
+
+.callout p {
+	margin: 0;
+}
+
+.callout h1,
+.callout h2,
+.callout h3 {
+	margin: 0 0 0.6rem;
+}
+
+.user-icon {
+	width: 1.5em;
+	height: 1.5em;
+	border-radius: 100%;
+	margin-right: 0.5rem;
+}
+
+.user-icon-inner {
+	font-size: 0.8em;
+}
+
+.text-icon {
+	border: 1px solid #000;
+	text-align: center;
+}
+
+.page-cover-image {
+	display: block;
+	object-fit: cover;
+	width: 100%;
+	max-height: 30vh;
+}
+
+.page-header-icon {
+	font-size: 3rem;
+	margin-bottom: 1rem;
+}
+
+.page-header-icon-with-cover {
+	margin-top: -0.72em;
+	margin-left: 0.07em;
+}
+
+.page-header-icon img {
+	border-radius: 3px;
+}
+
+.link-to-page {
+	margin: 1em 0;
+	padding: 0;
+	border: none;
+	font-weight: 500;
+}
+
+p > .user {
+	opacity: 0.5;
+}
+
+td > .user,
+td > time {
+	white-space: nowrap;
+}
+
+input[type="checkbox"] {
+	transform: scale(1.5);
+	margin-right: 0.6em;
+	vertical-align: middle;
+}
+
+p {
+	margin-top: 0.5em;
+	margin-bottom: 0.5em;
+}
+
+.image {
+	border: none;
+	margin: 1.5em 0;
+	padding: 0;
+	border-radius: 0;
+	text-align: center;
+}
+
+.code,
+code {
+	background: rgba(135, 131, 120, 0.15);
+	border-radius: 3px;
+	padding: 0.2em 0.4em;
+	border-radius: 3px;
+	font-size: 85%;
+	tab-size: 2;
+}
+
+code {
+	color: #eb5757;
+}
+
+.code {
+	padding: 1.5em 1em;
+}
+
+.code-wrap {
+	white-space: pre-wrap;
+	word-break: break-all;
+}
+
+.code > code {
+	background: none;
+	padding: 0;
+	font-size: 100%;
+	color: inherit;
+}
+
+blockquote {
+	font-size: 1em;
+	margin: 1em 0;
+	padding-left: 1em;
+	border-left: 3px solid rgb(55, 53, 47);
+}
+
+blockquote.quote-large {
+	font-size: 1.25em;
+}
+
+.bookmark {
+	text-decoration: none;
+	max-height: 8em;
+	padding: 0;
+	display: flex;
+	width: 100%;
+	align-items: stretch;
+}
+
+.bookmark-title {
+	font-size: 0.85em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	height: 1.75em;
+	white-space: nowrap;
+}
+
+.bookmark-text {
+	display: flex;
+	flex-direction: column;
+}
+
+.bookmark-info {
+	flex: 4 1 180px;
+	padding: 12px 14px 14px;
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+}
+
+.bookmark-image {
+	width: 33%;
+	flex: 1 1 180px;
+	display: block;
+	position: relative;
+	object-fit: cover;
+	border-radius: 1px;
+}
+
+.bookmark-description {
+	color: rgba(55, 53, 47, 0.6);
+	font-size: 0.75em;
+	overflow: hidden;
+	max-height: 4.5em;
+	word-break: break-word;
+}
+
+.bookmark-href {
+	font-size: 0.75em;
+	margin-top: 0.25em;
+}
+
+.sans { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol"; }
+.code { font-family: "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace; }
+.serif { font-family: Lyon-Text, Georgia, ui-serif, serif; }
+.mono { font-family: iawriter-mono, Nitti, Menlo, Courier, monospace; }
+.pdf .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol", 'Twemoji', 'Noto Color Emoji', 'Noto Sans CJK JP'; }
+.pdf:lang(zh-CN) .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol", 'Twemoji', 'Noto Color Emoji', 'Noto Sans CJK SC'; }
+.pdf:lang(zh-TW) .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol", 'Twemoji', 'Noto Color Emoji', 'Noto Sans CJK TC'; }
+.pdf:lang(ko-KR) .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol", 'Twemoji', 'Noto Color Emoji', 'Noto Sans CJK KR'; }
+.pdf .code { font-family: Source Code Pro, "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK JP'; }
+.pdf:lang(zh-CN) .code { font-family: Source Code Pro, "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK SC'; }
+.pdf:lang(zh-TW) .code { font-family: Source Code Pro, "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK TC'; }
+.pdf:lang(ko-KR) .code { font-family: Source Code Pro, "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK KR'; }
+.pdf .serif { font-family: PT Serif, Lyon-Text, Georgia, ui-serif, serif, 'Twemoji', 'Noto Color Emoji', 'Noto Serif CJK JP'; }
+.pdf:lang(zh-CN) .serif { font-family: PT Serif, Lyon-Text, Georgia, ui-serif, serif, 'Twemoji', 'Noto Color Emoji', 'Noto Serif CJK SC'; }
+.pdf:lang(zh-TW) .serif { font-family: PT Serif, Lyon-Text, Georgia, ui-serif, serif, 'Twemoji', 'Noto Color Emoji', 'Noto Serif CJK TC'; }
+.pdf:lang(ko-KR) .serif { font-family: PT Serif, Lyon-Text, Georgia, ui-serif, serif, 'Twemoji', 'Noto Color Emoji', 'Noto Serif CJK KR'; }
+.pdf .mono { font-family: PT Mono, iawriter-mono, Nitti, Menlo, Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK JP'; }
+.pdf:lang(zh-CN) .mono { font-family: PT Mono, iawriter-mono, Nitti, Menlo, Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK SC'; }
+.pdf:lang(zh-TW) .mono { font-family: PT Mono, iawriter-mono, Nitti, Menlo, Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK TC'; }
+.pdf:lang(ko-KR) .mono { font-family: PT Mono, iawriter-mono, Nitti, Menlo, Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK KR'; }
+.highlight-default {
+	color: rgba(44, 44, 43, 1);
+}
+.highlight-gray {
+	color: rgba(134, 131, 126, 1);
+	fill: rgba(134, 131, 126, 1);
+}
+.highlight-brown {
+	color: rgba(159, 118, 90, 1);
+	fill: rgba(159, 118, 90, 1);
+}
+.highlight-orange {
+	color: rgba(210, 123, 45, 1);
+	fill: rgba(210, 123, 45, 1);
+}
+.highlight-yellow {
+	color: rgba(203, 148, 52, 1);
+	fill: rgba(203, 148, 52, 1);
+}
+.highlight-teal {
+	color: rgba(80, 148, 110, 1);
+	fill: rgba(80, 148, 110, 1);
+}
+.highlight-blue {
+	color: rgba(56, 125, 201, 1);
+	fill: rgba(56, 125, 201, 1);
+}
+.highlight-purple {
+	color: rgba(154, 107, 180, 1);
+	fill: rgba(154, 107, 180, 1);
+}
+.highlight-pink {
+	color: rgba(193, 76, 138, 1);
+	fill: rgba(193, 76, 138, 1);
+}
+.highlight-red {
+	color: rgba(207, 81, 72, 1);
+	fill: rgba(207, 81, 72, 1);
+}
+.highlight-default_background {
+	color: rgba(44, 44, 43, 1);
+}
+.highlight-gray_background {
+	background: rgba(42, 28, 0, 0.07);
+}
+.highlight-brown_background {
+	background: rgba(139, 46, 0, 0.086);
+}
+.highlight-orange_background {
+	background: rgba(224, 101, 1, 0.129);
+}
+.highlight-yellow_background {
+	background: rgba(211, 168, 0, 0.137);
+}
+.highlight-teal_background {
+	background: rgba(0, 100, 45, 0.09);
+}
+.highlight-blue_background {
+	background: rgba(0, 124, 215, 0.094);
+}
+.highlight-purple_background {
+	background: rgba(102, 0, 178, 0.078);
+}
+.highlight-pink_background {
+	background: rgba(197, 0, 93, 0.086);
+}
+.highlight-red_background {
+	background: rgba(223, 22, 0, 0.094);
+}
+.block-color-default {
+	color: inherit;
+	fill: inherit;
+}
+.block-color-gray {
+	color: rgba(134, 131, 126, 1);
+	fill: rgba(134, 131, 126, 1);
+}
+.block-color-brown {
+	color: rgba(159, 118, 90, 1);
+	fill: rgba(159, 118, 90, 1);
+}
+.block-color-orange {
+	color: rgba(210, 123, 45, 1);
+	fill: rgba(210, 123, 45, 1);
+}
+.block-color-yellow {
+	color: rgba(203, 148, 52, 1);
+	fill: rgba(203, 148, 52, 1);
+}
+.block-color-teal {
+	color: rgba(80, 148, 110, 1);
+	fill: rgba(80, 148, 110, 1);
+}
+.block-color-blue {
+	color: rgba(56, 125, 201, 1);
+	fill: rgba(56, 125, 201, 1);
+}
+.block-color-purple {
+	color: rgba(154, 107, 180, 1);
+	fill: rgba(154, 107, 180, 1);
+}
+.block-color-pink {
+	color: rgba(193, 76, 138, 1);
+	fill: rgba(193, 76, 138, 1);
+}
+.block-color-red {
+	color: rgba(207, 81, 72, 1);
+	fill: rgba(207, 81, 72, 1);
+}
+.block-color-default_background {
+	color: inherit;
+	fill: inherit;
+}
+.block-color-gray_background {
+	background: rgba(240, 239, 237, 1);
+}
+.block-color-brown_background {
+	background: rgba(245, 237, 233, 1);
+}
+.block-color-orange_background {
+	background: rgba(251, 235, 222, 1);
+}
+.block-color-yellow_background {
+	background: rgba(249, 243, 220, 1);
+}
+.block-color-teal_background {
+	background: rgba(232, 241, 236, 1);
+}
+.block-color-blue_background {
+	background: rgba(229, 242, 252, 1);
+}
+.block-color-purple_background {
+	background: rgba(243, 235, 249, 1);
+}
+.block-color-pink_background {
+	background: rgba(250, 233, 241, 1);
+}
+.block-color-red_background {
+	background: rgba(252, 233, 231, 1);
+}
+.select-value-color-default { background-color: rgba(42, 28, 0, 0.07); }
+.select-value-color-gray { background-color: rgba(28, 19, 1, 0.11); }
+.select-value-color-brown { background-color: rgba(127, 51, 0, 0.156); }
+.select-value-color-orange { background-color: rgba(196, 88, 0, 0.203); }
+.select-value-color-yellow { background-color: rgba(209, 156, 0, 0.282); }
+.select-value-color-green { background-color: rgba(0, 96, 38, 0.156); }
+.select-value-color-blue { background-color: rgba(0, 118, 217, 0.203); }
+.select-value-color-purple { background-color: rgba(92, 0, 163, 0.141); }
+.select-value-color-pink { background-color: rgba(183, 0, 78, 0.152); }
+.select-value-color-red { background-color: rgba(206, 24, 0, 0.164); }
+
+.checkbox {
+	display: inline-flex;
+	vertical-align: text-bottom;
+	width: 16;
+	height: 16;
+	background-size: 16px;
+	margin-left: 2px;
+	margin-right: 5px;
+}
+
+.checkbox-on {
+	background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%3Crect%20width%3D%2216%22%20height%3D%2216%22%20fill%3D%22%2358A9D7%22%2F%3E%0A%3Cpath%20d%3D%22M6.71429%2012.2852L14%204.9995L12.7143%203.71436L6.71429%209.71378L3.28571%206.2831L2%207.57092L6.71429%2012.2852Z%22%20fill%3D%22white%22%2F%3E%0A%3C%2Fsvg%3E");
+}
+
+.checkbox-off {
+	background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%3Crect%20x%3D%220.75%22%20y%3D%220.75%22%20width%3D%2214.5%22%20height%3D%2214.5%22%20fill%3D%22white%22%20stroke%3D%22%2336352F%22%20stroke-width%3D%221.5%22%2F%3E%0A%3C%2Fsvg%3E");
+}
+	
+</style></head><body><article id="2713fa14-efa0-8056-a3e4-e6e5bb6cffbd" class="page sans"><header><h1 class="page-title">AiRA_QNR_Labeling_v2_22Oct25</h1><p class="page-description"></p></header><div class="page-body"><p id="2713fa14-efa0-808f-a3fc-e531b89c0f31" class="">Steps:</p><ol type="1" id="2773fa14-efa0-805e-ba27-e57e62fd0393" class="numbered-list" start="1"><li>All Golden Data QNR’s are labelled with the list mentioned below at the Question level, Section level and Overall QNR level.</li></ol><ol type="1" id="2773fa14-efa0-8041-9fd0-e2e3941bd3d9" class="numbered-list" start="2"><li>Some labels have a Mandatory flag as “Yes”. This indicated that a question with this label is required in the final questionnaire</li></ol><ol type="1" id="2773fa14-efa0-80c6-b3e0-cf79d7d312b5" class="numbered-list" start="3"><li>Some labels have “Applicable Labels” against them, this indicates that QNRs with those labels should also have this label.</li></ol><p id="27f3fa14-efa0-80d2-84f3-eaf75fee879d" class="">
+</p><p id="2773fa14-efa0-80db-b82a-f0883e9bee1f" class="">Questions:</p><ol type="1" id="27f3fa14-efa0-8055-9230-f1abadf6eb67" class="numbered-list" start="1"><li>Trained on details and variations</li></ol><p id="2773fa14-efa0-8074-a6b7-cb83d73ade24" class="">
+</p><p id="2773fa14-efa0-8018-a607-c72385304273" class="">
+</p><div id="2773fa14-efa0-8010-8a22-e97c0017ccb9" class="collection-content"><h4 class="collection-title">Rules</h4><table class="collection-content"><thead><tr><th><span class="icon property-icon"><img src="https://www.notion.so/icons/font_gray.svg" style="width:14px;height:14px;display:block"/></span>Rule</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/description_gray.svg" style="width:14px;height:14px;display:block"/></span>Code</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/description_gray.svg" style="width:14px;height:14px;display:block"/></span>Apply to</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/list_gray.svg" style="width:14px;height:14px;display:block"/></span>Category</th></tr></thead><tbody><tr id="2773fa14-efa0-806f-8f44-c3a842e51cbe"><td class="cell-title"><a href="https://www.notion.so/Programming-Instructions-not-visible-to-respondents-2773fa14efa0806f8f44c3a842e51cbe?pvs=21">Programming Instructions not visible to respondents</a></td><td class="cell-T{q}"></td><td class="cell-ICw\"></td><td class="cell-x[DS"><span class="selected-value select-value-color-blue">Programming Instructions</span></td></tr><tr id="2773fa14-efa0-8076-9688-c8909a2257b8"><td class="cell-title"><a href="https://www.notion.so/Question-Numbering-2773fa14efa080769688c8909a2257b8?pvs=21">Question Numbering</a></td><td class="cell-T{q}"></td><td class="cell-ICw\"></td><td class="cell-x[DS"><span class="selected-value select-value-color-blue">Programming Instructions</span></td></tr><tr id="2773fa14-efa0-80b1-8294-c1939aaf8037"><td class="cell-title"><a href="https://www.notion.so/Sample-split-rules-2773fa14efa080b18294c1939aaf8037?pvs=21">Sample split rules</a></td><td class="cell-T{q}"></td><td class="cell-ICw\"></td><td class="cell-x[DS"><span class="selected-value select-value-color-orange">Sampling</span></td></tr><tr id="2773fa14-efa0-802b-9b69-ff548e304aef"><td class="cell-title"><a href="https://www.notion.so/2773fa14efa0802b9b69ff548e304aef?pvs=21">Untitled</a></td><td class="cell-T{q}"></td><td class="cell-ICw\"></td><td class="cell-x[DS"></td></tr></tbody></table><br/><br/></div><p id="2773fa14-efa0-8070-b4d6-c013409869f2" class="">
+</p><div id="2773fa14-efa0-8078-bd2f-fce94647fe42" class="collection-content"><h4 class="collection-title">QNR Tags</h4><table class="collection-content"><thead><tr><th><span class="icon property-icon"><img src="https://www.notion.so/icons/font_gray.svg" style="width:14px;height:14px;display:block"/></span>Tag_Name</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/list_gray.svg" style="width:14px;height:14px;display:block"/></span>Tag_Values</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/description_gray.svg" style="width:14px;height:14px;display:block"/></span>Descr</th></tr></thead><tbody><tr id="2773fa14-efa0-80c1-9666-c7c8e9859550"><td class="cell-title"><a href="https://www.notion.so/QNR_Industry-2773fa14efa080c19666c7c8e9859550?pvs=21">QNR_Industry</a></td><td class="cell-qJ?U"><span class="selected-value select-value-color-gray">Banking</span><span class="selected-value select-value-color-default">Beverage</span><span class="selected-value select-value-color-red">Consumer Electronics</span><span class="selected-value select-value-color-pink">Consumer Goods</span><span class="selected-value select-value-color-purple">Healthcare</span><span class="selected-value select-value-color-gray">Hospitality</span><span class="selected-value select-value-color-pink">Hospitals / Providers</span><span class="selected-value select-value-color-pink">Insurance</span><span class="selected-value select-value-color-orange">MedTech</span><span class="selected-value select-value-color-default">Medical Devices</span><span class="selected-value select-value-color-blue">Pharmaceuticals</span><span class="selected-value select-value-color-purple">Retail</span><span class="selected-value select-value-color-green">Vision Care</span></td><td class="cell-yZGK">Multiselect</td></tr><tr id="2773fa14-efa0-80ee-80a0-ee2fd829b5cd"><td class="cell-title"><a href="https://www.notion.so/Respondent_Type-2773fa14efa080ee80a0ee2fd829b5cd?pvs=21">Respondent_Type</a></td><td class="cell-qJ?U"><span class="selected-value select-value-color-gray">Admin</span><span class="selected-value select-value-color-yellow">Consumer</span><span class="selected-value select-value-color-blue">ECP</span><span class="selected-value select-value-color-brown">HCP</span><span class="selected-value select-value-color-green">Nursing Staff</span><span class="selected-value select-value-color-gray">Patient</span></td><td class="cell-yZGK">Multiselect</td></tr><tr id="2773fa14-efa0-808f-95a2-d944286eb65e"><td class="cell-title"><a href="https://www.notion.so/QNR_Country-2773fa14efa0808f95a2d944286eb65e?pvs=21">QNR_Country</a></td><td class="cell-qJ?U"><span class="selected-value select-value-color-yellow">Canada</span><span class="selected-value select-value-color-green">EU</span><span class="selected-value select-value-color-gray">France</span><span class="selected-value select-value-color-pink">India</span><span class="selected-value select-value-color-pink">Japan</span><span class="selected-value select-value-color-red">UK</span><span class="selected-value select-value-color-brown">US</span></td><td class="cell-yZGK">Multiselect</td></tr><tr id="2773fa14-efa0-80b8-b93b-c3a9b4750c0c"><td class="cell-title"><a href="https://www.notion.so/QNR_Sections-2773fa14efa080b8b93bc3a9b4750c0c?pvs=21">QNR_Sections</a></td><td class="cell-qJ?U"><span class="selected-value select-value-color-blue">Additional Questions</span><span class="selected-value select-value-color-red">Brand/Product Awareness &amp; Usage</span><span class="selected-value select-value-color-gray">Concept exposure</span><span class="selected-value select-value-color-yellow">Feature Priotitization</span><span class="selected-value select-value-color-red">Methodology</span><span class="selected-value select-value-color-orange">QC</span><span class="selected-value select-value-color-red">Sample Plan</span><span class="selected-value select-value-color-gray">Screener</span></td><td class="cell-yZGK">Yes/No for each section</td></tr><tr id="2773fa14-efa0-8065-93b2-df586a8df35b"><td class="cell-title"><a href="https://www.notion.so/Methodology-2773fa14efa0806593b2df586a8df35b?pvs=21">Methodology</a></td><td class="cell-qJ?U"><span class="selected-value select-value-color-red">Conjoint</span><span class="selected-value select-value-color-pink">Feature Importance</span><span class="selected-value select-value-color-brown">Pricing</span><span class="selected-value select-value-color-default">Sequential Monadic Test</span><span class="selected-value select-value-color-blue">Taste Test</span></td><td class="cell-yZGK">Multiselect</td></tr><tr id="2773fa14-efa0-80fe-a334-ce8098f69cbf"><td class="cell-title"><a href="https://www.notion.so/Pricing-2773fa14efa080fea334ce8098f69cbf?pvs=21">Pricing</a></td><td class="cell-qJ?U"><span class="selected-value select-value-color-green">Gabor Granger</span><span class="selected-value select-value-color-green">Van Westendorp</span></td><td class="cell-yZGK">Multiselect</td></tr><tr id="2773fa14-efa0-8084-ac42-ee3605b5eb42"><td class="cell-title"><a href="https://www.notion.so/Mandatory_Logics-2773fa14efa08084ac42ee3605b5eb42?pvs=21">Mandatory_Logics</a></td><td class="cell-qJ?U"><span class="selected-value select-value-color-gray">Piping Logic</span><span class="selected-value select-value-color-gray">Sampling Logic</span><span class="selected-value select-value-color-blue">Screener Logic</span></td><td class="cell-yZGK">Must have logics in QNR</td></tr><tr id="2773fa14-efa0-809e-8650-dead18c88d79"><td class="cell-title"><a href="https://www.notion.so/Mandatory_Sections-2773fa14efa0809e8650dead18c88d79?pvs=21">Mandatory_Sections</a></td><td class="cell-qJ?U"><span class="selected-value select-value-color-blue">Additional Questions</span><span class="selected-value select-value-color-red">Brand/Product Awareness &amp; Usage</span><span class="selected-value select-value-color-gray">Concept exposure</span><span class="selected-value select-value-color-red">Methodology</span><span class="selected-value select-value-color-yellow">Programmer Instructions</span><span class="selected-value select-value-color-red">Sample Plan</span><span class="selected-value select-value-color-gray">Screener</span></td><td class="cell-yZGK">Must have sections in QNR</td></tr><tr id="28a3fa14-efa0-804a-b8ba-d7231ac5a400"><td class="cell-title"><a href="https://www.notion.so/28a3fa14efa0804ab8bad7231ac5a400?pvs=21">Untitled</a></td><td class="cell-qJ?U"></td><td class="cell-yZGK"></td></tr></tbody></table><br/><br/></div><div id="2773fa14-efa0-808b-9a40-de611c7f3fad" class="collection-content"><h4 class="collection-title">Screener / Recruitment</h4><table class="collection-content"><thead><tr><th><span class="icon property-icon"><img src="https://www.notion.so/icons/font_gray.svg" style="width:14px;height:14px;display:block"/></span>Label</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/description_gray.svg" style="width:14px;height:14px;display:block"/></span>Descr</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/checkmark-square_gray.svg" style="width:14px;height:14px;display:block"/></span>Mandatory</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/list_gray.svg" style="width:14px;height:14px;display:block"/></span>Applicable_Labels</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/arrow-circle-down_gray.svg" style="width:14px;height:14px;display:block"/></span>Type</th></tr></thead><tbody><tr id="2773fa14-efa0-818f-b1ad-c22f086bbf92"><td class="cell-title"><a href="https://www.notion.so/Study_Intro-2773fa14efa0818fb1adc22f086bbf92?pvs=21">Study_Intro</a></td><td class="cell-yZGK">Thanks for agreeing, inform eligibility, state LOI</td><td class="cell-TDMT"><div class="checkbox checkbox-on"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"><span class="selected-value select-value-color-blue">Text</span></td></tr><tr id="2773fa14-efa0-816d-af75-e37336677b22"><td class="cell-title"><a href="https://www.notion.so/Recent_Participation-2773fa14efa0816daf75e37336677b22?pvs=21">Recent_Participation</a></td><td class="cell-yZGK">Participated in Market Research study recently. Terminate</td><td class="cell-TDMT"><div class="checkbox checkbox-on"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr><tr id="2773fa14-efa0-819d-b903-d6d4196c1563"><td class="cell-title"><a href="https://www.notion.so/CoI_Check-2773fa14efa0819db903d6d4196c1563?pvs=21">CoI_Check</a></td><td class="cell-yZGK">Conflict of Interest check. Terminate</td><td class="cell-TDMT"><div class="checkbox checkbox-on"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr><tr id="2773fa14-efa0-8163-8add-c753b4f5f55e"><td class="cell-title"><a href="https://www.notion.so/Demog_Basic-2773fa14efa081638addc753b4f5f55e?pvs=21">Demog_Basic</a></td><td class="cell-yZGK">Age, Gender. Check categories specific to country</td><td class="cell-TDMT"><div class="checkbox checkbox-on"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr><tr id="2773fa14-efa0-8182-a898-e2c194056ebd"><td class="cell-title"><a href="https://www.notion.so/Medical_Conditions_General-2773fa14efa08182a898e2c194056ebd?pvs=21">Medical_Conditions_General</a></td><td class="cell-yZGK">Multiselect</td><td class="cell-TDMT"><div class="checkbox checkbox-on"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-blue">Consumer Health</span><span class="selected-value select-value-color-brown">Healthcare</span><span class="selected-value select-value-color-gray">MedTech</span><span class="selected-value select-value-color-pink">Patients</span></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr><tr id="2773fa14-efa0-8191-a269-d9db08622ece"><td class="cell-title"><a href="https://www.notion.so/Medical_Conditions_Study-2773fa14efa08191a269d9db08622ece?pvs=21">Medical_Conditions_Study</a></td><td class="cell-yZGK">Current, Past and future</td><td class="cell-TDMT"><div class="checkbox checkbox-on"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-blue">Consumer Health</span><span class="selected-value select-value-color-brown">Healthcare</span><span class="selected-value select-value-color-gray">MedTech</span><span class="selected-value select-value-color-pink">Patients</span></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr><tr id="2773fa14-efa0-8174-bc95-ccd1ef7d6b22"><td class="cell-title"><a href="https://www.notion.so/Category_Usage_Frequency-2773fa14efa08174bc95ccd1ef7d6b22?pvs=21">Category_Usage_Frequency</a></td><td class="cell-yZGK">How often you use</td><td class="cell-TDMT"><div class="checkbox checkbox-on"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr><tr id="2773fa14-efa0-81b9-a781-dd485febac77"><td class="cell-title"><a href="https://www.notion.so/Category_Usage_Financial-2773fa14efa081b9a781dd485febac77?pvs=21">Category_Usage_Financial</a></td><td class="cell-yZGK">How much you spend now and in future</td><td class="cell-TDMT"><div class="checkbox checkbox-on"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr><tr id="2773fa14-efa0-8085-9ea9-eff0cf694b5a"><td class="cell-title"><a href="https://www.notion.so/Category_Usage_Adnl-2773fa14efa080859ea9eff0cf694b5a?pvs=21">Category_Usage_Adnl</a></td><td class="cell-yZGK">Where will you use and how</td><td class="cell-TDMT"><div class="checkbox checkbox-on"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"></td></tr><tr id="2773fa14-efa0-80ef-98c7-c23b185b5f0a"><td class="cell-title"><a href="https://www.notion.so/Category_Usage_Consider-2773fa14efa080ef98c7c23b185b5f0a?pvs=21">Category_Usage_Consider</a></td><td class="cell-yZGK">are you considering in the future</td><td class="cell-TDMT"><div class="checkbox checkbox-on"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr><tr id="2773fa14-efa0-80f4-8a18-c30d1af6ade8"><td class="cell-title"><a href="https://www.notion.so/User_Categorization_Logic-2773fa14efa080f48a18c30d1af6ade8?pvs=21">User_Categorization_Logic</a></td><td class="cell-yZGK">User/Non-User, Continue/Terminate, Other categorization rules</td><td class="cell-TDMT"><div class="checkbox checkbox-on"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"><span class="selected-value select-value-color-orange">Rules</span></td></tr><tr id="2773fa14-efa0-803e-ab1a-c01359683bf7"><td class="cell-title"><a href="https://www.notion.so/Confidentiality_Agreement-2773fa14efa0803eab1ac01359683bf7?pvs=21">Confidentiality_Agreement</a></td><td class="cell-yZGK"></td><td class="cell-TDMT"><div class="checkbox checkbox-on"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"><span class="selected-value select-value-color-blue">Text</span></td></tr><tr id="2953fa14-efa0-80b8-8c79-d82060667357"><td class="cell-title"><a href="https://www.notion.so/Socio_HH_Dur-2953fa14efa080b88c79d82060667357?pvs=21">Socio_HH_Dur</a></td><td class="cell-yZGK">Socio economic - durables owned household</td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-80ab-a694-e504bfb437c9"><td class="cell-title"><a href="https://www.notion.so/Socio_Pers_Dur-2953fa14efa080aba694e504bfb437c9?pvs=21">Socio_Pers_Dur</a></td><td class="cell-yZGK">Socio economic - durables owned personal</td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-8095-a159-e4fc484024d8"><td class="cell-title"><a href="https://www.notion.so/Category_Awareness-2953fa14efa08095a159e4fc484024d8?pvs=21">Category_Awareness</a></td><td class="cell-yZGK">What products have you heard of</td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-800a-bb7a-e56df4968afc"><td class="cell-title"><a href="https://www.notion.so/Category_Usage-2953fa14efa0800abb7ae56df4968afc?pvs=21">Category_Usage </a></td><td class="cell-yZGK">What products have you used, consumed</td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-80a4-9bc2-d02f0cfad134"><td class="cell-title"><a href="https://www.notion.so/Category_Restrict-2953fa14efa080a49bc2d02f0cfad134?pvs=21">Category_Restrict</a></td><td class="cell-yZGK">Would never consume/use</td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-806e-af8b-f495e0d73eab"><td class="cell-title"><a href="https://www.notion.so/Mobility_Travel-2953fa14efa0806eaf8bf495e0d73eab?pvs=21">Mobility_Travel</a></td><td class="cell-yZGK">Travel related questions</td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-8057-97bb-d14511291a3a"><td class="cell-title"><a href="https://www.notion.so/Psychog_Leisure-2953fa14efa0805797bbd14511291a3a?pvs=21">Psychog_Leisure</a></td><td class="cell-yZGK">Psychograpic questions. What are the leisure activities done</td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-808a-b7eb-fb9b7d1213c5"><td class="cell-title"><a href="https://www.notion.so/Online_Activity-2953fa14efa0808ab7ebfb9b7d1213c5?pvs=21">Online_Activity</a></td><td class="cell-yZGK">how much time do you approximately spend on internet in a week,activities that you have done in past 1 month from the list below </td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"></td></tr></tbody></table><br/><br/></div><div id="2773fa14-efa0-80b6-991e-cd479af8ab59" class="collection-content"><h4 class="collection-title">Brand/Product Awareness &amp; Usage</h4><table class="collection-content"><thead><tr><th><span class="icon property-icon"><img src="https://www.notion.so/icons/font_gray.svg" style="width:14px;height:14px;display:block"/></span>Label</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/description_gray.svg" style="width:14px;height:14px;display:block"/></span>Descr</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/checkmark-square_gray.svg" style="width:14px;height:14px;display:block"/></span>Mandatory</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/list_gray.svg" style="width:14px;height:14px;display:block"/></span>Applicable_Labels</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/arrow-circle-down_gray.svg" style="width:14px;height:14px;display:block"/></span>Type</th></tr></thead><tbody><tr id="2773fa14-efa0-81c5-8b10-ecba32cc9782"><td class="cell-title"><a href="https://www.notion.so/Product_Usage-2773fa14efa081c58b10ecba32cc9782?pvs=21">Product_Usage</a></td><td class="cell-yZGK">What products do you use in the category. </td><td class="cell-TDMT"><div class="checkbox checkbox-on"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"><span class="selected-value select-value-color-blue">Text</span></td></tr><tr id="2773fa14-efa0-81d3-8a35-f57f7456d2aa"><td class="cell-title"><a href="https://www.notion.so/Product_Usage_Frequency-2773fa14efa081d38a35f57f7456d2aa?pvs=21">Product_Usage_Frequency</a></td><td class="cell-yZGK">Frequency of usage and purchase, Quantity</td><td class="cell-TDMT"><div class="checkbox checkbox-on"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr><tr id="2773fa14-efa0-8191-b5ad-cb2ce6bea294"><td class="cell-title"><a href="https://www.notion.so/Product_Usage_Financial-2773fa14efa08191b5adcb2ce6bea294?pvs=21">Product_Usage_Financial</a></td><td class="cell-yZGK">How much do you spend and if it is higher, type of purchase - subscription etc, channel info</td><td class="cell-TDMT"><div class="checkbox checkbox-on"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr><tr id="2773fa14-efa0-80e3-80c4-ed1bdfc803ec"><td class="cell-title"><a href="https://www.notion.so/Purchase_Decision-2773fa14efa080e380c4ed1bdfc803ec?pvs=21">Purchase_Decision</a></td><td class="cell-yZGK">Who influences purchase decision</td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"></td></tr><tr id="2773fa14-efa0-81a1-9352-e2349949bdc0"><td class="cell-title"><a href="https://www.notion.so/Brand_Recall-2773fa14efa081a19352e2349949bdc0?pvs=21">Brand_Recall</a></td><td class="cell-yZGK">Top of the mind brands</td><td class="cell-TDMT"><div class="checkbox checkbox-on"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr><tr id="2773fa14-efa0-8146-b103-c3db97bb76e0"><td class="cell-title"><a href="https://www.notion.so/Brand_awareness_funnel-2773fa14efa08146b103c3db97bb76e0?pvs=21">Brand_awareness_funnel</a></td><td class="cell-yZGK">What brands are you aware of. Funnel Questions - Aware → Considered → Purchased → Continue → Preferred</td><td class="cell-TDMT"><div class="checkbox checkbox-on"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-blue">Consumer Health</span><span class="selected-value select-value-color-brown">Healthcare</span><span class="selected-value select-value-color-gray">MedTech</span><span class="selected-value select-value-color-pink">Patients</span></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr><tr id="2773fa14-efa0-81a5-9d0b-f853dfd8a3db"><td class="cell-title"><a href="https://www.notion.so/Brand_Product_Satisfaction-2773fa14efa081a59d0bf853dfd8a3db?pvs=21">Brand_Product_Satisfaction</a></td><td class="cell-yZGK">With the products used in the past and current</td><td class="cell-TDMT"><div class="checkbox checkbox-on"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-blue">Consumer Health</span><span class="selected-value select-value-color-brown">Healthcare</span><span class="selected-value select-value-color-gray">MedTech</span><span class="selected-value select-value-color-pink">Patients</span></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr><tr id="2773fa14-efa0-81dd-b2d1-d8c0f3458d37"><td class="cell-title"><a href="https://www.notion.so/Category_Usage_Frequency-2773fa14efa081ddb2d1d8c0f3458d37?pvs=21">Category_Usage_Frequency</a></td><td class="cell-yZGK">How often you use</td><td class="cell-TDMT"><div class="checkbox checkbox-on"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr><tr id="2953fa14-efa0-8012-b9ab-dcd988a4bd84"><td class="cell-title"><a href="https://www.notion.so/Brand_Usage-2953fa14efa08012b9abdcd988a4bd84?pvs=21">Brand_Usage</a></td><td class="cell-yZGK">Brands used for the product/category</td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-8063-8fb9-d7f984f96634"><td class="cell-title"><a href="https://www.notion.so/Brand_Choice-2953fa14efa080638fb9d7f984f96634?pvs=21">Brand_Choice</a></td><td class="cell-yZGK">Brands used most often</td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-8036-893b-f2faa4ce85ec"><td class="cell-title"><a href="https://www.notion.so/Brand_Usage_Context-2953fa14efa08036893bf2faa4ce85ec?pvs=21">Brand_Usage_Context</a></td><td class="cell-yZGK">Where, when and how brand is used</td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-800c-a18a-d217892770a7"><td class="cell-title"><a href="https://www.notion.so/Brand_Usage_Style-2953fa14efa0800ca18ad217892770a7?pvs=21">Brand_Usage_Style</a></td><td class="cell-yZGK">What is the brand used with</td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"></td></tr></tbody></table><br/><br/></div><div id="2773fa14-efa0-801a-adf5-ec15f7d06e7d" class="collection-content"><h4 class="collection-title">Concept exposure</h4><table class="collection-content"><thead><tr><th><span class="icon property-icon"><img src="https://www.notion.so/icons/font_gray.svg" style="width:14px;height:14px;display:block"/></span>Label</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/description_gray.svg" style="width:14px;height:14px;display:block"/></span>Descr</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/checkmark-square_gray.svg" style="width:14px;height:14px;display:block"/></span>Mandatory</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/list_gray.svg" style="width:14px;height:14px;display:block"/></span>Applicable_Labels</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/arrow-circle-down_gray.svg" style="width:14px;height:14px;display:block"/></span>Type</th></tr></thead><tbody><tr id="2773fa14-efa0-8154-b9e8-fdb7ce0b7219"><td class="cell-title"><a href="https://www.notion.so/Concept_Intro-2773fa14efa08154b9e8fdb7ce0b7219?pvs=21">Concept_Intro</a></td><td class="cell-yZGK">Concept Introduction for pricing and reaction with hyperlink</td><td class="cell-TDMT"><div class="checkbox checkbox-on"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"><span class="selected-value select-value-color-blue">Text</span></td></tr><tr id="2773fa14-efa0-81c7-8f0c-fd58e070ce06"><td class="cell-title"><a href="https://www.notion.so/Message_reaction-2773fa14efa081c78f0cfd58e070ce06?pvs=21">Message_reaction</a></td><td class="cell-yZGK">Question to check preference for Product/Feature Name, Caption etc</td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr><tr id="2773fa14-efa0-81c6-abf7-d5c36d977018"><td class="cell-title"><a href="https://www.notion.so/Concept_impression-2773fa14efa081c6abf7d5c36d977018?pvs=21">Concept_impression</a></td><td class="cell-yZGK">Overall Impression</td><td class="cell-TDMT"><div class="checkbox checkbox-on"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr><tr id="2773fa14-efa0-8195-a1ef-d6fe3379a0be"><td class="cell-title"><a href="https://www.notion.so/Concept_Feature_Highlight-2773fa14efa08195a1efd6fe3379a0be?pvs=21">Concept_Feature_Highlight</a></td><td class="cell-yZGK">Highlight most important &amp; least important words/phrases from the concept descr. Additional text feedback</td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr><tr id="2773fa14-efa0-813c-a901-fd9b80d2aef8"><td class="cell-title"><a href="https://www.notion.so/Concept_eval_funnel-2773fa14efa0813ca901fd9b80d2aef8?pvs=21">Concept_eval_funnel</a></td><td class="cell-yZGK">Likelihood to <br/>1. Follow up and learn<br/>2. New &amp; Different<br/>3. Meets needs<br/>4. Recommend to others</td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr><tr id="2773fa14-efa0-81ae-b393-f06232ce9ddf"><td class="cell-title"><a href="https://www.notion.so/Concept_Purchase_Likelihood-2773fa14efa081aeb393f06232ce9ddf?pvs=21">Concept_Purchase_Likelihood</a></td><td class="cell-yZGK">How likely are you to purchase, how soon will you purchase</td><td class="cell-TDMT"><div class="checkbox checkbox-on"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr><tr id="2953fa14-efa0-802d-a8b1-d214cf55ab82"><td class="cell-title"><a href="https://www.notion.so/Survey_Invite-2953fa14efa0802da8b1d214cf55ab82?pvs=21">Survey_Invite</a></td><td class="cell-yZGK"></td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-purple">Taste Test</span></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-809a-b8f0-c31c661e2162"><td class="cell-title"><a href="https://www.notion.so/Concept_visual_impression-2953fa14efa0809ab8f0c31c661e2162?pvs=21">Concept_visual_impression</a></td><td class="cell-yZGK">P1.	Please tell me on an 11 point scale, how much you liked this </td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-purple">Taste Test</span></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-8023-bd3f-ce12b27ea09e"><td class="cell-title"><a href="https://www.notion.so/Concept_visual_like-2953fa14efa08023bd3fce12b27ea09e?pvs=21">Concept_visual_like</a></td><td class="cell-yZGK"></td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-purple">Taste Test</span></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-8038-981f-e1ea9b1268fe"><td class="cell-title"><a href="https://www.notion.so/Concept_visual_dislike-2953fa14efa08038981fe1ea9b1268fe?pvs=21">Concept_visual_dislike</a></td><td class="cell-yZGK"></td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-purple">Taste Test</span></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-8091-b015-dfb2a45f19e7"><td class="cell-title"><a href="https://www.notion.so/Concept_Visual_features-2953fa14efa08091b015dfb2a45f19e7?pvs=21">Concept_Visual_features </a></td><td class="cell-yZGK"></td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-purple">Taste Test</span></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-8017-8bca-d597382a44c6"><td class="cell-title"><a href="https://www.notion.so/Concept_Aroma_Check-2953fa14efa080178bcad597382a44c6?pvs=21">Concept_Aroma_Check </a></td><td class="cell-yZGK"></td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-purple">Taste Test</span></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-80fd-b590-f6084f361dca"><td class="cell-title"><a href="https://www.notion.so/Concept_Aroma_impression-2953fa14efa080fdb590f6084f361dca?pvs=21">Concept_Aroma_impression </a></td><td class="cell-yZGK"></td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-purple">Taste Test</span></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-806e-8761-ce479059b565"><td class="cell-title"><a href="https://www.notion.so/Concept_Aroma_like-2953fa14efa0806e8761ce479059b565?pvs=21">Concept_Aroma_like </a></td><td class="cell-yZGK"></td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-purple">Taste Test</span></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-802c-8d4e-c2dc954ec308"><td class="cell-title"><a href="https://www.notion.so/Concept_Aroma_dislike-2953fa14efa0802c8d4ec2dc954ec308?pvs=21">Concept_Aroma_dislike </a></td><td class="cell-yZGK"></td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-purple">Taste Test</span></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-80d9-ac27-dd63e5fddd70"><td class="cell-title"><a href="https://www.notion.so/Concept_Aroma_features-2953fa14efa080d9ac27dd63e5fddd70?pvs=21">Concept_Aroma_features </a></td><td class="cell-yZGK"></td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-purple">Taste Test</span></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-80da-8a94-f3fc418718d1"><td class="cell-title"><a href="https://www.notion.so/Concept_Aroma_Strength-2953fa14efa080da8a94f3fc418718d1?pvs=21">Concept_Aroma_Strength </a></td><td class="cell-yZGK"></td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-purple">Taste Test</span></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-8076-82df-cbcc2b6afd9a"><td class="cell-title"><a href="https://www.notion.so/Concept_Aroma_OE-2953fa14efa0807682dfcbcc2b6afd9a?pvs=21">Concept_Aroma_OE</a></td><td class="cell-yZGK"></td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-purple">Taste Test</span></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-800f-9a71-c1c8fa264a5e"><td class="cell-title"><a href="https://www.notion.so/Concept_taste_impression-2953fa14efa0800f9a71c1c8fa264a5e?pvs=21">Concept_taste_impression</a></td><td class="cell-yZGK"></td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-purple">Taste Test</span></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-80af-bac5-f8aeeb2a9a28"><td class="cell-title"><a href="https://www.notion.so/Concept_taste_like-2953fa14efa080afbac5f8aeeb2a9a28?pvs=21">Concept_taste_like</a></td><td class="cell-yZGK"></td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-purple">Taste Test</span></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-804d-833f-dc46c20ff4b7"><td class="cell-title"><a href="https://www.notion.so/Concept_taste_dislike-2953fa14efa0804d833fdc46c20ff4b7?pvs=21">Concept_taste_dislike</a></td><td class="cell-yZGK"></td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-purple">Taste Test</span></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-8022-8741-cfdc66baf69e"><td class="cell-title"><a href="https://www.notion.so/Concept_quality_impression-2953fa14efa080228741cfdc66baf69e?pvs=21">Concept_quality_impression</a></td><td class="cell-yZGK"></td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-purple">Taste Test</span></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-80ee-b4bc-d97d55262830"><td class="cell-title"><a href="https://www.notion.so/Concept_taste_featuers-2953fa14efa080eeb4bcd97d55262830?pvs=21">Concept_taste_featuers</a></td><td class="cell-yZGK"></td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-purple">Taste Test</span></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-804d-aed2-ed8383057834"><td class="cell-title"><a href="https://www.notion.so/Concept_trial_likelihood-2953fa14efa0804daed2ed8383057834?pvs=21">Concept_trial_likelihood</a></td><td class="cell-yZGK">how much would you want to try this</td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-purple">Taste Test</span></td><td class="cell-^MoR"></td></tr><tr id="2953fa14-efa0-8002-be93-e7fa414506c3"><td class="cell-title"><a href="https://www.notion.so/Concept_choice-2953fa14efa08002be93e7fa414506c3?pvs=21">Concept_choice</a></td><td class="cell-yZGK">Which concept you rank best, worst</td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-purple">Taste Test</span></td><td class="cell-^MoR"></td></tr></tbody></table><br/><br/></div><div id="2773fa14-efa0-805a-9912-f8a851181460" class="collection-content"><h4 class="collection-title">Methodology</h4><table class="collection-content"><thead><tr><th><span class="icon property-icon"><img src="https://www.notion.so/icons/font_gray.svg" style="width:14px;height:14px;display:block"/></span>Label</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/description_gray.svg" style="width:14px;height:14px;display:block"/></span>Descr</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/checkmark-square_gray.svg" style="width:14px;height:14px;display:block"/></span>Mandatory</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/list_gray.svg" style="width:14px;height:14px;display:block"/></span>Applicable_Labels</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/arrow-circle-down_gray.svg" style="width:14px;height:14px;display:block"/></span>Type</th></tr></thead><tbody><tr id="2773fa14-efa0-8196-a944-e1971ba3a82c"><td class="cell-title"><a href="https://www.notion.so/Concept_Intro-2773fa14efa08196a944e1971ba3a82c?pvs=21">Concept_Intro</a></td><td class="cell-yZGK">Concept Introduction for pricing and reaction with hyperlink</td><td class="cell-TDMT"><div class="checkbox checkbox-on"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-red">Concept_Intro</span></td><td class="cell-^MoR"><span class="selected-value select-value-color-blue">Text</span></td></tr><tr id="2773fa14-efa0-81a4-95f5-fb20a4507024"><td class="cell-title"><a href="https://www.notion.so/GG_Likelihood-2773fa14efa081a495f5fb20a4507024?pvs=21">GG_Likelihood</a></td><td class="cell-yZGK">Random price point and change basis response</td><td class="cell-TDMT"><div class="checkbox checkbox-on"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-orange">Gabor Granger</span></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr><tr id="2773fa14-efa0-815b-bd66-dfebc120e721"><td class="cell-title"><a href="https://www.notion.so/VW_pricing-2773fa14efa0815bbd66dfebc120e721?pvs=21">VW_pricing</a></td><td class="cell-yZGK">Good value, expensive etc</td><td class="cell-TDMT"><div class="checkbox checkbox-on"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-yellow">Van Westendorp</span></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr><tr id="2773fa14-efa0-813d-b4f8-e227a2963e2a"><td class="cell-title"><a href="https://www.notion.so/VW_Likelihood-2773fa14efa0813db4f8e227a2963e2a?pvs=21">VW_Likelihood</a></td><td class="cell-yZGK">Additional likelihood on chosen price points for calibration</td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-yellow">Van Westendorp</span></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr><tr id="2953fa14-efa0-808f-84a0-da476c1b1215"><td class="cell-title"><a href="https://www.notion.so/Blind_Taste_Test-2953fa14efa0808f84a0da476c1b1215?pvs=21">Blind_Taste_Test</a></td><td class="cell-yZGK">Taste test for consumer retail. Cigarettes, beverages, etc</td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"><span class="selected-value select-value-color-default">Taste Test</span></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr></tbody></table><br/><br/></div><div id="2773fa14-efa0-8076-95c0-d963715bead9" class="collection-content"><h4 class="collection-title">Additional Questions</h4><table class="collection-content"><thead><tr><th><span class="icon property-icon"><img src="https://www.notion.so/icons/font_gray.svg" style="width:14px;height:14px;display:block"/></span>Label</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/description_gray.svg" style="width:14px;height:14px;display:block"/></span>Descr</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/checkmark-square_gray.svg" style="width:14px;height:14px;display:block"/></span>Mandatory</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/list_gray.svg" style="width:14px;height:14px;display:block"/></span>Applicable_Labels</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/arrow-circle-down_gray.svg" style="width:14px;height:14px;display:block"/></span>Type</th></tr></thead><tbody><tr id="2773fa14-efa0-8117-80c9-f069054aeebd"><td class="cell-title"><a href="https://www.notion.so/Adnl_demographics-2773fa14efa0811780c9f069054aeebd?pvs=21">Adnl_demographics</a></td><td class="cell-yZGK">Education, Employment, Salary, Ethnicity</td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr><tr id="2773fa14-efa0-8166-9c65-fb33adcd82f8"><td class="cell-title"><a href="https://www.notion.so/Adoption_behavior-2773fa14efa081669c65fb33adcd82f8?pvs=21">Adoption_behavior</a></td><td class="cell-yZGK">Adoption to new products and tech</td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr><tr id="2773fa14-efa0-815f-b1ac-f2563982283b"><td class="cell-title"><a href="https://www.notion.so/Media_cons-2773fa14efa0815fb1acf2563982283b?pvs=21">Media_cons</a></td><td class="cell-yZGK">What platforms active on? Where do you consume information</td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr><tr id="2773fa14-efa0-80e5-96b7-f94464c2cbf2"><td class="cell-title"><a href="https://www.notion.so/Adnl_awareness-2773fa14efa080e596b7f94464c2cbf2?pvs=21">Adnl_awareness</a></td><td class="cell-yZGK">Aware of features and potential new tech</td><td class="cell-TDMT"><div class="checkbox checkbox-off"></div></td><td class="cell-amf?"></td><td class="cell-^MoR"><span class="selected-value select-value-color-gray">QNR</span></td></tr></tbody></table><br/><br/></div><p id="2773fa14-efa0-8065-896c-fe1c9c70d777" class="">
+</p><p id="2773fa14-efa0-80b9-a97e-c1adca8326ed" class="">
+</p><h2 id="2773fa14-efa0-80c3-acb0-da3367279dc1" class=""></h2><p id="27f3fa14-efa0-80fd-af79-d5cbdada7b33" class="">
+</p></div></article><span class="sans" style="font-size:14px;padding-top:2em"></span></body></html>

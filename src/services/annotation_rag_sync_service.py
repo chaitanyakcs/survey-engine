@@ -56,21 +56,34 @@ class AnnotationRAGSyncService:
 
             # Extract annotation values to avoid session binding issues
             annotation_quality = annotation.quality
+            annotation_relevant = annotation.relevant
             annotation_human_verified = annotation.human_verified
             annotation_labels = annotation.labels
             annotation_question_id = annotation.question_id
             annotation_survey_id = annotation.survey_id
             
-            # Normalize labels
+            # Normalize labels to ensure consistent format
             from src.services.label_normalizer import LabelNormalizer
             label_normalizer = LabelNormalizer()
             
-            if isinstance(annotation_labels, list):
-                annotation_labels = label_normalizer.normalize_batch(annotation_labels)
+            logger.info(f"🏷️ [Annotation Sync] Raw annotation.labels type: {type(annotation_labels)}, value: {annotation_labels}")
+            
+            if isinstance(annotation_labels, list) and len(annotation_labels) > 0:
+                # Keep original labels - they're already in the correct format
+                annotation_labels = [label for label in annotation_labels if label]
             elif isinstance(annotation_labels, str):
-                annotation_labels = [label_normalizer.normalize(annotation_labels)]
+                annotation_labels = [annotation_labels] if annotation_labels else []
             elif annotation_labels is None:
                 annotation_labels = []
+            elif isinstance(annotation_labels, dict) and len(annotation_labels) == 0:
+                # Handle case where labels is {} (empty object from DB)
+                annotation_labels = []
+            else:
+                # Unexpected type
+                logger.warning(f"⚠️ [Annotation Sync] Unexpected labels type: {type(annotation_labels)}, using empty list")
+                annotation_labels = []
+            
+            logger.info(f"🏷️ [Annotation Sync] Processed labels: {annotation_labels}")
 
             # Validate survey_id is a valid UUID
             try:
@@ -106,6 +119,7 @@ class AnnotationRAGSyncService:
             # Calculate quality score from annotation
             quality_score = self._calculate_quality_score(
                 annotation_quality,
+                annotation_relevant,
                 annotation_human_verified,
                 annotation_labels
             )
@@ -140,9 +154,15 @@ class AnnotationRAGSyncService:
                 existing_golden.methodology_tags = methodology_tags
                 existing_golden.industry_keywords = industry_keywords
                 existing_golden.question_patterns = question_patterns
+                
+                # Store labels as array - PostgreSQL JSONB will handle it
+                logger.info(f"🏷️ [Annotation Sync] Setting labels on golden question: {annotation_labels} (type: {type(annotation_labels)})")
                 existing_golden.labels = annotation_labels
-                existing_golden.updated_at = datetime.now()
                 self.db.commit()  # Commit the transaction
+                
+                # Verify after commit
+                self.db.refresh(existing_golden)
+                logger.info(f"🏷️ [Annotation Sync] Labels stored as: {existing_golden.labels} (type: {type(existing_golden.labels)})")
 
                 logger.info(
                     f"✅ Updated golden question {existing_golden.id} "
@@ -155,6 +175,8 @@ class AnnotationRAGSyncService:
                 }
             else:
                 # Create new golden question
+                logger.info(f"🏷️ [Annotation Sync] Creating new golden question with labels: {annotation_labels} (type: {type(annotation_labels)})")
+                
                 golden_question = GoldenQuestion(
                     question_id=annotation_question_id,
                     survey_id=str(annotation_survey_id),
@@ -175,6 +197,10 @@ class AnnotationRAGSyncService:
 
                 self.db.add(golden_question)
                 self.db.commit()  # Commit the transaction
+                
+                # Verify after commit
+                self.db.refresh(golden_question)
+                logger.info(f"🏷️ [Annotation Sync] Labels stored in new question: {golden_question.labels} (type: {type(golden_question.labels)})")
 
                 logger.info(
                     f"✅ Created golden question from annotation {annotation_id}"
@@ -220,21 +246,34 @@ class AnnotationRAGSyncService:
 
             # Extract annotation values to avoid session binding issues
             annotation_quality = annotation.quality
+            annotation_relevant = annotation.relevant
             annotation_human_verified = annotation.human_verified
             annotation_labels = annotation.labels
             annotation_section_id = annotation.section_id
             annotation_survey_id = annotation.survey_id
             
-            # Normalize labels
+            # Normalize labels to ensure consistent format
             from src.services.label_normalizer import LabelNormalizer
             label_normalizer = LabelNormalizer()
             
-            if isinstance(annotation_labels, list):
-                annotation_labels = label_normalizer.normalize_batch(annotation_labels)
+            logger.info(f"🏷️ [Annotation Sync] Raw annotation.labels type: {type(annotation_labels)}, value: {annotation_labels}")
+            
+            if isinstance(annotation_labels, list) and len(annotation_labels) > 0:
+                # Keep original labels - they're already in the correct format
+                annotation_labels = [label for label in annotation_labels if label]
             elif isinstance(annotation_labels, str):
-                annotation_labels = [label_normalizer.normalize(annotation_labels)]
+                annotation_labels = [annotation_labels] if annotation_labels else []
             elif annotation_labels is None:
                 annotation_labels = []
+            elif isinstance(annotation_labels, dict) and len(annotation_labels) == 0:
+                # Handle case where labels is {} (empty object from DB)
+                annotation_labels = []
+            else:
+                # Unexpected type
+                logger.warning(f"⚠️ [Annotation Sync] Unexpected labels type: {type(annotation_labels)}, using empty list")
+                annotation_labels = []
+            
+            logger.info(f"🏷️ [Annotation Sync] Processed labels: {annotation_labels}")
 
             # Validate survey_id is a valid UUID
             try:
@@ -270,6 +309,7 @@ class AnnotationRAGSyncService:
             # Calculate quality score from annotation
             quality_score = self._calculate_quality_score(
                 annotation_quality,
+                annotation_relevant,
                 annotation_human_verified,
                 annotation_labels
             )
@@ -362,26 +402,35 @@ class AnnotationRAGSyncService:
             return {"success": False, "error": str(e)}
 
     def _calculate_quality_score(
-        self, quality: int, human_verified: bool, labels: list
+        self, quality: int, relevant: int, human_verified: bool, labels: list
     ) -> float:
         """
-        Calculate quality score from annotation metadata.
+        Calculate suitability score from annotation metadata (combines quality + relevance).
 
         Base score: normalize quality field (1-5) to 0.0-1.0
+        Apply relevance penalty: relevant <= 2 (0.5x), relevant == 3 (0.8x), relevant >= 4 (1.0x)
         +0.2 if human verified
         +0.1 if has positive labels
 
         Args:
             quality: Quality score (1-5)
+            relevant: Relevance score (1-5)
             human_verified: Whether annotation is human verified
             labels: List of labels
 
         Returns:
-            Quality score between 0.0 and 1.0
+            Suitability score between 0.0 and 1.0
         """
         # Normalize quality (1-5 scale) to 0.0-1.0
         # Map: 1→0.2, 2→0.4, 3→0.6, 4→0.8, 5→1.0
         base_score = (quality - 1) / 4.0
+
+        # Apply relevance multiplier
+        if relevant <= 2:
+            base_score *= 0.5  # 50% penalty for low relevance
+        elif relevant == 3:
+            base_score *= 0.8  # 20% penalty for neutral relevance
+        # relevant >= 4: no penalty (1.0x)
 
         # Boost for human verification
         if human_verified:
@@ -415,12 +464,22 @@ class AnnotationRAGSyncService:
 
         Args:
             survey_data: Survey final_output JSONB
-            question_id: Question ID to find (e.g., "q1", "q2")
+            question_id: Question ID to find (e.g., "q1", "q2" or "survey_id_q1_sp")
 
         Returns:
             Question dict with text, type, etc., or None if not found
         """
         sections = survey_data.get("sections", [])
+
+        # Handle AI-generated question IDs that have format: {survey_id}_{question_id}
+        # Extract the actual question ID from the prefixed format
+        actual_question_id = question_id
+        if "_" in question_id and len(question_id) > 36:  # UUID is 36 chars
+            # Split by first underscore after UUID (36 chars + 1 underscore = 37)
+            parts = question_id.split("_", 1)
+            if len(parts) == 2 and len(parts[0]) == 36:  # UUID format
+                actual_question_id = parts[1]  # Get the part after survey_id_
+                logger.debug(f"🔍 [AnnotationRAGSync] Extracted question ID '{actual_question_id}' from '{question_id}'")
 
         for section in sections:
             if not isinstance(section, dict):
@@ -431,8 +490,10 @@ class AnnotationRAGSyncService:
                 if not isinstance(question, dict):
                     continue
 
-                # Match by id field
-                if question.get("id") == question_id:
+                # Match by id field - try both original and extracted ID
+                question_survey_id = question.get("id")
+                if question_survey_id == question_id or question_survey_id == actual_question_id:
+                    logger.debug(f"✅ [AnnotationRAGSync] Found question '{question_survey_id}' for annotation ID '{question_id}'")
                     return {
                         "text": question.get("text", ""),
                         "type": question.get("type", "general"),

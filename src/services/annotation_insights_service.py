@@ -510,6 +510,70 @@ class AnnotationInsightsService:
         
         return issues
     
+    def _is_actionable_comment(self, comment: str) -> bool:
+        """
+        Determine if a comment is actionable (provides specific guidance).
+        
+        Actionable comments should:
+        - Be longer than 30 characters
+        - Contain action/reason words
+        - Provide specific guidance (not just "good" or "bad")
+        """
+        if not comment or len(comment) < 30:
+            return False
+        
+        comment_lower = comment.lower()
+        
+        # Action/reason indicators
+        action_words = [
+            "because", "which", "avoid", "use", "ensure", "consider", 
+            "by", "through", "should", "shouldn't", "must", "don't",
+            "helps", "reduces", "increases", "improves", "prevents",
+            "makes", "allows", "enables", "provides", "creates"
+        ]
+        
+        # Check for action words
+        has_action_words = any(word in comment_lower for word in action_words)
+        
+        # Exclude generic praise/criticism
+        generic_phrases = [
+            "this is good", "this is bad", "looks good", "looks bad",
+            "nice", "poor", "great", "terrible", "awful", "excellent"
+        ]
+        is_generic = any(phrase in comment_lower for phrase in generic_phrases) and len(comment) < 50
+        
+        return has_action_words and not is_generic
+    
+    def extract_actionable_comments(self, annotations: List[QuestionAnnotation]) -> List[Dict[str, Any]]:
+        """Extract actionable comments from annotations for prompt guidance"""
+        actionable_comments = []
+        
+        for annotation in annotations:
+            if annotation.comment and self._is_actionable_comment(annotation.comment):
+                # Get question text for context
+                question_text = None
+                try:
+                    # This would need to be async in practice, but for now we'll include what we have
+                    pass  # Question text lookup would go here
+                except Exception:
+                    pass
+                
+                actionable_comments.append({
+                    "comment": annotation.comment,
+                    "quality_score": self._get_average_score(annotation),
+                    "human_verified": annotation.human_verified,
+                    "question_id": annotation.question_id,
+                    "survey_id": annotation.survey_id
+                })
+        
+        # Sort by quality score and human verification
+        actionable_comments.sort(
+            key=lambda x: (x["human_verified"], x["quality_score"]), 
+            reverse=True
+        )
+        
+        return actionable_comments
+    
     async def get_quality_guidelines(self) -> Dict[str, Any]:
         """Get formatted quality guidelines for prompt injection"""
         patterns = await self.extract_quality_patterns()
@@ -517,7 +581,8 @@ class AnnotationInsightsService:
         guidelines = {
             "high_quality_examples": [],
             "avoid_patterns": [],
-            "common_issues": []
+            "common_issues": [],
+            "actionable_comments": []
         }
         
         # Format high-quality patterns with anchored text context
@@ -529,7 +594,8 @@ class AnnotationInsightsService:
                     "type": question_type,
                     "example": best_example["text"],
                     "score": best_example["score"],
-                    "context": best_example.get("anchored_text_context", "")
+                    "context": best_example.get("anchored_text_context", ""),
+                    "comment": best_example.get("comment", "")
                 })
         
         # Format patterns to avoid
@@ -542,6 +608,19 @@ class AnnotationInsightsService:
         
         # Format common issues
         guidelines["common_issues"] = patterns["common_issues"][:5]  # Top 5 issues
+        
+        # Extract actionable comments from high-quality annotations
+        question_annotations = DatabaseSessionManager.safe_query(
+            self.db,
+            lambda: self.db.query(QuestionAnnotation).filter(
+                QuestionAnnotation.quality >= 4
+            ).all(),
+            fallback_value=[],
+            operation_name="high quality annotations for comments"
+        )
+        
+        actionable_comments = self.extract_actionable_comments(question_annotations)
+        guidelines["actionable_comments"] = actionable_comments[:5]  # Top 5 actionable comments
         
         return guidelines
     
