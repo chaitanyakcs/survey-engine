@@ -1111,7 +1111,7 @@ export interface AppStore {
   
   
   // Actions
-  submitEnhancedRFQ: (rfq: EnhancedRFQRequest) => Promise<void>;
+  submitEnhancedRFQ: (rfq: EnhancedRFQRequest, customPrompt?: string) => Promise<void>;
   fetchSurvey: (surveyId: string) => Promise<void>;
   loadPillarScoresAsync: (surveyId: string) => Promise<any>;
   startPillarEvaluationPolling: (surveyId: string) => void;

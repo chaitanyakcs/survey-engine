@@ -35,6 +35,7 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     prompt_reviewer = HumanPromptReviewNode(db)
     generator = GeneratorAgent(db, connection_manager=connection_manager)
     label_detector = LabelDetectionNode(db, connection_manager=connection_manager)
+    golden_validator = GoldenValidatorNode(db)
     validator = ValidatorAgent(db, connection_manager=connection_manager)
     
     # Initialize WebSocket client for progress updates
@@ -88,9 +89,10 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
         
         # Send completion progress update
         try:
-            completion_data = progress_tracker.get_completion_data("building_context", "rfq_parsed")
+            progress_data = progress_tracker.get_progress_data("building_context", "rfq_parsed")
+            progress_data["message"] = "RFQ parsed and processed successfully"
             logger.info(f"📡 [Workflow] Sending progress update: rfq_parsed for workflow_id={state.workflow_id}")
-            await ws_client.send_progress_update(state.workflow_id, completion_data)
+            await ws_client.send_progress_update(state.workflow_id, progress_data)
             logger.info(f"✅ [Workflow] Progress update sent successfully: rfq_parsed")
         except Exception as e:
             logger.error(f"❌ [Workflow] Failed to send RFQ completion progress update: {str(e)}")
@@ -320,6 +322,24 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
         
         return result
     
+    async def golden_validation_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
+        """Run golden validation with progress update"""
+        progress_tracker = get_progress_tracker(state.workflow_id)
+        
+        try:
+            logger.info(f"📡 [Workflow] Sending progress update: golden_validation for workflow_id={state.workflow_id}")
+            progress_data = progress_tracker.get_progress_data("validation_scoring")
+            progress_data["message"] = "Validating against golden examples and structure..."
+            await ws_client.send_progress_update(state.workflow_id, progress_data)
+            logger.info(f"✅ [Workflow] Progress update sent successfully: golden_validation")
+        except Exception as e:
+            logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
+        
+        result = await golden_validator(state)
+        
+        logger.info(f"✅ [Workflow] Golden validation completed")
+        return result
+    
     async def validate_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
         """Validate survey with progress update"""
         progress_tracker = get_progress_tracker(state.workflow_id)
@@ -364,6 +384,7 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     workflow.add_node("prompt_review", prompt_review_with_progress)
     workflow.add_node("generate", generate_with_progress)
     workflow.add_node("detect_labels", detect_labels_with_progress)
+    workflow.add_node("golden_validation", golden_validation_with_progress)
     workflow.add_node("validate", validate_with_progress)
     
     # Set entry point to initialization
@@ -373,9 +394,27 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     workflow.add_edge("initialize_workflow", "parse_rfq")
     workflow.add_edge("parse_rfq", "retrieve_golden")
     workflow.add_edge("retrieve_golden", "build_context")
-    workflow.add_edge("build_context", "prompt_review")
+    
+    # Conditional edge to skip prompt_review if custom prompt is provided
+    def should_skip_prompt_review(state: SurveyGenerationState) -> str:
+        """
+        Skip prompt review if custom system prompt is already provided
+        """
+        if state.system_prompt:
+            logger.info("🎨 [Workflow] Custom prompt provided - skipping prompt_review")
+            return "generate"  # Skip prompt_review, go directly to generate
+        return "prompt_review"  # No custom prompt, do normal review
+    
+    workflow.add_conditional_edges(
+        "build_context",
+        should_skip_prompt_review,
+        {
+            "generate": "generate",
+            "prompt_review": "prompt_review"
+        }
+    )
     workflow.add_edge("generate", "detect_labels")  # Always run label detection after generation
-    workflow.add_edge("detect_labels", "validate")
+    workflow.add_edge("detect_labels", "golden_validation")  # Always run golden validation
     
     # Conditional edge to check if LLM validation should be skipped
     def should_run_llm_validation(state: SurveyGenerationState) -> str:
@@ -418,7 +457,7 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
 
     # Add conditional edge to check if validation should be skipped
     workflow.add_conditional_edges(
-        "detect_labels",
+        "golden_validation",
         should_run_llm_validation,
         {
             "validate": "validate",

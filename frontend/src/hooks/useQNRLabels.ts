@@ -64,7 +64,9 @@ export const useQNRLabels = (options: UseQNRLabelsOptions = {}): UseQNRLabelsRet
       if (!response.ok) throw new Error(`API error: ${response.status}`);
 
       const data = await response.json();
-      const apiLabels: QNRLabel[] = data.labels.map((label: QNRResponse) => ({
+      // API returns either a list directly or an object with 'labels' key
+      const labelsArray = Array.isArray(data) ? data : (data.labels || []);
+      const apiLabels: QNRLabel[] = labelsArray.map((label: QNRResponse) => ({
         name: label.name,
         description: label.description,
         category: label.category as QNRLabel['category'],
@@ -80,7 +82,8 @@ export const useQNRLabels = (options: UseQNRLabelsOptions = {}): UseQNRLabelsRet
       const sectionsResponse = await fetch('/api/v1/qnr-labels/sections/list');
       if (sectionsResponse.ok) {
         const sectionsData = await sectionsResponse.json();
-        setSections(sectionsData.sections || []);
+        // API returns array directly, not wrapped in { sections: [] }
+        setSections(Array.isArray(sectionsData) ? sectionsData : (sectionsData.sections || []));
       }
 
     } catch (err) {

@@ -256,6 +256,27 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
                           ? 'text-amber-800 font-semibold'
                           : 'text-gray-900'
                       }`}>{section.title}</span>
+                      {/* Question and instruction count badge */}
+                      {(() => {
+                        const questionsCount = section.questions?.filter((q: any) => q.type !== 'instruction').length || 0;
+                        // Count instruction-type questions
+                        const instructionQuestions = section.questions?.filter((q: any) => q.type === 'instruction').length || 0;
+                        // Count instruction-type text blocks
+                        const instructionTextBlocks = 
+                          (section.introText?.type === 'instruction' ? 1 : 0) +
+                          (section.textBlocks?.filter((tb: any) => tb.type === 'instruction').length || 0) +
+                          (section.closingText?.type === 'instruction' ? 1 : 0);
+                        const totalInstructions = instructionQuestions + instructionTextBlocks;
+                        
+                        return (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            {questionsCount} {questionsCount === 1 ? 'Question' : 'Questions'}
+                            {totalInstructions > 0 && (
+                              <> • {totalInstructions} {totalInstructions === 1 ? 'Instruction' : 'Instructions'}</>
+                            )}
+                          </span>
+                        );
+                      })()}
                       {(() => {
                         const annotation = getSectionAnnotation(sectionId);
                         if (annotation) {
@@ -332,12 +353,9 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
                                   {(() => {
                                     const annotation = getQuestionAnnotation(questionId);
                                     if (annotation) {
+                                      // Show only AI indicator in list view (labels shown in expanded detail view)
                                       return (
                                         <div className="flex items-center space-x-1 flex-shrink-0 ml-2">
-                                          {/* Always show yellow Annotated tag */}
-                                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                            <TagIcon className="w-3 h-3" />
-                                          </span>
                                           {/* Show AI indicator if AI generated */}
                                           {annotation.aiGenerated && (
                                             <>

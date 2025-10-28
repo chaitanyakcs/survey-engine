@@ -13,6 +13,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/golden-content", tags=["Golden Content"])
 
 
+def parse_labels_to_list(labels_field) -> List[str]:
+    """Parse labels field (which can be dict, list, string, or None) to List[str]"""
+    if labels_field is None:
+        return []
+    if isinstance(labels_field, list):
+        # If it's already a list, convert all items to strings
+        return [str(item) for item in labels_field]
+    if isinstance(labels_field, dict):
+        # If it's a dict, extract the values or keys
+        return [str(v) for v in labels_field.values() if v]
+    if isinstance(labels_field, str):
+        # If it's a string, return as single-item list
+        return [labels_field]
+    return []
+
+
 class GoldenSectionResponse(BaseModel):
     id: str
     section_id: str
@@ -138,7 +154,7 @@ async def list_golden_sections(
                 quality_score=float(section.quality_score) if section.quality_score else None,
                 usage_count=section.usage_count,
                 human_verified=section.human_verified,
-                labels=section.labels if isinstance(section.labels, dict) else {},
+                labels=parse_labels_to_list(section.labels),
                 created_at=section.created_at.isoformat(),
                 updated_at=section.updated_at.isoformat()
             )
@@ -179,7 +195,7 @@ async def get_golden_section(
             quality_score=float(section.quality_score) if section.quality_score else None,
             usage_count=section.usage_count,
             human_verified=section.human_verified,
-            labels=section.labels or {},
+            labels=parse_labels_to_list(section.labels),
             created_at=section.created_at.isoformat(),
             updated_at=section.updated_at.isoformat()
         )
@@ -225,7 +241,7 @@ async def update_golden_section(
             quality_score=float(section.quality_score) if section.quality_score else None,
             usage_count=section.usage_count,
             human_verified=section.human_verified,
-            labels=section.labels or {},
+            labels=parse_labels_to_list(section.labels),
             created_at=section.created_at.isoformat(),
             updated_at=section.updated_at.isoformat()
         )
@@ -313,7 +329,7 @@ async def list_golden_questions(
                 quality_score=float(question.quality_score) if question.quality_score else None,
                 usage_count=question.usage_count,
                 human_verified=question.human_verified,
-                labels=question.labels if question.labels else [],
+                labels=parse_labels_to_list(question.labels),
                 created_at=question.created_at.isoformat(),
                 updated_at=question.updated_at.isoformat()
             )
@@ -354,7 +370,7 @@ async def get_golden_question(
             quality_score=float(question.quality_score) if question.quality_score else None,
             usage_count=question.usage_count,
             human_verified=question.human_verified,
-            labels=question.labels if isinstance(question.labels, dict) else {},
+            labels=parse_labels_to_list(question.labels),
             created_at=question.created_at.isoformat(),
             updated_at=question.updated_at.isoformat()
         )
@@ -400,7 +416,7 @@ async def update_golden_question(
             quality_score=float(question.quality_score) if question.quality_score else None,
             usage_count=question.usage_count,
             human_verified=question.human_verified,
-            labels=question.labels if isinstance(question.labels, dict) else {},
+            labels=parse_labels_to_list(question.labels),
             created_at=question.created_at.isoformat(),
             updated_at=question.updated_at.isoformat()
         )

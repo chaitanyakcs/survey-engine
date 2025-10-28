@@ -50,7 +50,7 @@ class EvaluationSettings(BaseModel):
         return v
 
 class RFQParsingSettings(BaseModel):
-    parsing_model: str = "openai/gpt-4o-mini"
+    parsing_model: str = "openai/gpt-5"
 
 class CostMetrics(BaseModel):
     daily_cost: float

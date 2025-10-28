@@ -5,7 +5,7 @@ import { PromptPreview } from './PromptPreview';
 
 interface PreGenerationPreviewProps {
   rfq: EnhancedRFQRequest;
-  onGenerate?: () => void;
+  onGenerate?: (customPrompt?: string) => void;
   onEdit?: () => void;
 }
 
@@ -27,6 +27,7 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
   const { submitEnhancedRFQ, workflow } = useAppStore();
   const [estimatedMetrics, setEstimatedMetrics] = useState<EstimatedMetrics | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'prompt'>('overview');
+  const [customPrompt, setCustomPrompt] = useState<string | null>(null);
 
   const calculateEstimates = useCallback(() => {
     // Simulate AI-powered estimation logic
@@ -68,11 +69,16 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
     calculateEstimates();
   }, [calculateEstimates]);
 
+  const handlePromptEdited = (editedPrompt: string) => {
+    setCustomPrompt(editedPrompt);
+    console.log('✅ [PreGenerationPreview] Custom prompt saved:', editedPrompt.length, 'chars');
+  };
+
   const handleGenerate = async () => {
     if (onGenerate) {
-      onGenerate();
+      onGenerate(customPrompt || undefined);
     } else {
-      await submitEnhancedRFQ(rfq);
+      await submitEnhancedRFQ(rfq, customPrompt || undefined);
     }
   };
 
@@ -125,12 +131,12 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                 </nav>
                 
                 {/* Action Buttons */}
-                <div className="flex space-x-3">
+                <div className="flex items-center space-x-3">
                   <button
                     onClick={onEdit}
                     className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
                   >
-                    Edit
+                    Edit RFQ
                   </button>
                   <button
                     onClick={handleGenerate}
@@ -141,8 +147,14 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                         : 'bg-gradient-to-r from-yellow-600 to-amber-600 text-white hover:shadow-lg transform hover:scale-105'
                     }`}
                   >
-                    {isLoading ? 'Generating...' : 'Generate'}
+                    {isLoading ? 'Generating...' : customPrompt ? 'Generate with Custom Prompt' : 'Generate Survey'}
                   </button>
+                  {customPrompt && (
+                    <span className="px-3 py-1 bg-green-100 text-green-800 text-xs rounded-full font-medium flex items-center">
+                      <span className="mr-1">✏️</span>
+                      Custom Prompt Active
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -909,7 +921,7 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
 
           {activeTab === 'prompt' && (onGenerate || onEdit) && (
             <div className="space-y-6">
-              <PromptPreview rfq={rfq} />
+              <PromptPreview rfq={rfq} onPromptEdited={handlePromptEdited} />
             </div>
           )}
 

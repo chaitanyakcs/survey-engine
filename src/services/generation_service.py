@@ -194,9 +194,9 @@ class GenerationService:
                 )
 
             if system_prompt:
-                logger.debug(
-                    "Using custom system prompt from human review",
-                    extra={"prompt_length": len(system_prompt)},
+                logger.info(
+                    "🎨 [GenerationService] Using CUSTOM SYSTEM PROMPT from user edit",
+                    extra={"prompt_length": len(system_prompt), "custom_prompt_preview": system_prompt[:200]},
                 )
                 prompt = system_prompt
             else:
@@ -216,6 +216,9 @@ class GenerationService:
                 "Prompt statistics",
                 extra={"prompt_length": len(prompt)},
             )
+            
+            logger.info(f"🔍 [GenerationService] Storing CUSTOM prompt in LLM audit (length: {len(prompt)})")
+            logger.info(f"🔍 [GenerationService] Custom prompt preview: {prompt[:200]}...")
 
             interaction_id = f"survey_generation_{uuid.uuid4().hex[:8]}"
             audit_service = LLMAuditService(self.db_session)

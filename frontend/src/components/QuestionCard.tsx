@@ -223,19 +223,32 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               <TagIcon className="w-3 h-3" />
             </span>
           )}
-          {/* Display auto-detected labels */}
-          {question.labels && question.labels.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1">
-              {question.labels.map((label, index) => (
-                <span 
-                  key={index}
-                  className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
-                >
-                  {label}
-                </span>
-              ))}
-            </div>
-          )}
+          {/* Display labels from annotations (single source of truth) */}
+          {(() => {
+            // Use annotation labels if available, otherwise show nothing
+            const labels = annotation?.labels;
+            const removedLabels = new Set(annotation?.removedLabels || []);
+            
+            if (labels && Array.isArray(labels) && labels.length > 0) {
+              const visibleLabels = labels.filter(label => !removedLabels.has(label));
+              
+              if (visibleLabels.length > 0) {
+                return (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {visibleLabels.map((label, index) => (
+                      <span 
+                        key={index}
+                        className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                      >
+                        {label}
+                      </span>
+                    ))}
+                  </div>
+                );
+              }
+            }
+            return null;
+          })()}
         </div>
         
         <div className="flex items-center space-x-2">
@@ -590,6 +603,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               <MatrixLikert 
                 question={question} 
                 isPreview={true}
+                showQuestionText={!isAnnotationMode}
               />
             )}
             
@@ -597,6 +611,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               <ConstantSum 
                 question={question} 
                 isPreview={true}
+                showQuestionText={!isAnnotationMode}
               />
             )}
             
@@ -604,6 +619,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               <GaborGranger 
                 question={question} 
                 isPreview={true}
+                showQuestionText={!isAnnotationMode}
               />
             )}
             
@@ -611,6 +627,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               <NumericGrid 
                 question={question} 
                 isPreview={true}
+                showQuestionText={!isAnnotationMode}
               />
             )}
             
@@ -618,6 +635,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               <NumericOpen 
                 question={question} 
                 isPreview={true}
+                showQuestionText={!isAnnotationMode}
               />
             )}
             
@@ -943,9 +961,11 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             {/* Van Westendorp Questions */}
             {question.type === 'van_westendorp' && (
               <div className="space-y-3">
-                <div className="text-base font-medium text-gray-900">
-                  {question.text}
-                </div>
+                {!isAnnotationMode && (
+                  <div className="text-base font-medium text-gray-900">
+                    {question.text}
+                  </div>
+                )}
                 <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
                   <div className="text-sm font-medium text-orange-900 mb-2">Van Westendorp Price Sensitivity</div>
                   <div className="text-xs text-orange-800">
@@ -967,9 +987,11 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             {/* Dropdown Questions */}
             {question.type === 'dropdown' && (
               <div className="space-y-3">
-                <div className="text-base font-medium text-gray-900">
-                  {question.text}
-                </div>
+                {!isAnnotationMode && (
+                  <div className="text-base font-medium text-gray-900">
+                    {question.text}
+                  </div>
+                )}
                 <div className="relative">
                   <select
                     disabled={true}
@@ -989,9 +1011,11 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             {/* Conjoint Questions */}
             {question.type === 'conjoint' && (
               <div className="space-y-3">
-                <div className="text-base font-medium text-gray-900">
-                  {question.text}
-                </div>
+                {!isAnnotationMode && (
+                  <div className="text-base font-medium text-gray-900">
+                    {question.text}
+                  </div>
+                )}
                 <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
                   <div className="text-sm font-medium text-purple-900 mb-2">Conjoint Analysis</div>
                   <div className="text-xs text-purple-800">

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import AnnotationMode from '../components/AnnotationMode';
 
@@ -198,6 +198,41 @@ const AnnotationPage: React.FC = () => {
     }
   };
 
+  // Calculate total questions and instructions
+  const countData = useMemo(() => {
+    if (!currentSurvey) return { questions: 0, instructions: 0 };
+    
+    let totalQuestions = 0;
+    let totalInstructions = 0;
+    
+    if (currentSurvey.sections && currentSurvey.sections.length > 0) {
+      currentSurvey.sections.forEach(section => {
+        section.questions?.forEach(q => {
+          if (q.type === 'instruction') {
+            totalInstructions++;
+          } else {
+            totalQuestions++;
+          }
+        });
+        if (section.introText?.type === 'instruction') totalInstructions++;
+        if (section.closingText?.type === 'instruction') totalInstructions++;
+        if (section.textBlocks) {
+          totalInstructions += section.textBlocks.filter(tb => tb.type === 'instruction').length;
+        }
+      });
+    } else if (currentSurvey.questions) {
+      currentSurvey.questions.forEach(q => {
+        if (q.type === 'instruction') {
+          totalInstructions++;
+        } else {
+          totalQuestions++;
+        }
+      });
+    }
+    
+    return { questions: totalQuestions, instructions: totalInstructions };
+  }, [currentSurvey]);
+
   if (loading) {
     return (
       <div className="h-screen flex items-center justify-center bg-gray-50">
@@ -261,6 +296,13 @@ const AnnotationPage: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-900">
             {currentSurvey.title || 'Survey Annotation'}
           </h1>
+          {/* Total questions and instructions count */}
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200">
+            {countData.questions} {countData.questions === 1 ? 'Question' : 'Questions'}
+            {countData.instructions > 0 && (
+              <> • {countData.instructions} {countData.instructions === 1 ? 'Instruction' : 'Instructions'}</>
+            )}
+          </span>
         </div>
       </div>
       

@@ -175,6 +175,27 @@ const SectionCard: React.FC<{
                     {section.title}
                   </h3>
                 )}
+                {/* Question and instruction count badge */}
+                {(() => {
+                  const questionsCount = section.questions?.filter(q => q.type !== 'instruction').length || 0;
+                  // Count instruction-type questions
+                  const instructionQuestions = section.questions?.filter(q => q.type === 'instruction').length || 0;
+                  // Count instruction-type text blocks
+                  const instructionTextBlocks = 
+                    (section.introText?.type === 'instruction' ? 1 : 0) +
+                    (section.textBlocks?.filter(tb => tb.type === 'instruction').length || 0) +
+                    (section.closingText?.type === 'instruction' ? 1 : 0);
+                  const totalInstructions = instructionQuestions + instructionTextBlocks;
+                  
+                  return (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      {questionsCount} {questionsCount === 1 ? 'Question' : 'Questions'}
+                      {totalInstructions > 0 && (
+                        <> • {totalInstructions} {totalInstructions === 1 ? 'Instruction' : 'Instructions'}</>
+                      )}
+                    </span>
+                  );
+                })()}
                 {sectionAnnotation && (
                   <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
                     <TagIcon className="w-3 h-3" />

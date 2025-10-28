@@ -8,9 +8,10 @@ interface ConstantSumProps {
     required?: boolean;
   };
   isPreview?: boolean;
+  showQuestionText?: boolean;
 }
 
-const ConstantSum: React.FC<ConstantSumProps> = ({ question, isPreview = true }) => {
+const ConstantSum: React.FC<ConstantSumProps> = ({ question, isPreview = true, showQuestionText = true }) => {
   // Parse the question text to extract attributes and total points
   const parseConstantSumQuestion = (text: string) => {
     // Look for patterns like "allocate 100 points across the following features"
@@ -108,6 +109,13 @@ const ConstantSum: React.FC<ConstantSumProps> = ({ question, isPreview = true })
 
   return (
     <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
+      {/* Display the actual question text - only if showQuestionText is true */}
+      {showQuestionText && (
+        <div className="text-base font-semibold text-gray-900 mb-3">
+          {question.text}
+        </div>
+      )}
+      
       <div className="text-sm font-medium text-gray-800 mb-4">
         Constant Sum Question
       </div>

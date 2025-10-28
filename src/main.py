@@ -103,7 +103,7 @@ app.include_router(settings_router.router, prefix="/api/v1")
 app.include_router(export.router, prefix="/api/v1")
 app.include_router(retrieval_weights.router)
 app.include_router(admin.router)
-app.include_router(qnr_labels.router)
+app.include_router(qnr_labels.router, prefix="/api/v1")
 app.include_router(survey_quality.router)
 
 

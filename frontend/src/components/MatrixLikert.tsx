@@ -8,9 +8,10 @@ interface MatrixLikertProps {
     required?: boolean;
   };
   isPreview?: boolean;
+  showQuestionText?: boolean;
 }
 
-const MatrixLikert: React.FC<MatrixLikertProps> = ({ question, isPreview = true }) => {
+const MatrixLikert: React.FC<MatrixLikertProps> = ({ question, isPreview = true, showQuestionText = true }) => {
   // Parse the question text to extract attributes (comma-separated after question mark, colon, or period)
   const extractAttributes = (text: string): string[] => {
     // Look for comma-separated attributes after question mark, colon, or period
@@ -144,6 +145,13 @@ const MatrixLikert: React.FC<MatrixLikertProps> = ({ question, isPreview = true 
   return (
     <div className="overflow-x-auto">
       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+        {/* Display the actual question text - only if showQuestionText is true */}
+        {showQuestionText && (
+          <div className="text-base font-semibold text-gray-900 mb-3">
+            {question.text}
+          </div>
+        )}
+        
         <div className="text-sm font-medium text-gray-800 mb-4">
           Matrix Likert Scale Question
         </div>

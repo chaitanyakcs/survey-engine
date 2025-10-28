@@ -1130,7 +1130,7 @@ async def get_survey_llm_audits(
 ) -> List[Dict[str, Any]]:
     """
     Get all LLM audit records for a specific survey.
-    Returns chronologically ordered list of all AI interactions including generation and evaluations.
+    Returns chronologically ordered list of all AI interactions including generation, evaluations, and RFQ parsing.
     """
     logger.info(f"🔍 [Survey API] Fetching LLM audits for survey: {survey_id}")
     
@@ -1145,7 +1145,64 @@ async def get_survey_llm_audits(
             LLMAudit.parent_survey_id == str(survey_id)
         ).order_by(LLMAudit.created_at.asc()).all()
         
-        logger.info(f"📊 [Survey API] Found {len(audit_records)} LLM audit records for survey {survey_id}")
+        logger.info(f"📊 [Survey API] Found {len(audit_records)} LLM audit records directly linked to survey {survey_id}")
+        
+        # Also query RFQ parsing audits if the survey has an RFQ
+        if survey.rfq_id:
+            # Query audits linked by parent_rfq_id
+            rfq_parsing_audits = db.query(LLMAudit).filter(
+                LLMAudit.parent_rfq_id == survey.rfq_id
+            ).order_by(LLMAudit.created_at.asc()).all()
+            
+            logger.info(f"📊 [Survey API] Found {len(rfq_parsing_audits)} RFQ parsing audit records for RFQ {survey.rfq_id}")
+            
+            # Combine both sets of audits and sort by timestamp
+            all_audit_ids = set(str(r.id) for r in audit_records)
+            for rfq_audit in rfq_parsing_audits:
+                if str(rfq_audit.id) not in all_audit_ids:
+                    audit_records.append(rfq_audit)
+                    all_audit_ids.add(str(rfq_audit.id))
+            
+            # Try to find document parsing audits by looking at the RFQ
+            from src.database.models import RFQ
+            rfq_obj = db.query(RFQ).filter(RFQ.id == survey.rfq_id).first()
+            
+            # Check if RFQ was created from a document upload
+            is_document_upload = False
+            if rfq_obj and rfq_obj.document_upload_id:
+                is_document_upload = True
+                logger.info(f"🔍 [Survey API] RFQ has document_upload_id: {rfq_obj.document_upload_id}")
+            elif rfq_obj and rfq_obj.enhanced_rfq_data:
+                # Check if rfq_data indicates document upload
+                doc_source = rfq_obj.enhanced_rfq_data.get('document_source')
+                if doc_source and doc_source.get('type') == 'upload':
+                    is_document_upload = True
+                    logger.info(f"🔍 [Survey API] RFQ was created from document upload: {doc_source.get('filename')}")
+            
+            if is_document_upload and rfq_obj:
+                # Query for audits created around the time of document parsing
+                # Document parsing audits don't have parent_rfq_id set, so we look by purpose
+                # and approximate timestamp matching (within 30 minutes before RFQ creation)
+                from datetime import timedelta
+                if rfq_obj.created_at:
+                    # Find document parsing audits created before this RFQ (doc parsing happens first)
+                    doc_parsing_audits = db.query(LLMAudit).filter(
+                        LLMAudit.purpose == "document_parsing",
+                        LLMAudit.created_at <= rfq_obj.created_at,
+                        LLMAudit.created_at >= rfq_obj.created_at - timedelta(hours=24)  # Look back up to 24 hours
+                    ).order_by(LLMAudit.created_at.desc()).limit(10).all()  # Get most recent 10
+                    
+                    logger.info(f"📊 [Survey API] Found {len(doc_parsing_audits)} document parsing audit records near RFQ creation time")
+                    
+                    for doc_audit in doc_parsing_audits:
+                        if str(doc_audit.id) not in all_audit_ids:
+                            audit_records.append(doc_audit)
+                            all_audit_ids.add(str(doc_audit.id))
+            
+            # Re-sort by created_at after combining
+            audit_records.sort(key=lambda r: r.created_at)
+        
+        logger.info(f"📊 [Survey API] Total audit records including RFQ parsing: {len(audit_records)}")
         
         # Helper function to parse raw_response
         def parse_raw_response(raw_response: str) -> Any:

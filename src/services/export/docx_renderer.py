@@ -664,23 +664,32 @@ class DocxSurveyRenderer(SurveyExportRenderer):
         doc.add_paragraph("")
 
     def _render_numeric_open(self, question: Dict[str, Any]) -> None:
-        """Render numeric open question with currency detection."""
+        """Render numeric open question (currency detected only when context suggests it)."""
         self._add_question_header(question)
         self._add_required_indicator(question)
 
         text = question.get("text", "")
         methodology = question.get("methodology", "")
+        numeric_type = question.get("numeric_type", "")
 
         # Detect currency
         currency_match = re.search(r'[£$€¥₹]', text)
+        has_currency_symbol = currency_match is not None
         currency = currency_match.group(0) if currency_match else "$"
 
         # Detect unit
         unit_match = re.search(r'per\s+([^,.?]+)', text, re.IGNORECASE)
         unit = unit_match.group(1).strip() if unit_match else ""
 
-        # Check for Van Westendorp
+        # Check for Van Westendorp or explicit currency context
         is_van_westendorp = 'van_westendorp' in methodology.lower() or 'van westendorp' in text.lower()
+        
+        # Determine if this is a currency question
+        is_currency_question = (
+            is_van_westendorp or 
+            numeric_type == 'currency' or
+            (has_currency_symbol and any(kw in text.lower() for kw in ['price', 'cost', 'amount', 'budget', 'pay', 'spend']))
+        )
 
         doc = self._get_document()
         if is_van_westendorp:
@@ -690,12 +699,20 @@ class DocxSurveyRenderer(SurveyExportRenderer):
             guidance_paragraph = doc.add_paragraph()
             guidance_paragraph.add_run("Please think about the price point where you would have the described reaction to the product. Consider your local market conditions and personal budget.").italic = True
 
-        # Currency and amount input
+        # Render input based on question type
         input_paragraph = doc.add_paragraph()
-        currency_text = f"Currency: {currency}    Amount: {currency}_________"
-        if unit:
-            currency_text += f" per {unit}"
-        input_paragraph.add_run(currency_text)
+        if is_currency_question:
+            # Currency and amount input for currency questions
+            currency_text = f"Currency: {currency}    Amount: {currency}_________"
+            if unit:
+                currency_text += f" per {unit}"
+            input_paragraph.add_run(currency_text)
+        else:
+            # Generic number input for non-currency numeric questions
+            numeric_text = "Value: _________"
+            if unit:
+                numeric_text += f" {unit}"
+            input_paragraph.add_run(numeric_text)
 
         doc.add_paragraph("")
 

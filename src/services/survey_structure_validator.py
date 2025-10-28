@@ -7,8 +7,9 @@ from typing import Dict, List, Optional, Set
 import logging
 from dataclasses import dataclass
 from enum import Enum
+from sqlalchemy.orm import Session
 
-from src.services.qnr_label_taxonomy import QNRLabelTaxonomy
+from src.services.qnr_label_service import QNRLabelService
 from src.services.question_label_detector import QuestionLabelDetector
 
 logger = logging.getLogger(__name__)
@@ -119,9 +120,10 @@ class StructureValidationReport:
 class SurveyStructureValidator:
     """Non-blocking survey structure validation"""
     
-    def __init__(self, db_session=None):
-        self.taxonomy = QNRLabelTaxonomy()
-        self.detector = QuestionLabelDetector(self.taxonomy)
+    def __init__(self, db_session: Optional[Session] = None):
+        self.db_session = db_session
+        self.qnr_service = QNRLabelService(db_session) if db_session else None
+        self.detector = QuestionLabelDetector() if db_session else None
     
     async def validate_structure(self, survey_json: Dict, 
                                  rfq_context: Dict) -> StructureValidationReport:
@@ -205,23 +207,28 @@ class SurveyStructureValidator:
         issues = []
         section_id = section.get('id')
         
-        # Get required labels for this section
-        required_labels = self.taxonomy.get_required_labels(
+        # Get required labels for this section (deterministic filtering for validation)
+        if not self.qnr_service:
+            logger.warning("QNR service not available, skipping validation")
+            return [], 1.0, []
+        
+        required_labels = self.qnr_service.get_required_labels(
             section_id, methodology, industry
         )
         
         # Check for missing required labels
         missing = []
-        for label_def in required_labels:
-            if label_def.name not in detected:
-                missing.append(label_def.name)
+        for label_dict in required_labels:
+            label_name = label_dict['name']
+            if label_name not in detected:
+                missing.append(label_name)
                 
                 # Determine severity
-                if self.taxonomy.is_critical_screener_label(label_def.name):
+                if self._is_critical_screener_label(label_name):
                     severity = IssueSeverity.CRITICAL
-                elif label_def.name.startswith('VW_Price_'):
+                elif label_name.startswith('VW_Price_'):
                     severity = IssueSeverity.ERROR
-                elif label_def.name in ['Brand_Awareness_Funnel', 'Product_Satisfaction']:
+                elif label_name in ['Brand_Awareness_Funnel', 'Product_Satisfaction']:
                     severity = IssueSeverity.WARNING
                 else:
                     severity = IssueSeverity.WARNING
@@ -229,9 +236,9 @@ class SurveyStructureValidator:
                 issues.append(ValidationIssue(
                     severity=severity,
                     section_id=section_id,
-                    label=label_def.name,
-                    message=f"Missing required label: {label_def.name}",
-                    suggestion=f"Add question for: {label_def.description}"
+                    label=label_name,
+                    message=f"Missing required label: {label_name}",
+                    suggestion=f"Add question for: {label_dict.get('description', '')}"
                 ))
         
         # Calculate section score
@@ -242,11 +249,23 @@ class SurveyStructureValidator:
         
         return issues, score, missing
     
+    def _is_critical_screener_label(self, label_name: str) -> bool:
+        """Check if a label is critical for screening"""
+        critical_labels = [
+            'Recent_Participation',
+            'CoI_Check',
+            'Category_Usage_Frequency',
+            'Demog_Basic'
+        ]
+        return label_name in critical_labels
+    
     def _validate_van_westendorp(self, detected_labels: Dict[int, Set[str]]) -> tuple:
         """Validate Van Westendorp 4-price requirement"""
         issues = []
         
-        required_vw = self.taxonomy.get_van_westendorp_labels()
+        # Van Westendorp requires 4 price questions
+        required_vw = ['VW_Price_Too_Expensive', 'VW_Price_Too_Cheap', 
+                      'VW_Price_Expensive', 'VW_Price_Bargain']
         
         # Check methodology section (id=5)
         methodology_labels = detected_labels.get(5, set())
@@ -334,20 +353,24 @@ class SurveyStructureValidator:
     def validate_single_question(self, question: Dict, section_id: int) -> List[ValidationIssue]:
         """Validate a single question for label compliance"""
         issues = []
+        if not self.detector or not self.qnr_service:
+            return issues
+        
         detected_labels = self.detector.detect_labels_in_question(question)
         
-        # Get required labels for this section
-        required_labels = self.taxonomy.get_required_labels(section_id)
+        # Get required labels for this section (no context - basic check only)
+        required_labels = self.qnr_service.get_required_labels(section_id)
         
         # Check if any required labels are missing
-        for label_def in required_labels:
-            if label_def.name not in detected_labels and label_def.mandatory:
+        for label_dict in required_labels:
+            label_name = label_dict['name']
+            if label_name not in detected_labels and label_dict.get('mandatory'):
                 issues.append(ValidationIssue(
                     severity=IssueSeverity.WARNING,
                     section_id=section_id,
-                    label=label_def.name,
-                    message=f"Question may be missing required label: {label_def.name}",
-                    suggestion=f"Consider adding: {label_def.description}"
+                    label=label_name,
+                    message=f"Question may be missing required label: {label_name}",
+                    suggestion=f"Consider adding: {label_dict.get('description', '')}"
                 ))
         
         return issues

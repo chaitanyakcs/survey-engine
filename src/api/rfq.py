@@ -27,6 +27,7 @@ class RFQSubmissionRequest(BaseModel):
     target_segment: Optional[str] = None
     research_goal: Optional[str] = None
     enhanced_rfq_data: Optional[dict] = None  # Optional structured Enhanced RFQ data
+    custom_prompt: Optional[str] = None  # Custom edited prompt for survey generation
 
 
 class RFQSubmissionResponse(BaseModel):
@@ -148,6 +149,11 @@ async def submit_rfq(
             # Initialize workflow service with connection manager
             workflow_service = WorkflowService(db, manager)
             
+            # Extract custom prompt if provided
+            custom_prompt = request.custom_prompt if hasattr(request, 'custom_prompt') else None
+            if custom_prompt:
+                logger.info(f"🎨 [RFQ API] Custom prompt detected in basic RFQ: {len(custom_prompt)} chars")
+            
             # Start workflow processing in background with a small delay to ensure WebSocket connection
             asyncio.create_task(process_rfq_workflow_async(
                 workflow_service=workflow_service,
@@ -157,7 +163,8 @@ async def submit_rfq(
                 target_segment=request.target_segment,
                 research_goal=request.research_goal,
                 workflow_id=workflow_id,
-                survey_id=str(survey.id)
+                survey_id=str(survey.id),
+                custom_prompt=custom_prompt
             ))
             
             logger.info(f"✅ [RFQ API] Workflow processing started in background: workflow_id={workflow_id}")
@@ -191,7 +198,8 @@ async def process_rfq_workflow_async(
     target_segment: str,
     research_goal: str,
     workflow_id: str,
-    survey_id: str
+    survey_id: str,
+    custom_prompt: Optional[str] = None
 ):
     """
     Process RFQ workflow asynchronously with detailed logging
@@ -214,7 +222,8 @@ async def process_rfq_workflow_async(
             target_segment=target_segment,
             research_goal=research_goal,
             workflow_id=workflow_id,
-            survey_id=survey_id
+            survey_id=survey_id,
+            custom_prompt=custom_prompt
         )
         
         logger.info(f"✅ [Async Workflow] Workflow completed successfully: {result.status}")
@@ -609,18 +618,24 @@ async def submit_enhanced_rfq(
 
         logger.info(f"✅ [Enhanced RFQ API] Validation successful, populated fields: {field_count}")
 
-        # Extract legacy fields for backward compatibility
+            # Extract legacy fields for backward compatibility
         legacy_fields = extract_legacy_fields(validated_rfq)
 
-        # Extract unmapped_context if present in validated_rfq
-        unmapped_context = validated_rfq.model_dump().get('unmapped_context', '')
+        # Extract unmapped_context and custom_prompt if present in validated_rfq
+        request_dict = request.model_dump()
+        unmapped_context = request_dict.get('unmapped_context', '')
+        custom_prompt = request_dict.get('custom_prompt')
+        
         if unmapped_context:
             logger.info(f"📝 [Enhanced RFQ API] Found unmapped_context: {len(unmapped_context)} characters")
-            # Ensure unmapped_context is included in the stored enhanced_rfq_data
-            validated_rfq_dict = validated_rfq.model_dump()
+            
+        if custom_prompt:
+            logger.info(f"🎨 [Enhanced RFQ API] Custom prompt detected in request: {len(custom_prompt)} chars")
+        
+        # Ensure unmapped_context is included in the stored enhanced_rfq_data
+        validated_rfq_dict = validated_rfq.model_dump()
+        if unmapped_context:
             validated_rfq_dict['unmapped_context'] = unmapped_context
-        else:
-            validated_rfq_dict = validated_rfq.model_dump()
 
         # Generate unique IDs
         workflow_id = f"enhanced-survey-gen-{str(uuid4())}"
@@ -631,18 +646,45 @@ async def submit_enhanced_rfq(
         # Create RFQ record with enhanced data
         logger.info("💾 [Enhanced RFQ API] Creating Enhanced RFQ database record")
 
+        # Extract document_upload_id from document_source if present
+        document_upload_id = None
+        doc_source = validated_rfq_dict.get('document_source')
+        if doc_source and doc_source.get('type') == 'upload':
+            # Try to find the document upload record by filename or upload_id
+            from src.database.models import DocumentUpload
+            upload_id = doc_source.get('upload_id')
+            filename = doc_source.get('filename')
+            
+            if upload_id:
+                # Try to find by upload_id (could be document_uploads.id UUID or filename)
+                document_upload = db.query(DocumentUpload).filter(
+                    (DocumentUpload.id == upload_id) | (DocumentUpload.filename == upload_id)
+                ).first()
+                if document_upload:
+                    document_upload_id = document_upload.id
+                    logger.info(f"🔍 [Enhanced RFQ API] Found document upload by upload_id: {upload_id}")
+            elif filename:
+                # Try to find by filename
+                document_upload = db.query(DocumentUpload).filter(
+                    DocumentUpload.filename == filename
+                ).order_by(DocumentUpload.created_at.desc()).first()
+                if document_upload:
+                    document_upload_id = document_upload.id
+                    logger.info(f"🔍 [Enhanced RFQ API] Found document upload by filename: {filename}")
+        
         rfq = RFQ(
             title=legacy_fields["title"],
             description=legacy_fields["description"],
             product_category=legacy_fields["product_category"],
             target_segment=legacy_fields["target_segment"],
             research_goal=legacy_fields["research_goal"],
-            enhanced_rfq_data=validated_rfq_dict  # Store complete enhanced data with unmapped_context
+            enhanced_rfq_data=validated_rfq_dict,  # Store complete enhanced data with unmapped_context
+            document_upload_id=document_upload_id  # Link to source document if available
         )
         db.add(rfq)
         db.commit()
         db.refresh(rfq)
-        logger.info(f"✅ [Enhanced RFQ API] Enhanced RFQ record created with ID: {rfq.id}")
+        logger.info(f"✅ [Enhanced RFQ API] Enhanced RFQ record created with ID: {rfq.id}, document_upload_id: {document_upload_id}")
 
         # Create initial survey record
         logger.info("💾 [Enhanced RFQ API] Creating initial Survey database record")
@@ -677,12 +719,17 @@ async def submit_enhanced_rfq(
             # Initialize workflow service with connection manager
             workflow_service = WorkflowService(db, manager)
 
+            # custom_prompt already extracted above
+            if custom_prompt:
+                logger.info(f"🎨 [Enhanced RFQ API] Passing custom prompt to workflow: {len(custom_prompt)} chars")
+            
             # Start enhanced workflow processing in background
             asyncio.create_task(process_enhanced_rfq_workflow_async(
                 workflow_service=workflow_service,
                 enhanced_rfq=validated_rfq,
                 workflow_id=workflow_id,
-                survey_id=str(survey.id)
+                survey_id=str(survey.id),
+                custom_prompt=custom_prompt
             ))
 
             logger.info(f"✅ [Enhanced RFQ API] Enhanced workflow processing started in background: workflow_id={workflow_id}")
@@ -715,7 +762,8 @@ async def process_enhanced_rfq_workflow_async(
     workflow_service,
     enhanced_rfq: EnhancedRFQRequest,
     workflow_id: str,
-    survey_id: str
+    survey_id: str,
+    custom_prompt: Optional[str] = None
 ):
     """
     Process Enhanced RFQ workflow asynchronously with enhanced data context
@@ -725,6 +773,9 @@ async def process_enhanced_rfq_workflow_async(
 
     try:
         logger.info(f"🚀 [Enhanced Async Workflow] Starting Enhanced RFQ processing: title='{enhanced_rfq.title}', workflow_id={workflow_id}")
+        
+        if custom_prompt:
+            logger.info(f"🎨 [Enhanced Async Workflow] Custom prompt provided: {len(custom_prompt)} chars")
 
         # Add a small delay to ensure WebSocket connection is established
         logger.info("⏳ [Enhanced Async Workflow] Waiting 2 seconds for WebSocket connection to establish...")
@@ -742,7 +793,8 @@ async def process_enhanced_rfq_workflow_async(
             legacy_target_segment=legacy_fields["target_segment"],
             legacy_research_goal=legacy_fields["research_goal"],
             workflow_id=workflow_id,
-            survey_id=survey_id
+            survey_id=survey_id,
+            custom_prompt=custom_prompt
         )
 
         logger.info(f"✅ [Enhanced Async Workflow] Enhanced workflow completed successfully: {result.status}")
@@ -907,9 +959,10 @@ async def preview_survey_generation_prompt(
                 validated_rfq = validate_enhanced_rfq(request.enhanced_rfq_data)
                 enhanced_rfq_used = True
                 
-                # Extract methodology tags from enhanced RFQ
-                if validated_rfq.get('methodology') and validated_rfq['methodology'].get('methodology_tags'):
-                    methodology_tags = validated_rfq['methodology']['methodology_tags']
+                # Extract methodology tags from enhanced RFQ (convert to dict first)
+                validated_rfq_dict = validated_rfq.model_dump()
+                if validated_rfq_dict.get('methodology') and validated_rfq_dict['methodology'].get('methodology_tags'):
+                    methodology_tags = validated_rfq_dict['methodology']['methodology_tags']
                     logger.info(f"📊 [RFQ API] Extracted methodology tags from enhanced RFQ: {methodology_tags}")
             except Exception as e:
                 logger.warning(f"⚠️ [RFQ API] Failed to validate enhanced RFQ data: {str(e)}")

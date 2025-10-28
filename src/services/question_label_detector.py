@@ -6,7 +6,6 @@ Deterministic rule-based pattern matching for QNR label detection
 from typing import Dict, List, Set, Optional
 import re
 import logging
-from src.services.qnr_label_taxonomy import QNRLabelTaxonomy, LabelDefinition
 
 logger = logging.getLogger(__name__)
 
@@ -14,8 +13,10 @@ logger = logging.getLogger(__name__)
 class QuestionLabelDetector:
     """Deterministic rule-based label detection"""
     
-    def __init__(self, taxonomy: QNRLabelTaxonomy):
-        self.taxonomy = taxonomy
+    def __init__(self, qnr_service=None):
+        # qnr_service is optional for future enhancements
+        # Currently detection is purely pattern-based
+        self.qnr_service = qnr_service
         self.patterns = self._build_detection_patterns()
     
     def _build_detection_patterns(self) -> Dict[str, List[Dict]]:

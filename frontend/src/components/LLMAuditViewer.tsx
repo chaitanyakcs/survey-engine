@@ -31,13 +31,15 @@ interface LLMAuditViewerProps {
   title?: string; // Optional custom title
   showSummary?: boolean; // Whether to show the summary sidebar
   initialPurposeFilter?: string; // Initial purpose filter value (e.g., 'evaluation', 'generation')
+  standalone?: boolean; // Whether to show as a standalone page with sidebar (default: true)
 }
 
 export const LLMAuditViewer: React.FC<LLMAuditViewerProps> = ({ 
   surveyId, 
   title = "LLM Audit Viewer",
   showSummary = true,
-  initialPurposeFilter = ''
+  initialPurposeFilter = '',
+  standalone = true
 }) => {
   const [auditRecords, setAuditRecords] = useState<LLMAuditRecord[]>([]);
   const [summary, setSummary] = useState<LLMAuditSummary | null>(null);
@@ -163,7 +165,7 @@ export const LLMAuditViewer: React.FC<LLMAuditViewerProps> = ({
     if (!selectedRecord) return null;
 
     const content = {
-      prompt: selectedRecord.input_prompt.replace(/^[^.]*\.\s*/, ''),
+      prompt: selectedRecord.input_prompt,
       output: selectedRecord.output_content || 'No output available',
       raw_response: selectedRecord.raw_response || 'No raw response available',
       metadata: JSON.stringify({
@@ -220,68 +222,89 @@ export const LLMAuditViewer: React.FC<LLMAuditViewerProps> = ({
   };
 
   if (loading) {
+    const content = (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
+        <span className="ml-3 text-gray-600">Loading audit records...</span>
+      </div>
+    );
+
+    if (!standalone) {
+      return content;
+    }
+
     return (
       <div className="min-h-screen bg-gray-50">
         <Sidebar currentView="llm-review" onViewChange={handleViewChange} />
         <div className={mainContentClasses}>
-          <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
-            <span className="ml-3 text-gray-600">Loading audit records...</span>
-          </div>
+          {content}
         </div>
       </div>
     );
   }
 
   if (error) {
+    const content = (
+      <div className="bg-white rounded-lg p-6 w-full max-w-4xl mx-auto mt-8">
+        <div className="text-center py-8">
+          <div className="text-red-600 mb-2">Error loading audit records</div>
+          <div className="text-gray-600 text-sm">{error}</div>
+          <button
+            onClick={fetchAuditData}
+            className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+
+    if (!standalone) {
+      return content;
+    }
+
     return (
       <div className="min-h-screen bg-gray-50">
         <Sidebar currentView="llm-review" onViewChange={handleViewChange} />
         <div className={mainContentClasses}>
-          <div className="bg-white rounded-lg p-6 w-full max-w-4xl mx-auto mt-8">
-            <div className="text-center py-8">
-              <div className="text-red-600 mb-2">Error loading audit records</div>
-              <div className="text-gray-600 text-sm">{error}</div>
-              <button
-                onClick={fetchAuditData}
-                className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-              >
-                Retry
-              </button>
-            </div>
-          </div>
+          {content}
         </div>
       </div>
     );
   }
 
   if (auditRecords.length === 0) {
+    const content = (
+      <div className="bg-white rounded-lg p-6 w-full max-w-4xl mx-auto mt-8">
+        <div className="text-center py-8">
+          <DocumentTextIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+          <div className="text-gray-600 mb-2">No audit records found</div>
+          <div className="text-gray-500 text-sm">
+            {surveyId 
+              ? "No LLM interactions found for this survey."
+              : "No LLM interactions found with the current filters."
+            }
+          </div>
+        </div>
+      </div>
+    );
+
+    if (!standalone) {
+      return content;
+    }
+
     return (
       <div className="min-h-screen bg-gray-50">
         <Sidebar currentView="llm-review" onViewChange={handleViewChange} />
         <div className={mainContentClasses}>
-          <div className="bg-white rounded-lg p-6 w-full max-w-4xl mx-auto mt-8">
-            <div className="text-center py-8">
-              <DocumentTextIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <div className="text-gray-600 mb-2">No audit records found</div>
-              <div className="text-gray-500 text-sm">
-                {surveyId 
-                  ? "No LLM interactions found for this survey."
-                  : "No LLM interactions found with the current filters."
-                }
-              </div>
-            </div>
-          </div>
+          {content}
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <Sidebar currentView="llm-review" onViewChange={handleViewChange} />
-      <div className={mainContentClasses}>
-        <div className="bg-white w-full h-screen overflow-hidden">
+  const content = (
+    <div className="bg-white w-full h-screen overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-gray-200">
             <div>
@@ -565,7 +588,36 @@ export const LLMAuditViewer: React.FC<LLMAuditViewerProps> = ({
             </div>
           </div>
         </div>
-        </div>
+      </div>
+  );
+
+  if (!standalone) {
+    return (
+      <>
+        {content}
+        {/* Golden Pair Creation Modal */}
+        <CreateGoldenPairModal
+          isOpen={showGoldenPairModal}
+          onClose={() => {
+            setShowGoldenPairModal(false);
+            setSelectedAuditForGolden(null);
+          }}
+          auditRecord={selectedAuditForGolden}
+          onSuccess={() => {
+            // Show success toast
+            console.log('Golden pair created successfully!');
+            // Could add a toast notification here
+          }}
+        />
+      </>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <Sidebar currentView="llm-review" onViewChange={handleViewChange} />
+      <div className={mainContentClasses}>
+        {content}
       </div>
       
       {/* Golden Pair Creation Modal */}

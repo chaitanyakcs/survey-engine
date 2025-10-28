@@ -41,7 +41,7 @@ export const PillarRulesSection: React.FC<PillarRulesSectionProps> = ({
                 <h2 className="text-2xl font-bold text-gray-900">5-Pillar Evaluation Rules</h2>
                 <span className="px-2 py-1 bg-gray-200 text-gray-700 rounded-full text-xs font-medium">NEW</span>
               </div>
-              <p className="text-gray-600 mt-1">Define how surveys are evaluated across 5 dimensions (content validity, methodology, respondent experience, analytical value, business impact). AI uses these criteria to self-assess survey quality.</p>
+              <p className="text-gray-600 mt-1">Customize evaluation criteria for the 5-pillar survey assessment framework</p>
             </div>
           </div>
           <ChevronDownIcon 

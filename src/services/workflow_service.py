@@ -174,7 +174,8 @@ class WorkflowService:
         target_segment: Optional[str],
         research_goal: Optional[str],
         workflow_id: Optional[str] = None,
-        survey_id: Optional[str] = None
+        survey_id: Optional[str] = None,
+        custom_prompt: Optional[str] = None
     ) -> WorkflowResult:
         """
         Process RFQ through the complete LangGraph workflow with robust isolation
@@ -191,7 +192,7 @@ class WorkflowService:
                 return await asyncio.wait_for(
                     self._execute_workflow_with_circuit_breaker(
                         title, description, product_category, target_segment,
-                        research_goal, workflow_id, survey_id
+                        research_goal, workflow_id, survey_id, custom_prompt
                     ),
                     timeout=900.0  # 15 minute timeout
                 )
@@ -229,7 +230,8 @@ class WorkflowService:
         legacy_target_segment: Optional[str],
         legacy_research_goal: Optional[str],
         workflow_id: Optional[str] = None,
-        survey_id: Optional[str] = None
+        survey_id: Optional[str] = None,
+        custom_prompt: Optional[str] = None
     ) -> WorkflowResult:
         """
         Process Enhanced RFQ through the complete LangGraph workflow with enriched context
@@ -248,7 +250,7 @@ class WorkflowService:
                     self._execute_enhanced_workflow_with_circuit_breaker(
                         enhanced_rfq, legacy_title, legacy_description,
                         legacy_product_category, legacy_target_segment,
-                        legacy_research_goal, workflow_id, survey_id
+                        legacy_research_goal, workflow_id, survey_id, custom_prompt
                     ),
                     timeout=600.0  # 10 minute timeout
                 )
@@ -286,7 +288,8 @@ class WorkflowService:
         legacy_target_segment: Optional[str],
         legacy_research_goal: Optional[str],
         workflow_id: str,
-        survey_id: Optional[str]
+        survey_id: Optional[str],
+        custom_prompt: Optional[str] = None
     ) -> WorkflowResult:
         """Execute enhanced workflow with circuit breaker protection and enriched context"""
 
@@ -331,6 +334,8 @@ class WorkflowService:
             research_goal=legacy_research_goal,
             # Enhanced workflow context
             enhanced_rfq_data=enhanced_rfq.model_dump() if enhanced_rfq else None,
+            # Custom prompt for survey generation
+            system_prompt=custom_prompt,
             # Standard workflow fields
             current_step="initialize",
             workflow_id=workflow_id,
@@ -343,6 +348,9 @@ class WorkflowService:
             start_time=time.time(),
             progress_tracking=None
         )
+        
+        if custom_prompt:
+            logger.info(f"🎨 [WorkflowService] Using custom prompt for survey generation ({len(custom_prompt)} chars)")
 
         logger.info(f"✅ [WorkflowService] Enhanced workflow state initialized")
         logger.info(f"📊 [WorkflowService] Enriched description length: {len(enriched_description)} chars")
@@ -425,7 +433,8 @@ class WorkflowService:
         target_segment: Optional[str],
         research_goal: Optional[str],
         workflow_id: str,
-        survey_id: Optional[str]
+        survey_id: Optional[str],
+        custom_prompt: Optional[str] = None
     ) -> WorkflowResult:
         """Execute workflow with circuit breaker protection"""
 
@@ -469,8 +478,12 @@ class WorkflowService:
             research_goal=research_goal,
             workflow_id=workflow_id,
             survey_id=str(survey.id),
+            system_prompt=custom_prompt,  # Custom prompt for survey generation
             workflow_start_time=time.time()  # Set start time for loop prevention
         )
+        
+        if custom_prompt:
+            logger.info(f"🎨 [WorkflowService] Using custom prompt for basic RFQ ({len(custom_prompt)} chars)")
         logger.info(f"📋 [WorkflowService] Workflow state initialized: workflow_id={initial_state.workflow_id}, survey_id={initial_state.survey_id}")
         
         try:
@@ -497,12 +510,12 @@ class WorkflowService:
             
             # Execute workflow
             logger.info("🚀 [WorkflowService] Starting LangGraph workflow execution")
-            logger.info(f"🔍 [WorkflowService] Initial state before execution: {initial_state.model_dump()}")
+            logger.info(f"🔍 [WorkflowService] Initial state before execution: {str(initial_state.model_dump())[:200]}...")
             
             try:
                 final_state = await self.workflow.ainvoke(initial_state)
                 logger.info(f"✅ [WorkflowService] Workflow execution completed. Final state keys: {list(final_state.keys()) if isinstance(final_state, dict) else 'not dict'}")
-                logger.info(f"🔍 [WorkflowService] Final state details: {final_state}")
+                logger.info(f"🔍 [WorkflowService] Final state: {str(final_state)[:200]}...")
                 
                 # Check if workflow was paused
                 if isinstance(final_state, dict):
@@ -566,9 +579,18 @@ class WorkflowService:
                 survey.raw_output = final_state.get("raw_survey")
                 survey.final_output = final_state.get("generated_survey")
                 survey.golden_similarity_score = final_state.get("golden_similarity_score")
-                survey.used_golden_examples = final_state.get("used_golden_examples", [])
-                survey.used_golden_questions = final_state.get("used_golden_questions", [])
-                survey.used_golden_sections = final_state.get("used_golden_sections", [])
+                from uuid import UUID
+                # Convert string IDs to UUIDs for used_golden_examples
+                used_examples = final_state.get("used_golden_examples", [])
+                survey.used_golden_examples = [UUID(ex) if isinstance(ex, str) else ex for ex in used_examples] if used_examples else []
+                
+                # Convert string IDs to UUIDs for used_golden_questions  
+                used_questions = final_state.get("used_golden_questions", [])
+                survey.used_golden_questions = [UUID(q) if isinstance(q, str) else q for q in used_questions] if used_questions else []
+                
+                # Convert string IDs to UUIDs for used_golden_sections
+                used_sections = final_state.get("used_golden_sections", [])
+                survey.used_golden_sections = [UUID(s) if isinstance(s, str) else s for s in used_sections] if used_sections else []
 
                 # Check if this is a failed survey (minimal fallback due to LLM failure)
                 generated_survey = final_state.get("generated_survey", {})
@@ -608,9 +630,18 @@ class WorkflowService:
                         survey.raw_output = final_state.get("raw_survey")
                         survey.final_output = final_state.get("generated_survey")
                         survey.golden_similarity_score = final_state.get("golden_similarity_score")
-                        survey.used_golden_examples = final_state.get("used_golden_examples", [])
-                        survey.used_golden_questions = final_state.get("used_golden_questions", [])
-                        survey.used_golden_sections = final_state.get("used_golden_sections", [])
+                        from uuid import UUID
+                        # Convert string IDs to UUIDs for used_golden_examples
+                        used_examples = final_state.get("used_golden_examples", [])
+                        survey.used_golden_examples = [UUID(ex) if isinstance(ex, str) else ex for ex in used_examples] if used_examples else []
+                        
+                        # Convert string IDs to UUIDs for used_golden_questions  
+                        used_questions = final_state.get("used_golden_questions", [])
+                        survey.used_golden_questions = [UUID(q) if isinstance(q, str) else q for q in used_questions] if used_questions else []
+                        
+                        # Convert string IDs to UUIDs for used_golden_sections
+                        used_sections = final_state.get("used_golden_sections", [])
+                        survey.used_golden_sections = [UUID(s) if isinstance(s, str) else s for s in used_sections] if used_sections else []
 
                         # Check if this is a failed survey (minimal fallback due to LLM failure)
                         generated_survey = final_state.get("generated_survey", {})
@@ -825,7 +856,11 @@ class WorkflowService:
                     survey.raw_output = generation_result.get("raw_survey")
                     survey.final_output = generation_result.get("generated_survey")
                     survey.golden_similarity_score = validation_result.get("golden_similarity_score")
+                    # Convert state UUID lists to survey arrays
+                    from uuid import UUID
                     survey.used_golden_examples = initial_state.used_golden_examples
+                    survey.used_golden_questions = initial_state.used_golden_questions  
+                    survey.used_golden_sections = initial_state.used_golden_sections
 
                     # Check if this is a failed survey (minimal fallback due to LLM failure)
                     generated_survey = generation_result.get("generated_survey", {})

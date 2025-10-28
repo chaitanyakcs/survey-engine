@@ -95,6 +95,10 @@ class LLMAuditService:
         success: bool = True,
         error_message: str = None
     ) -> str:
+        logger.info(f"🚀 [LLMAuditService] Starting log_llm_interaction for {interaction_id}")
+        logger.info(f"🔍 [LLMAuditService] db_session available: {self.db_session is not None}")
+        logger.info(f"🔍 [LLMAuditService] purpose: {purpose}, parent_survey_id: {parent_survey_id}, parent_rfq_id: {parent_rfq_id}")
+        logger.info(f"🔍 [LLMAuditService] parent_survey_id type: {type(parent_survey_id)}, parent_rfq_id type: {type(parent_rfq_id)}")
         """
         Log an LLM interaction to the audit system using an independent database session.
         
@@ -126,12 +130,26 @@ class LLMAuditService:
         """
         # CRITICAL: Always use an independent database session for audit logging
         # This ensures audit records persist even if the parent transaction is rolled back
-        from src.database.connection import get_independent_db_session
-        
         audit_session = None
         try:
+            from src.database.connection import get_independent_db_session
             # Create an independent session that won't be affected by parent rollbacks
             audit_session = get_independent_db_session()
+            logger.info(f"✅ [LLMAuditService] Created independent database session for audit")
+        except ImportError as e:
+            logger.error(f"❌ [LLMAuditService] Failed to import get_independent_db_session: {e}")
+            # Fallback - will try to use existing session or fail gracefully
+        except Exception as e:
+            logger.error(f"❌ [LLMAuditService] Failed to create independent session: {e}")
+            import traceback
+            logger.error(f"❌ [LLMAuditService] Traceback: {traceback.format_exc()}")
+            # Don't fail the operation - will proceed to next try block
+        
+        try:
+            # Create an independent session that won't be affected by parent rollbacks if not already created
+            if audit_session is None:
+                from src.database.connection import get_independent_db_session
+                audit_session = get_independent_db_session()
             
             # Log the parameters being passed for debugging
             logger.info(f"🔍 [LLMAuditService] Logging LLM interaction:")
@@ -159,22 +177,56 @@ class LLMAuditService:
             input_tokens = perf_metrics.get('input_tokens')
             output_tokens = perf_metrics.get('output_tokens')
             
-            # Convert parent_rfq_id to UUID if provided
-            rfq_uuid = None
-            if parent_rfq_id:
+            # Convert parent_survey_id to UUID if needed (defensive handling)
+            survey_uuid = None
+            if parent_survey_id is not None:
                 try:
-                    rfq_uuid = uuid.UUID(parent_rfq_id)
-                except ValueError:
-                    logger.warning(f"Invalid RFQ ID format: {parent_rfq_id}")
+                    # Handle various input types
+                    if isinstance(parent_survey_id, uuid.UUID):
+                        survey_uuid = parent_survey_id
+                    elif isinstance(parent_survey_id, str) and parent_survey_id.strip():
+                        survey_uuid = uuid.UUID(parent_survey_id.strip())
+                    elif isinstance(parent_survey_id, (int, float)):
+                        # Convert numeric IDs to string first
+                        survey_uuid = uuid.UUID(str(int(parent_survey_id)))
+                    else:
+                        logger.warning(f"Unsupported Survey ID type: {type(parent_survey_id)}")
+                        survey_uuid = None
+                except (ValueError, AttributeError, TypeError) as e:
+                    logger.warning(f"Invalid Survey ID format: {parent_survey_id} ({e})")
+                    survey_uuid = None
+            
+            # Convert parent_rfq_id to UUID if needed (defensive handling)
+            rfq_uuid = None
+            if parent_rfq_id is not None:
+                try:
+                    # Handle various input types
+                    if isinstance(parent_rfq_id, uuid.UUID):
+                        rfq_uuid = parent_rfq_id
+                    elif isinstance(parent_rfq_id, str) and parent_rfq_id.strip():
+                        rfq_uuid = uuid.UUID(parent_rfq_id.strip())
+                    elif isinstance(parent_rfq_id, (int, float)):
+                        # Convert numeric IDs to string first
+                        rfq_uuid = uuid.UUID(str(int(parent_rfq_id)))
+                    else:
+                        logger.warning(f"Unsupported RFQ ID type: {type(parent_rfq_id)}")
+                        rfq_uuid = None
+                except (ValueError, AttributeError, TypeError) as e:
+                    logger.warning(f"Invalid RFQ ID format: {parent_rfq_id} ({e})")
+                    rfq_uuid = None
             
             # Convert raw_response to JSON format if it's a Python dictionary string
             json_raw_response = self._convert_raw_response_to_json(raw_response)
+            
+            # Log the input prompt being stored
+            logger.info(f"🔍 [LLMAuditService] Storing input_prompt (length: {len(input_prompt)})")
+            logger.info(f"🔍 [LLMAuditService] input_prompt preview: {input_prompt[:200]}...")
             
             # Create audit record
             audit_record = LLMAudit(
                 interaction_id=interaction_id,
                 parent_workflow_id=parent_workflow_id,
-                parent_survey_id=parent_survey_id,
+                parent_survey_id=survey_uuid,
                 parent_rfq_id=rfq_uuid,
                 model_name=model_name,
                 model_provider=model_provider,
@@ -202,21 +254,29 @@ class LLMAuditService:
             )
             
             # Add and commit using the independent session
+            logger.info(f"🔍 [LLMAuditService] Adding audit record to session: {interaction_id}")
             audit_session.add(audit_record)
+            logger.info(f"🔍 [LLMAuditService] Committing audit record: {interaction_id}")
             audit_session.commit()
+            logger.info(f"🔍 [LLMAuditService] Commit successful: {interaction_id}")
             
             logger.info(f"✅ [LLMAuditService] Logged LLM interaction: {interaction_id} ({purpose})")
             audit_record_id = str(audit_record.id)
+            logger.info(f"🔍 [LLMAuditService] Audit record ID: {audit_record_id}")
             
             return audit_record_id
             
         except Exception as e:
+            import traceback
             logger.error(f"❌ [LLMAuditService] Failed to log LLM interaction: {str(e)}")
+            logger.error(f"❌ [LLMAuditService] Exception type: {type(e).__name__}")
+            logger.error(f"❌ [LLMAuditService] Traceback:\n{traceback.format_exc()}")
             if audit_session:
                 try:
+                    logger.info(f"🔍 [LLMAuditService] Rolling back session")
                     audit_session.rollback()
-                except:
-                    pass  # Ignore rollback errors
+                except Exception as rollback_error:
+                    logger.error(f"❌ [LLMAuditService] Rollback failed: {str(rollback_error)}")
             raise
         finally:
             # Always close the independent session
@@ -604,6 +664,11 @@ class LLMAuditContext:
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        logger.info(f"🚀 [LLMAuditContext] __aexit__ called for {self.interaction_id}")
+        logger.info(f"🔍 [LLMAuditContext] Exception type: {exc_type}")
+        logger.info(f"🔍 [LLMAuditContext] parent_survey_id: {self.parent_survey_id}")
+        logger.info(f"🔍 [LLMAuditContext] parent_rfq_id: {self.parent_rfq_id}")
+        
         # Calculate response time
         response_time_ms = None
         if self.start_time:
@@ -613,6 +678,7 @@ class LLMAuditContext:
         if exc_type is not None:
             self.success = False
             self.error_message = str(exc_val) if exc_val else str(exc_type)
+            logger.warning(f"⚠️ [LLMAuditContext] Exception occurred: {self.error_message}")
         
         # Prepare performance metrics
         performance_metrics = {
@@ -621,9 +687,12 @@ class LLMAuditContext:
             'output_tokens': self.metadata.get('output_tokens'),
             'cost_usd': self.metadata.get('cost_usd')
         }
+        logger.info(f"🔍 [LLMAuditContext] Performance metrics: {performance_metrics}")
         
         # Log the interaction
         try:
+            logger.info(f"🔍 [LLMAuditContext] Calling audit_service.log_llm_interaction for {self.interaction_id}")
+            logger.info(f"🔍 [LLMAuditContext] Parameters: purpose={self.purpose}, parent_survey_id={self.parent_survey_id}, parent_rfq_id={self.parent_rfq_id}")
             await self.audit_service.log_llm_interaction(
                 interaction_id=self.interaction_id,
                 model_name=self.model_name,
@@ -644,8 +713,13 @@ class LLMAuditContext:
                 success=self.success,
                 error_message=self.error_message
             )
+            logger.info(f"✅ [LLMAuditContext] Successfully logged interaction {self.interaction_id}")
         except Exception as e:
+            import traceback
             logger.error(f"❌ [LLMAuditContext] Failed to log interaction: {str(e)}")
+            logger.error(f"❌ [LLMAuditContext] Exception type: {type(e).__name__}")
+            logger.error(f"❌ [LLMAuditContext] Traceback:\n{traceback.format_exc()}")
+            raise
     
     def set_output(self, output_content: str, input_tokens: int = None, output_tokens: int = None, cost_usd: float = None):
         """Set the processed output content and additional metrics"""

@@ -43,9 +43,7 @@ COPY scripts/ ./scripts/
 # Build timestamp: 2025-10-20-22:30:00
 COPY start.sh ./
 COPY start-local.sh ./
-COPY preload_models.py ./
 # Rules are seeded via migrations, no separate seeding needed
-COPY run_migrations.py ./
 COPY migrations/ ./migrations/
 
 # Copy pre-built frontend from local build

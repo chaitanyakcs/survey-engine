@@ -120,35 +120,8 @@ class GoldenRetrieverNode:
                         fresh_retrieval_service = ServiceClass(fresh_db)
                     # Extract industry from enhanced RFQ data if available
                     industry = None
-                    if state.enhanced_rfq_data:
-                        # Check for industry_category first (standard field)
-                        if 'industry_category' in state.enhanced_rfq_data:
-                            industry = state.enhanced_rfq_data['industry_category']
-                        
-                        # If not found, also check advanced_classification
-                        elif 'advanced_classification' in state.enhanced_rfq_data:
-                            adv_class = state.enhanced_rfq_data['advanced_classification']
-                            if 'industry_classification' in adv_class:
-                                industry_classification = adv_class['industry_classification']
-                                # Map free text to standardized industry codes
-                                if industry_classification:
-                                    industry_lower = industry_classification.lower()
-                                    if any(keyword in industry_lower for keyword in ['food', 'beverage', 'drink', 'alcohol', 'beer', 'wine', 'vodka']):
-                                        industry = 'food_beverage'
-                                    elif 'health' in industry_lower or 'medical' in industry_lower:
-                                        industry = 'healthcare'
-                                    elif 'tech' in industry_lower or 'software' in industry_lower:
-                                        industry = 'technology'
-                                    # Add more mappings as needed
-                                    else:
-                                        industry = industry_classification
-                    
-                    # If still no industry detected, try to detect from RFQ text
-                    if not industry and state.rfq_text:
-                        rfq_lower = state.rfq_text.lower()
-                        if any(keyword in rfq_lower for keyword in ['food', 'beverage', 'drink', 'alcohol', 'beer', 'wine', 'vodka', 'restaurant', 'cafe', 'dining']):
-                            industry = 'food_beverage'
-                            logger.info(f"🏷️ [GoldenRetriever] Detected industry: {industry} from RFQ text")
+                    if state.enhanced_rfq_data and 'industry_category' in state.enhanced_rfq_data:
+                        industry = state.enhanced_rfq_data['industry_category']
                     
                     golden_examples = await fresh_retrieval_service.retrieve_golden_pairs(
                         embedding=state.rfq_embedding,
@@ -164,68 +137,15 @@ class GoldenRetrieverNode:
                         limit=5
                     )
                     
-                    # PHASE 3: Smart label-based question retrieval
-                    # Extract methodology and industry from enhanced RFQ data
-                    methodology_tags = None
-                    if state.enhanced_rfq_data and 'methodology_tags' in state.enhanced_rfq_data:
-                        methodology_tags = state.enhanced_rfq_data['methodology_tags']
-                        if isinstance(methodology_tags, str):
-                            methodology_tags = [methodology_tags]
-                    
-                    # Get required QNR labels for screener section (most critical)
-                    required_labels = []
-                    try:
-                        from src.services.qnr_label_service import QNRLabelService
-                        from src.services.rule_based_multi_level_rag_service import RuleBasedMultiLevelRAGService
-                        
-                        qnr_service = QNRLabelService(fresh_db)
-                        
-                        # Get required labels for screener section (section_id=2)
-                        # This is the most important section with mandatory questions
-                        screener_labels = qnr_service.get_required_labels(
-                            section_id=2,
-                            methodology=methodology_tags,
-                            industry=industry
-                        )
-                        
-                        # Extract label names - get ALL mandatory labels (typically 8-11)
-                        required_labels = [label['name'] for label in screener_labels]
-                        
-                        # Limit retrieval to 8 questions max to avoid prompt bloat
-                        # but ensure we get at least 1 question for the most critical labels
-                        limit = min(len(required_labels), 8)
-                        
-                        logger.info(f"🏷️ [GoldenRetriever] Required QNR labels for retrieval: {required_labels}")
-                        
-                        # Use label-based retrieval if we have required labels
-                        if required_labels:
-                            rag_service = RuleBasedMultiLevelRAGService(fresh_db)
-                            golden_questions = await rag_service.retrieve_golden_questions_by_labels(
-                                required_labels=required_labels,
-                                methodology_tags=methodology_tags,
-                                industry=industry,
-                                limit=limit  # Dynamic limit based on required labels
-                            )
-                            logger.info(f"✅ [GoldenRetriever] Retrieved {len(golden_questions)} label-matched questions for {len(required_labels)} required labels")
-                        else:
-                            # Fallback to regular retrieval
-                            logger.info("⚠️ [GoldenRetriever] No required labels found, using regular retrieval")
-                            golden_questions = await fresh_retrieval_service.retrieve_golden_questions(
-                                embedding=state.rfq_embedding,
-                                methodology_tags=None,
-                                industry=industry,
-                                limit=5
-                            )
-                    except Exception as label_error:
-                        logger.error(f"❌ [GoldenRetriever] Label-based retrieval failed: {str(label_error)}")
-                        logger.exception(label_error)
-                        # Fallback to regular retrieval
-                        golden_questions = await fresh_retrieval_service.retrieve_golden_questions(
-                            embedding=state.rfq_embedding,
-                            methodology_tags=None,
-                            industry=industry,
-                            limit=5
-                        )
+                    # Retrieve golden questions by similarity only (no label filtering)
+                    # The LLM will use the QNR taxonomy reference to decide which questions to generate
+                    golden_questions = await fresh_retrieval_service.retrieve_golden_questions(
+                        embedding=state.rfq_embedding,
+                        methodology_tags=None,
+                        industry=industry,
+                        limit=8  # Increased limit since we're not filtering by labels
+                    )
+                    logger.info(f"✅ [GoldenRetriever] Retrieved {len(golden_questions)} golden questions by similarity")
                 
                 # Tier 2: Methodology blocks
                 methodology_blocks = []
@@ -271,6 +191,8 @@ class GoldenRetrieverNode:
                 "methodology_blocks": methodology_blocks,
                 "template_questions": template_questions,
                 "used_golden_examples": [ex["id"] for ex in golden_examples],
+                "used_golden_questions": [str(q["id"]) for q in golden_questions if "id" in q],
+                "used_golden_sections": [str(s["id"]) for s in golden_sections if "id" in s],
                 "error_message": None
             }
             
@@ -422,7 +344,8 @@ class GeneratorAgent:
             
             # Check if we have a custom system prompt from human review
             if state.system_prompt:
-                self.logger.info(f"📝 [GeneratorAgent] Using custom system prompt from human review (length: {len(state.system_prompt)} chars)")
+                self.logger.info(f"📝 [GeneratorAgent] Using custom system prompt from user edit (length: {len(state.system_prompt)} chars)")
+                self.logger.info(f"🔍 [GeneratorAgent] Custom prompt preview: {state.system_prompt[:200]}...")
                 # Use the edited system prompt instead of generating a new one
                 generation_result = await self.generation_service.generate_survey_with_custom_prompt(
                     context=state.context,
@@ -457,10 +380,10 @@ class GeneratorAgent:
             state.raw_survey = generated_survey
             state.generated_survey = generated_survey
             
-            # Log the context details for debugging
-            logger.info(f"🔍 [GeneratorAgent] Context received from state:")
+            # Log the context details for debugging (truncated)
+            logger.info(f"🔍 [GeneratorAgent] Context received from state")
             logger.info(f"🔍 [GeneratorAgent] State survey_id: {state.survey_id}")
-            logger.info(f"🔍 [GeneratorAgent] State context: {state.context}")
+            logger.debug(f"🔍 [GeneratorAgent] State context: {str(state.context)[:200]}...")
             logger.info(f"🔍 [GeneratorAgent] Context audit_survey_id: {state.context.get('audit_survey_id') if state.context else 'None'}")
             logger.info(f"🔍 [GeneratorAgent] Context keys: {list(state.context.keys()) if state.context else 'None'}")
             
@@ -654,23 +577,28 @@ class HumanPromptReviewNode:
                 # Human review is enabled - proceed with review logic
                 self.logger.info("🔍 [HumanPromptReviewNode] Human review enabled, creating review...")
 
-                # Generate the system prompt with timeout protection
-                try:
-                    prompt_service = PromptService()
-                    system_prompt = await prompt_service.create_survey_generation_prompt(
-                        rfq_text=state.rfq_text,
-                        context=state.context or {},
-                        golden_examples=state.golden_examples or [],
-                        methodology_blocks=state.methodology_blocks or []
-                    )
-                except Exception as e:
-                    self.logger.error(f"❌ [HumanPromptReviewNode] Prompt generation failed: {e}")
-                    # Fail open - continue without review
-                    return {
-                        "prompt_approved": True,
-                        "pending_human_review": False,
-                        "error_message": f"Prompt generation failed: {str(e)}"
-                    }
+                # Check if we already have a custom system prompt (from user edit)
+                if state.system_prompt:
+                    self.logger.info("🎨 [HumanPromptReviewNode] Using custom system prompt from user edit")
+                    system_prompt = state.system_prompt
+                else:
+                    # Generate the system prompt with timeout protection
+                    try:
+                        prompt_service = PromptService()
+                        system_prompt = await prompt_service.create_survey_generation_prompt(
+                            rfq_text=state.rfq_text,
+                            context=state.context or {},
+                            golden_examples=state.golden_examples or [],
+                            methodology_blocks=state.methodology_blocks or []
+                        )
+                    except Exception as e:
+                        self.logger.error(f"❌ [HumanPromptReviewNode] Prompt generation failed: {e}")
+                        # Fail open - continue without review
+                        return {
+                            "prompt_approved": True,
+                            "pending_human_review": False,
+                            "error_message": f"Prompt generation failed: {str(e)}"
+                        }
 
                 # Check existing reviews with fresh DB connection
                 review_db = None
@@ -842,15 +770,18 @@ class LabelDetectionNode:
         self.logger = logging.getLogger(__name__)
         
         # Initialize label detection services
-        from src.services.qnr_label_taxonomy import QNRLabelTaxonomy
         from src.services.question_label_detector import QuestionLabelDetector
+        from src.database.models import QuestionAnnotation
+        from datetime import datetime
         
-        self.taxonomy = QNRLabelTaxonomy()
-        self.detector = QuestionLabelDetector(self.taxonomy)
+        self.detector = QuestionLabelDetector()
+        self.QuestionAnnotation = QuestionAnnotation
+        self.datetime = datetime
     
     async def __call__(self, state: SurveyGenerationState) -> Dict[str, Any]:
         """
-        Automatically detect and assign labels to generated questions
+        Automatically detect and assign labels to generated questions.
+        Creates question annotations in the database instead of writing to question.labels.
         """
         try:
             self.logger.info("🏷️ [LabelDetectionNode] Starting automatic label detection...")
@@ -862,38 +793,101 @@ class LabelDetectionNode:
                     "error_message": "No survey available for label detection"
                 }
             
+            if not state.survey_id:
+                self.logger.error("❌ [LabelDetectionNode] No survey_id in state, cannot create annotations")
+                return {
+                    "labels_assigned": False,
+                    "error_message": "No survey_id available for annotation creation"
+                }
+            
             # Detect labels for each section
             detected_labels = self.detector.detect_labels_in_survey(state.generated_survey)
             self.logger.info(f"🏷️ [LabelDetectionNode] Detected labels: {detected_labels}")
             
-            # Assign labels to questions in the survey
+            # Create annotations in database
+            annotations_created = 0
             labels_assigned = 0
+            
             for section in state.generated_survey.get('sections', []):
                 section_id = section.get('id')
                 section_labels = detected_labels.get(section_id, set())
                 
-                # Add labels to section metadata
+                # Add labels to section metadata (backward compatibility)
                 if 'metadata' not in section:
                     section['metadata'] = {}
                 section['metadata']['detected_labels'] = list(section_labels)
                 
                 # Assign labels to individual questions
                 for question in section.get('questions', []):
+                    question_id = question.get('id') or question.get('question_id')
+                    if not question_id:
+                        self.logger.warning(f"⚠️ [LabelDetectionNode] Question missing id: {question.get('text', '')[:50]}")
+                        continue
+                    
+                    # Make question_id unique by prefixing with survey_id
+                    unique_question_id = f"{state.survey_id}_{question_id}"
                     question_labels = self.detector.detect_labels_in_question(question)
                     
-                    # Add labels to question metadata
+                    # Check if annotation already exists
+                    existing_annotation = self.db.query(self.QuestionAnnotation).filter(
+                        self.QuestionAnnotation.question_id == unique_question_id,
+                        self.QuestionAnnotation.survey_id == state.survey_id
+                    ).first()
+                    
+                    if existing_annotation:
+                        # Update existing annotation with detected labels (merge, don't override)
+                        existing_labels = existing_annotation.labels or []
+                        existing_labels_set = set(existing_labels) if isinstance(existing_labels, list) else set()
+                        new_labels_set = set(question_labels) if isinstance(question_labels, list) else set()
+                        
+                        # Merge labels (add new ones)
+                        merged_labels = list(existing_labels_set | new_labels_set)
+                        existing_annotation.labels = merged_labels
+                        existing_annotation.updated_at = self.datetime.now()
+                        
+                        self.logger.debug(f"🔄 [LabelDetectionNode] Updated annotation for question {unique_question_id}")
+                    else:
+                        # Create new annotation
+                        annotation = self.QuestionAnnotation(
+                            question_id=unique_question_id,
+                            survey_id=state.survey_id,
+                            required=True,
+                            quality=3,  # Default value
+                            relevant=3,  # Default value
+                            methodological_rigor=3,
+                            content_validity=3,
+                            respondent_experience=3,
+                            analytical_value=3,
+                            business_impact=3,
+                            comment="",
+                            labels=question_labels,
+                            removed_labels=[],
+                            annotator_id="auto_detector",
+                            ai_generated=False,
+                            human_verified=False,
+                            created_at=self.datetime.now(),
+                            updated_at=self.datetime.now()
+                        )
+                        self.db.add(annotation)
+                        annotations_created += 1
+                        self.logger.debug(f"✅ [LabelDetectionNode] Created annotation for question {unique_question_id} with labels: {question_labels}")
+                    
+                    # Add labels to question object for backward compatibility (DEPRECATED)
                     if 'metadata' not in question:
                         question['metadata'] = {}
                     question['metadata']['labels'] = question_labels
-                    
-                    # Also add labels to the question object directly for backward compatibility
-                    question['labels'] = question_labels
+                    question['labels'] = question_labels  # DEPRECATED: kept for backward compatibility
                     
                     labels_assigned += len(question_labels)
-                    
-                    self.logger.debug(f"🏷️ [LabelDetectionNode] Question '{question.get('text', '')[:50]}...' assigned labels: {question_labels}")
             
-            self.logger.info(f"✅ [LabelDetectionNode] Successfully assigned {labels_assigned} labels across {len(state.generated_survey.get('sections', []))} sections")
+            # Commit annotations to database
+            try:
+                self.db.commit()
+                self.logger.info(f"✅ [LabelDetectionNode] Created {annotations_created} new annotations, assigned {labels_assigned} labels across {len(state.generated_survey.get('sections', []))} sections")
+            except Exception as e:
+                self.db.rollback()
+                self.logger.error(f"❌ [LabelDetectionNode] Failed to commit annotations: {str(e)}", exc_info=True)
+                raise
             
             # Update the state with the modified survey
             state.generated_survey = state.generated_survey
@@ -901,12 +895,15 @@ class LabelDetectionNode:
             return {
                 "labels_assigned": True,
                 "total_labels_assigned": labels_assigned,
+                "annotations_created": annotations_created,
                 "detected_labels": {str(k): list(v) for k, v in detected_labels.items()},
                 "error_message": None
             }
             
         except Exception as e:
             self.logger.error(f"❌ [LabelDetectionNode] Label detection failed: {str(e)}", exc_info=True)
+            if self.db:
+                self.db.rollback()
             return {
                 "labels_assigned": False,
                 "error_message": f"Label detection failed: {str(e)}"
@@ -1018,8 +1015,9 @@ class ValidatorAgent:
                 state.pillar_scores = pillar_scores
                 state.quality_gate_passed = quality_gate_passed
 
-                # Also run basic validation (schema, methodology) for informational purposes only
+                # Also run basic validation (schema, methodology, golden similarity) for informational purposes only
                 validation_results = {"schema_valid": True, "methodology_compliant": True, "schema_warnings": []}
+                golden_similarity_score = 0.0
                 if state.generated_survey:
                     try:
                         from src.services.validation_service import ValidationService
@@ -1029,6 +1027,13 @@ class ValidatorAgent:
                             golden_examples=state.golden_examples,
                             rfq_text=state.rfq_text
                         )
+                        
+                        # Calculate golden similarity score
+                        golden_similarity_score = await validation_service.calculate_golden_similarity(
+                            survey=state.generated_survey,
+                            golden_examples=state.golden_examples
+                        )
+                        self.logger.info(f"📊 [ValidatorAgent] Golden similarity score: {golden_similarity_score:.3f}")
 
                         # Log validation results but don't block workflow
                         if validation_results.get('schema_valid'):
@@ -1050,35 +1055,6 @@ class ValidatorAgent:
                     except Exception as validation_error:
                         self.logger.warning(f"⚠️ [ValidatorAgent] Basic validation failed (non-blocking): {validation_error}")
                         validation_results["schema_warnings"] = [f"Validation error: {str(validation_error)}"]
-                
-                # Run golden similarity analysis (non-AI, always runs)
-                golden_similarity_analysis = None
-                if state.generated_survey and state.golden_examples:
-                    try:
-                        from src.services.golden_similarity_analysis_service import GoldenSimilarityAnalysisService
-                        
-                        # Extract RFQ context for better analysis
-                        rfq_context = {
-                            "industry_category": state.product_category,
-                            "methodology_tags": state.research_goal.split(", ") if state.research_goal else [],
-                            "research_goal": state.research_goal
-                        }
-                        
-                        similarity_service = GoldenSimilarityAnalysisService(db_session=fresh_db)
-                        golden_similarity_analysis = await similarity_service.analyze_survey_similarity(
-                            survey=state.generated_survey,
-                            golden_examples=state.golden_examples,
-                            rfq_context=rfq_context
-                        )
-                        
-                        self.logger.info(f"🎯 [ValidatorAgent] Golden similarity analysis complete: avg={golden_similarity_analysis.get('overall_average', 0):.3f}")
-                        
-                        # Store in state for persistence
-                        if state.pillar_scores:
-                            state.pillar_scores["golden_similarity_analysis"] = golden_similarity_analysis
-                        
-                    except Exception as similarity_error:
-                        self.logger.warning(f"⚠️ [ValidatorAgent] Golden similarity analysis failed (non-blocking): {similarity_error}")
 
                 # Retries disabled - keep retry count unchanged
                 # Evaluation is informational, not blocking
@@ -1093,6 +1069,7 @@ class ValidatorAgent:
                     "pillar_scores": pillar_scores,
                     "quality_gate_passed": quality_gate_passed,  # Informational only
                     "validation_results": validation_results,
+                    "golden_similarity_score": golden_similarity_score,  # Added golden similarity check
                     "retry_count": updated_retry_count,  # Unchanged
                     "workflow_should_continue": True,  # Always continue regardless of quality
                     # Don't clear error_message if it was set by a previous node

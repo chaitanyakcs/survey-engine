@@ -13,7 +13,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/qnr-labels", tags=["qnr-labels"])
+router = APIRouter(prefix="/qnr-labels", tags=["qnr-labels"])
 
 
 # Pydantic models
@@ -72,14 +72,9 @@ class QNRSectionResponse(BaseModel):
     active: bool
 
 
-# Response models
-class QNRLabelsListResponse(BaseModel):
-    labels: List[QNRLabelResponse]
-    count: int
-
-
 # Endpoints
-@router.get("/", response_model=QNRLabelsListResponse)
+@router.get("", response_model=List[QNRLabelResponse])
+@router.get("/", response_model=List[QNRLabelResponse])
 async def list_labels(
     category: Optional[str] = Query(None, description="Filter by category"),
     section_id: Optional[int] = Query(None, description="Filter by section ID"),
@@ -106,7 +101,7 @@ async def list_labels(
         )
         
         logger.info(f"Retrieved {len(labels)} QNR labels")
-        return {"labels": labels, "count": len(labels)}
+        return labels
         
     except Exception as e:
         logger.error(f"Failed to list QNR labels: {e}")

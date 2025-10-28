@@ -81,7 +81,7 @@ class QNRLabelService:
             industry: Industry category (e.g., 'Healthcare', 'Consumer Goods')
             
         Returns:
-            List of required labels with relevance scores (sorted by score)
+            List of required labels matching the context
         """
         query = self.db.query(QNRLabel)\
             .filter(QNRLabel.section_id == section_id)\
@@ -90,65 +90,74 @@ class QNRLabelService:
         
         labels = query.order_by(QNRLabel.display_order, QNRLabel.name).all()
         
-        # Industry exclusion rules (labels that should NEVER appear for certain industries)
-        industry_exclusions = {
-            'food_beverage': ['Medical_Conditions_General', 'Medical_Conditions_Study', 
-                            'Healthcare', 'MedTech', 'Patients']
-        }
-        
-        # Score and sort labels by relevance
-        scored_labels = []
+        # Filter by applicable_labels (methodology/industry)
+        filtered = []
         for label in labels:
-            # Check if label should be excluded for this industry
-            should_exclude = False
-            if industry:
-                excluded_labels = industry_exclusions.get(industry, [])
-                if label.name in excluded_labels:
-                    should_exclude = True
-                # Also check if label's applicable_labels conflict with industry
-                elif label.applicable_labels:
-                    for app_label in label.applicable_labels:
-                        app_lower = app_label.lower()
-                        # Healthcare-specific labels shouldn't appear in food/beverage surveys
-                        if industry == 'food_beverage' and app_lower in ['consumer health', 'healthcare', 'medtech', 'patients']:
-                            if 'medical' in label.name.lower() or 'health' in label.name.lower():
-                                should_exclude = True
-                                break
-            
-            if should_exclude:
-                continue  # Skip this label entirely
-            
-            label_dict = self._label_to_dict(label)
-            
-            # Calculate relevance score
-            score = 1.0  # Base score for all mandatory labels
-            
-            # Boost score if label matches context
-            if label.applicable_labels:
-                applicable_lower = [a.lower() for a in label.applicable_labels]
-                
-                # Check methodology match
-                if methodology:
-                    methodology_lower = [m.lower() for m in methodology]
-                    if any(m in applicable_lower for m in methodology_lower):
-                        score += 1.0  # Matches methodology - higher priority
-                
-                # Check industry match
-                if industry:
-                    industry_lower = industry.lower()
-                    if industry_lower in applicable_lower:
-                        score += 1.0  # Matches industry - higher priority
-            else:
-                # No restrictions = universally applicable
-                score += 0.5
-            
-            label_dict['relevance_score'] = score
-            scored_labels.append(label_dict)
+            if self._matches_context(label, methodology, industry):
+                filtered.append(label)
         
-        # Sort by relevance score (descending), then by display_order
-        scored_labels.sort(key=lambda x: (x['relevance_score'], -x.get('display_order', 0)), reverse=True)
+        return [self._label_to_dict(label) for label in filtered]
+    
+    def _matches_context(
+        self,
+        label: QNRLabel,
+        methodology: Optional[List[str]],
+        industry: Optional[str]
+    ) -> bool:
+        """
+        Check if label applies to given context
         
-        return scored_labels
+        Args:
+            label: QNR label entity
+            methodology: List of methodology tags
+            industry: Industry category
+            
+        Returns:
+            True if label matches context
+        """
+        if not label.applicable_labels:
+            return True  # Universal label - applies to all contexts
+        
+        applicable_lower = [a.lower() for a in label.applicable_labels]
+        
+        # Check methodology match
+        if methodology:
+            if any(m.lower() in applicable_lower for m in methodology):
+                return True
+        
+        # Check industry match
+        if industry:
+            if industry.lower() in applicable_lower:
+                return True
+        
+        return False
+    
+    def get_all_labels_for_prompt(
+        self,
+        section_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get ALL labels (mandatory + optional) for prompt generation.
+        No filtering by industry/methodology - let the LLM decide based on context.
+        
+        Args:
+            section_id: Optional section ID (1-7). If None, returns labels for all sections.
+            
+        Returns:
+            List of all active labels, grouped by section, ordered by display_order
+        """
+        query = self.db.query(QNRLabel).filter(QNRLabel.active == True)
+        
+        if section_id is not None:
+            query = query.filter(QNRLabel.section_id == section_id)
+        
+        labels = query.order_by(
+            QNRLabel.section_id,
+            QNRLabel.display_order,
+            QNRLabel.name
+        ).all()
+        
+        return [self._label_to_dict(label) for label in labels]
     
     def create_label(
         self,

@@ -37,7 +37,8 @@ class APIService {
       golden_examples: backendResponse.final_output?.golden_examples || [],
       questions: (backendResponse.final_output?.questions || []).map((question: any) => ({
         ...question,
-        // Preserve labels field from backend
+        // DEPRECATED: Preserve labels field from backend for backward compatibility only
+        // Annotations are now the single source of truth for labels
         labels: question.labels || question.metadata?.labels || []
       })).sort((a: any, b: any) => (a.order || 0) - (b.order || 0)),
       sections: (backendResponse.final_output?.sections || []).map((section: any, index: number) => ({
@@ -45,7 +46,8 @@ class APIService {
         order: section.order || index + 1, // Ensure each section has an order field
         questions: (section.questions || []).map((question: any) => ({
           ...question,
-          // Preserve labels field from backend
+          // DEPRECATED: Preserve labels field from backend for backward compatibility only
+          // Annotations are now the single source of truth for labels
           labels: question.labels || question.metadata?.labels || []
         })).sort((a: any, b: any) => (a.order || 0) - (b.order || 0)) // Sort questions by order
       })).sort((a: any, b: any) => (a.order || 0) - (b.order || 0)), // Include sections, sorted by order
@@ -231,7 +233,7 @@ class APIService {
 
   async fetchSurveyLLMAudits(surveyId: string): Promise<any[]> {
     try {
-      const response = await fetch(`${API_BASE_URL}/v1/surveys/${surveyId}/llm-audits`);
+      const response = await fetch(`${API_BASE_URL}/v1/survey/${surveyId}/llm-audits`);
       
       if (!response.ok) {
         throw new Error(`Failed to fetch survey LLM audits: ${response.statusText}`);

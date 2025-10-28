@@ -29,15 +29,9 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
 
   // Single state object for all form data - no circular dependencies
   const [formData, setFormData] = useState<QuestionAnnotation>(() => {
-    // Ensure labels are always arrays
-    const questionLabels = Array.isArray(question.labels) ? question.labels : [];
+    // Use ONLY annotation labels (single source of truth)
     const annotationLabels = Array.isArray(annotation?.labels) ? annotation?.labels : [];
     const removedLabels = new Set(Array.isArray(annotation?.removedLabels) ? annotation?.removedLabels : []);
-    
-    // Merge labels: question labels + annotation labels - removed labels
-    const mergedLabels = [...questionLabels, ...(annotationLabels || [])]
-      .filter((label, index, arr) => arr.indexOf(label) === index) // Remove duplicates
-      .filter(label => !removedLabels.has(label)); // Remove user-removed labels
     
     return {
       questionId: question.id,
@@ -52,7 +46,7 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
         businessImpact: annotation?.pillars?.businessImpact ?? 3,
       },
       comment: annotation?.comment ?? '',
-      labels: mergedLabels,
+      labels: annotationLabels,
       removedLabels: Array.from(removedLabels),
       timestamp: new Date().toISOString()
     };
@@ -69,15 +63,9 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
 
     console.log('🔍 [QuestionAnnotationPanel] Initializing for question:', question.id);
 
-    // Ensure labels are always arrays
-    const questionLabels = Array.isArray(question.labels) ? question.labels : [];
+    // Use ONLY annotation labels (single source of truth)
     const annotationLabels = Array.isArray(annotation?.labels) ? annotation?.labels : [];
     const removedLabels = new Set(Array.isArray(annotation?.removedLabels) ? annotation?.removedLabels : []);
-    
-    // Merge labels: question labels + annotation labels - removed labels
-    const mergedLabels = [...questionLabels, ...(annotationLabels || [])]
-      .filter((label, index, arr) => arr.indexOf(label) === index) // Remove duplicates
-      .filter(label => !removedLabels.has(label)); // Remove user-removed labels
 
     setFormData({
       questionId: question.id,
@@ -92,7 +80,7 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
         businessImpact: annotation?.pillars?.businessImpact ?? 3,
       },
       comment: annotation?.comment ?? '',
-      labels: mergedLabels,
+      labels: annotationLabels,
       removedLabels: Array.from(removedLabels),
       timestamp: new Date().toISOString()
     });
@@ -100,30 +88,19 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
     setIsVerified(annotation?.humanVerified || false);
     setInitializedForQuestion(question.id);
     
-    console.log('✅ [QuestionAnnotationPanel] Initialized with labels:', mergedLabels);
-  }, [question.id, annotation?.questionId, annotation?.removedLabels]);
+    console.log('✅ [QuestionAnnotationPanel] Initialized with labels from annotations only:', annotationLabels);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [question.id, annotation]);
 
-  // Calculate current merged labels on-demand - no useMemo circular dependency
+  // Get current labels from annotations only (single source of truth)
   const getCurrentMergedLabels = useCallback(() => {
-    const questionLabels = Array.isArray(question.labels) ? question.labels : [];
+    // Use only annotation labels, not question labels
     const currentLabels = Array.isArray(formData.labels) ? formData.labels : [];
     const removedLabels = new Set(Array.isArray(formData.removedLabels) ? formData.removedLabels : []);
     
-    // Start with question labels (auto-generated)
-    let merged = [...questionLabels];
-    
-        // Add any user-defined labels that aren't already in question labels
-        currentLabels.forEach((label: string) => {
-          if (!questionLabels.includes(label) && !merged.includes(label)) {
-            merged.push(label);
-          }
-        });
-        
-        // Remove any labels that are in the removed set
-        merged = merged.filter((label: string) => !removedLabels.has(label));
-    
-    return merged;
-  }, [question.labels, formData.labels, formData.removedLabels]);
+    // Return labels from annotations, filtering out removed labels
+    return currentLabels.filter((label: string) => !removedLabels.has(label));
+  }, [formData.labels, formData.removedLabels]);
 
   // Use ref to track current form data for saving
   const formDataRef = useRef<QuestionAnnotation>(formData);
@@ -194,7 +171,7 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
         handleSave();
       }
     }, 100);
-  }, [question.id, question.labels, handleSave, initializedForQuestion]);
+  }, [question.id, handleSave, initializedForQuestion]);
 
   // Get current merged labels for display
   const currentMergedLabels = getCurrentMergedLabels();
@@ -205,7 +182,6 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
   // Debug logging
   console.log('🔍 [QuestionAnnotationPanel] Render with:', {
     questionId: question.id,
-    questionLabels: Array.isArray(question?.labels) ? question.labels : [],
     annotationLabels: Array.isArray(annotation?.labels) ? annotation?.labels : [],
     currentMergedLabels,
     removedLabels: Array.isArray(formData.removedLabels) ? formData.removedLabels : [],
@@ -324,8 +300,7 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
                   placeholder="Add labels..."
                 />
                 <div className="mt-2 text-xs text-gray-500">
-                  Auto-generated labels: {Array.isArray(question.labels) ? question.labels.length : 0} | 
-                  User-defined: {(currentMergedLabels.length - (Array.isArray(question.labels) ? question.labels.length : 0))} |
+                  Labels from annotations: {currentMergedLabels.length} | 
                   Removed: {Array.isArray(formData.removedLabels) ? formData.removedLabels.length : 0}
                 </div>
               </div>

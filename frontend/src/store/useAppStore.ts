@@ -1938,7 +1938,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   // Enhanced RFQ Actions
-  submitEnhancedRFQ: async (rfq: EnhancedRFQRequest) => {
+  submitEnhancedRFQ: async (rfq: EnhancedRFQRequest, customPrompt?: string) => {
     try {
       // Prevent multiple simultaneous workflows
       const currentWorkflow = get().workflow;
@@ -1981,8 +1981,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
         description: enhancedDescription, // 🎯 Key change: Use enriched description instead of basic description
         target_segment: rfq.research_objectives?.research_audience || '',
         enhanced_rfq_data: rfq, // 🎯 Send the full structured data for storage and analytics
-        edited_fields: editedFieldsSummary // 🎯 Send edited fields for generation context
+        edited_fields: editedFieldsSummary, // 🎯 Send edited fields for generation context
+        custom_prompt: customPrompt // 🎯 Send custom prompt if provided
       };
+
+      console.log('🎨 [Store] Custom prompt included:', !!customPrompt, customPrompt ? `${customPrompt.length} chars` : '');
 
       console.log('🚀 [Enhanced RFQ] Submitting with enriched description and structured data:', {
         originalLength: rfq.description?.length || 0,
@@ -3004,6 +3007,31 @@ export const useAppStore = create<AppStore>((set, get) => ({
             hasBusinessContext: !!parsed.business_context?.company_product_background,
             hasResearchObjectives: !!parsed.research_objectives?.research_audience
           });
+          
+          // Ensure survey_structure has defaults if missing
+          if (!parsed.survey_structure || !parsed.survey_structure.text_requirements || parsed.survey_structure.text_requirements.length === 0) {
+            parsed.survey_structure = {
+              ...parsed.survey_structure,
+              qnr_sections: parsed.survey_structure?.qnr_sections || [
+                'sample_plan',
+                'screener',
+                'brand_awareness',
+                'concept_exposure',
+                'methodology_section',
+                'additional_questions',
+                'programmer_instructions'
+              ],
+              text_requirements: [
+                'study_intro',
+                'concept_intro',
+                'product_usage',
+                'confidentiality_agreement',
+                'methodology_instructions',
+                'closing_thank_you'
+              ]
+            };
+            console.log('🔍 [Store] Applied default survey_structure to restored RFQ');
+          }
           
           set({ enhancedRfq: parsed });
           return true;

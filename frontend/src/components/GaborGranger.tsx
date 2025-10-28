@@ -9,9 +9,10 @@ interface GaborGrangerProps {
     required?: boolean;
   };
   isPreview?: boolean;
+  showQuestionText?: boolean;
 }
 
-const GaborGranger: React.FC<GaborGrangerProps> = ({ question, isPreview = true }) => {
+const GaborGranger: React.FC<GaborGrangerProps> = ({ question, isPreview = true, showQuestionText = true }) => {
   // Extract metadata
   const extractMetadata = () => {
     const text = question.text;
@@ -61,10 +62,12 @@ const GaborGranger: React.FC<GaborGrangerProps> = ({ question, isPreview = true 
   
   return (
     <div className="space-y-4">
-      {/* Clean question text */}
-      <div className="text-base font-medium text-gray-900">
-        {cleanText}
-      </div>
+      {/* Clean question text - only if showQuestionText is true */}
+      {showQuestionText && (
+        <div className="text-base font-medium text-gray-900">
+          {cleanText}
+        </div>
+      )}
       
       {/* Scale legend */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">

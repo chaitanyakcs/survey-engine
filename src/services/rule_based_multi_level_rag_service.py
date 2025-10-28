@@ -317,10 +317,9 @@ class RuleBasedMultiLevelRAGService:
             
             # Build query to get questions with matching labels
             # Strategy: Get 1 question per label, prioritizing quality
-            # Process all required labels (typically 8-11) but limit total questions returned
             questions_by_label = {}
             
-            for label_name in required_labels:  # Process ALL labels to see what we can get
+            for label_name in required_labels[:limit]:  # Limit to avoid too many queries
                 # Query for questions with this specific label
                 # Using JSONB containment operator @>
                 # Query for questions with this specific label
@@ -354,13 +353,30 @@ class RuleBasedMultiLevelRAGService:
                 else:
                     logger.warning(f"⚠️ [RuleBasedRAG] No question found for label '{label_name}'")
             
-            # If we have fewer label-matched questions than the limit, we DON'T fill with fallbacks
-            # This ensures we only return questions that match required labels
-            if len(questions_by_label) == 0:
-                logger.warning(f"⚠️ [RuleBasedRAG] No questions matched required labels, returning empty list")
-            elif len(questions_by_label) < len(required_labels):
-                missing = len(required_labels) - len(questions_by_label)
-                logger.info(f"📊 [RuleBasedRAG] Retrieved {len(questions_by_label)}/{len(required_labels)} label-matched questions ({missing} missing)")
+            # If we don't have enough questions, fill with high-quality questions
+            if len(questions_by_label) < limit:
+                remaining = limit - len(questions_by_label)
+                logger.info(f"🔍 [RuleBasedRAG] Need {remaining} more questions, fetching high-quality fallbacks")
+                
+                # Get IDs of questions we already have
+                existing_ids = [q.id for q, _ in questions_by_label.values()]
+                
+                # Fetch additional high-quality questions
+                fallback_questions = DatabaseSessionManager.safe_query(
+                    self.db,
+                    lambda: self.db.query(GoldenQuestion)
+                    .filter(GoldenQuestion.id.notin_(existing_ids) if existing_ids else text("1=1"))
+                    .filter(GoldenQuestion.quality_score >= 0.5)
+                    .order_by(GoldenQuestion.human_verified.desc(), GoldenQuestion.quality_score.desc())
+                    .limit(remaining)
+                    .all(),
+                    fallback_value=[],
+                    operation_name="retrieve fallback questions"
+                )
+                
+                # Add fallback questions with no specific label
+                for question in fallback_questions:
+                    questions_by_label[f"fallback_{question.id}"] = (question, None)
             
             # Convert to result format with label metadata
             result = []
@@ -406,11 +422,8 @@ class RuleBasedMultiLevelRAGService:
                 }
                 result.append(question_dict)
             
-            # Return questions, limiting to the requested number but prioritizing label matches
-            limited_result = result[:limit]
-            matched_labels = len([r for r in limited_result if r.get('primary_label')])
-            logger.info(f"✅ [RuleBasedRAG] Returning {len(limited_result)} questions ({matched_labels} label-matched, requested limit: {limit})")
-            return limited_result
+            logger.info(f"✅ [RuleBasedRAG] Retrieved {len(result)} questions ({len(questions_by_label)} with labels)")
+            return result[:limit]  # Ensure we don't exceed limit
             
         except Exception as e:
             logger.error(f"❌ [RuleBasedRAG] Label-based question retrieval failed: {str(e)}")

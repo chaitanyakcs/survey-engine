@@ -1333,12 +1333,12 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
         
         # Mapping of invalid types to valid ones
         type_mapping = {
-            'numeric': 'numeric_open',  # Keep as numeric but use specific subtype
+            'numeric': 'numeric_open',  # Generic numeric input
             'number': 'numeric_open', 
             'integer': 'numeric_open',
             'float': 'numeric_open',
             'decimal': 'numeric_open',
-            'currency': 'numeric_open',  # Will be detected as currency subtype
+            'currency': 'numeric_open',  # Maps to generic numeric_open
             'email': 'text',
             'phone': 'text',
             'date': 'text',
@@ -1348,14 +1348,14 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
             'website': 'text',
             'address': 'text',
             'name': 'text',
-            'age': 'numeric_open',  # Will be detected as age subtype
+            'age': 'numeric_open',  # Maps to generic numeric_open
             'gender': 'single_choice',
             'yes_no': 'yes_no',
             'boolean': 'yes_no',
             'true_false': 'yes_no',
             'agree_disagree': 'scale',
             'likert': 'scale',
-            'rating': 'numeric_open',  # Will be detected as rating subtype
+            'rating': 'numeric_open',  # Maps to generic numeric_open
             'stars': 'scale',
             'slider': 'scale',
             'range': 'scale',
@@ -1535,50 +1535,8 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
     
     def create_rfq_extraction_prompt(self, document_text: str) -> str:
         """Create the system prompt for RFQ-specific data extraction."""
-        
-        # Add QNR label taxonomy context if database session is available
-        qnr_context = ""
-        if self.db_session:
-            try:
-                from src.services.qnr_label_service import QNRLabelService
-                qnr_service = QNRLabelService(self.db_session)
-                
-                # Get all sections and labels to provide context
-                sections = qnr_service.list_sections()
-                all_labels = qnr_service.list_labels(active_only=True)
-                
-                # Group labels by section for better organization
-                labels_by_section = {}
-                for label in all_labels:
-                    section_id = label.get('section_id')
-                    if section_id not in labels_by_section:
-                        labels_by_section[section_id] = []
-                    labels_by_section[section_id].append(label)
-                
-                # Build context string
-                if labels_by_section and sections:
-                    qnr_context = "\n\nQNR TAXONOMY REFERENCE (Use for detecting required questions):\n"
-                    qnr_context += "When analyzing the RFQ, identify which QNR labels/questions are needed based on these standard question types:\n\n"
-                    
-                    for section_id in sorted(labels_by_section.keys()):
-                        section = next((s for s in sections if s.get('id') == section_id), None)
-                        if section:
-                            qnr_context += f"SECTION {section_id}: {section.get('name', 'Unknown')}\n"
-                            qnr_context += f"Description: {section.get('description', '')}\n"
-                            
-                            # List mandatory labels for this section (most important)
-                            mandatory_labels = [l for l in labels_by_section[section_id] if l.get('mandatory')]
-                            if mandatory_labels:
-                                qnr_context += "MANDATORY Question Types:\n"
-                                for label in mandatory_labels[:10]:  # Limit to first 10 to avoid bloat
-                                    qnr_context += f"  - {label.get('name', '')}: {label.get('description', '')}\n"
-                            qnr_context += "\n"
-                
-                logger.info(f"📚 [Document Parser] Added QNR context: {len(labels_by_section)} sections")
-            except Exception as e:
-                logger.warning(f"⚠️ [Document Parser] Failed to load QNR context: {e}")
 
-        prompt = f"""You are an expert research consultant. Extract RFQ (Request for Quotation) information from the following document and convert it to structured data.{qnr_context}
+        prompt = f"""You are an expert research consultant. Extract RFQ (Request for Quotation) information from the following document and convert it to structured data.
 
 CRITICAL: You MUST return ONLY valid JSON. No explanations, no markdown, no backticks. Do NOT output character arrays or individual characters separated by spaces. Return a complete JSON string that can be parsed by json.loads().
 
@@ -1728,11 +1686,10 @@ MEASUREMENT_APPROACH (High Priority):
 - Strategy: Extract research approach and map to options
 
 INDUSTRY_CLASSIFICATION (High Priority):
-- Keywords: "industry", "sector", "market", "business", "company type", "vertical", "food", "beverage", "drink", "alcohol", "beer", "wine", "vodka", "restaurant", "cafe", "dining"
-- Patterns: "Technology company", "Healthcare industry", "Financial services", "Retail sector", "Food & Beverage", "Beverage company", "Alcohol brand"
+- Keywords: "industry", "sector", "market", "business", "company type", "vertical"
+- Patterns: "Technology company", "Healthcare industry", "Financial services", "Retail sector"
 - Strategy: Extract industry context from company background, product descriptions, business context
-- Examples: "Technology", "Healthcare", "Financial Services", "Retail", "Automotive", "Education", "Food & Beverage"
-- IMPORTANT: If keywords like "food", "beverage", "drink", "alcohol", "beer", "wine", "vodka", "restaurant", "cafe", "dining" are detected, classify as "food_beverage"
+- Examples: "Technology", "Healthcare", "Financial Services", "Retail", "Automotive", "Education"
 
 RESPONDENT_CLASSIFICATION (High Priority):
 - Keywords: "respondents", "participants", "audience", "customers", "users", "consumers", "professionals"

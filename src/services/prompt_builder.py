@@ -129,68 +129,29 @@ class SectionManager:
         return PromptSection("unmapped_context", content, order=4.5)
 
     def build_golden_questions_section(self, golden_questions: List[Dict[str, Any]]) -> PromptSection:
-        """Build golden questions section with expert comments and QNR label hints"""
+        """Build simplified golden questions section focused on examples and expert guidance"""
         if not golden_questions:
             return PromptSection("golden_questions", [], order=4.2, required=False)
         
         content = [
-            "## 📝 EXPERT QUESTION GUIDANCE (QNR Label-Matched Questions):",
-            "The following high-quality questions match required QNR labels for this survey.",
-            "Each question shows which requirement it satisfies and includes expert annotations.",
+            "## 📝 EXPERT QUESTION EXAMPLES:",
+            "",
+            "High-quality questions from verified surveys. Use these as templates.",
             ""
         ]
         
-        # Group questions by label for better organization
-        labeled_questions = []
-        unlabeled_questions = []
-        
-        for question in golden_questions[:5]:  # Limit to top 5
-            if question.get('primary_label'):
-                labeled_questions.append(question)
-            else:
-                unlabeled_questions.append(question)
-        
-        # Display labeled questions first (these match specific requirements)
-        for i, question in enumerate(labeled_questions, 1):
+        # Display up to 8 questions (increased from 5 since we removed label filtering)
+        for i, question in enumerate(golden_questions[:8], 1):
             question_text = question.get('question_text', '')
             question_type = question.get('question_type', 'unknown')
             quality_score = question.get('quality_score', 0.0)
             human_verified = question.get('human_verified', False)
             annotation_comment = question.get('annotation_comment', '')
             
-            # QNR Label metadata
-            primary_label = question.get('primary_label', '')
-            label_description = question.get('label_description', '')
-            label_mandatory = question.get('label_mandatory', False)
-            label_section_id = question.get('label_section_id', '')
-            label_category = question.get('label_category', '')
-            
-            # Section names for context
-            section_names = {
-                1: "Sample Plan", 2: "Screener", 3: "Brand/Product", 
-                4: "Concept", 5: "Methodology", 6: "Additional", 7: "Programmer Instructions"
-            }
-            section_name = section_names.get(label_section_id, f"Section {label_section_id}")
-            
-            # Build label header with context
-            label_header = f"**{primary_label}**"
-            if label_category:
-                label_header += f" ({section_name}"
-                if label_mandatory:
-                    label_header += " - MANDATORY"
-                label_header += ")"
-            
             content.extend([
-                f"### {label_header}",
-                f"**Label Purpose:** {label_description}" if label_description else "",
-                f"**Example Question:** \"{question_text}\"",
-                f"**Type:** {question_type}",
-                f"**Quality:** {quality_score:.2f}/1.0",
-                f"**Verified:** {'✅ Human Verified' if human_verified else '🤖 AI Generated'}"
+                f"**Example {i}:** \"{question_text}\"",
+                f"**Type:** {question_type} | **Quality:** {quality_score:.2f}/1.0 | {'✅ Human Verified' if human_verified else '🤖 AI Generated'}",
             ])
-            
-            # Remove empty strings
-            content = [c for c in content if c]
             
             if annotation_comment:
                 content.extend([
@@ -200,38 +161,11 @@ class SectionManager:
             else:
                 content.append("")
         
-        # Display unlabeled questions (high-quality fallbacks)
-        if unlabeled_questions:
-            if labeled_questions:
-                content.append("### Additional High-Quality Questions:")
-            
-            for i, question in enumerate(unlabeled_questions, len(labeled_questions) + 1):
-                question_text = question.get('question_text', '')
-                question_type = question.get('question_type', 'unknown')
-                quality_score = question.get('quality_score', 0.0)
-                human_verified = question.get('human_verified', False)
-                annotation_comment = question.get('annotation_comment', '')
-                
-                content.extend([
-                    f"**Question {i}:** \"{question_text}\"",
-                    f"**Type:** {question_type} | **Quality:** {quality_score:.2f}/1.0",
-                ])
-                
-                if annotation_comment:
-                    content.extend([
-                        f"**Expert Guidance:** {annotation_comment}",
-                        ""
-                    ])
-                else:
-                    content.append("")
-        
         content.extend([
-            "",
             "**USAGE INSTRUCTIONS:**",
-            "- Questions with QNR labels show which survey requirements they satisfy",
-            "- MANDATORY labels must be included in your generated survey",
             "- Use these as templates, adapting the wording to match your specific RFQ context",
             "- Pay special attention to expert guidance comments for best practices",
+            "- Refer to the QNR Taxonomy Reference for complete list of required question types",
             ""
         ])
         
@@ -267,42 +201,14 @@ class OutputFormatter:
             "",
             "## SECTION ORGANIZATION:",
             "1. **Sample Plan** (id: 1): Participant qualification criteria, recruitment requirements, and quotas",
-            "   - REQUIRED: Study_Intro in introText",
-            "   - OPTIONAL: Confidentiality_Agreement in textBlocks (for sensitive methodologies)",
             "2. **Screener** (id: 2): Initial qualification questions and basic demographics",
-            "   REQUIRED QUESTIONS:",
-            "   - Recent participation check (market research in last 6 months)",
-            "   - Conflict of interest screening (industry employment, competitors)",
-            "   - Basic demographics (age, gender)",
-            "   - Category usage qualification",
-            "   SEQUENCING: General → Specific, terminate early if disqualified",
             "3. **Brand/Product Awareness & Usage** (id: 3): Brand recall, awareness funnel, and usage patterns",
-            "   REQUIRED QUESTIONS (if brand study):",
-            "   - Unaided brand recall (top-of-mind brands)",
-            "   - Brand awareness funnel: Aware → Considered → Purchased → Continue → Preferred",
-            "   - Product satisfaction ratings",
-            "   - Usage frequency and patterns",
-            "   - REQUIRED: Product_Usage in textBlocks (for product-related studies)",
             "4. **Concept Exposure** (id: 4): Product/concept introduction and reaction assessment",
-            "   REQUIRED QUESTIONS (if concept testing):",
-            "   - Concept introduction text",
-            "   - Overall impression rating",
-            "   - Purchase likelihood assessment",
-            "   - REQUIRED: Concept_Intro in introText (for concept testing)",
             "5. **Methodology** (id: 5): Research-specific questions (Conjoint, Pricing, Feature Importance)",
-            "   Van Westendorp REQUIRED (if pricing study):",
-            "   - Too cheap price point",
-            "   - Bargain/good value price point",
-            "   - Getting expensive price point",
-            "   - Too expensive price point",
-            "   Gabor-Granger: text='How likely...{Product}?', type='gabor_granger', options=['$249',...] (prices only), scale_labels={'1':'Will not','5':'Will purchase'}",
-            "   ❌ NO [BRACKETS], scale descriptions, or price lists in text | ✅ Clean question + structured data",
-            "   Van Westendorp: text='At what price...', type='van_westendorp', currency='USD' (extract from text)",
-            "   Dropdown: text='Select...', type='dropdown', options=['Option1','Option2',...] (clean options)",
-            "   Conjoint: text='Evaluate combinations', type='conjoint', features=['Feature1','Feature2',...]",
-            "   Yes/No: text='Do you agree...', type='yes_no', options=['Yes','No'] (remove [FOR US ONLY] etc)",
             "6. **Additional Questions** (id: 6): Supplementary research questions and follow-ups",
             "7. **Programmer Instructions** (id: 7): Technical implementation notes and data specifications",
+            "",
+            "**Note**: Refer to the QNR Taxonomy Reference for required question types per section.",
             "",
             "## JSON FORMATTING RULES:",
             "✅ All strings in double quotes, proper syntax, no trailing commas",
@@ -314,6 +220,13 @@ class OutputFormatter:
             "✅ Use correct labels: Study_Intro, Product_Usage, Concept_Intro, Confidentiality_Agreement",
             "",
             "## QUESTION TYPE GUIDELINES:",
+            "✅ **yes_no**: For simple yes/no confirmation questions",
+            "   - Format: Question text asking for confirmation or binary choice",
+            "   - Examples: 'Please confirm you are 18 years or older.', 'Have you purchased this product in the past 3 months?', 'Do you agree to participate?',",
+            "   - Structure: Single question with two radio button options: Yes and No",
+            "   - Required: 'options' array must be exactly ['Yes', 'No']",
+            "   - CRITICAL: Question text must be a complete, readable sentence - do NOT use internal labels as text",
+            "",
             "📊 **matrix_likert**: For rating multiple attributes on a scale",
             "   - Format: Question text ending with '?', ':', or '.' followed by comma-separated attributes",
             "   - Examples: 'How important are the following when choosing a product? Comfort, Price, Quality, Brand reputation.'",
@@ -321,6 +234,8 @@ class OutputFormatter:
             "   - Examples: 'Please evaluate these aspects. Comfort, Price, Quality, Brand reputation.'",
             "   - Structure: Attributes become table rows, options become columns with radio buttons",
             "   - Required: 'options' array with scale labels (e.g., ['Not important', 'Somewhat important', 'Very important'])",
+            "   - CRITICAL: DO NOT put scale labels (like '1 = Dislike Extremely') in the question text - put them in 'options' array",
+            "   - CRITICAL: DO include comma-separated attributes in question text after '?', ':', or '.'",
             "",
             "🎯 **constant_sum**: For allocating points across multiple items",
             "   - Format: Question text with 'allocate X points across' followed by comma-separated items",
@@ -334,12 +249,14 @@ class OutputFormatter:
             "   - Structure: Items become rows, options become columns with number inputs",
             "   - Required: 'options' array for column headers",
             "",
-            "💰 **numeric_open**: For open-ended numeric input (prices, quantities, etc.)",
+            "💰 **numeric_open**: For open-ended numeric input (any numeric value)",
             "   - Format: Question text asking for a specific numeric value",
-            "   - Example: 'At what price per box would you consider this product too expensive? Please enter a price in your local currency.'",
-            "   - Structure: Single numeric input with currency selection",
-            "   - Required: No 'options' array needed - currency is auto-detected from question text",
-            "   - Special: Van Westendorp questions use this type for price sensitivity",
+            "   - Examples: 'How many times per week do you exercise?' or 'At what price would you consider this too expensive?'",
+            "   - Van Westendorp Example: 'At what price per bottle would you consider this product too cheap that you would question its quality? Please enter amount in your local currency.'",
+            "   - Structure: Single numeric input field",
+            "   - Required: No 'options' array needed - input type is context-dependent",
+            "   - Context: Can represent any numeric value (age, price, quantity, rating, etc.)",
+            "   - CRITICAL: Question text must be a complete, descriptive question - do NOT use generic placeholders like 'Currency Question' or 'Please enter the amount:'",
             "",
             "🎯 **maxdiff**: text='Select MOST/LEAST important features', type='maxdiff', features=['Feature1','Feature2',...] (NOT options)",
             "   Extract actual names from concept, NO placeholders | ONE question with ALL features | NO [SHOW CONCEPT] instructions",
@@ -366,12 +283,21 @@ class OutputFormatter:
                     "questions": [
                         {
                             "id": "q1",
-                            "text": "Question text on single line",
+                            "text": "Please confirm you are 18 years or older.",
+                            "type": "yes_no",
+                            "options": ["Yes", "No"],
+                            "required": True,
+                            "methodology": "screening",
+                            "order": 1
+                        },
+                        {
+                            "id": "q2",
+                            "text": "Which city do you currently live in?",
                             "type": "multiple_choice",
                             "options": ["Option 1", "Option 2"],
                             "required": True,
                             "methodology": "screening",
-                            "order": 1
+                            "order": 2
                         },
                         {
                             "id": "q2",
@@ -384,37 +310,71 @@ class OutputFormatter:
                         },
                         {
                             "id": "q3",
-                            "text": "Please allocate 100 points across the following features: Comfort, Price, Quality, Brand reputation.",
-                            "type": "constant_sum",
+                            "text": "Which of the following brands do you regularly purchase?",
+                            "type": "multiple_select",
+                            "options": ["Brand A", "Brand B", "Brand C", "None of these"],
                             "required": True,
-                            "methodology": "feature_importance",
+                            "methodology": "brand_usage",
                             "order": 3
                         },
                         {
                             "id": "q4",
+                            "text": "Please allocate 100 points across the following factors: Taste, Price, Brand reputation, Packaging.",
+                            "type": "constant_sum",
+                            "required": True,
+                            "methodology": "feature_importance",
+                            "order": 4
+                        },
+                        {
+                            "id": "q5",
+                            "text": "Please rate the sensory attributes of this sample. Appearance, Aroma, Taste, Mouthfeel, Finish.",
+                            "type": "matrix_likert",
+                            "options": ["Very poor", "Poor", "Fair", "Good", "Very good"],
+                            "required": True,
+                            "methodology": "sensory_evaluation",
+                            "order": 5
+                        },
+                        {
+                            "id": "q6",
                             "text": "Highlight the MOST IMPORTANT and the LEAST IMPORTANT features in the Product_A description.",
                             "type": "maxdiff",
                             "features": ["AI Personal Coaching", "Custom Workout Plans", "Nutrition Tracking", "Social Community", "Live Classes", "Progress Analytics"],
                             "required": True,
                             "methodology": "maxdiff",
-                            "order": 4
+                            "order": 6
                         },
                         {
-                            "id": "q5",
-                            "text": "How much would you pay for each benefit? HydraGlyde Moisture Matrix, SmartShield Technology, Month-long comfort guarantee.",
+                            "id": "q7",
+                            "text": "How much would you pay for each? Product A, Product B, Product C.",
                             "type": "numeric_grid",
-                            "options": ["$0-5", "$5-10", "$10-15", "$15-20", "$20+"],
+                            "options": ["$0-10", "$10-20", "$20-30", "$30+"],
                             "required": True,
                             "methodology": "willingness_to_pay",
-                            "order": 4
+                            "order": 7
                         },
                         {
-                            "id": "q5",
-                            "text": "At what price per box of 6 monthly lenses would you consider this product too expensive? Please enter a price in your local currency.",
+                            "id": "q8",
+                            "text": "How many times per week do you purchase this product?",
                             "type": "numeric_open",
                             "required": True,
-                            "methodology": "van_westendorp_expensive",
-                            "order": 5
+                            "methodology": "purchase_frequency",
+                            "order": 8
+                        },
+                        {
+                            "id": "q9",
+                            "text": "At what price per bottle would you consider this product too cheap that you would question its quality? Please enter amount in your local currency.",
+                            "type": "numeric_open",
+                            "required": True,
+                            "methodology": "VW_pricing",
+                            "order": 9
+                        },
+                        {
+                            "id": "q10",
+                            "text": "At what price per bottle would you consider this product getting expensive, but still worth considering? Please enter amount in your local currency.",
+                            "type": "numeric_open",
+                            "required": True,
+                            "methodology": "VW_pricing",
+                            "order": 10
                         }
                     ]
                 },
@@ -498,7 +458,14 @@ class OutputFormatter:
             "🚨 REMOVE from ALL questions: [SHOW HYPERLINK], [RANDOMIZE], [IF RESPONSE], [CAPTURE], [TERMINATE], QUOTAS:, CLASSIFY AS",
             "",
             "🚨 CRITICAL: Response must be valid JSON parseable by json.loads()",
-            "🚨 Generate the survey JSON now:"
+            "",
+            "## FINAL INSTRUCTION - JSON OUTPUT ONLY:",
+            "🚨 YOU MUST RETURN **ONLY** VALID JSON - NO PROSE, NO EXPLANATIONS, NO TEXT OUTSIDE JSON",
+            "🚨 Your response must START with '{' and END with '}'",
+            "🚨 Do NOT include markdown formatting, descriptions, or any text before/after the JSON",
+            "🚨 The response will be parsed with json.loads() - it must be valid JSON",
+            "",
+            "Generate the survey JSON now:"
         ])
 
         return PromptSection("json_requirements", content, order=6)
@@ -665,6 +632,16 @@ class PromptBuilder:
         text_requirements_section = self._build_text_requirements_section(context)
         if text_requirements_section:
             self.section_manager.add_section("text_requirements", text_requirements_section)
+
+        # Add QNR taxonomy reference section (comprehensive list of all question types)
+        qnr_taxonomy_section = self._build_qnr_taxonomy_section(context)
+        if qnr_taxonomy_section:
+            self.section_manager.add_section("qnr_taxonomy", qnr_taxonomy_section)
+
+        # Add methodology context section for methodology-to-label mapping
+        methodology_context = self._build_methodology_context_section(context, methodology_tags)
+        if methodology_context:
+            self.section_manager.add_section("methodology_context", methodology_context)
 
         # Add survey structure requirements section if enhanced RFQ data is available
         survey_structure_section = self._build_survey_structure_section(context)
@@ -865,36 +842,6 @@ class PromptBuilder:
                     content.append(f"✅ **{section_name}**: REQUIRED")
 
                 content.extend(["", "⚠️ **IMPORTANT**: Only include the sections listed above. Do NOT include unselected sections."])
-                
-                # Add QNR Label Requirements from context if available
-                enhanced_rfq_data = context.get("enhanced_rfq_data")
-                if enhanced_rfq_data:
-                    methodology_tags = enhanced_rfq_data.get("methodology_tags", [])
-                    industry = enhanced_rfq_data.get("industry")
-                    
-                    # Get required QNR labels from database
-                    try:
-                        from src.services.qnr_label_service import QNRLabelService
-                        qnr_service = QNRLabelService(db_session=self.db_session)
-                        
-                        # Add requirements for screener section
-                        if "screener" in qnr_sections:
-                            screener_labels = qnr_service.get_required_labels(
-                                section_id=2,
-                                methodology=methodology_tags,
-                                industry=industry
-                            )
-                            if screener_labels:
-                                content.extend([
-                                    "",
-                                    "### 📋 SCREENER SECTION REQUIREMENTS (Section 2):",
-                                    "",
-                                    "**MANDATORY QUESTION TYPES to include:**"
-                                ])
-                                for label in screener_labels[:10]:  # Limit to 10 for prompt size
-                                    content.append(f"• **{label['name']}**: {label['description']}")
-                    except Exception as e:
-                        logger.warning(f"Failed to get QNR label requirements: {e}")
 
             # Survey Logic Requirements
             logic_requirements = []
@@ -954,6 +901,204 @@ class PromptBuilder:
         except Exception as e:
             logger.warning(f"⚠️ [PromptBuilder] Failed to build survey structure section: {str(e)}")
             return None
+
+    def _build_qnr_taxonomy_section(self, context: Dict[str, Any]) -> Optional[PromptSection]:
+        """Build comprehensive QNR taxonomy reference for LLM to use in survey generation"""
+        try:
+            if not self.db_session:
+                logger.info("No database session available for QNR taxonomy section")
+                return None
+            
+            from src.services.qnr_label_service import QNRLabelService
+            qnr_service = QNRLabelService(self.db_session)
+            
+            # Get all labels (no filtering - let LLM decide)
+            all_labels = qnr_service.get_all_labels_for_prompt()
+            
+            if not all_labels:
+                logger.warning("No QNR labels found in database")
+                return None
+            
+            # Group labels by section
+            labels_by_section = {}
+            for label in all_labels:
+                section_id = label.get('section_id')
+                if section_id not in labels_by_section:
+                    labels_by_section[section_id] = []
+                labels_by_section[section_id].append(label)
+            
+            content = [
+                "## 📚 QNR TAXONOMY REFERENCE (Standard Question Types)",
+                "",
+                "This taxonomy provides a comprehensive list of standard question types used in market research surveys.",
+                "Review the RFQ's industry and methodology to determine which question types are relevant.",
+                "",
+                "**Instructions for LLM:**",
+                "1. Scan this taxonomy to understand available question types",
+                "2. Select question types that match the RFQ's industry, methodology, and research goals",
+                "3. Skip question types that don't apply (e.g., medical questions for food surveys, taste test for healthcare)",
+                "4. Use golden examples as templates where available",
+                "5. Generate additional relevant questions beyond this taxonomy if needed for comprehensive coverage",
+                ""
+            ]
+            
+            # Section name mapping
+            section_names = {
+                1: "Sample Plan",
+                2: "Screener",
+                3: "Brand/Product Awareness & Usage",
+                4: "Concept Exposure",
+                5: "Methodology",
+                6: "Additional Questions",
+                7: "Programmer Instructions"
+            }
+            
+            # Build section-by-section taxonomy
+            for section_id in sorted(labels_by_section.keys()):
+                section_name = section_names.get(section_id, f"Section {section_id}")
+                section_labels = labels_by_section[section_id]
+                
+                content.extend([
+                    f"### SECTION {section_id}: {section_name}",
+                    ""
+                ])
+                
+                # Separate mandatory and optional
+                mandatory_labels = [l for l in section_labels if l.get('mandatory')]
+                optional_labels = [l for l in section_labels if not l.get('mandatory')]
+                
+                if mandatory_labels:
+                    content.append("**Mandatory Question Types:**")
+                    for label in mandatory_labels:
+                        name = label['name']
+                        desc = label.get('description', '')[:100]  # Truncate for prompt size
+                        
+                        # Add context hints
+                        hints = []
+                        applicable_labels = label.get('applicable_labels', [])
+                        if applicable_labels:
+                            # Extract relevant hints
+                            if any(al.lower() in ['healthcare', 'medtech', 'consumer health'] for al in applicable_labels):
+                                hints.append('healthcare')
+                            if any(al.lower() in ['food_beverage', 'taste test'] for al in applicable_labels):
+                                hints.append('food/beverage')
+                            if 'Van Westendorp' in applicable_labels:
+                                hints.append('pricing')
+                            if 'Gabor Granger' in applicable_labels:
+                                hints.append('pricing')
+                            if 'Conjoint' in applicable_labels:
+                                hints.append('conjoint')
+                        
+                        hint_str = f" [{', '.join(hints)}]" if hints else ""
+                        content.append(f"  • **{name}**: {desc}{hint_str}")
+                    content.append("")
+                
+                if optional_labels and len(optional_labels) <= 10:  # Only show if manageable
+                    content.append("**Optional Question Types:**")
+                    for label in optional_labels[:10]:  # Limit to avoid bloat
+                        name = label['name']
+                        desc = label.get('description', '')[:80]
+                        
+                        # Add context hints (same as mandatory labels)
+                        hints = []
+                        applicable_labels = label.get('applicable_labels', [])
+                        if applicable_labels:
+                            if any(al.lower() in ['healthcare', 'medtech', 'consumer health'] for al in applicable_labels):
+                                hints.append('healthcare')
+                            if any(al.lower() in ['food_beverage', 'taste test'] for al in applicable_labels):
+                                hints.append('food/beverage')
+                            if 'Van Westendorp' in applicable_labels:
+                                hints.append('pricing')
+                            if 'Gabor Granger' in applicable_labels:
+                                hints.append('pricing')
+                            if 'Conjoint' in applicable_labels:
+                                hints.append('conjoint')
+                        
+                        hint_str = f" [{', '.join(hints)}]" if hints else ""
+                        content.append(f"  • {name}: {desc}{hint_str}")
+                    content.append("")
+            
+            content.extend([
+                "---",
+                "**Remember:** This is a reference guide. Select question types based on semantic relevance to the RFQ.",
+                "Don't force-fit question types that don't make sense for the specific research context.",
+                ""
+            ])
+            
+            return PromptSection(
+                title="QNR Taxonomy Reference",
+                content=content,
+                order=4.3,  # After text requirements, before survey structure
+                required=False  # Non-blocking
+            )
+        
+        except Exception as e:
+            logger.warning(f"⚠️ [PromptBuilder] Failed to build QNR taxonomy section: {str(e)}")
+            return None
+
+    def _build_methodology_context_section(
+        self, 
+        context: Dict[str, Any],
+        methodology_tags: Optional[List[str]] = None
+    ) -> Optional[PromptSection]:
+        """Provide semantic hints connecting RFQ methodologies to taxonomy labels"""
+        logger.info(f"🔍 [PromptBuilder] Building methodology context section. Methodology tags: {methodology_tags}")
+        if not methodology_tags:
+            logger.info("⚠️ [PromptBuilder] No methodology tags provided, skipping methodology context section")
+            return None
+        
+        # Keyword-based semantic mapping (no complex normalization needed)
+        methodology_hints = {
+            'taste': ['Blind_Taste_Test', 'Concept_visual_impression', 'Concept_taste_impression', 
+                      'Concept_Aroma_*', 'Concept_quality_impression', 'Survey_Invite'],
+            'sensory': ['Blind_Taste_Test', 'Concept_Aroma_*', 'Concept_taste_*'],
+            'blind': ['Blind_Taste_Test'],
+            'van_westendorp': ['VW_pricing', 'VW_Likelihood'],
+            'pricing': ['VW_pricing', 'VW_Likelihood', 'GG_Likelihood'],
+            'gabor': ['GG_Likelihood'],
+            'conjoint': ['Concept_choice'],
+            'maxdiff': ['Concept_Feature_Highlight']
+        }
+        
+        # Find matching hints
+        relevant_labels = set()
+        for method in methodology_tags:
+            method_lower = method.lower().replace('_', ' ')
+            for keyword, labels in methodology_hints.items():
+                if keyword in method_lower:
+                    relevant_labels.update(labels)
+        
+        if not relevant_labels:
+            logger.info("⚠️ [PromptBuilder] No relevant labels found for methodology tags")
+            return None
+        
+        logger.info(f"✅ [PromptBuilder] Found {len(relevant_labels)} relevant labels for methodology tags")
+        
+        content = [
+            "## METHODOLOGY GUIDANCE",
+            "",
+            f"Your RFQ includes: {', '.join(methodology_tags)}",
+            "",
+            "Consider using these relevant taxonomy labels:",
+            ""
+        ]
+        
+        for label in sorted(relevant_labels):
+            content.append(f"  - {label}")
+        
+        content.extend([
+            "",
+            "These labels match your methodology semantically. Use them where appropriate.",
+            ""
+        ])
+        
+        logger.info(f"✅ [PromptBuilder] Created methodology context section with {len(content)} lines")
+        return PromptSection(
+            title="Methodology Context",
+            content=content,
+            order=4.35,
+            required=False
+        )
 
     def _build_advanced_classification_section(self, context: Dict[str, Any]) -> Optional[PromptSection]:
         """Build advanced classification requirements section from enhanced RFQ data"""

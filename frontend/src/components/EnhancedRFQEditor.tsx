@@ -318,6 +318,25 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
         survey_requirements: {
           sample_plan: '',
           must_have_questions: []
+        },
+        survey_structure: {
+          qnr_sections: [
+            'sample_plan',
+            'screener',
+            'brand_awareness',
+            'concept_exposure',
+            'methodology_section',
+            'additional_questions',
+            'programmer_instructions'
+          ],
+          text_requirements: [
+            'study_intro',
+            'concept_intro',
+            'product_usage',
+            'confidentiality_agreement',
+            'methodology_instructions',
+            'closing_thank_you'
+          ]
         }
       });
     } else {
@@ -353,6 +372,36 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
       // Continue without persistence - UI still works
     }
   }, [currentSection]);
+
+  // Ensure survey_structure always has defaults for text_requirements
+  useEffect(() => {
+    if (!enhancedRfq.survey_structure?.text_requirements || enhancedRfq.survey_structure.text_requirements.length === 0) {
+      console.log('🔍 [EnhancedRFQEditor] Applying default text_requirements to survey_structure');
+      setEnhancedRfq({
+        survey_structure: {
+          ...enhancedRfq.survey_structure,
+          qnr_sections: enhancedRfq.survey_structure?.qnr_sections || [
+            'sample_plan',
+            'screener',
+            'brand_awareness',
+            'concept_exposure',
+            'methodology_section',
+            'additional_questions',
+            'programmer_instructions'
+          ],
+          text_requirements: [
+            'study_intro',
+            'concept_intro',
+            'product_usage',
+            'confidentiality_agreement',
+            'methodology_instructions',
+            'closing_thank_you'
+          ]
+        }
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Status polling for when user returns while processing is still active
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);

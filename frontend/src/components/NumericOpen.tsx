@@ -16,10 +16,16 @@ interface NumericOpenProps {
     decimal_places?: number;
   };
   isPreview?: boolean;
+  showQuestionText?: boolean;
 }
 
-const NumericOpen: React.FC<NumericOpenProps> = ({ question, isPreview = true }) => {
+const NumericOpen: React.FC<NumericOpenProps> = ({ question, isPreview = true, showQuestionText = true }) => {
   const [value, setValue] = useState<string>('');
+
+  // Detect if this is a Van Westendorp question first
+  const isVanWestendorp = question.methodology?.includes('van_westendorp') || 
+                         question.text.toLowerCase().includes('van westendorp') ||
+                         question.category?.toLowerCase().includes('van westendorp');
 
   // Intelligent detection of numeric question type based on question text and metadata
   const detectNumericType = (): 'currency' | 'age' | 'quantity' | 'rating' | 'percentage' | 'measurement' | 'generic' => {
@@ -31,13 +37,20 @@ const NumericOpen: React.FC<NumericOpenProps> = ({ question, isPreview = true })
       return question.numeric_type;
     }
     
-    // Age detection
-    if (text.includes('age') || text.includes('years old') || text.includes('how old') || 
-        labels.some(label => label.toLowerCase().includes('age'))) {
-      return 'age';
+    // For Van Westendorp questions, default to currency (price sensitivity)
+    if (isVanWestendorp) {
+      return 'currency';
     }
     
-    // Currency detection
+    // Age detection (only if NOT a price/currency question)
+    if (!text.match(/[£$€¥₹]/) && !text.includes('price') && !text.includes('cost') && !text.includes('budget')) {
+      if (text.includes('age') || text.includes('years old') || text.includes('how old') || 
+          labels.some(label => label.toLowerCase().includes('age'))) {
+        return 'age';
+      }
+    }
+    
+    // Currency detection (including price sensitivity questions)
     if (text.match(/[£$€¥₹]/) || text.includes('price') || text.includes('cost') || text.includes('budget') ||
         text.includes('dollar') || text.includes('euro') || text.includes('pound') ||
         labels.some(label => label.toLowerCase().includes('price') || label.toLowerCase().includes('cost'))) {
@@ -213,8 +226,6 @@ const NumericOpen: React.FC<NumericOpenProps> = ({ question, isPreview = true })
     return inputConfig.format(value);
   };
 
-  const isVanWestendorp = question.methodology?.includes('van_westendorp') || 
-                         question.text.toLowerCase().includes('van westendorp');
 
   const getQuestionTypeLabel = () => {
     if (isVanWestendorp) return 'Van Westendorp Price Sensitivity';
@@ -246,6 +257,13 @@ const NumericOpen: React.FC<NumericOpenProps> = ({ question, isPreview = true })
 
   return (
     <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
+      {/* Display the actual question text - only if showQuestionText is true */}
+      {showQuestionText && (
+        <div className="text-base font-semibold text-gray-900 mb-3">
+          {question.text}
+        </div>
+      )}
+      
       <div className="text-sm font-medium text-gray-800 mb-4">
         {getQuestionTypeLabel()}
       </div>
@@ -292,7 +310,8 @@ const NumericOpen: React.FC<NumericOpenProps> = ({ question, isPreview = true })
         )}
 
         {/* Type-specific guidance */}
-        {numericType === 'age' && (
+        {/* Only show age info if NOT a Van Westendorp question */}
+        {numericType === 'age' && !isVanWestendorp && (
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <div className="flex items-start space-x-2">
               <div className="text-blue-600 text-lg">ℹ️</div>
@@ -328,6 +347,21 @@ const NumericOpen: React.FC<NumericOpenProps> = ({ question, isPreview = true })
                 <h4 className="text-sm font-medium text-yellow-900 mb-1">Percentage Input</h4>
                 <p className="text-sm text-yellow-800">
                   Please enter a percentage value between 0 and 100.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Currency/Price guidance for currency questions */}
+        {numericType === 'currency' && !isVanWestendorp && (
+          <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-start space-x-2">
+              <div className="text-green-600 text-lg">💰</div>
+              <div>
+                <h4 className="text-sm font-medium text-green-900 mb-1">Price/Cost Input</h4>
+                <p className="text-sm text-green-800">
+                  Please enter the amount in your local currency.
                 </p>
               </div>
             </div>

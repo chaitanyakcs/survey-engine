@@ -18,10 +18,13 @@ export const EnhancedRFQApp: React.FC = () => {
     setCurrentView('editor');
   };
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (customPrompt?: string) => {
     try {
-      console.log('🔍 [EnhancedRFQApp] handleGenerate called - submitting RFQ');
-      await submitEnhancedRFQ(enhancedRfq);
+      console.log('🔍 [EnhancedRFQApp] handleGenerate called - submitting RFQ', {
+        hasCustomPrompt: !!customPrompt,
+        customPromptLength: customPrompt?.length
+      });
+      await submitEnhancedRFQ(enhancedRfq, customPrompt);
       // Clear the form state after successful submission
       console.log('🔍 [EnhancedRFQApp] RFQ submitted successfully - clearing state');
       clearEnhancedRfqState();

@@ -83,13 +83,13 @@ export const SettingsPage: React.FC = () => {
   const [methodologies, setMethodologies] = useState<Record<string, MethodologyRule>>({});
   const [systemPrompt, setSystemPrompt] = useState<SystemPrompt>({ id: '', prompt_text: '', created_at: '', updated_at: '' });
   const [expandedSections, setExpandedSections] = useState({
+    qnrTaxonomy: false,
     aiModels: false,
     qualityControl: false,
     retrievalWeights: false,
     methodology: false,
     pillars: false,
-    systemPrompt: false,
-    qnrTaxonomy: false
+    systemPrompt: false
   });
   const [saving, setSaving] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{
@@ -359,7 +359,7 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
-  const toggleSection = (section: 'aiModels' | 'qualityControl' | 'retrievalWeights' | 'methodology' | 'pillars' | 'systemPrompt' | 'qnrTaxonomy') => {
+  const toggleSection = (section: 'qnrTaxonomy' | 'aiModels' | 'qualityControl' | 'retrievalWeights' | 'methodology' | 'pillars' | 'systemPrompt') => {
     setExpandedSections(prev => ({
       ...prev,
       [section]: !prev[section]
@@ -560,7 +560,7 @@ export const SettingsPage: React.FC = () => {
                         </div>
                         <div>
                           <h2 className="text-2xl font-bold text-gray-900">AI Models</h2>
-                          <p className="text-gray-600 mt-1">AI models used to generate surveys (read-only). No action needed—these are pre-configured for optimal quality.</p>
+                          <p className="text-gray-600 mt-1">Configure AI models for survey generation and processing</p>
                         </div>
                       </div>
                       <ChevronDownIcon 
@@ -642,7 +642,7 @@ export const SettingsPage: React.FC = () => {
                         </div>
                         <div>
                           <h2 className="text-2xl font-bold text-gray-900">Quality Control & Review</h2>
-                          <p className="text-gray-600 mt-1">Enable human review of AI-generated surveys before they're finalized. Set review mode and timeout settings.</p>
+                          <p className="text-gray-600 mt-1">Configure human review and quality control settings</p>
                         </div>
                       </div>
                       <ChevronDownIcon 
@@ -769,8 +769,8 @@ export const SettingsPage: React.FC = () => {
                           <CogIcon className="w-6 h-6 text-gray-600" />
                         </div>
                         <div>
-                          <h2 className="text-2xl font-bold text-gray-900">Reference Example Weights</h2>
-                          <p className="text-gray-600 mt-1">Adjust how much the AI uses examples from similar studies. Increase for more consistency, decrease for more variety.</p>
+                          <h2 className="text-2xl font-bold text-gray-900">Retrieval Weights</h2>
+                          <p className="text-gray-600 mt-1">Configure semantic search and retrieval preferences</p>
                         </div>
                       </div>
                       <ChevronDownIcon 
@@ -817,7 +817,7 @@ export const SettingsPage: React.FC = () => {
                         </div>
                         <div>
                           <h2 className="text-2xl font-bold text-gray-900">Methodology Rules</h2>
-                          <p className="text-gray-600 mt-1">Define rules for specific research methodologies (e.g., Van Westendorp, Conjoint). These ensure generated surveys include methodology-required questions.</p>
+                          <p className="text-gray-600 mt-1">Predefined research methodologies and their requirements</p>
                         </div>
                       </div>
                       <ChevronDownIcon 
@@ -866,7 +866,7 @@ export const SettingsPage: React.FC = () => {
                             <h2 className="text-2xl font-bold text-gray-900">System Prompt</h2>
                             <span className="px-2 py-1 bg-gray-200 text-gray-700 rounded-full text-xs font-medium">ADVANCED</span>
                           </div>
-                          <p className="text-gray-600 mt-1">Add custom instructions that override default AI behavior. Use carefully—affects every survey generation.</p>
+                          <p className="text-gray-600 mt-1">Add custom instructions that will be injected into every AI prompt</p>
                         </div>
                       </div>
                       <ChevronDownIcon 

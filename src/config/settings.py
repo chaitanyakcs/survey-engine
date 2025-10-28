@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     
     # Model configuration
     embedding_model: str = "all-MiniLM-L6-v2"
-    generation_model: str = "openai/gpt-5"
+    generation_model: str = "openai/gpt-5-structured"
     golden_similarity_threshold: float = 0.75
     max_golden_examples: int = 3
     

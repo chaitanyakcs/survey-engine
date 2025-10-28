@@ -57,8 +57,13 @@ class EvaluationLLMClient:
     def __init__(self, db_session: Optional[Any] = None):
         self.replicate_available = REPLICATE_AVAILABLE
         self.replicate_token = os.getenv("REPLICATE_API_TOKEN", "")
-        self.db_session = db_session
+        # Store for reference but pass None to audit service - let IT create independent session
+        self.provided_db_session = db_session
+        self.db_session = None  # Always None - audit service creates its own session
         self.audit_available = AUDIT_AVAILABLE
+        
+        print(f"🔍 [EvaluationLLMClient] Initialized with provided_db_session: {bool(db_session)}")
+        print(f"🔍 [EvaluationLLMClient] Will pass None to audit service to force independent session creation")
         
         # Get evaluation model from database settings or fallback to config
         self.model = self._get_evaluation_model()
@@ -140,8 +145,9 @@ class EvaluationLLMClient:
             interaction_id = f"evaluation_{uuid.uuid4().hex[:8]}"
             audit_service = None
             
-            # Try to create audit service if we have a database session
-            if self.db_session:
+            # Try to create audit service - pass None to force independent session creation
+            # The audit service will create its own independent session internally
+            if True:  # Always try to audit
                 try:
                     # Import audit components when needed to avoid circular imports
                     import sys
@@ -153,9 +159,11 @@ class EvaluationLLMClient:
                     from src.utils.llm_audit_decorator import LLMAuditContext
                     from src.services.llm_audit_service import LLMAuditService
                     
-                    audit_service = LLMAuditService(self.db_session)
+                    # Pass None to force independent session creation in audit service
+                    audit_service = LLMAuditService(None)
                     print(f"✅ [EvaluationLLMClient] Audit service created successfully for evaluation")
                     print(f"🔍 [EvaluationLLMClient] parent_survey_id={parent_survey_id}, parent_rfq_id={parent_rfq_id}")
+                    print(f"🔍 [EvaluationLLMClient] interaction_id={interaction_id}")
                 except Exception as e:
                     print(f"❌ [EvaluationLLMClient] Failed to create audit service: {e}")
                     print(f"❌ [EvaluationLLMClient] Traceback: {traceback.format_exc()}")
@@ -229,6 +237,7 @@ class EvaluationLLMClient:
                     print(f"✅ [EvaluationLLMClient] LLM Response received, length: {len(content)}")
                     print(f"🔍 [EvaluationLLMClient] Response preview: {content[:200]}...")
                     print(f"✅ [EvaluationLLMClient] Audit context will be saved on exit")
+                    print(f"🔍 [EvaluationLLMClient] About to exit audit context for interaction {interaction_id}")
                     return LLMResponse(
                         content=content.strip(),
                         success=True,
@@ -353,6 +362,10 @@ class EvaluationLLMClient:
             "improvements": ["Validate technical requirements", "Test completion rates"],
             "confidence": "medium_heuristic"
         })
+    
+    def __del__(self):
+        """Cleanup - no session to close since audit service manages its own"""
+        pass
     
     def _general_heuristic(self, prompt: str) -> str:
         """General heuristic evaluation"""

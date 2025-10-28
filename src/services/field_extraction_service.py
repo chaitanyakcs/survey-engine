@@ -396,7 +396,7 @@ Return ONLY a JSON object with this exact structure:
         valid_industries = [
             'electronics', 'appliances', 'healthcare_technology', 'enterprise_software',
             'automotive', 'financial_services', 'hospitality', 'retail', 'education',
-            'manufacturing', 'food_beverage', 'other'
+            'manufacturing', 'other'
         ]
         if industry_category in valid_industries:
             cleaned['industry_category'] = industry_category
