@@ -18,7 +18,6 @@ import {
 } from '@heroicons/react/24/outline';
 
 interface EvaluationSettings {
-  evaluation_mode: 'single_call' | 'multiple_calls' | 'aira_v1';
   enable_cost_tracking: boolean;
   enable_parallel_processing: boolean;
   enable_ab_testing: boolean;
@@ -31,14 +30,11 @@ interface EvaluationSettings {
   prompt_review_mode: 'disabled' | 'blocking' | 'parallel';
   prompt_review_timeout_hours: number;
   
-  // LLM Evaluation Settings
-  enable_llm_evaluation: boolean;
-  
-  
   // Model configuration
   generation_model: string;
   evaluation_model: string;
   embedding_model: string;
+  llm_provider: 'replicate' | 'openai';
 }
 
 interface RFQParsingSettings {
@@ -101,7 +97,6 @@ export const SettingsPage: React.FC = () => {
   } | null>(null);
   
   const [settings, setSettings] = useState<EvaluationSettings>({
-    evaluation_mode: 'single_call',
     enable_cost_tracking: false,
     enable_parallel_processing: false,
     enable_ab_testing: false,
@@ -114,13 +109,10 @@ export const SettingsPage: React.FC = () => {
     prompt_review_mode: 'disabled',
     prompt_review_timeout_hours: 24,
     
-    // LLM Evaluation Settings
-    enable_llm_evaluation: true,
-    
-    
     generation_model: 'openai/gpt-5',
     evaluation_model: 'openai/gpt-5',
-    embedding_model: 'all-MiniLM-L6-v2'
+    embedding_model: 'all-MiniLM-L6-v2',
+    llm_provider: 'replicate'
   });
   
   const [loading, setLoading] = useState(true);
@@ -240,13 +232,19 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
-  const fetchGenerationModels = async () => {
+  const fetchGenerationModels = async (provider?: string) => {
     try {
-      const response = await fetch('/api/v1/settings/generation/models');
+      const providerParam = provider || settings.llm_provider;
+      const response = await fetch(`/api/v1/settings/generation/models?provider=${providerParam}`);
       if (response.ok) {
         const data = await response.json();
-        // Filter out any Anthropics/Claude models if present
-        setGenerationModels(data.filter((m: string) => !m.toLowerCase().includes('anthropic') && !m.toLowerCase().includes('claude')));
+        setGenerationModels(data);
+        // If no model selected or selected model not in list, select first one
+        if (!generationModels.includes(settings.generation_model) || providerParam !== settings.llm_provider) {
+          if (data.length > 0) {
+            setSettings({ ...settings, generation_model: data[0] });
+          }
+        }
       }
     } catch (error) {
       console.error('Failed to fetch generation models:', error);
@@ -380,7 +378,7 @@ export const SettingsPage: React.FC = () => {
     fetchSettings();
     fetchRfqParsingSettings();
     fetchRfqModels();
-    fetchGenerationModels();
+    fetchGenerationModels(settings.llm_provider);
     fetchEvaluationModels();
     fetchEmbeddingModels();
     fetchRetrievalWeights();
@@ -403,7 +401,6 @@ export const SettingsPage: React.FC = () => {
 
   const resetToDefaults = () => {
     setSettings({
-      evaluation_mode: 'single_call',
       enable_cost_tracking: false,
       enable_parallel_processing: false,
       enable_ab_testing: false,
@@ -416,14 +413,11 @@ export const SettingsPage: React.FC = () => {
       prompt_review_mode: 'disabled',
       prompt_review_timeout_hours: 24,
       
-      // LLM Evaluation Settings
-      enable_llm_evaluation: true,
-      
-      
       // Model configuration
       generation_model: 'openai/gpt-4o-mini',
       evaluation_model: 'openai/gpt-4o-mini',
-      embedding_model: 'sentence-transformers/all-MiniLM-L6-v2'
+      embedding_model: 'sentence-transformers/all-MiniLM-L6-v2',
+      llm_provider: 'replicate'
     });
   };
 
@@ -572,28 +566,43 @@ export const SettingsPage: React.FC = () => {
                   </div>
                   {expandedSections.aiModels && (
                     <div className="p-6">
-                      <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                        <div className="flex items-center">
-                          <svg className="w-5 h-5 text-yellow-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                          </svg>
-                          <p className="text-sm text-yellow-800 font-medium">AI Model settings are read-only and cannot be modified</p>
-                        </div>
+                      {/* LLM Provider Selection */}
+                      <div className="mb-6">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">LLM Provider</label>
+                        <select
+                          value={settings.llm_provider}
+                          onChange={(e) => {
+                            const newProvider = e.target.value as 'replicate' | 'openai';
+                            setSettings({ ...settings, llm_provider: newProvider });
+                            // Fetch models for the new provider
+                            fetchGenerationModels(newProvider);
+                          }}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                        >
+                          <option value="replicate">Replicate</option>
+                          <option value="openai">OpenAI</option>
+                        </select>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {settings.llm_provider === 'openai' 
+                            ? 'Requires OPENAI_API_KEY environment variable' 
+                            : 'Requires REPLICATE_API_TOKEN environment variable'}
+                        </p>
                       </div>
+                      
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {/* Generation Model */}
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">Survey Generation</label>
                           <select
                             value={settings.generation_model}
-                            disabled
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed"
+                            onChange={(e) => setSettings({ ...settings, generation_model: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
                           >
                             {generationModels.map((m) => (
                               <option key={m} value={m}>{m}</option>
                             ))}
                           </select>
-                          <p className="text-xs text-gray-500 mt-1">Generates surveys (Read-only)</p>
+                          <p className="text-xs text-gray-500 mt-1">Generates surveys</p>
                         </div>
 
                         {/* Embedding Model */}
@@ -934,74 +943,12 @@ export const SettingsPage: React.FC = () => {
                   </div>
                   
                   <div className="space-y-6">
-                    {/* Enable LLM Evaluation */}
-                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-                      <div>
-                        <h3 className="text-lg font-medium text-gray-900">Enable AI Quality Evaluation</h3>
-                        <p className="text-gray-600">Run AI-powered quality evaluation on generated surveys using pillar-based scoring</p>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={settings.enable_llm_evaluation}
-                          onChange={(e) => setSettings({ ...settings, enable_llm_evaluation: e.target.checked })}
-                          className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-green-500 peer-checked:to-emerald-500"></div>
-                      </label>
+                    <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
+                      <p className="text-sm text-blue-800">
+                        AI quality evaluation is available on-demand from the Survey Preview page. 
+                        Click "Run Evaluation" to assess survey quality using pillar-based scoring.
+                      </p>
                     </div>
-
-                    {/* Evaluation Mode - Only show when AI evaluation is enabled */}
-                    {settings.enable_llm_evaluation && (
-                      <div className="space-y-4">
-                        <h3 className="text-lg font-medium text-gray-900">Evaluation Mode</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {[
-                            {
-                              value: 'single_call',
-                              title: 'Single Call',
-                              description: 'Fast evaluation with generic independent criteria',
-                              icon: '⚡',
-                              recommended: true
-                            },
-                            {
-                              value: 'multiple_calls',
-                              title: 'Multiple Calls',
-                              description: 'Detailed evaluation using customizable generation rules',
-                              icon: '🔄',
-                              recommended: false
-                            }
-                          ].map((mode) => (
-                            <div
-                              key={mode.value}
-                              className={`border-2 rounded-xl p-4 cursor-not-allowed transition-all duration-200 ${
-                                settings.evaluation_mode === mode.value
-                                  ? 'border-green-500 bg-gradient-to-br from-green-50 to-emerald-50'
-                                  : 'border-gray-200 bg-gray-50'
-                              }`}
-                            >
-                              <div className="flex items-center space-x-3 mb-2">
-                                <input
-                                  type="radio"
-                                  name="evaluation_mode"
-                                  value={mode.value}
-                                  checked={settings.evaluation_mode === mode.value}
-                                  disabled
-                                  className="w-4 h-4 text-green-600"
-                                />
-                                <span className="text-2xl">{mode.icon}</span>
-                                <h4 className="text-lg font-medium text-gray-900">{mode.title}</h4>
-                                {mode.recommended && (
-                                  <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Recommended</span>
-                                )}
-                              </div>
-                              <p className="text-gray-600 text-sm ml-7">{mode.description} (Read-only)</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
                   </div>
                 </div>
               </div>

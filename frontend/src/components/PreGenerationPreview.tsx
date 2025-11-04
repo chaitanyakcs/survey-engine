@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { EnhancedRFQRequest } from '../types';
 import { PromptPreview } from './PromptPreview';
@@ -9,65 +9,22 @@ interface PreGenerationPreviewProps {
   onEdit?: () => void;
 }
 
-
-interface EstimatedMetrics {
-  estimated_duration: string;
-  estimated_cost: string;
-  sample_size_recommendation: string;
-  question_count_estimate: string;
-  methodology_complexity: 'low' | 'medium' | 'high';
-  quality_score: number;
-}
-
 export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
   rfq,
   onGenerate,
   onEdit
 }) => {
   const { submitEnhancedRFQ, workflow } = useAppStore();
-  const [estimatedMetrics, setEstimatedMetrics] = useState<EstimatedMetrics | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'prompt'>('overview');
   const [customPrompt, setCustomPrompt] = useState<string | null>(null);
-
-  const calculateEstimates = useCallback(() => {
-    // Simulate AI-powered estimation logic
-    const objectiveCount = rfq.research_objectives?.key_research_questions?.length || 0;
-    const hasComplexMethodologies = rfq.methodology?.primary_method && 
-      ['conjoint', 'van_westendorp', 'gabor_granger'].includes(rfq.methodology.primary_method);
-
-    let questionEstimate = 15; // Base
-    questionEstimate += objectiveCount * 8; // 8 questions per objective
-    if (hasComplexMethodologies) questionEstimate += 20;
-    // Note: generation_config is not part of EnhancedRFQRequest interface
-    // if (rfq.generation_config?.complexity_level === 'advanced') questionEstimate += 15;
-    // if (rfq.generation_config?.include_validation_questions) questionEstimate += 10;
-
-    const complexity: 'low' | 'medium' | 'high' =
-      hasComplexMethodologies || objectiveCount > 3 ? 'high' :
-      objectiveCount > 1 ? 'medium' : 'low';
-
-    const duration = complexity === 'high' ? '25-35 min' :
-                    complexity === 'medium' ? '15-25 min' : '10-15 min';
-
-    const costMultiplier = complexity === 'high' ? 1.5 : complexity === 'medium' ? 1.2 : 1.0;
-    const baseCost = 1000; // Default base cost
-    const estimatedCost = Math.round(baseCost * costMultiplier * 0.75); // $0.75 per response
-
-    const sampleSize = (complexity === 'high' ? '800-1200' : '400-800');
-
-    setEstimatedMetrics({
-      estimated_duration: duration,
-      estimated_cost: `$${estimatedCost.toLocaleString()}`,
-      sample_size_recommendation: typeof sampleSize === 'string' ? sampleSize : `${sampleSize}`,
-      question_count_estimate: `${questionEstimate - 5}-${questionEstimate + 5}`,
-      methodology_complexity: complexity,
-      quality_score: 0.8 // Static reasonable default
-    });
-  }, [rfq]);
-
-  useEffect(() => {
-    calculateEstimates();
-  }, [calculateEstimates]);
+  
+  // Generation configuration state
+  const [jsonExamplesMode, setJsonExamplesMode] = useState<'rag_reference' | 'consolidated'>(
+    rfq.generation_config?.json_examples_mode || 'consolidated'
+  );
+  const [pillarRulesDetail, setPillarRulesDetail] = useState<'full' | 'digest' | 'none'>(
+    rfq.generation_config?.pillar_rules_detail || 'digest'
+  );
 
   const handlePromptEdited = (editedPrompt: string) => {
     setCustomPrompt(editedPrompt);
@@ -75,10 +32,19 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
   };
 
   const handleGenerate = async () => {
+    // Merge generation_config into rfq before submission
+    const rfqWithConfig: EnhancedRFQRequest = {
+      ...rfq,
+      generation_config: {
+        json_examples_mode: jsonExamplesMode,
+        pillar_rules_detail: pillarRulesDetail
+      }
+    };
+    
     if (onGenerate) {
       onGenerate(customPrompt || undefined);
     } else {
-      await submitEnhancedRFQ(rfq, customPrompt || undefined);
+      await submitEnhancedRFQ(rfqWithConfig, customPrompt || undefined);
     }
   };
 
@@ -166,6 +132,84 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
           {(activeTab === 'overview' || (!onGenerate && !onEdit)) && (
             <div className="space-y-6">
 
+            {/* Generation Configuration - Hidden (defaults work) */}
+            {/* {(onGenerate || onEdit) && (
+              <div className="bg-white/70 backdrop-blur-lg rounded-3xl shadow-2xl border border-white/20 p-8">
+                <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center">
+                  <span className="text-3xl mr-3">⚙️</span>
+                  Generation Configuration
+                </h2>
+                
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-lg font-semibold text-gray-800">
+                        JSON Examples Mode
+                      </label>
+                      <button
+                        onClick={() => setJsonExamplesMode(jsonExamplesMode === 'consolidated' ? 'rag_reference' : 'consolidated')}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                          jsonExamplesMode === 'consolidated' ? 'bg-blue-600' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            jsonExamplesMode === 'consolidated' ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    <div className="text-sm text-gray-600 space-y-2">
+                      {jsonExamplesMode === 'consolidated' ? (
+                        <>
+                          <p className="font-medium text-blue-700">✓ Consolidated Examples (ON)</p>
+                          <p>Full JSON schema example included for maximum clarity. ~195 lines.</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-medium text-purple-700">✓ RAG Reference (OFF)</p>
+                          <p>Explicit guidance to use RAG context for JSON structure. ~75 lines (68% smaller).</p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <label className="text-lg font-semibold text-gray-800">
+                      Pillar Rules Detail Level
+                    </label>
+                    <select
+                      value={pillarRulesDetail}
+                      onChange={(e) => setPillarRulesDetail(e.target.value as 'full' | 'digest' | 'none')}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                    >
+                      <option value="full">Full - All rules with details</option>
+                      <option value="digest">Digest - Core rules only (Recommended)</option>
+                      <option value="none">None - No pillar rules</option>
+                    </select>
+                    <div className="text-sm text-gray-600">
+                      {pillarRulesDetail === 'full' && (
+                        <p>All pillar rules with priority indicators and implementation notes.</p>
+                      )}
+                      {pillarRulesDetail === 'digest' && (
+                        <p className="text-green-700 font-medium">✓ Recommended: Core rules only for balanced prompt size.</p>
+                      )}
+                      {pillarRulesDetail === 'none' && (
+                        <p>No pillar rules included in prompt.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    <span className="font-medium">💡 Tip:</span> Use RAG Reference mode to reduce prompt size when you trust the quality of retrieved golden examples. 
+                    Consolidated Examples mode provides maximum guidance for complex RFQs.
+                  </p>
+                </div>
+              </div>
+            )} */}
+
             {/* Project Overview */}
             <div className="bg-white/70 backdrop-blur-lg rounded-3xl shadow-2xl border border-white/20 p-8">
               <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center">
@@ -202,31 +246,17 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                     </div>
                   )}
 
-                  {rfq.business_context.business_problem && (
+                  {rfq.business_context.business_problem_and_objective && (
                     <div>
-                      <h3 className="font-semibold text-gray-800 mb-2">Business Problem</h3>
-                      <p className="text-gray-600 leading-relaxed">{rfq.business_context.business_problem}</p>
+                      <h3 className="font-semibold text-gray-800 mb-2">Business Problem & Objective</h3>
+                      <p className="text-gray-600 leading-relaxed">{rfq.business_context.business_problem_and_objective}</p>
                     </div>
                   )}
 
-                  {rfq.business_context.business_objective && (
+                  {rfq.business_context.sample_requirements && (
                     <div>
-                      <h3 className="font-semibold text-gray-800 mb-2">Business Objective</h3>
-                      <p className="text-gray-600 leading-relaxed">{rfq.business_context.business_objective}</p>
-                    </div>
-                  )}
-
-                  {rfq.business_context.stakeholder_requirements && (
-                    <div>
-                      <h3 className="font-semibold text-gray-800 mb-2">Stakeholder Requirements</h3>
-                      <p className="text-gray-600 leading-relaxed">{rfq.business_context.stakeholder_requirements}</p>
-                    </div>
-                  )}
-
-                  {rfq.business_context.decision_criteria && (
-                    <div>
-                      <h3 className="font-semibold text-gray-800 mb-2">Decision Criteria</h3>
-                      <p className="text-gray-600 leading-relaxed">{rfq.business_context.decision_criteria}</p>
+                      <h3 className="font-semibold text-gray-800 mb-2">Sample Requirements</h3>
+                      <p className="text-gray-600 leading-relaxed">{rfq.business_context.sample_requirements}</p>
                     </div>
                   )}
 
@@ -298,30 +328,7 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                     </div>
                   )}
 
-                  {(rfq.research_objectives.success_metrics || rfq.research_objectives.validation_requirements || rfq.research_objectives.measurement_approach) && (
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                      {rfq.research_objectives.success_metrics && (
-                        <div className="p-4 bg-blue-50 rounded-xl">
-                          <h4 className="font-semibold text-blue-800 mb-2">Success Metrics</h4>
-                          <p className="text-blue-700 text-sm">{rfq.research_objectives.success_metrics}</p>
-                        </div>
-                      )}
-                      {rfq.research_objectives.validation_requirements && (
-                        <div className="p-4 bg-green-50 rounded-xl">
-                          <h4 className="font-semibold text-green-800 mb-2">Validation Requirements</h4>
-                          <p className="text-green-700 text-sm">{rfq.research_objectives.validation_requirements}</p>
-                        </div>
-                      )}
-                      {rfq.research_objectives.measurement_approach && (
-                        <div className="p-4 bg-purple-50 rounded-xl">
-                          <h4 className="font-semibold text-purple-800 mb-2">Measurement Approach</h4>
-                          <p className="text-purple-700 text-sm capitalize">
-                            {rfq.research_objectives.measurement_approach.replace('_', ' ')}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  {/* Enhanced Research Objectives Fields - REMOVED for simplification */}
                 </div>
               </div>
             )}
@@ -346,22 +353,6 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                     </div>
                   )}
 
-                  {rfq.methodology.sample_size_target && (
-                    <div>
-                      <h3 className="font-semibold text-gray-800 mb-2">Sample Size Target</h3>
-                      <p className="text-gray-600">{rfq.methodology.sample_size_target}</p>
-                    </div>
-                  )}
-
-                  {rfq.methodology.complexity_level && (
-                    <div>
-                      <h3 className="font-semibold text-gray-800 mb-2">Complexity Level</h3>
-                      <span className="px-3 py-1 bg-orange-100 text-orange-700 rounded-lg text-sm font-medium capitalize">
-                        {rfq.methodology.complexity_level}
-                      </span>
-                    </div>
-                  )}
-
                   {rfq.methodology.stimuli_details && (
                     <div className="lg:col-span-2">
                       <h3 className="font-semibold text-gray-800 mb-2">Stimuli Details</h3>
@@ -369,25 +360,7 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                     </div>
                   )}
 
-                  {rfq.methodology.methodology_requirements && (
-                    <div className="lg:col-span-2">
-                      <h3 className="font-semibold text-gray-800 mb-2">Methodology Requirements</h3>
-                      <p className="text-gray-600 leading-relaxed">{rfq.methodology.methodology_requirements}</p>
-                    </div>
-                  )}
-
-                  {rfq.methodology.required_methodologies && rfq.methodology.required_methodologies.length > 0 && (
-                    <div className="lg:col-span-2">
-                      <h3 className="font-semibold text-gray-800 mb-3">Required Methodologies</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {rfq.methodology.required_methodologies.map((method, index) => (
-                          <span key={index} className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-lg text-sm font-medium">
-                            {method.replace('_', ' ').toUpperCase()}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  {/* Enhanced Methodology Fields - REMOVED for simplification */}
                 </div>
               </div>
             )}
@@ -408,26 +381,10 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                     </div>
                   )}
 
-                  {rfq.survey_requirements.must_have_questions && rfq.survey_requirements.must_have_questions.length > 0 && (
-                    <div>
-                      <h3 className="font-semibold text-gray-800 mb-3">Must-Have Questions ({rfq.survey_requirements.must_have_questions.length})</h3>
-                      <div className="space-y-2">
-                        {rfq.survey_requirements.must_have_questions.map((question, index) => (
-                          <div key={index} className="flex items-start space-x-3 p-3 bg-green-50 rounded-xl">
-                            <div className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white bg-green-500">
-                              {index + 1}
-                            </div>
-                            <div className="flex-1">
-                              <p className="font-medium text-gray-900 text-sm">{question}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  {/* Must-Have Questions - REMOVED for simplification */}
 
-                  {(rfq.survey_requirements.completion_time_target || rfq.survey_requirements.device_compatibility || rfq.survey_requirements.accessibility_requirements || rfq.survey_requirements.data_quality_requirements) && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {(rfq.survey_requirements.completion_time_target || rfq.survey_requirements.device_compatibility) && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {rfq.survey_requirements.completion_time_target && (
                         <div className="p-4 bg-blue-50 rounded-xl">
                           <h4 className="font-semibold text-blue-800 mb-1">Completion Time</h4>
@@ -441,22 +398,6 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                           <h4 className="font-semibold text-green-800 mb-1">Device Compatibility</h4>
                           <p className="text-green-700 text-sm capitalize">
                             {rfq.survey_requirements.device_compatibility.replace('_', ' ')}
-                          </p>
-                        </div>
-                      )}
-                      {rfq.survey_requirements.accessibility_requirements && (
-                        <div className="p-4 bg-purple-50 rounded-xl">
-                          <h4 className="font-semibold text-purple-800 mb-1">Accessibility</h4>
-                          <p className="text-purple-700 text-sm capitalize">
-                            {rfq.survey_requirements.accessibility_requirements}
-                          </p>
-                        </div>
-                      )}
-                      {rfq.survey_requirements.data_quality_requirements && (
-                        <div className="p-4 bg-orange-50 rounded-xl">
-                          <h4 className="font-semibold text-orange-800 mb-1">Data Quality</h4>
-                          <p className="text-orange-700 text-sm capitalize">
-                            {rfq.survey_requirements.data_quality_requirements}
                           </p>
                         </div>
                       )}
@@ -509,18 +450,7 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                     </div>
                   )}
 
-                  {rfq.advanced_classification.compliance_requirements && rfq.advanced_classification.compliance_requirements.length > 0 && (
-                    <div>
-                      <h3 className="font-semibold text-gray-800 mb-3">Compliance Requirements</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {rfq.advanced_classification.compliance_requirements.map((req, index) => (
-                          <span key={index} className="px-3 py-1 bg-red-100 text-red-700 rounded-lg text-sm font-medium">
-                            {req}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  {/* Compliance Requirements - REMOVED for simplification */}
 
                   {rfq.advanced_classification.target_countries && rfq.advanced_classification.target_countries.length > 0 && (
                     <div className="lg:col-span-2">
@@ -662,11 +592,7 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                         )}
 
                         {/* Van Westendorp Requirements */}
-                        {(rfq.methodology?.primary_method === 'van_westendorp' || 
-                          rfq.methodology?.required_methodologies?.some((tag: string) => 
-                            tag.toLowerCase().includes('van westendorp') || 
-                            tag.toLowerCase().includes('pricing')
-                          )) && (
+                        {(rfq.methodology?.primary_method === 'van_westendorp') && (
                           <>
                             <div className="text-xs font-medium text-orange-700 mb-1">Van Westendorp Pricing:</div>
                             <div className="text-sm text-orange-800">• 4 price sensitivity questions (critical)</div>
@@ -674,11 +600,7 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                         )}
 
                         {/* Gabor Granger Requirements */}
-                        {(rfq.methodology?.primary_method === 'gabor_granger' || 
-                          rfq.methodology?.required_methodologies?.some((tag: string) => 
-                            tag.toLowerCase().includes('gabor granger') || 
-                            tag.toLowerCase().includes('sequential')
-                          )) && (
+                        {(rfq.methodology?.primary_method === 'gabor_granger') && (
                           <>
                             <div className="text-xs font-medium text-purple-700 mb-1">Gabor Granger Pricing:</div>
                             <div className="text-sm text-purple-800">• Sequential price acceptance questions</div>
@@ -695,13 +617,7 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                           obj.toLowerCase().includes('evaluation')
                         ) && !rfq.business_context?.company_product_background?.toLowerCase().includes('consumer') &&
                         rfq.methodology?.primary_method !== 'van_westendorp' &&
-                        rfq.methodology?.primary_method !== 'gabor_granger' &&
-                        !rfq.methodology?.required_methodologies?.some((tag: string) => 
-                          tag.toLowerCase().includes('van westendorp') || 
-                          tag.toLowerCase().includes('pricing') ||
-                          tag.toLowerCase().includes('gabor granger') || 
-                          tag.toLowerCase().includes('sequential')
-                        ) && (
+                        rfq.methodology?.primary_method !== 'gabor_granger' && (
                           <div className="text-sm text-gray-600 italic">No additional requirements detected</div>
                         )}
                       </div>
@@ -792,18 +708,7 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                       </div>
                     </div>
                   )}
-                  {rfq.advanced_classification.compliance_requirements && rfq.advanced_classification.compliance_requirements.length > 0 && (
-                    <div className="p-4 bg-orange-50 rounded-xl">
-                      <h4 className="font-semibold text-orange-800 mb-1">Compliance</h4>
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {rfq.advanced_classification.compliance_requirements.map((req, index) => (
-                          <span key={index} className="px-2 py-1 bg-orange-100 text-orange-700 text-xs rounded">
-                            {req.replace('_', ' ').toUpperCase()}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  {/* Compliance Requirements - REMOVED for simplification */}
                 </div>
               </div>
             )}
@@ -856,72 +761,25 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                 <div>
                   <p className="text-gray-600 leading-relaxed">{rfq.rules_and_definitions}</p>
                 </div>
-              </div>
-            )}
-
-            {/* Estimated Metrics */}
-            {estimatedMetrics && (
-              <div className="bg-white/70 backdrop-blur-lg rounded-3xl shadow-2xl border border-white/20 p-8">
-                <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center">
-                  <span className="text-3xl mr-3">📊</span>
-                  Estimated Survey Metrics
-                </h2>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="p-4 bg-gradient-to-r from-yellow-50 to-amber-50 rounded-2xl">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-yellow-700">Completion Time</span>
-                      <span className="text-lg">⏱️</span>
-                    </div>
-                    <p className="text-2xl font-bold text-yellow-900">{estimatedMetrics.estimated_duration}</p>
-                  </div>
-
-                  <div className="p-4 bg-gradient-to-r from-yellow-50 to-amber-50 rounded-2xl">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-yellow-700">Estimated Cost</span>
-                      <span className="text-lg">💰</span>
-                    </div>
-                    <p className="text-2xl font-bold text-yellow-900">{estimatedMetrics.estimated_cost}</p>
-                  </div>
-
-                  <div className="p-4 bg-gradient-to-r from-yellow-50 to-amber-50 rounded-2xl">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-yellow-700">Question Count</span>
-                      <span className="text-lg">❓</span>
-                    </div>
-                    <p className="text-2xl font-bold text-yellow-900">{estimatedMetrics.question_count_estimate}</p>
-                  </div>
-
-                  <div className="p-4 bg-gradient-to-r from-yellow-50 to-amber-50 rounded-2xl">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-yellow-700">Sample Size</span>
-                      <span className="text-lg">👥</span>
-                    </div>
-                    <p className="text-2xl font-bold text-yellow-900">{estimatedMetrics.sample_size_recommendation}</p>
-                  </div>
-                </div>
-
-                <div className="mt-6 p-4 bg-gray-50 rounded-2xl">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-sm font-medium text-gray-700">Methodology Complexity</span>
-                      <p className="text-lg font-bold text-gray-900 capitalize">{estimatedMetrics.methodology_complexity}</p>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-sm font-medium text-gray-700">Predicted Quality Score</span>
-                      <p className="text-lg font-bold text-gray-900">{Math.round(estimatedMetrics.quality_score * 100)}%</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+            </div>
+          )}
 
             </div>
           )}
 
           {activeTab === 'prompt' && (onGenerate || onEdit) && (
             <div className="space-y-6">
-              <PromptPreview rfq={rfq} onPromptEdited={handlePromptEdited} />
+              <PromptPreview 
+                key={`${jsonExamplesMode}-${pillarRulesDetail}`}
+                rfq={{
+                  ...rfq,
+                  generation_config: {
+                    json_examples_mode: jsonExamplesMode,
+                    pillar_rules_detail: pillarRulesDetail
+                  }
+                }} 
+                onPromptEdited={handlePromptEdited} 
+              />
             </div>
           )}
 

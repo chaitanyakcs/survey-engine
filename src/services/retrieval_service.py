@@ -355,6 +355,42 @@ class RetrievalService:
             logger.error(f"❌ [RetrievalService] Question retrieval failed: {str(e)}")
             return []
     
+    async def get_feedback_digest(
+        self,
+        methodology_tags: Optional[List[str]] = None,
+        industry: Optional[str] = None,
+        limit: int = 50
+    ) -> Dict[str, Any]:
+        """
+        Retrieve all questions with comments and create a digest of feedback provided.
+        
+        Args:
+            methodology_tags: Optional methodology filters
+            industry: Optional industry filter
+            limit: Maximum number of questions with comments to retrieve
+            
+        Returns:
+            Dictionary containing feedback digest and related data
+        """
+        try:
+            from src.services.rule_based_multi_level_rag_service import RuleBasedMultiLevelRAGService
+            
+            rule_service = RuleBasedMultiLevelRAGService(self.db)
+            return await rule_service.get_feedback_digest(
+                methodology_tags=methodology_tags,
+                industry=industry,
+                limit=limit
+            )
+            
+        except Exception as e:
+            logger.error(f"❌ [RetrievalService] Feedback digest retrieval failed: {str(e)}")
+            return {
+                'feedback_digest': f"Error generating feedback digest: {str(e)}",
+                'questions_with_feedback': [],
+                'total_feedback_count': 0,
+                'summary_categories': {}
+            }
+    
     def _extract_methodology_structure(self, survey_json: Dict[str, Any], methodology: str) -> Dict[str, Any]:
         """
         Extract structural patterns for a specific methodology from survey JSON

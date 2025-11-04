@@ -23,13 +23,15 @@ RUN apt-get update && apt-get install -y \
 # Install UV for fast Python package management
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Copy dependency files
+# Copy dependency files - use both pyproject.toml and requirements-docker.txt for compatibility
+COPY pyproject.toml ./
 COPY requirements-docker.txt ./
 
-# Install PyTorch CPU version first
+# Install PyTorch CPU version first (before uv sync to avoid conflicts)
 RUN pip install --no-cache-dir torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cpu
 
-# Install other dependencies
+# Install other dependencies using pip (for system-wide installation)
+# This ensures packages are available to both python3 and uv run
 RUN pip install --no-cache-dir -r requirements-docker.txt
 
 # Pre-download ML models to avoid startup delays

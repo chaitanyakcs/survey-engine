@@ -35,55 +35,47 @@ export const useAppStore = create<AppStore>((set, get) => ({
     rfqInput: { ...state.rfqInput, ...input }
   })),
 
-  // Enhanced RFQ State
+  // Enhanced RFQ State (SIMPLIFIED)
   enhancedRfq: {
     title: '',
     description: '',
     business_context: {
       company_product_background: '',
-      business_problem: '',
-      business_objective: '',
-      // Enhanced fields with defaults
-      stakeholder_requirements: '',
-      decision_criteria: '',
+      business_problem_and_objective: '',  // MERGED from business_problem + business_objective
+      sample_requirements: '',             // RENAMED from stakeholder_requirements
+      // Removed: decision_criteria
       budget_range: '25k_50k',
       timeline_constraints: 'standard_4_weeks'
     },
     research_objectives: {
       research_audience: '',
       success_criteria: '',
-      key_research_questions: [],
-      // Enhanced fields with defaults
-      success_metrics: '',
-      validation_requirements: '',
-      measurement_approach: 'mixed_methods'
+      key_research_questions: []
+      // Removed: success_metrics, validation_requirements, measurement_approach
     },
     methodology: {
       primary_method: 'basic_survey',
-      stimuli_details: '',
-      methodology_requirements: '',
-      // Enhanced fields with defaults
-      complexity_level: 'intermediate',
-      required_methodologies: [],
-      sample_size_target: '400-600 respondents'
+      stimuli_details: ''
+      // Removed: methodology_requirements, complexity_level, required_methodologies, sample_size_target
     },
     survey_requirements: {
       sample_plan: '',
       required_sections: [],
-      must_have_questions: [],
       screener_requirements: '',
-      // Enhanced fields with defaults
       completion_time_target: '15_20min',
-      device_compatibility: 'all_devices',
-      accessibility_requirements: 'basic',
-      data_quality_requirements: 'standard'
+      device_compatibility: 'all_devices'
+      // Removed: must_have_questions, accessibility_requirements, data_quality_requirements
     },
     advanced_classification: {
       industry_classification: '',
       respondent_classification: '',
-      methodology_tags: [],
-      compliance_requirements: ['Standard Data Protection']
+      methodology_tags: []
+      // Removed: compliance_requirements
     },
+    // NEW: Concept Stimuli
+    concept_stimuli: [],
+    // NEW: Additional Info (for unmapped context)
+    additional_info: '',
     // Smart defaults for survey structure
     survey_structure: {
       qnr_sections: [
@@ -442,6 +434,135 @@ export const useAppStore = create<AppStore>((set, get) => ({
         stack: error instanceof Error ? error.stack : undefined
       });
       return null;
+    }
+  },
+
+  // Evaluation state tracking
+  evaluationInProgress: {} as Record<string, boolean>,
+  evaluationPollIntervals: {} as Record<string, NodeJS.Timeout>,
+
+  triggerEvaluationAsync: async (surveyId: string) => {
+    const state = get();
+    
+    // Check if evaluation is already in progress
+    if (state.evaluationInProgress[surveyId]) {
+      console.log('⏳ [Store] Evaluation already in progress for survey:', surveyId);
+      return;
+    }
+
+    try {
+      console.log('🚀 [Store] Triggering evaluation for survey:', surveyId);
+      
+      // Set evaluation in progress
+      set({
+        evaluationInProgress: {
+          ...state.evaluationInProgress,
+          [surveyId]: true
+        }
+      });
+
+      // Trigger evaluation API call
+      const result = await apiService.triggerEvaluation(surveyId);
+      console.log('🚀 [Store] Evaluation trigger response:', result);
+
+      // Start polling if status is in_progress
+      if (result.status === 'in_progress') {
+        const pollInterval = setInterval(async () => {
+          try {
+            const status = await apiService.checkEvaluationStatus(surveyId);
+            
+            if (status.isComplete) {
+              // Evaluation complete, stop polling
+              clearInterval(pollInterval);
+              
+              // Update evaluation state
+              const currentState = get();
+              const newInProgress = { ...currentState.evaluationInProgress };
+              delete newInProgress[surveyId];
+              
+              const newIntervals = { ...currentState.evaluationPollIntervals };
+              delete newIntervals[surveyId];
+              
+              set({
+                evaluationInProgress: newInProgress,
+                evaluationPollIntervals: newIntervals
+              });
+
+              // Reload pillar scores
+              await get().loadPillarScoresAsync(surveyId);
+              console.log('✅ [Store] Evaluation completed and pillar scores updated');
+            }
+          } catch (error) {
+            console.error('❌ [Store] Error polling evaluation status:', error);
+            // Continue polling on error (network issues, etc.)
+          }
+        }, 5000); // Poll every 5 seconds
+
+        // Store interval ID
+        set({
+          evaluationPollIntervals: {
+            ...state.evaluationPollIntervals,
+            [surveyId]: pollInterval
+          }
+        });
+
+        // Set max polling attempts (100 attempts = ~8.3 minutes)
+        let attempts = 0;
+        const maxAttempts = 100;
+        
+        const checkAttempts = setInterval(() => {
+          attempts++;
+          if (attempts >= maxAttempts) {
+            clearInterval(checkAttempts);
+            clearInterval(pollInterval);
+            
+            // Stop polling
+            const currentState = get();
+            const newInProgress = { ...currentState.evaluationInProgress };
+            delete newInProgress[surveyId];
+            
+            const newIntervals = { ...currentState.evaluationPollIntervals };
+            delete newIntervals[surveyId];
+            
+            set({
+              evaluationInProgress: newInProgress,
+              evaluationPollIntervals: newIntervals
+            });
+            
+            console.warn('⚠️ [Store] Max polling attempts reached for evaluation');
+          }
+        }, 5000);
+      } else if (result.status === 'completed' && result.data) {
+        // Evaluation completed immediately
+        const currentState = get();
+        const newInProgress = { ...currentState.evaluationInProgress };
+        delete newInProgress[surveyId];
+        
+        set({
+          evaluationInProgress: newInProgress
+        });
+
+        // Update pillar scores
+        if (currentState.currentSurvey && currentState.currentSurvey.survey_id === surveyId) {
+          set({
+            currentSurvey: {
+              ...currentState.currentSurvey,
+              pillar_scores: result.data
+            }
+          });
+        }
+      }
+    } catch (error) {
+      console.error('❌ [Store] Failed to trigger evaluation:', error);
+      
+      // Remove from in-progress state
+      const currentState = get();
+      const newInProgress = { ...currentState.evaluationInProgress };
+      delete newInProgress[surveyId];
+      
+      set({
+        evaluationInProgress: newInProgress
+      });
     }
   },
 
@@ -875,6 +996,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       // Map backend response to frontend format
       const goldenExamples = backendData.map((item: any) => ({
         id: item.id,
+        title: item.title, // Include title field
         rfq_text: item.rfq_text,
         survey_json: item.survey_json as any, // Keep as-is for now
         methodology_tags: item.methodology_tags || [],
@@ -1660,14 +1782,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
         target_segment: '',
         research_goal: ''
       },
-      // Also clear Enhanced RFQ state
+      // Also clear Enhanced RFQ state (SIMPLIFIED)
       enhancedRfq: {
         title: '',
         description: '',
         business_context: {
           company_product_background: '',
-          business_problem: '',
-          business_objective: ''
+          business_problem_and_objective: ''
         },
         research_objectives: {
           research_audience: '',
@@ -1679,9 +1800,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
         },
         survey_requirements: {
           sample_plan: '',
-          required_sections: [],
-          must_have_questions: []
-        }
+          required_sections: []
+        },
+        concept_stimuli: [],
+        additional_info: ''
       },
       // Clear document-related state
       documentContent: undefined,
@@ -1846,11 +1968,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
       business_context: {
         company_product_background: `Research project for ${basicRfq.product_category || 'product/service'} targeting ${basicRfq.target_segment || 'target audience'}.`,
-        business_problem: 'Business challenge requiring market research insights.',
-        business_objective: basicRfq.research_goal || 'Generate actionable insights for business decisions.',
-        // Smart defaults
-        stakeholder_requirements: 'Standard business stakeholders require actionable insights.',
-        decision_criteria: 'Clear, actionable insights with statistical significance.',
+        business_problem_and_objective: `Business challenge requiring market research insights. ${basicRfq.research_goal || 'Generate actionable insights for business decisions.'}`,
+        sample_requirements: 'Standard business stakeholders require actionable insights.',
         budget_range: '25k_50k',
         timeline_constraints: 'standard_4_weeks'
       },
@@ -1858,41 +1977,31 @@ export const useAppStore = create<AppStore>((set, get) => ({
       research_objectives: {
         research_audience: basicRfq.target_segment || 'General consumer population',
         success_criteria: 'Generate statistically significant insights that inform business decisions.',
-        key_research_questions: basicRfq.research_goal ? [basicRfq.research_goal] : ['What are the key insights for this research?'],
-        // Smart defaults
-        success_metrics: 'Statistical significance, actionable insights, clear recommendations.',
-        validation_requirements: 'Standard validation checks for data quality and reliability.',
-        measurement_approach: 'mixed_methods'
+        key_research_questions: basicRfq.research_goal ? [basicRfq.research_goal] : ['What are the key insights for this research?']
       },
 
       methodology: {
         primary_method: 'basic_survey',
-        stimuli_details: 'To be determined based on research objectives.',
-        methodology_requirements: 'Standard market research methodology.',
-        // Smart defaults
-        complexity_level: 'intermediate',
-        required_methodologies: [],
-        sample_size_target: '400-600 respondents'
+        stimuli_details: 'To be determined based on research objectives.'
       },
 
       survey_requirements: {
         sample_plan: 'Nationally representative sample with standard demographic quotas.',
         required_sections: ['Screener', 'Demographics', 'Awareness', 'Usage', 'Satisfaction'],
-        must_have_questions: [],
         screener_requirements: 'Standard screener to ensure qualified respondents.',
-        // Smart defaults
         completion_time_target: '15_20min',
-        device_compatibility: 'all_devices',
-        accessibility_requirements: 'basic',
-        data_quality_requirements: 'standard'
+        device_compatibility: 'all_devices'
       },
 
       advanced_classification: {
         industry_classification: industryMapping[basicRfq.product_category?.toLowerCase() || ''] || '',
         respondent_classification: respondentMapping[basicRfq.target_segment?.toLowerCase() || ''] || 'B2C',
-        methodology_tags: detectMethodologyTags(basicRfq.research_goal, basicRfq.description),
-        compliance_requirements: ['Standard Data Protection']
+        methodology_tags: detectMethodologyTags(basicRfq.research_goal, basicRfq.description)
       },
+      
+      // NEW fields
+      concept_stimuli: [],
+      additional_info: 'Standard market research terminology and definitions apply. Statistical significance, actionable insights, clear recommendations.',
 
       // Smart defaults for survey structure
       survey_structure: {
@@ -2211,12 +2320,20 @@ export const useAppStore = create<AppStore>((set, get) => ({
         get().setEnhancedRfq(rfqUpdates);
         console.log('🔍 [Document Upload] Enhanced RFQ updated in store');
 
-        get().addToast({
-          type: 'success',
-          title: 'Auto-filled from Document',
-          message: `Applied ${acceptedCount} extracted fields. Review in the sections below. Click "Reset Form" to start fresh with a new RFQ.`,
-          duration: 8000
-        });
+        // Only show toast if survey generation is not in progress
+        const workflow = get().workflow;
+        const isGenerating = workflow.status === 'started' || 
+                           workflow.status === 'in_progress' || 
+                           workflow.status === 'paused';
+        
+        if (!isGenerating) {
+          get().addToast({
+            type: 'success',
+            title: 'Auto-filled from Document',
+            message: `Applied ${acceptedCount} extracted fields. Review in the sections below. Click "Reset Form" to start fresh with a new RFQ.`,
+            duration: 8000
+          });
+        }
       }
 
       // IMPORTANT: Persist state AFTER auto-fill logic completes
@@ -2296,12 +2413,21 @@ export const useAppStore = create<AppStore>((set, get) => ({
       // Auto-apply if we have accepted mappings
       if (autoAccepted.some(m => m.user_action === 'accepted')) {
         get().applyDocumentMappings();
-        get().addToast({
-          type: 'success',
-          title: 'Auto-filled from Text',
-          message: `Applied ${autoAccepted.filter(m => m.user_action === 'accepted').length} extracted fields. Click "Reset Form" to start fresh with a new RFQ.`,
-          duration: 8000
-        });
+        
+        // Only show toast if survey generation is not in progress
+        const workflow = get().workflow;
+        const isGenerating = workflow.status === 'started' || 
+                           workflow.status === 'in_progress' || 
+                           workflow.status === 'paused';
+        
+        if (!isGenerating) {
+          get().addToast({
+            type: 'success',
+            title: 'Auto-filled from Text',
+            message: `Applied ${autoAccepted.filter(m => m.user_action === 'accepted').length} extracted fields. Click "Reset Form" to start fresh with a new RFQ.`,
+            duration: 8000
+          });
+        }
       }
 
       return result;
@@ -2427,16 +2553,21 @@ export const useAppStore = create<AppStore>((set, get) => ({
         
         // Direct Enhanced RFQ field mappings (from document parser)
         case 'company_product_background':
-          if (!rfqUpdates.business_context) rfqUpdates.business_context = { company_product_background: '', business_problem: '', business_objective: '' };
+          if (!rfqUpdates.business_context) rfqUpdates.business_context = { company_product_background: '', business_problem_and_objective: '' };
           rfqUpdates.business_context.company_product_background = value;
           break;
         case 'business_problem':
-          if (!rfqUpdates.business_context) rfqUpdates.business_context = { company_product_background: '', business_problem: '', business_objective: '' };
-          rfqUpdates.business_context.business_problem = value;
-          break;
         case 'business_objective':
-          if (!rfqUpdates.business_context) rfqUpdates.business_context = { company_product_background: '', business_problem: '', business_objective: '' };
-          rfqUpdates.business_context.business_objective = value;
+        case 'business_problem_and_objective':
+          if (!rfqUpdates.business_context) rfqUpdates.business_context = { company_product_background: '', business_problem_and_objective: '' };
+          // Merge both old fields into new combined field
+          if (fieldName === 'business_problem_and_objective') {
+            rfqUpdates.business_context.business_problem_and_objective = value;
+          } else {
+            // Handle legacy fields by appending to combined field
+            const existing = rfqUpdates.business_context.business_problem_and_objective || '';
+            rfqUpdates.business_context.business_problem_and_objective = existing ? `${existing}\n\n${value}` : value;
+          }
           break;
         case 'research_audience':
           if (!rfqUpdates.research_objectives) rfqUpdates.research_objectives = { research_audience: '', success_criteria: '', key_research_questions: [] };
@@ -2451,20 +2582,23 @@ export const useAppStore = create<AppStore>((set, get) => ({
           rfqUpdates.research_objectives.key_research_questions = Array.isArray(value) ? value : (value || '').split('\n').filter((q: string) => q.trim());
           break;
         case 'stimuli_details':
-          if (!rfqUpdates.methodology) rfqUpdates.methodology = { primary_method: 'basic_survey', stimuli_details: '', methodology_requirements: '' };
+          if (!rfqUpdates.methodology) rfqUpdates.methodology = { primary_method: 'basic_survey' };
           rfqUpdates.methodology.stimuli_details = value;
           break;
         case 'methodology_requirements':
-          if (!rfqUpdates.methodology) rfqUpdates.methodology = { primary_method: 'basic_survey', stimuli_details: '', methodology_requirements: '' };
-          rfqUpdates.methodology.methodology_requirements = value;
+          // REMOVED FIELD - Store in additional_info
+          if (!rfqUpdates.additional_info) rfqUpdates.additional_info = '';
+          rfqUpdates.additional_info += `\n\nMethodology Requirements: ${value}`;
           break;
         case 'sample_plan':
-          if (!rfqUpdates.survey_requirements) rfqUpdates.survey_requirements = { sample_plan: '', must_have_questions: [] };
+          if (!rfqUpdates.survey_requirements) rfqUpdates.survey_requirements = { sample_plan: '' };
           rfqUpdates.survey_requirements.sample_plan = value;
           break;
         case 'must_have_questions':
-          if (!rfqUpdates.survey_requirements) rfqUpdates.survey_requirements = { sample_plan: '', must_have_questions: [] };
-          rfqUpdates.survey_requirements.must_have_questions = Array.isArray(value) ? value : (value || '').split('\n').filter((q: string) => q.trim());
+          // REMOVED FIELD - Store in additional_info
+          if (!rfqUpdates.additional_info) rfqUpdates.additional_info = '';
+          const mustHaveQs = Array.isArray(value) ? value.join('\n') : value;
+          rfqUpdates.additional_info += `\n\nMust-Have Questions: ${mustHaveQs}`;
           break;
         
         // Legacy Basic RFQ fields that map to Enhanced RFQ
@@ -2477,7 +2611,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           rfqUpdates.research_objectives.research_audience = value;
           break;
         case 'product_category':
-          if (!rfqUpdates.business_context) rfqUpdates.business_context = { company_product_background: '', business_problem: '', business_objective: '' };
+          if (!rfqUpdates.business_context) rfqUpdates.business_context = { company_product_background: '', business_problem_and_objective: '' };
           rfqUpdates.business_context.company_product_background = value;
           break;
         case 'objectives':
@@ -2489,16 +2623,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
         // Advanced Business Context fields
         case 'stakeholder_requirements':
-          if (!rfqUpdates.business_context) rfqUpdates.business_context = { company_product_background: '', business_problem: '', business_objective: '' };
-          rfqUpdates.business_context.stakeholder_requirements = value;
+        case 'sample_requirements':
+          if (!rfqUpdates.business_context) rfqUpdates.business_context = { company_product_background: '', business_problem_and_objective: '' };
+          rfqUpdates.business_context.sample_requirements = value;
           break;
         case 'decision_criteria':
-          if (!rfqUpdates.business_context) rfqUpdates.business_context = { company_product_background: '', business_problem: '', business_objective: '' };
-          rfqUpdates.business_context.decision_criteria = value;
+          // REMOVED FIELD - Store in additional_info
+          if (!rfqUpdates.additional_info) rfqUpdates.additional_info = '';
+          rfqUpdates.additional_info += `\n\nDecision Criteria: ${value}`;
           break;
         case 'budget_range':
         case 'budget':
-          if (!rfqUpdates.business_context) rfqUpdates.business_context = { company_product_background: '', business_problem: '', business_objective: '' };
+          if (!rfqUpdates.business_context) rfqUpdates.business_context = { company_product_background: '', business_problem_and_objective: '' };
           rfqUpdates.business_context.budget_range = validateAndMapEnum(
             value, 
             'budget_range', 
@@ -2507,7 +2643,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           ) as 'under_10k' | '10k_25k' | '25k_50k' | '50k_100k' | 'over_100k';
           break;
         case 'timeline_constraints':
-          if (!rfqUpdates.business_context) rfqUpdates.business_context = { company_product_background: '', business_problem: '', business_objective: '' };
+          if (!rfqUpdates.business_context) rfqUpdates.business_context = { company_product_background: '', business_problem_and_objective: '' };
           rfqUpdates.business_context.timeline_constraints = validateAndMapEnum(
             value, 
             'timeline_constraints', 
@@ -2516,54 +2652,42 @@ export const useAppStore = create<AppStore>((set, get) => ({
           ) as 'urgent_1_week' | 'fast_2_weeks' | 'standard_4_weeks' | 'extended_8_weeks' | 'flexible';
           break;
 
-        // Advanced Research Objectives fields
+        // Advanced Research Objectives fields (REMOVED - move to additional_info)
         case 'success_metrics':
-          if (!rfqUpdates.research_objectives) rfqUpdates.research_objectives = { research_audience: '', success_criteria: '', key_research_questions: [] };
-          rfqUpdates.research_objectives.success_metrics = value;
+          if (!rfqUpdates.additional_info) rfqUpdates.additional_info = '';
+          rfqUpdates.additional_info += `\n\nSuccess Metrics: ${value}`;
           break;
         case 'validation_requirements':
-          if (!rfqUpdates.research_objectives) rfqUpdates.research_objectives = { research_audience: '', success_criteria: '', key_research_questions: [] };
-          rfqUpdates.research_objectives.validation_requirements = value;
+          if (!rfqUpdates.additional_info) rfqUpdates.additional_info = '';
+          rfqUpdates.additional_info += `\n\nValidation Requirements: ${value}`;
           break;
         case 'measurement_approach':
-          if (!rfqUpdates.research_objectives) rfqUpdates.research_objectives = { research_audience: '', success_criteria: '', key_research_questions: [] };
-          // Map measurement approach text to options
+          if (!rfqUpdates.additional_info) rfqUpdates.additional_info = '';
           const approachText = (value || '').toString().toLowerCase();
-          if (approachText.includes('quantitative')) {
-            rfqUpdates.research_objectives.measurement_approach = 'quantitative';
-          } else if (approachText.includes('qualitative')) {
-            rfqUpdates.research_objectives.measurement_approach = 'qualitative';
-          } else if (approachText.includes('mixed')) {
-            rfqUpdates.research_objectives.measurement_approach = 'mixed_methods';
-          } else {
-            rfqUpdates.research_objectives.measurement_approach = 'mixed_methods';
-          }
+          let approach = 'mixed methods';
+          if (approachText.includes('quantitative')) approach = 'quantitative';
+          else if (approachText.includes('qualitative')) approach = 'qualitative';
+          rfqUpdates.additional_info += `\n\nMeasurement Approach: ${approach}`;
           break;
 
-        // Advanced Methodology fields
+        // Advanced Methodology fields (REMOVED - move to additional_info)
         case 'complexity_level':
-          if (!rfqUpdates.methodology) rfqUpdates.methodology = { primary_method: 'basic_survey', stimuli_details: '', methodology_requirements: '' };
-          rfqUpdates.methodology.complexity_level = validateAndMapEnum(
-            value, 
-            'complexity_level', 
-            ['simple', 'intermediate', 'complex', 'expert_level'],
-            'intermediate'
-          ) as 'simple' | 'intermediate' | 'complex' | 'expert_level';
+          if (!rfqUpdates.additional_info) rfqUpdates.additional_info = '';
+          rfqUpdates.additional_info += `\n\nComplexity Level: ${value}`;
           break;
         case 'required_methodologies':
-          if (!rfqUpdates.methodology) rfqUpdates.methodology = { primary_method: 'basic_survey', stimuli_details: '', methodology_requirements: '' };
-          // Convert methodologies to array if needed
-          const methodologies = Array.isArray(value) ? value : (value || '').split(',').map((m: string) => m.trim());
-          rfqUpdates.methodology.required_methodologies = methodologies;
+          if (!rfqUpdates.additional_info) rfqUpdates.additional_info = '';
+          const methodologies = Array.isArray(value) ? value.join(', ') : value;
+          rfqUpdates.additional_info += `\n\nRequired Methodologies: ${methodologies}`;
           break;
         case 'sample_size_target':
-          if (!rfqUpdates.methodology) rfqUpdates.methodology = { primary_method: 'basic_survey', stimuli_details: '', methodology_requirements: '' };
-          rfqUpdates.methodology.sample_size_target = value;
+          if (!rfqUpdates.additional_info) rfqUpdates.additional_info = '';
+          rfqUpdates.additional_info += `\n\nSample Size Target: ${value}`;
           break;
 
         // Advanced Survey Requirements fields
         case 'completion_time_target':
-          if (!rfqUpdates.survey_requirements) rfqUpdates.survey_requirements = { sample_plan: '', must_have_questions: [] };
+          if (!rfqUpdates.survey_requirements) rfqUpdates.survey_requirements = { sample_plan: '' };
           rfqUpdates.survey_requirements.completion_time_target = validateAndMapEnum(
             value, 
             'completion_time_target', 
@@ -2572,7 +2696,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           ) as 'under_5min' | '5_10min' | '10_15min' | '15_20min' | '20_30min' | 'over_30min';
           break;
         case 'device_compatibility':
-          if (!rfqUpdates.survey_requirements) rfqUpdates.survey_requirements = { sample_plan: '', must_have_questions: [] };
+          if (!rfqUpdates.survey_requirements) rfqUpdates.survey_requirements = { sample_plan: '' };
           rfqUpdates.survey_requirements.device_compatibility = validateAndMapEnum(
             value, 
             'device_compatibility', 
@@ -2581,28 +2705,19 @@ export const useAppStore = create<AppStore>((set, get) => ({
           ) as 'mobile_only' | 'desktop_only' | 'mobile_first' | 'desktop_first' | 'all_devices';
           break;
         case 'accessibility_requirements':
-          if (!rfqUpdates.survey_requirements) rfqUpdates.survey_requirements = { sample_plan: '', must_have_questions: [] };
-          rfqUpdates.survey_requirements.accessibility_requirements = validateAndMapEnum(
-            value, 
-            'accessibility_requirements', 
-            ['basic', 'wcag_aa', 'wcag_aaa', 'custom'],
-            'basic'
-          ) as 'basic' | 'wcag_aa' | 'wcag_aaa' | 'custom';
+          if (!rfqUpdates.additional_info) rfqUpdates.additional_info = '';
+          rfqUpdates.additional_info += `\n\nAccessibility Requirements: ${value}`;
           break;
         case 'data_quality_requirements':
-          if (!rfqUpdates.survey_requirements) rfqUpdates.survey_requirements = { sample_plan: '', must_have_questions: [] };
-          // Map data quality text to options
+          if (!rfqUpdates.additional_info) rfqUpdates.additional_info = '';
           const qualityText = (value || '').toString().toLowerCase();
-          if (qualityText.includes('premium')) {
-            rfqUpdates.survey_requirements.data_quality_requirements = 'premium';
-          } else if (qualityText.includes('basic')) {
-            rfqUpdates.survey_requirements.data_quality_requirements = 'basic';
-          } else {
-            rfqUpdates.survey_requirements.data_quality_requirements = 'standard';
-          }
+          let quality = 'standard';
+          if (qualityText.includes('premium')) quality = 'premium';
+          else if (qualityText.includes('basic')) quality = 'basic';
+          rfqUpdates.additional_info += `\n\nData Quality Requirements: ${quality}`;
           break;
         case 'screener_requirements':
-          if (!rfqUpdates.survey_requirements) rfqUpdates.survey_requirements = { sample_plan: '', must_have_questions: [] };
+          if (!rfqUpdates.survey_requirements) rfqUpdates.survey_requirements = { sample_plan: '' };
           rfqUpdates.survey_requirements.screener_requirements = value;
           break;
 
@@ -2656,15 +2771,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
         // Advanced Classification fields
         case 'industry_classification':
-          if (!rfqUpdates.advanced_classification) rfqUpdates.advanced_classification = { industry_classification: '', respondent_classification: '', methodology_tags: [], compliance_requirements: [] };
+          if (!rfqUpdates.advanced_classification) rfqUpdates.advanced_classification = { industry_classification: '', respondent_classification: '', methodology_tags: [] };
           rfqUpdates.advanced_classification.industry_classification = value;
           break;
         case 'respondent_classification':
-          if (!rfqUpdates.advanced_classification) rfqUpdates.advanced_classification = { industry_classification: '', respondent_classification: '', methodology_tags: [], compliance_requirements: [] };
+          if (!rfqUpdates.advanced_classification) rfqUpdates.advanced_classification = { industry_classification: '', respondent_classification: '', methodology_tags: [] };
           rfqUpdates.advanced_classification.respondent_classification = value;
           break;
         case 'methodology_tags':
-          if (!rfqUpdates.advanced_classification) rfqUpdates.advanced_classification = { industry_classification: '', respondent_classification: '', methodology_tags: [], compliance_requirements: [] };
+          if (!rfqUpdates.advanced_classification) rfqUpdates.advanced_classification = { industry_classification: '', respondent_classification: '', methodology_tags: [] };
           // Handle both string and array values
           if (Array.isArray(value)) {
             rfqUpdates.advanced_classification.methodology_tags = value;
@@ -2672,6 +2787,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
             // Split by comma and clean up
             rfqUpdates.advanced_classification.methodology_tags = value.split(',').map(tag => tag.trim()).filter(tag => tag);
           }
+          break;
+        case 'compliance_requirements':
+          // REMOVED FIELD - Store in additional_info
+          if (!rfqUpdates.additional_info) rfqUpdates.additional_info = '';
+          const compReqs = Array.isArray(value) ? value.join(', ') : value;
+          rfqUpdates.additional_info += `\n\nCompliance Requirements: ${compReqs}`;
           break;
 
         // Rules and Definitions field
@@ -2713,8 +2834,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
     if (enhancedUpdates.methodology?.primary_method) {
       methodologies.push(enhancedUpdates.methodology.primary_method);
     }
-    if (enhancedUpdates.methodology?.required_methodologies) {
-      methodologies.push(...enhancedUpdates.methodology.required_methodologies);
+    // Note: required_methodologies field removed in simplification
+    // Methodologies are now primarily tracked via methodology_tags in advanced_classification
+    if (enhancedUpdates.advanced_classification?.methodology_tags) {
+      methodologies.push(...enhancedUpdates.advanced_classification.methodology_tags);
     }
 
     if (methodologies.length === 0) {
@@ -3050,15 +3173,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   clearEnhancedRfqState: () => {
     console.log('🧹 [Store] clearEnhancedRfqState called - clearing Enhanced RFQ state');
-    // Reset Enhanced RFQ to default state
+    // Reset Enhanced RFQ to default state (SIMPLIFIED)
     set({
       enhancedRfq: {
         title: '',
         description: '',
         business_context: {
           company_product_background: '',
-          business_problem: '',
-          business_objective: ''
+          business_problem_and_objective: ''
         },
         research_objectives: {
           research_audience: '',
@@ -3069,9 +3191,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
           primary_method: 'basic_survey'
         },
         survey_requirements: {
-          sample_plan: '',
-          must_have_questions: []
-        }
+          sample_plan: ''
+        },
+        concept_stimuli: [],
+        additional_info: ''
       }
     });
     // Clear all localStorage keys
@@ -3260,7 +3383,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       switch (label) {
         case 'Study_Intro':
           content = rfq ?
-            `Thank you for agreeing to participate in this ${rfq.methodology?.primary_method || 'research'} study. Your responses will help us understand ${rfq.business_context?.business_objective || 'market preferences'}. This survey should take approximately ${rfq.survey_requirements?.completion_time_target?.replace('_', '-').replace('min', ' minutes') || '10-15 minutes'} to complete.` :
+            `Thank you for agreeing to participate in this ${rfq.methodology?.primary_method || 'research'} study. Your responses will help us understand ${rfq.business_context?.business_problem_and_objective || 'market preferences'}. This survey should take approximately ${rfq.survey_requirements?.completion_time_target?.replace('_', '-').replace('min', ' minutes') || '10-15 minutes'} to complete.` :
             'Thank you for agreeing to participate in this research study. Your responses are valuable and will help us understand important market insights.';
           break;
         case 'Concept_Intro':

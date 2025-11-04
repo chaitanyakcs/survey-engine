@@ -310,9 +310,22 @@ class RuleBasedRAGPopulator:
             survey_data = golden_pair.survey_json
             # Handle both old and new JSON structures
             if 'final_output' in survey_data:
-                questions = survey_data['final_output'].get('questions', [])
-            else:
-                questions = survey_data.get('questions', [])
+                survey_data = survey_data['final_output']
+            
+            # Extract questions from both top-level and sections
+            questions = []
+            
+            # Get top-level questions (legacy format)
+            if 'questions' in survey_data:
+                questions.extend(survey_data['questions'])
+            
+            # Get questions from sections (new format)
+            if 'sections' in survey_data:
+                for section in survey_data['sections']:
+                    if 'questions' in section:
+                        questions.extend(section['questions'])
+            
+            logger.info(f"📋 [RAGPopulator] Extracting {len(questions)} questions from golden pair {golden_pair.id}")
             
             for question_data in questions:
                 try:

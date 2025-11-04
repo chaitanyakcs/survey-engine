@@ -81,8 +81,9 @@ class SettingsService:
             "quick_mode_enabled": False,  # Enable Quick mode toggle in UI (default to Enhanced mode)
             # Model configuration (overridable via UI)
             "generation_model": app_settings.generation_model,
-            "evaluation_model": app_settings.generation_model,
-            "embedding_model": app_settings.embedding_model
+            "evaluation_model": "openai/gpt-5",  # Use gpt-5 for evaluation (not structured version)
+            "embedding_model": app_settings.embedding_model,
+            "llm_provider": app_settings.llm_provider  # "replicate" or "openai"
         }
         
         logger.info(f"🔍 [SettingsService] Getting evaluation settings...")
@@ -115,7 +116,7 @@ class SettingsService:
                 "fallback_mode", "enable_prompt_review", "prompt_review_mode",
                 "prompt_review_timeout_hours",
                 # Model configuration keys
-                "generation_model", "evaluation_model", "embedding_model"
+                "generation_model", "evaluation_model", "embedding_model", "llm_provider"
             ]
             
             for key in required_keys:
@@ -185,7 +186,7 @@ class SettingsService:
     def get_rfq_parsing_settings(self) -> Dict[str, Any]:
         """Get RFQ parsing settings (threshold and model)."""
         default_settings = {
-            "parsing_model": "openai/gpt-5"
+            "parsing_model": "openai/gpt-5-structured"  # Use structured variant for better JSON output
         }
         try:
             logger.info(f"🔍 [SettingsService] Getting RFQ parsing settings from database...")

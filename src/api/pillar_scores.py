@@ -4,7 +4,7 @@ Pillar Scores API
 Endpoints for retrieving and managing pillar adherence scores
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from src.database import get_db, Survey
 from src.services.pillar_scoring_service import PillarScoringService
@@ -16,7 +16,6 @@ import asyncio
 import sys
 import os
 import threading
-from functools import lru_cache
 from datetime import datetime
 
 # Add evaluations directory to path for advanced evaluators
@@ -39,7 +38,6 @@ if eval_path not in sys.path:
     sys.path.insert(0, eval_path)  # Insert at beginning for higher priority
 
 try:
-    from evaluations.modules.pillar_based_evaluator import PillarBasedEvaluator
     from evaluations.modules.single_call_evaluator import SingleCallEvaluator
     ADVANCED_EVALUATORS_AVAILABLE = True
     logger = logging.getLogger(__name__)
@@ -76,24 +74,14 @@ class OverallPillarScoreResponse(BaseModel):
     pillar_breakdown: List[PillarScoreResponse]
     recommendations: List[str]
 
-@lru_cache(maxsize=1)
-def _get_evaluation_mode_cached() -> str:
-    """Get current evaluation mode from settings (cached)"""
-    try:
-        import requests
-        response = requests.get("http://localhost:8000/api/v1/settings/evaluation-mode", timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            return data.get("evaluation_mode", "single_call")
-    except Exception as e:
-        logger.warning(f"⚠️ Failed to get evaluation mode from settings: {e}")
-    
-    # Default to single_call if settings unavailable
-    return "single_call"
+class EvaluationStatusResponse(BaseModel):
+    status: str
+    data: Optional[OverallPillarScoreResponse] = None
+    message: Optional[str] = None
 
-async def _get_evaluation_mode() -> str:
-    """Get current evaluation mode from settings"""
-    return _get_evaluation_mode_cached()
+# Removed _get_evaluation_mode_cached() and _get_evaluation_mode() functions
+# Evaluation mode is now retrieved directly from SettingsService using database session
+# This avoids HTTP timeouts and improves performance
 
 def _get_evaluation_lock(survey_id: str) -> threading.Lock:
     """Get or create a lock for a specific survey to prevent concurrent evaluations"""
@@ -110,42 +98,28 @@ def _cleanup_evaluation_lock(survey_id: str):
 
 async def _evaluate_with_advanced_system(survey_data: Dict[str, Any], rfq_text: str, db: Session, survey_id: str = None, rfq_id: str = None) -> OverallPillarScoreResponse:
     """
-    Evaluate survey using the appropriate evaluator based on settings
+    Evaluate survey using SingleCallEvaluator
     """
-    # Get evaluation mode from settings
-    evaluation_mode = await _get_evaluation_mode()
-    logger.info(f"🚀 Using {evaluation_mode} evaluation mode")
+    logger.info(f"🚀 Starting survey evaluation")
     
     try:
-        # Initialize LLM client for advanced evaluator
+        # Initialize LLM client for evaluator
         from evaluations.llm_client import create_evaluation_llm_client
         llm_client = create_evaluation_llm_client(db_session=db)
         
-        # Choose evaluator based on settings
-        if evaluation_mode == "single_call":
-            # Use single-call evaluator for cost efficiency
-            evaluator = SingleCallEvaluator(llm_client=llm_client, db_session=db)
-            result = await evaluator.evaluate_survey(survey_data, rfq_text, survey_id, rfq_id)
-        elif evaluation_mode == "multiple_calls":
-            # Use multiple-call evaluator for detailed analysis
-            evaluator = PillarBasedEvaluator(llm_client=llm_client, db_session=db)
-            result = await evaluator.evaluate_survey(survey_data, rfq_text, survey_id, rfq_id)
-        else:  # fallback for unknown modes
-            # Use single-call for fallback
-            evaluator = SingleCallEvaluator(llm_client=llm_client, db_session=db)
-            result = await evaluator.evaluate_survey(survey_data, rfq_text, survey_id, rfq_id)
+        # Use single-call evaluator
+        evaluator = SingleCallEvaluator(llm_client=llm_client, db_session=db)
+        result = await evaluator.evaluate_survey(survey_data, rfq_text, survey_id, rfq_id)
         
-        # Generate AI annotations if using single-call evaluator and result has annotation data
-        logger.info(f"🔍 [Pillar Scores] Evaluation mode: {evaluation_mode}")
+        # Generate AI annotations if result has annotation data
         logger.info(f"🔍 [Pillar Scores] Result type: {type(result)}")
         logger.info(f"🔍 [Pillar Scores] Has question_annotations: {hasattr(result, 'question_annotations')}")
         logger.info(f"🔍 [Pillar Scores] Has section_annotations: {hasattr(result, 'section_annotations')}")
         
-        if evaluation_mode == "single_call" and hasattr(result, 'question_annotations') and hasattr(result, 'section_annotations'):
+        # Generate AI annotations if result has annotation data
+        if hasattr(result, 'question_annotations') and hasattr(result, 'section_annotations'):
             logger.info(f"🔍 [Pillar Scores] Question annotations count: {len(result.question_annotations)}")
             logger.info(f"🔍 [Pillar Scores] Section annotations count: {len(result.section_annotations)}")
-            logger.info(f"🔍 [Pillar Scores] Question annotations sample: {result.question_annotations[:2] if result.question_annotations else 'None'}")
-            logger.info(f"🔍 [Pillar Scores] Section annotations sample: {result.section_annotations[:2] if result.section_annotations else 'None'}")
             
             try:
                 from src.services.ai_annotation_service import AIAnnotationService
@@ -166,8 +140,6 @@ async def _evaluate_with_advanced_system(survey_data: Dict[str, Any], rfq_text: 
             except Exception as e:
                 logger.error(f"❌ Failed to generate AI annotations: {str(e)}")
                 # Don't fail the evaluation, just log the error
-        else:
-            logger.warning(f"⚠️ [Pillar Scores] Skipping annotation generation - evaluation_mode: {evaluation_mode}, has_question_annotations: {hasattr(result, 'question_annotations')}, has_section_annotations: {hasattr(result, 'section_annotations')}")
         
         # Convert advanced results to API format
         pillar_breakdown = []
@@ -181,33 +153,15 @@ async def _evaluate_with_advanced_system(survey_data: Dict[str, Any], rfq_text: 
             'deployment_readiness': 'Deployment Readiness'
         }
         
-        # Handle different result types
-        if hasattr(result, 'pillar_scores') and isinstance(result.pillar_scores, dict):
-            # SingleCallEvaluator result
-            pillar_scores = result.pillar_scores
-            weights = {
-                'content_validity': 0.20,
-                'methodological_rigor': 0.25,
-                'clarity_comprehensibility': 0.25,
-                'structural_coherence': 0.20,
-                'deployment_readiness': 0.10
-            }
-        else:
-            # PillarBasedEvaluator result
-            pillar_scores = {
-                'content_validity': getattr(result.pillar_scores, 'content_validity', 0.5),
-                'methodological_rigor': getattr(result.pillar_scores, 'methodological_rigor', 0.5),
-                'clarity_comprehensibility': getattr(result.pillar_scores, 'clarity_comprehensibility', 0.5),
-                'structural_coherence': getattr(result.pillar_scores, 'structural_coherence', 0.5),
-                'deployment_readiness': getattr(result.pillar_scores, 'deployment_readiness', 0.5)
-            }
-            weights = getattr(evaluator, 'PILLAR_WEIGHTS', {
-                'content_validity': 0.20,
-                'methodological_rigor': 0.25,
-                'clarity_comprehensibility': 0.25,
-                'structural_coherence': 0.20,
-                'deployment_readiness': 0.10
-            })
+        # SingleCallEvaluator result handling
+        pillar_scores = result.pillar_scores if hasattr(result, 'pillar_scores') and isinstance(result.pillar_scores, dict) else {}
+        weights = {
+            'content_validity': 0.20,
+            'methodological_rigor': 0.25,
+            'clarity_comprehensibility': 0.25,
+            'structural_coherence': 0.20,
+            'deployment_readiness': 0.10
+        }
         
         for pillar_name, display_name in pillar_mapping.items():
             score = pillar_scores.get(pillar_name, 0.5)
@@ -255,14 +209,9 @@ async def _evaluate_with_advanced_system(survey_data: Dict[str, Any], rfq_text: 
             overall_grade = "F"
         
         # Create enhanced summary with evaluation info
-        evaluation_mode = await _get_evaluation_mode()
         cost_savings = getattr(result, 'cost_savings', {})
-        
-        if evaluation_mode == "single_call":
-            cost_info = f"Cost Savings: {cost_savings.get('cost_reduction_percent', 0):.0f}% (${cost_savings.get('estimated_cost_saved', 0):.2f} saved)"
-            advanced_info = f"Single-Call Comprehensive Analysis | {cost_info}"
-        else:
-            advanced_info = f"Multiple-Call Detailed Analysis (v{result.evaluation_metadata.get('evaluation_version', '2.0')})"
+        cost_info = f"Cost Savings: {cost_savings.get('cost_reduction_percent', 0):.0f}% (${cost_savings.get('estimated_cost_saved', 0):.2f} saved)"
+        advanced_info = f"Single-Call Comprehensive Analysis | {cost_info}"
         
         # Get recommendations
         recommendations = []
@@ -279,11 +228,10 @@ async def _evaluate_with_advanced_system(survey_data: Dict[str, Any], rfq_text: 
         # Update cost metrics (non-blocking)
         try:
             import requests
-            cost_per_evaluation = 0.24 if evaluation_mode == "single_call" else 1.21  # Approximate costs
+            cost_per_evaluation = 0.24  # Approximate cost per evaluation
             requests.post(
                 "http://localhost:8000/api/v1/settings/cost-metrics/update",
                 params={
-                    "evaluation_mode": evaluation_mode,
                     "cost_per_evaluation": cost_per_evaluation
                 },
                 timeout=5  # Add timeout to prevent hanging
@@ -316,53 +264,6 @@ async def get_pillar_scores(
         survey_id: UUID of the survey
         force: If True, re-evaluate even if scores exist (default: False)
     """
-    
-    # Check if LLM evaluation is enabled
-    try:
-        from src.services.settings_service import SettingsService
-        settings_service = SettingsService(db)
-        evaluation_settings = settings_service.get_evaluation_settings()
-        enable_llm_evaluation = evaluation_settings.get('enable_llm_evaluation', True)
-        
-        if not enable_llm_evaluation:
-            # Return basic scores without LLM evaluation
-            survey = db.query(Survey).filter(Survey.id == survey_id).first()
-            if not survey:
-                raise HTTPException(status_code=404, detail="Survey not found")
-            
-            if not survey.final_output:
-                raise HTTPException(status_code=400, detail="Survey has not been generated yet")
-            
-            # Return basic fallback scores
-            from src.services.pillar_scoring_service import PillarScoringService
-            pillar_scoring_service = PillarScoringService(db)
-            pillar_scores = pillar_scoring_service.evaluate_survey_pillars(survey.final_output)
-            
-            # Convert to response format
-            pillar_breakdown = [
-                PillarScoreResponse(
-                    pillar_name=score.pillar_name,
-                    display_name=score.pillar_name.replace('_', ' ').title().replace('Comprehensibility', '& Comprehensibility'),
-                    score=score.score,
-                    weighted_score=score.score * 0.2,  # Equal weight for all pillars
-                    weight=0.2,
-                    criteria_met=score.criteria_met,
-                    total_criteria=score.total_criteria,
-                    grade=pillar_scoring_service._calculate_grade(score.score)
-                )
-                for score in pillar_scores.pillar_scores
-            ]
-            
-            return OverallPillarScoreResponse(
-                overall_grade=pillar_scores.overall_grade,
-                weighted_score=pillar_scores.weighted_score,
-                total_score=pillar_scores.total_score,
-                summary=pillar_scores.summary,
-                pillar_breakdown=pillar_breakdown,
-                recommendations=[rec for score in pillar_scores.pillar_scores for rec in score.recommendations]
-            )
-    except Exception as e:
-        logger.warning(f"⚠️ [Pillar Scores API] Error checking LLM evaluation setting: {e}, proceeding with normal evaluation")
     
     try:
         # Get survey from database
@@ -455,20 +356,32 @@ async def get_pillar_scores(
                     )
             
             try:
+                # Check if LLM evaluation is enabled in settings
+                from src.services.settings_service import SettingsService
+                settings_service = SettingsService(db)
+                evaluation_settings = settings_service.get_evaluation_settings()
+                enable_llm_evaluation = evaluation_settings.get('enable_llm_evaluation', True)
+                
+                if not enable_llm_evaluation:
+                    # LLM evaluation is disabled - return empty response
+                    logger.info(f"⚠️ [Pillar Scores API] LLM evaluation is disabled for survey {survey_id}")
+                    return OverallPillarScoreResponse(
+                        overall_grade="N/A",
+                        weighted_score=0.0,
+                        total_score=0.0,
+                        summary="LLM evaluation is disabled. Enable it in settings to get AI-powered quality assessment.",
+                        pillar_breakdown=[],
+                        recommendations=[]
+                    )
+                
                 # Extract RFQ text for advanced evaluation (fallback if not available)
                 rfq_text = getattr(survey, 'original_rfq', survey.rfq.description if survey.rfq else '')
                 if not rfq_text:
                     rfq_text = f"Survey: {survey.final_output.get('title', 'Unnamed Survey')}"
 
 
-                # Check if client wants AiRA v1 detailed evaluation
-                evaluation_mode = await _get_evaluation_mode()
-
-                if evaluation_mode == "aira_v1":
-                    logger.info("🎯 Using AiRA v1 evaluation framework")
-                    response = await _evaluate_with_aira_v1_system(survey.final_output, rfq_text, db, str(survey.id), str(survey.rfq_id) if survey.rfq_id else None)
-                else:
-                    response = await _evaluate_with_advanced_system(survey.final_output, rfq_text, db, str(survey.id), str(survey.rfq_id) if survey.rfq_id else None)
+                # Run evaluation using SingleCallEvaluator
+                response = await _evaluate_with_advanced_system(survey.final_output, rfq_text, db, str(survey.id), str(survey.rfq_id) if survey.rfq_id else None)
                 
                 # Update survey record with pillar scores
                 if response:
@@ -493,8 +406,7 @@ async def get_pillar_scores(
                                 for pillar in response.pillar_breakdown
                             ],
                             "recommendations": response.recommendations,
-                            "evaluation_timestamp": datetime.now().isoformat(),
-                            "evaluation_mode": evaluation_mode
+                            "evaluation_timestamp": datetime.now().isoformat()
                         }
                         
                         # Update survey record
@@ -566,45 +478,6 @@ async def evaluate_survey_pillars(
     Evaluate a survey JSON against pillar rules (for testing/validation)
     """
     
-    # Check if LLM evaluation is enabled
-    try:
-        from src.services.settings_service import SettingsService
-        settings_service = SettingsService(db)
-        evaluation_settings = settings_service.get_evaluation_settings()
-        enable_llm_evaluation = evaluation_settings.get('enable_llm_evaluation', True)
-        
-        if not enable_llm_evaluation:
-            # Use basic evaluation instead of LLM
-            from src.services.pillar_scoring_service import PillarScoringService
-            pillar_scoring_service = PillarScoringService(db)
-            pillar_scores = pillar_scoring_service.evaluate_survey_pillars(survey_data)
-            
-            # Convert to response format
-            pillar_breakdown = [
-                PillarScoreResponse(
-                    pillar_name=score.pillar_name,
-                    display_name=score.pillar_name.replace('_', ' ').title().replace('Comprehensibility', '& Comprehensibility'),
-                    score=score.score,
-                    weighted_score=score.score * 0.2,  # Equal weight for all pillars
-                    weight=0.2,
-                    criteria_met=score.criteria_met,
-                    total_criteria=score.total_criteria,
-                    grade=pillar_scoring_service._calculate_grade(score.score)
-                )
-                for score in pillar_scores.pillar_scores
-            ]
-            
-            return OverallPillarScoreResponse(
-                overall_grade=pillar_scores.overall_grade,
-                weighted_score=pillar_scores.weighted_score,
-                total_score=pillar_scores.total_score,
-                summary=pillar_scores.summary,
-                pillar_breakdown=pillar_breakdown,
-                recommendations=[rec for score in pillar_scores.pillar_scores for rec in score.recommendations]
-            )
-    except Exception as e:
-        logger.warning(f"⚠️ [Pillar Scores API] Error checking LLM evaluation setting: {e}, proceeding with normal evaluation")
-    
     try:
         # Use advanced evaluators if available, otherwise fallback to basic
         if ADVANCED_EVALUATORS_AVAILABLE:
@@ -655,6 +528,201 @@ async def evaluate_survey_pillars(
     except Exception as e:
         logger.error(f"❌ [Pillar Scores API] Error evaluating survey: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to evaluate survey: {str(e)}")
+
+async def _run_evaluation_background(survey_id: str):
+    """
+    Background task to run evaluation for a survey
+    """
+    evaluation_lock = None
+    try:
+        logger.info(f"🚀 [Background Evaluation] Starting evaluation for survey {survey_id}")
+        
+        # Get a fresh database session for the background task
+        from src.database import get_db
+        fresh_db = next(get_db())
+        
+        try:
+            # Get survey
+            survey = fresh_db.query(Survey).filter(Survey.id == UUID(survey_id)).first()
+            if not survey:
+                logger.error(f"❌ [Background Evaluation] Survey {survey_id} not found")
+                return
+            
+            if not survey.final_output:
+                logger.error(f"❌ [Background Evaluation] Survey {survey_id} has no final_output")
+                return
+            
+            # Extract RFQ text
+            rfq_text = getattr(survey, 'original_rfq', survey.rfq.description if survey.rfq else '')
+            if not rfq_text:
+                rfq_text = f"Survey: {survey.final_output.get('title', 'Unnamed Survey')}"
+            
+            # Run evaluation using SingleCallEvaluator
+            response = await _evaluate_with_advanced_system(
+                survey.final_output, rfq_text, fresh_db,
+                str(survey.id), str(survey.rfq_id) if survey.rfq_id else None
+            )
+            
+            # Update survey record with pillar scores
+            if response:
+                pillar_scores_data = {
+                    "overall_grade": response.overall_grade,
+                    "weighted_score": response.weighted_score,
+                    "total_score": response.total_score,
+                    "summary": response.summary,
+                    "pillar_breakdown": [
+                        {
+                            "pillar_name": pillar.pillar_name,
+                            "display_name": pillar.display_name,
+                            "score": pillar.score,
+                            "weighted_score": pillar.weighted_score,
+                            "weight": pillar.weight,
+                            "criteria_met": pillar.criteria_met,
+                            "total_criteria": pillar.total_criteria,
+                            "grade": pillar.grade
+                        }
+                        for pillar in response.pillar_breakdown
+                    ],
+                    "recommendations": response.recommendations,
+                    "evaluation_timestamp": datetime.now().isoformat()
+                }
+                
+                survey.pillar_scores = pillar_scores_data
+                fresh_db.commit()
+                logger.info(f"✅ [Background Evaluation] Updated survey {survey_id} with pillar scores: {response.overall_grade} ({response.weighted_score:.2f})")
+            
+        finally:
+            fresh_db.close()
+            
+    except Exception as e:
+        logger.error(f"❌ [Background Evaluation] Error evaluating survey {survey_id}: {str(e)}", exc_info=True)
+    finally:
+        # Always release the lock
+        try:
+            evaluation_lock = _get_evaluation_lock(survey_id)
+            if evaluation_lock.locked():
+                evaluation_lock.release()
+            _cleanup_evaluation_lock(survey_id)
+            logger.info(f"🔓 [Background Evaluation] Released evaluation lock for survey {survey_id}")
+        except Exception as e:
+            logger.warning(f"⚠️ [Background Evaluation] Error releasing lock: {e}")
+
+@router.post("/{survey_id}/run-evaluation", response_model=EvaluationStatusResponse)
+async def run_evaluation(
+    survey_id: UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    Trigger async evaluation for a survey. Returns immediately with status.
+    Evaluation runs in background and results are saved to survey.pillar_scores.
+    """
+    try:
+        survey_id_str = str(survey_id)
+        
+        # Get survey
+        survey = db.query(Survey).filter(Survey.id == survey_id).first()
+        if not survey:
+            raise HTTPException(status_code=404, detail="Survey not found")
+        
+        if not survey.final_output:
+            raise HTTPException(status_code=400, detail="Survey has not been generated yet")
+        
+        # Check if LLM evaluation is enabled in settings
+        from src.services.settings_service import SettingsService
+        settings_service = SettingsService(db)
+        evaluation_settings = settings_service.get_evaluation_settings()
+        enable_llm_evaluation = evaluation_settings.get('enable_llm_evaluation', True)
+        
+        if not enable_llm_evaluation:
+            logger.info(f"⚠️ [Run Evaluation] LLM evaluation is disabled for survey {survey_id_str}")
+            raise HTTPException(
+                status_code=403,
+                detail="LLM evaluation is disabled. Enable it in settings to run AI-powered quality assessment."
+            )
+        
+        # Check if evaluation is already in progress
+        evaluation_lock = _get_evaluation_lock(survey_id_str)
+        
+        # Try to acquire lock (non-blocking)
+        if evaluation_lock.locked():
+            logger.info(f"⏳ [Run Evaluation] Evaluation already in progress for survey {survey_id_str}")
+            return EvaluationStatusResponse(
+                status="in_progress",
+                message="Evaluation is already running. Please check back in a few moments."
+            )
+        
+        # Check if we already have valid pillar scores
+        if survey.pillar_scores and isinstance(survey.pillar_scores, dict):
+            weighted_score = survey.pillar_scores.get('weighted_score', 0)
+            summary = survey.pillar_scores.get('summary', '')
+            
+            # Check if it's a valid completed evaluation (not in-progress)
+            if weighted_score > 0 and "in progress" not in summary.lower():
+                logger.info(f"✅ [Run Evaluation] Survey {survey_id_str} already has evaluation results")
+                # Return existing results
+                try:
+                    existing_response = OverallPillarScoreResponse(
+                        overall_grade=survey.pillar_scores.get('overall_grade', 'N/A'),
+                        weighted_score=survey.pillar_scores.get('weighted_score', 0.0),
+                        total_score=survey.pillar_scores.get('total_score', 0.0),
+                        summary=survey.pillar_scores.get('summary', ''),
+                        pillar_breakdown=[
+                            PillarScoreResponse(
+                                pillar_name=p.get('pillar_name', ''),
+                                display_name=p.get('display_name', ''),
+                                score=p.get('score', 0.0),
+                                weighted_score=p.get('weighted_score', 0.0),
+                                weight=p.get('weight', 0.0),
+                                criteria_met=p.get('criteria_met', 0),
+                                total_criteria=p.get('total_criteria', 0),
+                                grade=p.get('grade', 'F')
+                            )
+                            for p in survey.pillar_scores.get('pillar_breakdown', [])
+                        ],
+                        recommendations=survey.pillar_scores.get('recommendations', [])
+                    )
+                    return EvaluationStatusResponse(
+                        status="completed",
+                        data=existing_response,
+                        message="Evaluation already completed"
+                    )
+                except Exception as e:
+                    logger.warning(f"⚠️ [Run Evaluation] Error parsing existing scores: {e}")
+                    # Continue to trigger new evaluation
+        
+        # Acquire lock
+        evaluation_lock.acquire()
+        logger.info(f"🔓 [Run Evaluation] Acquired evaluation lock for survey {survey_id_str}")
+        
+        # Set initial "in progress" state
+        survey.pillar_scores = {
+            "overall_grade": "Pending",
+            "weighted_score": 0.0,
+            "total_score": 0.0,
+            "summary": "Evaluation in progress, please check back in a few moments",
+            "pillar_breakdown": [],
+            "recommendations": [],
+            "evaluation_status": "in_progress",
+            "evaluation_timestamp": datetime.now().isoformat()
+        }
+        db.commit()
+        
+        # Trigger background evaluation
+        background_tasks.add_task(_run_evaluation_background, survey_id_str)
+        
+        logger.info(f"🚀 [Run Evaluation] Triggered background evaluation for survey {survey_id_str}")
+        
+        return EvaluationStatusResponse(
+            status="in_progress",
+            message="Evaluation started. Results will be available shortly."
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [Run Evaluation] Error triggering evaluation for survey {survey_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to trigger evaluation: {str(e)}")
 
 @router.get("/{survey_id}/ai-annotations")
 async def get_ai_annotations(

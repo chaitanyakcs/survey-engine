@@ -15,20 +15,6 @@ export function buildEnhancedRFQText(rfq: EnhancedRFQRequest): string {
       sections.push(`${index + 1}. ${objective}`);
     });
 
-    // Enhanced research objective fields
-    if (rfq.research_objectives.success_metrics) {
-      sections.push(`\n**Success Metrics**: ${rfq.research_objectives.success_metrics}`);
-    }
-
-    if (rfq.research_objectives.validation_requirements) {
-      sections.push(`**Validation Requirements**: ${rfq.research_objectives.validation_requirements}`);
-    }
-
-    if (rfq.research_objectives.measurement_approach) {
-      const approachLabel = rfq.research_objectives.measurement_approach.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
-      sections.push(`**Measurement Approach**: ${approachLabel}`);
-    }
-
     sections.push('');
   }
 
@@ -65,26 +51,17 @@ export function buildEnhancedRFQText(rfq: EnhancedRFQRequest): string {
       sections.push(`- **Stimuli Details**: ${rfq.methodology.stimuli_details}`);
     }
 
-    if (rfq.methodology.methodology_requirements) {
-      sections.push(`- **Requirements**: ${rfq.methodology.methodology_requirements}`);
-    }
-
-    // Enhanced methodology fields
-    if (rfq.methodology.complexity_level) {
-      const complexityLabel = rfq.methodology.complexity_level.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
-      sections.push(`- **Complexity Level**: ${complexityLabel}`);
-    }
-
-    if (rfq.methodology.required_methodologies && rfq.methodology.required_methodologies.length > 0) {
-      const methodologies = rfq.methodology.required_methodologies.map(m => m.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())).join(', ');
-      sections.push(`- **Required Methodologies**: ${methodologies}`);
-    }
-
-    if (rfq.methodology.sample_size_target) {
-      sections.push(`- **Sample Size Target**: ${rfq.methodology.sample_size_target}`);
-    }
-
     sections.push('');
+  }
+
+  // Concept Stimuli (NEW)
+  if (rfq.concept_stimuli && rfq.concept_stimuli.length > 0) {
+    sections.push("## Concept Stimuli:");
+    rfq.concept_stimuli.forEach((stimulus, index) => {
+      sections.push(`### Concept ${index + 1}: ${stimulus.title}`);
+      sections.push(stimulus.description);
+      sections.push('');
+    });
   }
 
   // Note: stakeholders field not in EnhancedRFQRequest interface
@@ -111,7 +88,7 @@ export function buildEnhancedRFQText(rfq: EnhancedRFQRequest): string {
   //   });
   // }
 
-  // Business Context Section
+  // Business Context Section (SIMPLIFIED)
   if (rfq.business_context) {
     sections.push("## Business Context:");
 
@@ -119,21 +96,12 @@ export function buildEnhancedRFQText(rfq: EnhancedRFQRequest): string {
       sections.push(`- **Background**: ${rfq.business_context.company_product_background}`);
     }
 
-    if (rfq.business_context.business_problem) {
-      sections.push(`- **Business Problem**: ${rfq.business_context.business_problem}`);
+    if (rfq.business_context.business_problem_and_objective) {
+      sections.push(`- **Business Problem & Objective**: ${rfq.business_context.business_problem_and_objective}`);
     }
 
-    if (rfq.business_context.business_objective) {
-      sections.push(`- **Business Objective**: ${rfq.business_context.business_objective}`);
-    }
-
-    // Enhanced business context fields
-    if (rfq.business_context.stakeholder_requirements) {
-      sections.push(`- **Stakeholder Requirements**: ${rfq.business_context.stakeholder_requirements}`);
-    }
-
-    if (rfq.business_context.decision_criteria) {
-      sections.push(`- **Decision Criteria**: ${rfq.business_context.decision_criteria}`);
+    if (rfq.business_context.sample_requirements) {
+      sections.push(`- **Sample Requirements**: ${rfq.business_context.sample_requirements}`);
     }
 
     if (rfq.business_context.budget_range) {
@@ -186,7 +154,7 @@ export function buildEnhancedRFQText(rfq: EnhancedRFQRequest): string {
   //   sections.push('');
   // }
 
-  // Survey Requirements Section
+  // Survey Requirements Section (SIMPLIFIED)
   if (rfq.survey_requirements) {
     sections.push("## Survey Requirements:");
 
@@ -198,15 +166,10 @@ export function buildEnhancedRFQText(rfq: EnhancedRFQRequest): string {
       sections.push(`- **Required Sections**: ${rfq.survey_requirements.required_sections.join(', ')}`);
     }
 
-    if (rfq.survey_requirements.must_have_questions && rfq.survey_requirements.must_have_questions.length > 0) {
-      sections.push(`- **Must-Have Questions**: ${rfq.survey_requirements.must_have_questions.join('; ')}`);
-    }
-
     if (rfq.survey_requirements.screener_requirements) {
       sections.push(`- **Screener Requirements**: ${rfq.survey_requirements.screener_requirements}`);
     }
 
-    // Enhanced survey requirements
     if (rfq.survey_requirements.completion_time_target) {
       const timeLabel = rfq.survey_requirements.completion_time_target.replace('_', '-').replace('min', ' minutes');
       sections.push(`- **Target Completion Time**: ${timeLabel}`);
@@ -217,22 +180,12 @@ export function buildEnhancedRFQText(rfq: EnhancedRFQRequest): string {
       sections.push(`- **Device Compatibility**: ${deviceLabel}`);
     }
 
-    if (rfq.survey_requirements.accessibility_requirements) {
-      const accessibilityLabel = rfq.survey_requirements.accessibility_requirements.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
-      sections.push(`- **Accessibility Requirements**: ${accessibilityLabel}`);
-    }
-
-    if (rfq.survey_requirements.data_quality_requirements) {
-      const qualityLabel = rfq.survey_requirements.data_quality_requirements.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
-      sections.push(`- **Data Quality Requirements**: ${qualityLabel}`);
-    }
-
     sections.push('');
   }
 
-  // Advanced Classification Section
+  // Advanced Classification Section (SIMPLIFIED)
   if (rfq.advanced_classification) {
-    sections.push("## Classification & Compliance:");
+    sections.push("## Classification:");
 
     if (rfq.advanced_classification.industry_classification) {
       const industryLabel = rfq.advanced_classification.industry_classification.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
@@ -248,10 +201,13 @@ export function buildEnhancedRFQText(rfq: EnhancedRFQRequest): string {
       sections.push(`- **Methodology Tags**: ${tags}`);
     }
 
-    if (rfq.advanced_classification.compliance_requirements && rfq.advanced_classification.compliance_requirements.length > 0) {
-      sections.push(`- **Compliance Requirements**: ${rfq.advanced_classification.compliance_requirements.join(', ')}`);
-    }
+    sections.push('');
+  }
 
+  // Additional Info (NEW)
+  if (rfq.additional_info) {
+    sections.push("## Additional Information:");
+    sections.push(rfq.additional_info);
     sections.push('');
   }
 
@@ -330,9 +286,14 @@ export function createEnhancedDescription(rfq: EnhancedRFQRequest): string {
 export function generateTextRequirements(rfq: EnhancedRFQRequest): string {
   const sections: string[] = [];
 
-  // Get methodologies
-  const methodologies = rfq.methodology?.required_methodologies ||
-                       (rfq.methodology?.primary_method ? [rfq.methodology.primary_method] : []);
+  // Get methodologies (SIMPLIFIED: use primary_method and methodology_tags)
+  const methodologies: string[] = [];
+  if (rfq.methodology?.primary_method) {
+    methodologies.push(rfq.methodology.primary_method);
+  }
+  if (rfq.advanced_classification?.methodology_tags) {
+    methodologies.push(...rfq.advanced_classification.methodology_tags);
+  }
 
   if (methodologies.length === 0) return '';
 

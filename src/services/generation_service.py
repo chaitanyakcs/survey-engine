@@ -90,19 +90,20 @@ class GenerationService:
             extra={"configured": bool(settings.replicate_api_token)},
         )
 
-        # Check if we have the required API token
-        if not settings.replicate_api_token:
-            logger.warning(
-                "⚠️ [GenerationService] No Replicate API token configured. Survey generation will fail."
+        # Get LLM provider from settings
+        self.provider_name = self._get_llm_provider()
+        
+        # Initialize LLM provider
+        from src.services.llm_provider import create_llm_provider
+        try:
+            self.llm_provider = create_llm_provider(
+                provider=self.provider_name,
+                model=self.model
             )
-            logger.warning(
-                f"⚠️ [GenerationService] Model '{self.model}' requires Replicate API token"
-            )
-
-        # Initialize Replicate client with proper authentication
-        self.replicate_client = replicate.Client(
-            api_token=settings.replicate_api_token
-        )
+            logger.info(f"✅ [GenerationService] Initialized {self.provider_name} provider")
+        except Exception as e:
+            logger.error(f"❌ [GenerationService] Failed to initialize {self.provider_name} provider: {e}")
+            raise
 
         log_service_configuration(
             logger,
@@ -151,6 +152,28 @@ class GenerationService:
         except Exception as e:
             logger.warning(f"⚠️ [GenerationService] Failed to get model from database settings: {e}, using config default")
             return settings.generation_model
+
+    def _get_llm_provider(self) -> str:
+        """Get LLM provider from database settings or fallback to config"""
+        try:
+            if self.db_session:
+                from src.services.settings_service import SettingsService
+                settings_service = SettingsService(self.db_session)
+                evaluation_settings = settings_service.get_evaluation_settings()
+
+                if evaluation_settings and 'llm_provider' in evaluation_settings:
+                    provider = evaluation_settings['llm_provider']
+                    logger.debug(f"GenerationService provider loaded from settings: {provider}")
+                    return provider
+                else:
+                    logger.debug("GenerationService falling back to configured provider")
+                    return settings.llm_provider
+            else:
+                logger.debug("GenerationService using configured provider")
+                return settings.llm_provider
+        except Exception as e:
+            logger.warning(f"⚠️ [GenerationService] Failed to get provider from settings: {e}, using config default")
+            return settings.llm_provider
 
     async def generate_survey_with_custom_prompt(
         self,
@@ -232,7 +255,7 @@ class GenerationService:
                 audit_service=audit_service,
                 interaction_id=interaction_id,
                 model_name=self.model,
-                model_provider="replicate",
+                model_provider=self.provider_name,
                 purpose="survey_generation",
                 input_prompt=prompt,
                 context_type="generation",
@@ -247,7 +270,7 @@ class GenerationService:
                     'context_keys': list(context.keys()) if context else [],
                     'custom_prompt_used': bool(system_prompt),
                 },
-                tags=["survey", "generation", "replicate", "custom_prompt"],
+                tags=["survey", "generation", self.provider_name, "custom_prompt"],
             ) as audit_context:
                 try:
                     generation_result = await self._generate_survey_with_streaming(
@@ -302,16 +325,21 @@ class GenerationService:
                 except Exception as api_error:
                     logger.error(f"❌ [GenerationService] API call failed: {str(api_error)}")
                     
-                    # Try to capture raw response even if generation failed
+                    # CRITICAL: Try to capture raw response even if generation failed
+                    # This ensures audit record has raw_response even when parsing fails
                     try:
+                        raw_response_from_error = None
                         # Check if it's a SurveyGenerationError with raw response
                         if isinstance(api_error, SurveyGenerationError) and api_error.raw_response:
-                            audit_context.set_raw_response(api_error.raw_response)
-                            logger.info(f"🔍 [GenerationService] Raw response captured from SurveyGenerationError (length: {len(api_error.raw_response)})")
+                            raw_response_from_error = api_error.raw_response
                         # Check for other error types with raw response
                         elif hasattr(api_error, 'raw_response') and api_error.raw_response:
-                            audit_context.set_raw_response(api_error.raw_response)
-                            logger.info(f"🔍 [GenerationService] Raw response captured from error context (length: {len(api_error.raw_response)})")
+                            raw_response_from_error = api_error.raw_response
+                        
+                        # Set raw response to audit context so it's saved to llm_audit table
+                        if raw_response_from_error:
+                            audit_context.set_raw_response(raw_response_from_error)
+                            logger.info(f"💾 [GenerationService] Saved raw response to audit context from exception (length: {len(raw_response_from_error)})")
                     except Exception as e:
                         logger.debug(f"⚠️ [GenerationService] Could not capture raw response from error: {e}")
                     
@@ -379,14 +407,17 @@ class GenerationService:
                 custom_rules=custom_rules,
             )
 
+            # Store context temporarily so we can access survey_id later for direct save
+            self._current_context = context
+
             logger.info("Generating survey", extra={"model": self.model})
             logger.debug(
                 "Prompt statistics",
                 extra={"prompt_length": len(prompt)},
             )
             logger.debug(
-                "Replicate client available",
-                extra={"client_available": bool(self.replicate_client)},
+                "LLM provider available",
+                extra={"provider": self.provider_name, "provider_available": bool(self.llm_provider)},
             )
 
             interaction_id = f"survey_generation_{uuid.uuid4().hex[:8]}"
@@ -415,7 +446,7 @@ class GenerationService:
                     'custom_rules_count': len(custom_rules.get('rules', [])) if custom_rules else 0,
                     'context_keys': list(context.keys()) if context else [],
                 },
-                tags=["survey", "generation", "replicate"],
+                tags=["survey", "generation", self.provider_name],
             ) as audit_context:
                 try:
                     generation_result = await self._generate_survey_with_streaming(prompt)
@@ -454,6 +485,19 @@ class GenerationService:
                     logger.error(f"❌ [GenerationService] API call failed: {str(api_error)}")
                     logger.error(f"❌ [GenerationService] API error type: {type(api_error)}")
 
+                    # CRITICAL: Try to extract raw_response from exception and set to audit context
+                    # This ensures audit record has raw_response even when parsing fails
+                    raw_response_from_error = None
+                    if isinstance(api_error, SurveyGenerationError) and api_error.raw_response:
+                        raw_response_from_error = api_error.raw_response
+                    elif hasattr(api_error, 'raw_response') and api_error.raw_response:
+                        raw_response_from_error = api_error.raw_response
+                    
+                    # Set raw response to audit context so it's saved to llm_audit table
+                    if raw_response_from_error:
+                        audit_context.set_raw_response(raw_response_from_error)
+                        logger.info(f"💾 [GenerationService] Saved raw response to audit context from exception (length: {len(raw_response_from_error)})")
+
                     if "authentication" in str(api_error).lower() or "unauthorized" in str(api_error).lower():
                         error_info = get_api_configuration_error()
                         raise UserFriendlyError(
@@ -462,7 +506,14 @@ class GenerationService:
                             action_required="Configure AI service provider (Replicate or OpenAI)",
                         )
                     else:
-                        raise Exception(f"API call failed: {str(api_error)}")
+                        # Preserve raw_response when wrapping exception
+                        if raw_response_from_error:
+                            wrapped_error = Exception(f"API call failed: {str(api_error)}")
+                            wrapped_error.raw_response = raw_response_from_error
+                            wrapped_error.__cause__ = api_error
+                            raise wrapped_error
+                        else:
+                            raise Exception(f"API call failed: {str(api_error)}") from api_error
 
                 return {
                     "survey": survey_data
@@ -483,233 +534,42 @@ class GenerationService:
                 )
             else:
                 logger.error(f"❌ [GenerationService] Generic error: {str(e)}")
-                raise Exception(f"Survey generation failed: {str(e)}")
-    def _smart_normalize_whitespace(self, json_text: str) -> str:
-        """
-        Smart JSON whitespace normalization that preserves string content
-        while fixing structural whitespace issues.
-        """
-        def fix_structural_whitespace(text):
-            result = []
-            in_string = False
-            escape_next = False
-
-            for i, char in enumerate(text):
-                if escape_next:
-                    result.append(char)
-                    escape_next = False
-                    continue
-
-                if char == '\\' and in_string:
-                    result.append(char)
-                    escape_next = True
-                    continue
-
-                if char == '"':
-                    in_string = not in_string
-                    result.append(char)
-                    continue
-
-                if in_string:
-                    # Inside strings: preserve all characters including whitespace
-                    result.append(char)
+                
+                # CRITICAL: Preserve raw_response when wrapping exception
+                raw_response_from_error = None
+                if isinstance(e, SurveyGenerationError) and e.raw_response:
+                    raw_response_from_error = e.raw_response
+                elif hasattr(e, 'raw_response') and e.raw_response:
+                    raw_response_from_error = e.raw_response
+                
+                if raw_response_from_error:
+                    wrapped_error = Exception(f"Survey generation failed: {str(e)}")
+                    wrapped_error.raw_response = raw_response_from_error
+                    wrapped_error.__cause__ = e
+                    raise wrapped_error
                 else:
-                    # Outside strings: normalize whitespace and add proper spacing
-                    if char.isspace():
-                        # Only add space if needed for structural separation
-                        if result and not result[-1].isspace():
-                            # Check if we need a space based on context
-                            prev_char = result[-1] if result else ''
-                            next_char = text[i + 1] if i + 1 < len(text) else ''
-
-                            # Add space around structural elements but not inside values
-                            if (prev_char in ',:' or next_char in ',:{}[]') and prev_char not in '{}[]':
-                                result.append(' ')
-                    else:
-                        result.append(char)
-
-            return ''.join(result)
-
-        # Apply the structural whitespace fix
-        normalized = fix_structural_whitespace(json_text)
-
-        # Final cleanup: ensure proper spacing around structural elements
-        import re
-        # Add space after colons and commas if not already present
-        normalized = re.sub(r'(:)([^\s])', r'\1 \2', normalized)
-        normalized = re.sub(r'(,)([^\s\]}])', r'\1 \2', normalized)
-
-        # Remove extra spaces around brackets and braces
-        normalized = re.sub(r'\s*([{}[\]])\s*', r'\1', normalized)
-
-        return normalized
-
-    def _sanitize_raw_output(self, response_text: str) -> str:
-        """
-        Smart JSON sanitization that preserves string content while fixing structure.
-        Fixed to handle malformed JSON without adding extra closing braces.
-        """
-        import re
-
-        logger.debug("🧹 [GenerationService] Starting Smart JSON sanitization...")
-        logger.debug(f"🔍 [GenerationService] Input length: {len(response_text)}")
-
-        # Performance optimization: Skip processing if response is too large
-        if len(response_text) > 50000:
-            logger.warning(f"⚠️ [GenerationService] Response too large ({len(response_text)} chars), using minimal processing")
-            # Minimal processing for very large responses to prevent hanging
-            sanitized = response_text.replace('\n', ' ').replace('\r', ' ')
-            sanitized = re.sub(r'\s+', ' ', sanitized)
-            # Find JSON boundaries quickly
-            start = sanitized.find('{')
-            end = sanitized.rfind('}')
-            if start >= 0 and end > start:
-                sanitized = sanitized[start:end + 1]
-        else:
-            # Normal processing for reasonable-sized responses
-            # Remove markdown code blocks
-            sanitized = re.sub(r'^.*?```(?:json)?\s*', '', response_text, flags=re.DOTALL)
-            sanitized = re.sub(r'```.*$', '', sanitized, flags=re.DOTALL)
-
-            # Remove any leading text before the first {
-            sanitized = re.sub(r'^[^{]*', '', sanitized)
-
-            # Fix trailing text - find last } and trim properly (don't add extra braces!)
-            last_brace_pos = sanitized.rfind('}')
-            if last_brace_pos >= 0:
-                sanitized = sanitized[:last_brace_pos + 1]
-
-        # AGGRESSIVE control character and newline removal for malformed LLM JSON
-        # First pass: Remove ALL control characters including embedded newlines
-        sanitized = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', sanitized)
-
-        # Second pass: Remove problematic newlines that break JSON structure
-        # Replace sequences like: {\n\n \n " with: {"
-        sanitized = re.sub(r'\{\s*\n\s*\n\s*\n?\s*"', '{"', sanitized)
-        sanitized = re.sub(r'"\s*\n\s*\n?\s*:', '":', sanitized)
-        sanitized = re.sub(r':\s*\n\s*\n?\s*"', ':"', sanitized)
-        sanitized = re.sub(r'",\s*\n\s*\n?\s*"', '","', sanitized)
-
-        # Third pass: Normalize any remaining structural whitespace
-        sanitized = re.sub(r'\s*\n\s*', ' ', sanitized)  # Replace newlines with single spaces
-        sanitized = re.sub(r'\s{2,}', ' ', sanitized)    # Collapse multiple spaces
-
-        # Smart whitespace normalization that preserves string content
-        # Performance optimization: Use simpler normalization for large responses
-        if len(sanitized) > 15000:
-            logger.warning(f"⚠️ [GenerationService] Large response ({len(sanitized)} chars), using fast normalization")
-            # Fast normalization for large responses to prevent hanging
-            sanitized = re.sub(r'\s+', ' ', sanitized)  # Collapse all whitespace to single spaces
-            sanitized = re.sub(r'\s*([{}[\]:,])\s*', r'\1', sanitized)  # Remove spaces around JSON syntax
-            sanitized = re.sub(r'([{}[\],])\s*(["}])', r'\1\2', sanitized)  # Remove spaces between JSON elements
-        else:
-            # Use detailed smart normalization for smaller responses
-            sanitized = self._smart_normalize_whitespace(sanitized)
-
-        # Fix missing commas between objects/arrays (critical for corrupted format)
-        sanitized = re.sub(r'}\s*{', '}, {', sanitized)
-        sanitized = re.sub(r']\s*\[', '], [', sanitized)
-        sanitized = re.sub(r'}\s*\[', '}, [', sanitized)
-        sanitized = re.sub(r']\s*{', '], {', sanitized)
-
-        # Fix quote escaping issues in corrupted format
-        # The corrupted format has quotes separated by newlines that need to be properly escaped
-        # This is a more targeted fix for the specific corruption pattern we're seeing
-        sanitized = re.sub(r'"([^"]*)"([^":,}\]]*)"([^":,}\]]*)"', r'"\1\2\3"', sanitized)
-        
-        # Remove trailing commas
-        sanitized = re.sub(r',\s*}', '}', sanitized)
-        sanitized = re.sub(r',\s*]', ']', sanitized)
-
-        logger.debug(f"🧹 [GenerationService] Smart sanitization complete. Length: {len(response_text)} -> {len(sanitized)}")
-        logger.debug(f"🔍 [GenerationService] Sanitized text: {sanitized[:200]}...")
-
-        return sanitized
-
-    def _gentle_sanitize_json(self, raw_text: str) -> str:
-        """
-        Gentle JSON sanitization that fixes control characters and obvious issues without corrupting valid JSON.
-        """
-        import re
-
-        logger.debug("🧹 [GenerationService] Starting gentle JSON sanitization...")
-
-        # CRITICAL FIX: Remove invalid control characters first
-        # Remove all control characters except \n, \t, \r which are handled later
-        control_chars_pattern = r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]'
-        sanitized = re.sub(control_chars_pattern, '', raw_text)
-        logger.debug(f"🧹 [GenerationService] Removed control characters. Length: {len(raw_text)} -> {len(sanitized)}")
-
-        # Only remove markdown code blocks if present
-        sanitized = re.sub(r'^.*?```(?:json)?\s*', '', sanitized, flags=re.DOTALL)
-        sanitized = re.sub(r'```.*$', '', sanitized, flags=re.DOTALL)
-
-        # Remove any leading text before the first {
-        sanitized = re.sub(r'^[^{]*', '', sanitized)
-
-        # Find last } and trim properly
-        last_brace_pos = sanitized.rfind('}')
-        if last_brace_pos >= 0:
-            sanitized = sanitized[:last_brace_pos + 1]
-
-        # Fix control characters and newlines within JSON strings
-        # Replace problematic newlines, tabs, carriage returns within quoted strings
-        def clean_string_content(match):
-            content = match.group(1)
-            # Replace control characters with spaces
-            content = re.sub(r'[\t\r\n]+', ' ', content)
-            # Collapse multiple spaces
-            content = re.sub(r'\s+', ' ', content)
-            # Fix spacing issues: remove spaces before punctuation
-            content = re.sub(r'\s+([,\.;:!?])', r'\1', content)
-            return f'"{content.strip()}"'
-
-        # Apply to quoted strings
-        sanitized = re.sub(r'"([^"]*)"', clean_string_content, sanitized)
-
-        # Only fix obvious JSON issues:
-        # 1. Remove trailing commas
-        sanitized = re.sub(r',\s*}', '}', sanitized)
-        sanitized = re.sub(r',\s*]', ']', sanitized)
-
-        logger.debug(f"🧹 [GenerationService] Gentle sanitization complete. Length: {len(raw_text)} -> {len(sanitized)}")
-        return sanitized
-
+                    raise Exception(f"Survey generation failed: {str(e)}") from e
     def _extract_survey_json(self, raw_text: str) -> Dict[str, Any]:
         """
-        Extract survey JSON from raw LLM output using centralized JSON utilities.
+        Extract survey JSON from raw LLM output using unified parsing with json-repair
         """
         logger.debug(f"🔍 [GenerationService] Starting JSON extraction from raw text (length: {len(raw_text)})")
         
-        # Use the centralized JSON parsing utility with comprehensive strategies
-        from src.utils.json_generation_utils import JSONGenerationUtils, JSONParseStrategy
-        
-        # Try parsing with all strategies
-        strategies = [
-            JSONParseStrategy.REPLICATE_EXTRACT,  # Standard replicate extract (should work)
-            JSONParseStrategy.DIRECT,
-            JSONParseStrategy.MARKDOWN_EXTRACT,
-            JSONParseStrategy.BOUNDARY_EXTRACT,
-            JSONParseStrategy.SANITIZE_AND_PARSE,
-            JSONParseStrategy.AGGRESSIVE_SANITIZE,
-            JSONParseStrategy.ESCAPED_JSON_HANDLE,
-            JSONParseStrategy.LARGE_JSON_PARSE,
-            JSONParseStrategy.PARTIAL_JSON_RECOVERY,
-            JSONParseStrategy.BROKEN_JSON_RECOVERY,
-        ]
+        # Use simplified unified parsing (extract → json-repair → validate)
+        from src.utils.json_generation_utils import JSONGenerationUtils
         
         parse_result = JSONGenerationUtils.parse_json_from_response(
             raw_text, 
             expected_schema=JSONGenerationUtils.get_survey_generation_schema(),
-            strategies=strategies
+            provider=self.provider_name
         )
         
         if parse_result.success:
             result = parse_result.data
-            logger.info(f"✅ [GenerationService] JSON parsing succeeded using strategy: {parse_result.strategy_used.value}")
+            logger.info(f"✅ [GenerationService] JSON parsing succeeded using strategy: {parse_result.strategy_used.value if parse_result.strategy_used else 'unified'}")
         else:
             result = None
-            logger.error(f"❌ [GenerationService] All JSON parsing strategies failed: {parse_result.error}")
+            logger.error(f"❌ [GenerationService] JSON parsing failed: {parse_result.error}")
         
         if result is not None:
             logger.debug(f"✅ [GenerationService] JSON parsing succeeded! Keys: {list(result.keys())}")
@@ -720,6 +580,24 @@ class GenerationService:
             logger.error(f"❌ [GenerationService] Raw response length: {len(raw_text)}")
             logger.error(f"❌ [GenerationService] Raw response preview (first 1000 chars): {raw_text[:1000]}")
             logger.error(f"❌ [GenerationService] Raw response ending (last 500 chars): {raw_text[-500:]}")
+            
+            # Check for potential truncation issues
+            if not raw_text.strip().endswith('}'):
+                logger.warning("⚠️ [GenerationService] Response does not end with closing brace - possible truncation")
+            
+            # Check for unbalanced braces
+            open_braces = raw_text.count('{')
+            close_braces = raw_text.count('}')
+            if open_braces != close_braces:
+                logger.warning(f"⚠️ [GenerationService] Unbalanced braces: {open_braces} open, {close_braces} close - possible truncation")
+            
+            # Check for incomplete sections
+            if '"sections"' in raw_text:
+                sections_start = raw_text.find('"sections"')
+                sections_text = raw_text[sections_start:sections_start+500]
+                logger.debug(f"🔍 [GenerationService] Sections text preview: {sections_text}")
+                if '"sections"' in raw_text and ']' not in raw_text[sections_start:]:
+                    logger.warning("⚠️ [GenerationService] Sections array appears incomplete - possible truncation")
 
             # Check for specific problematic patterns
             if '\x00' in raw_text:
@@ -2008,8 +1886,8 @@ class GenerationService:
 
         except Exception as e:
             logger.error(f"❌ [GenerationService] Generation failed: {str(e)}")
-            # Final fallback to original sync method
-            return await self._generate_with_sync_fallback(prompt)
+            # Do not retry - let the exception propagate to fail fast
+            raise
 
     async def _stream_with_replicate(self, prompt: str, start_time: float) -> Dict[str, Any]:
         """Stream content from Replicate with real-time analysis"""
@@ -2027,7 +1905,7 @@ class GenerationService:
                 "prompt": prompt,
                 "response_format": {"type": "json_object"},  # Force JSON output
                 "temperature": 0.7,
-                "max_tokens": 8000,
+                "max_tokens": 16000,  # Increased from 8000 to handle large surveys with many sections/questions
                 "top_p": 0.9
             },
             stream=True
@@ -2149,61 +2027,48 @@ class GenerationService:
         }
 
     async def _generate_with_async_polling(self, prompt: str, start_time: float) -> Dict[str, Any]:
-        """Generate using async polling with progress updates"""
+        """Generate using async polling (legacy - now uses provider abstraction)"""
+        # This method is deprecated but kept for compatibility
+        # It now uses the provider abstraction instead of direct Replicate polling
+        logger.debug("🔄 [GenerationService] Using async polling (deprecated - uses provider now)")
+        return await self._generate_with_sync_fallback(prompt)
 
-        # Send initial generating_questions progress
-        if self.ws_client and self.workflow_id:
-            progress_tracker = get_progress_tracker(self.workflow_id)
-            progress_data = progress_tracker.get_progress_data("generating_questions")
-            await self.ws_client.send_progress_update(self.workflow_id, progress_data)
-
-        # Create prediction without streaming
-        prediction = await self.replicate_client.predictions.async_create(
-            model=self.model,
-            input={
-                "prompt": prompt,
-                "response_format": {"type": "json_object"},  # Force JSON output
-                "temperature": 0.7,
-                "max_tokens": 8000,
-                "top_p": 0.9
-            }
-        )
-
-        logger.debug(f"📡 [GenerationService] Async prediction created: {prediction.id}")
-
-        # Poll with progress updates
-        while prediction.status not in ["succeeded", "failed", "canceled"]:
-            await asyncio.sleep(2)  # Poll every 2 seconds
-            await prediction.async_reload()
-
-            if self.ws_client and self.workflow_id:
-                progress_tracker = get_progress_tracker(self.workflow_id)
-                progress_data = progress_tracker.get_progress_data("llm_processing", "async_polling")
-                progress_data["message"] = f"AI generating survey... {time.time() - start_time:.0f}s elapsed"
-                await self.ws_client.send_progress_update(self.workflow_id, progress_data)
-
-        if prediction.status == "failed":
-            raise Exception(f"Prediction failed: {prediction.error}")
-
-        # Get final result
-        if isinstance(prediction.output, list):
-            output_text = "\n".join(str(item) for item in prediction.output)
-        else:
-            output_text = str(prediction.output)
-
-        survey_data = self._extract_survey_json(output_text)
-
-        total_time = time.time() - start_time
-        return {
-            "survey": survey_data,
-            "generation_metadata": {
-                "model": self.model,
-                "response_time_ms": int(total_time * 1000),
-                "streaming_enabled": False,
-                "async_polling": True,
-                "raw_response": output_text
-            }
-        }
+    def _save_raw_response_immediately(self, raw_response_text: str) -> None:
+        """Save raw response immediately to database before any parsing"""
+        try:
+            # Get survey_id from stored context
+            survey_id = None
+            if hasattr(self, '_current_context') and self._current_context:
+                survey_id = self._current_context.get('audit_survey_id')
+            
+            # If we have db_session and survey_id, save directly
+            if self.db_session and survey_id:
+                try:
+                    from src.database.models import Survey
+                    from uuid import UUID
+                    survey = self.db_session.query(Survey).filter(Survey.id == UUID(survey_id)).first()
+                    if survey:
+                        # Save raw response as pure text - no processing, no parsing, just save it
+                        survey.raw_output = raw_response_text
+                        self.db_session.commit()
+                        logger.info(f"💾 [GenerationService] Saved raw response IMMEDIATELY to survey.raw_output (survey_id: {survey_id}, length: {len(raw_response_text)})")
+                    else:
+                        logger.warning(f"⚠️ [GenerationService] Survey {survey_id} not found, cannot save raw response directly")
+                except Exception as save_error:
+                    logger.warning(f"⚠️ [GenerationService] Failed to save raw response directly: {save_error}")
+                    # Don't fail generation if direct save fails - it will be saved later via workflow
+                    try:
+                        self.db_session.rollback()
+                    except:
+                        pass
+            else:
+                if not self.db_session:
+                    logger.debug(f"🔍 [GenerationService] No db_session available for direct save")
+                if not survey_id:
+                    logger.debug(f"🔍 [GenerationService] No survey_id in context for direct save")
+        except Exception as e:
+            logger.warning(f"⚠️ [GenerationService] Error attempting direct raw response save: {e}")
+            # Don't fail generation - continue with parsing
 
     async def _generate_with_sync_fallback(self, prompt: str) -> Dict[str, Any]:
         """Reliable sync method for survey generation"""
@@ -2224,31 +2089,43 @@ class GenerationService:
             await self.ws_client.send_progress_update(self.workflow_id, progress_data)
 
         try:
-            # Add timeout to prevent hanging on long prompts
-            output = await asyncio.wait_for(
-                self.replicate_client.async_run(
-                    self.model,
-                    input={
-                        "prompt": prompt,
-                        "response_format": {"type": "json_object"},  # Force JSON output
-                        "temperature": 0.7,
-                        "max_tokens": 8000,
-                        "top_p": 0.9
-                    }
-                ),
-                timeout=900.0  # 15 minute timeout for API call
+            # Prepare response format based on provider
+            response_format = None
+            if self.provider_name == "openai":
+                # OpenAI structured outputs - get schema for survey generation
+                from src.utils.json_generation_utils import JSONGenerationUtils
+                schema = JSONGenerationUtils.get_survey_generation_schema()
+                # OpenAI structured outputs format
+                response_format = {"json_schema": schema}
+            else:
+                # Replicate - basic JSON mode
+                response_format = {"type": "json_object"}
+            
+            # Call provider
+            result = await self.llm_provider.generate(
+                prompt=prompt,
+                model=self.model,
+                temperature=0.7,
+                max_tokens=16000,
+                response_format=response_format
             )
+            
+            # Extract raw response from provider result
+            raw_response_text = result["output"]
+            provider_metadata = result.get("metadata", {})
+            
         except Exception as api_error:
-            logger.error(f"❌ [GenerationService] Replicate API call failed: {str(api_error)}")
+            logger.error(f"❌ [GenerationService] {self.provider_name.upper()} API call failed: {str(api_error)}")
             logger.error(f"❌ [GenerationService] API error type: {type(api_error)}")
             
             # Check if it's a timeout error
-            if "timeout" in str(api_error).lower() or "readtimeout" in str(api_error).lower():
+            if "timeout" in str(api_error).lower() or "readtimeout" in str(api_error).lower() or "timed out" in str(api_error).lower():
                 raise SurveyGenerationError(
                     "LLM generation timed out - the model took too long to respond. Please try again with a shorter prompt or different model.",
                     error_code="GEN_002",
                     details={
                         "error_type": "timeout",
+                        "provider": self.provider_name,
                         "suggestion": "Try reducing prompt length or using a different model"
                     }
                 )
@@ -2258,14 +2135,19 @@ class GenerationService:
                     error_code="GEN_003",
                     details={
                         "error_type": str(type(api_error)),
+                        "provider": self.provider_name,
                         "suggestion": "Check your API configuration and try again"
                     }
                 )
 
-        if isinstance(output, list):
-            output_text = "\n".join(str(item) for item in output)
-        else:
-            output_text = str(output)
+        # CRITICAL: Capture raw response IMMEDIATELY as pure text, before any processing
+        logger.info(f"💾 [GenerationService] Captured raw response (length: {len(raw_response_text)} chars) before processing")
+        
+        # CRITICAL: Save raw response IMMEDIATELY to database before any parsing
+        self._save_raw_response_immediately(raw_response_text)
+        
+        # Use raw response as output_text for parsing (providers return cleaned responses)
+        output_text = raw_response_text
 
         # Send progress update for parsing
         if self.ws_client and self.workflow_id:
@@ -2273,27 +2155,27 @@ class GenerationService:
             progress_data = progress_tracker.get_progress_data("parsing_output")
             await self.ws_client.send_progress_update(self.workflow_id, progress_data)
 
-        # CRITICAL: Wrap parsing to ensure raw response is attached to exception
+        # Parse JSON using unified parsing (works for both providers)
         try:
             survey_data = self._extract_survey_json(output_text)
         except Exception as e:
-            logger.error(f"❌ [GenerationService] Sync JSON parsing failed: {str(e)}")
+            logger.error(f"❌ [GenerationService] JSON parsing failed: {str(e)}")
             # Attach raw response to exception for audit capture
             if isinstance(e, SurveyGenerationError):
-                # Already has raw_response, just ensure it's set
                 if not e.raw_response:
-                    e.raw_response = output_text
+                    e.raw_response = raw_response_text
             else:
                 # Wrap in SurveyGenerationError with raw response
                 raise SurveyGenerationError(
                     f"Sync generation failed - unable to parse response: {str(e)}", 
                     error_code="GEN_SYNC_PARSE_001",
                     details={
-                        "raw_response_length": len(output_text),
-                        "response_preview": output_text[:500],
+                        "raw_response_length": len(raw_response_text),
+                        "provider": self.provider_name,
+                        "response_preview": raw_response_text[:500],
                         "suggestion": "Try retrying the generation or check model output"
                     },
-                    raw_response=output_text
+                    raw_response=raw_response_text
                 ) from e
             raise
 
@@ -2304,8 +2186,9 @@ class GenerationService:
                 "response_time_ms": int((time.time() - start_time) * 1000),
                 "streaming_enabled": False,
                 "sync_mode": True,
-                "raw_response": output_text,
-                "content_length": len(output_text)
+                "raw_response": raw_response_text,  # Store truly raw response, not processed output_text
+                "content_length": len(raw_response_text),
+                "processed_response": output_text  # Keep processed version for reference
             }
         }
 

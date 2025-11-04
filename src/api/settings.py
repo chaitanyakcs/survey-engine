@@ -41,6 +41,7 @@ class EvaluationSettings(BaseModel):
     generation_model: str = app_settings.generation_model
     evaluation_model: str = app_settings.generation_model
     embedding_model: str = app_settings.embedding_model
+    llm_provider: str = app_settings.llm_provider  # "replicate" or "openai"
     
     @field_validator('evaluation_mode')
     @classmethod
@@ -48,9 +49,16 @@ class EvaluationSettings(BaseModel):
         if v not in ['single_call', 'multiple_calls']:
             raise ValueError('evaluation_mode must be "single_call" or "multiple_calls"')
         return v
+    
+    @field_validator('llm_provider')
+    @classmethod
+    def validate_llm_provider(cls, v):
+        if v not in ['replicate', 'openai']:
+            raise ValueError('llm_provider must be "replicate" or "openai"')
+        return v
 
 class RFQParsingSettings(BaseModel):
-    parsing_model: str = "openai/gpt-5"
+    parsing_model: str = "openai/gpt-5-structured"  # Structured variant for better JSON output
 
 class CostMetrics(BaseModel):
     daily_cost: float
@@ -134,21 +142,26 @@ async def list_rfq_models():
         return ["openai/gpt-5", "openai/gpt-4o-mini", "openai/gpt-4o"]
 
 @router.get("/generation/models", response_model=List[str])
-async def list_generation_models():
-    """Return suitable LLMs for survey generation."""
+async def list_generation_models(provider: Optional[str] = None):
+    """Return suitable LLMs for survey generation, filtered by provider."""
     try:
-        models = [
-            "openai/gpt-5",
-            "openai/gpt-5-structured",
-            "openai/gpt-4o-mini",
-            "openai/gpt-4o",
-            "meta/meta-llama-3.1-405b-instruct",
-            "meta/meta-llama-3-70b-instruct",
-            "meta/meta-llama-3-8b-instruct",
-            "mistralai/mistral-7b-instruct-v0.1"
-        ]
-        logger.info(f"🔍 [Settings API] Returning generation models: {models}")
-        logger.info(f"🔍 [Settings API] DEPLOYMENT CONFIRMATION: Updated model list is active")
+        # Filter models based on provider
+        if provider == "openai":
+            # OpenAI provider - only gpt-5 for now
+            models = ["gpt-5"]
+        else:
+            # Replicate provider - all Replicate models
+            models = [
+                "openai/gpt-5-structured",
+                "openai/gpt-5",
+                "openai/gpt-4o-mini",
+                "openai/gpt-4o",
+                "meta/meta-llama-3.1-405b-instruct",
+                "meta/meta-llama-3-70b-instruct",
+                "meta/meta-llama-3-8b-instruct",
+                "mistralai/mistral-7b-instruct-v0.1"
+            ]
+        logger.info(f"🔍 [Settings API] Returning generation models for provider={provider}: {models}")
         return models
     except Exception as e:
         logger.error(f"❌ [Settings API] Failed to list generation models: {str(e)}")
@@ -196,6 +209,9 @@ async def update_evaluation_settings(settings: EvaluationSettings, db: Session =
         
         if settings.fallback_mode not in ['basic', 'multiple_calls', 'disabled']:
             raise HTTPException(status_code=400, detail="Invalid fallback_mode")
+        
+        if settings.llm_provider not in ['replicate', 'openai']:
+            raise HTTPException(status_code=400, detail="Invalid llm_provider. Must be 'replicate' or 'openai'")
         
         if settings.cost_threshold_daily < 0 or settings.cost_threshold_monthly < 0:
             raise HTTPException(status_code=400, detail="Cost thresholds must be non-negative")

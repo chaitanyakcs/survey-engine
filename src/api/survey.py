@@ -4,7 +4,7 @@ from src.database import get_db, Survey
 from src.database.models import LLMAudit
 from src.services.survey_service import SurveyService
 from src.services.survey_structure_validator import SurveyStructureValidator
-from src.utils.survey_utils import get_questions_count
+from src.utils.survey_utils import get_questions_count, get_questions_and_instructions_count
 from src.models.survey import QuestionUpdate, SectionUpdate, SurveySection
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
@@ -51,6 +51,7 @@ class SurveyListItem(BaseModel):
     quality_score: Optional[float]
     estimated_time: Optional[int]
     question_count: int
+    instruction_count: int
     annotation: Optional[Dict[str, Any]] = None
 
 
@@ -124,6 +125,9 @@ async def list_surveys(
                 except Exception as e:
                     logger.warning(f"⚠️ [Survey List] Failed to get golden pair title for survey {survey.id}: {e}")
             
+            # Get question and instruction counts separately
+            question_count, instruction_count = get_questions_and_instructions_count(survey_data)
+            
             survey_list.append(SurveyListItem(
                 id=str(survey.id),
                 title=title,
@@ -133,7 +137,8 @@ async def list_surveys(
                 methodology_tags=methodology_tags,
                 quality_score=quality_score,
                 estimated_time=metadata.get('estimated_time'),
-                question_count=get_questions_count(survey_data),
+                question_count=question_count,
+                instruction_count=instruction_count,
                 annotation=None  # Survey model doesn't have annotation field
             ))
         

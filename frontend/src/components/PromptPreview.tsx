@@ -50,6 +50,7 @@ export const PromptPreview: React.FC<PromptPreviewProps> = ({ rfq, onPromptEdite
       };
 
       console.log('🔍 [PromptPreview] Sending request:', requestData);
+      console.log('🔍 [PromptPreview] Generation config:', rfq.generation_config);
 
       const response = await fetch('/api/v1/rfq/preview-prompt', {
         method: 'POST',

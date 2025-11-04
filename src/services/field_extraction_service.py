@@ -35,16 +35,44 @@ class FieldExtractionService:
             },
         )
 
-        if not settings.replicate_api_token:
+        self.db_session = db_session
+        
+        # Initialize LLM provider
+        self.provider_name = self._get_llm_provider()
+        from src.services.llm_provider import create_llm_provider
+        try:
+            self.llm_provider = create_llm_provider(
+                provider=self.provider_name,
+                model=None  # Will use model from settings
+            )
+            logger.info(f"✅ [FieldExtractionService] Initialized {self.provider_name} provider")
+        except Exception as e:
+            logger.error(f"❌ [FieldExtractionService] Failed to initialize {self.provider_name} provider: {e}")
             error_info = get_api_configuration_error()
             raise UserFriendlyError(
                 message=error_info["message"],
-                technical_details="REPLICATE_API_TOKEN environment variable is not set",
-                action_required="Configure AI service provider (Replicate or OpenAI)",
+                technical_details=str(e),
+                action_required="Configure AI service provider (Replicate or OpenAI)"
             )
 
-        self.replicate_client = replicate.Client(api_token=settings.replicate_api_token)
-        self.db_session = db_session
+    def _get_llm_provider(self) -> str:
+        """Get LLM provider - default to replicate for field extraction"""
+        try:
+            if self.db_session:
+                from src.services.settings_service import SettingsService
+                settings_service = SettingsService(self.db_session)
+                evaluation_settings = settings_service.get_evaluation_settings()
+                
+                if evaluation_settings and 'llm_provider' in evaluation_settings:
+                    provider = evaluation_settings['llm_provider']
+                    logger.debug(f"FieldExtractionService provider loaded from settings: {provider}")
+                    return provider
+            
+            return settings.llm_provider
+        except Exception as e:
+            logger.warning(f"⚠️ [FieldExtractionService] Failed to get provider from settings: {e}, using default")
+            return settings.llm_provider
+
         self.model = self._get_generation_model()
 
         logger.info(
@@ -250,7 +278,7 @@ Return ONLY a JSON object with this exact structure:
                     audit_service=audit_service,
                     interaction_id=interaction_id,
                     model_name=self.model,
-                    model_provider="replicate",
+                    model_provider=self.provider_name,
                     purpose="field_extraction",
                     input_prompt=prompt,
                     sub_purpose="golden_example_fields",
@@ -268,22 +296,30 @@ Return ONLY a JSON object with this exact structure:
                 ) as audit_context:
                     logger.debug("Calling LLM for field extraction", extra={"audited": True})
                     start_time = time.time()
-                    output = await self.replicate_client.async_run(
-                        self.model,
-                        input={
-                            "prompt": prompt,
-                            "temperature": 0.1,
-                            "max_tokens": 1000,  # Reduced from 2000 for faster processing
-                            "system_prompt": "Extract fields from RFQ/Survey. Return ONLY valid JSON.\n\nExtract:\n- methodology_tags: [\"van_westendorp\", \"conjoint\", \"maxdiff\", \"nps\", \"satisfaction\"]\n- industry_category: \"electronics|healthcare|financial|retail|automotive\"\n- research_goal: \"pricing_research|feature_research|satisfaction_research|brand_research|market_sizing\"\n- quality_score: 0.0-1.0\n- suggested_title: \"[descriptive title]\"\n\nMethodology Detection:\n- Van Westendorp: \"too cheap\", \"too expensive\" questions\n- Conjoint: Choice scenarios with attributes\n- MaxDiff: \"Most/Least important\" selections\n- NPS: \"How likely to recommend\"",
-                        },
+                    system_prompt_text = "Extract fields from RFQ/Survey. Return ONLY valid JSON.\n\nExtract:\n- methodology_tags: [\"van_westendorp\", \"conjoint\", \"maxdiff\", \"nps\", \"satisfaction\"]\n- industry_category: \"electronics|healthcare|financial|retail|automotive\"\n- research_goal: \"pricing_research|feature_research|satisfaction_research|brand_research|market_sizing\"\n- quality_score: 0.0-1.0\n- suggested_title: \"[descriptive title]\"\n\nMethodology Detection:\n- Van Westendorp: \"too cheap\", \"too expensive\" questions\n- Conjoint: Choice scenarios with attributes\n- MaxDiff: \"Most/Least important\" selections\n- NPS: \"How likely to recommend\""
+                    
+                    # Prepare response format based on provider
+                    response_format = None
+                    if self.provider_name == "openai":
+                        from src.utils.json_generation_utils import JSONGenerationUtils
+                        schema = JSONGenerationUtils.get_rfq_parsing_schema()
+                        response_format = {"json_schema": schema}
+                    else:
+                        response_format = {"type": "json_object"}
+                    
+                    result = await self.llm_provider.generate(
+                        prompt=prompt,
+                        system_prompt=system_prompt_text,
+                        model=self.model,
+                        temperature=0.1,
+                        max_tokens=1000,
+                        response_format=response_format
                     )
-
+                    
+                    output = result["output"]
                     response_time_ms = int((time.time() - start_time) * 1000)
 
-                    if hasattr(output, '__iter__') and not isinstance(output, str):
-                        raw_response = "".join(str(chunk) for chunk in output)
-                    else:
-                        raw_response = str(output)
+                    raw_response = output
 
                     processed_output = raw_response.strip()
 
@@ -294,20 +330,32 @@ Return ONLY a JSON object with this exact structure:
                     )
             else:
                 logger.debug("Calling LLM for field extraction", extra={"audited": False})
-                output = await self.replicate_client.async_run(
-                    self.model,
-                    input={
-                        "prompt": prompt,
-                        **get_json_optimized_hyperparameters("rfq_parsing"),
-                        "system_prompt": "Extract fields from RFQ/Survey. Return ONLY valid JSON.\n\nExtract:\n- methodology_tags: [\"van_westendorp\", \"conjoint\", \"maxdiff\", \"nps\", \"satisfaction\"]\n- industry_category: \"electronics|healthcare|financial|retail|automotive\"\n- research_goal: \"pricing_research|feature_research|satisfaction_research|brand_research|market_sizing\"\n- quality_score: 0.0-1.0\n- suggested_title: \"[descriptive title]\"\n\nMethodology Detection:\n- Van Westendorp: \"too cheap\", \"too expensive\" questions\n- Conjoint: Choice scenarios with attributes\n- MaxDiff: \"Most/Least important\" selections\n- NPS: \"How likely to recommend\"",
-                    },
+                system_prompt_text = "Extract fields from RFQ/Survey. Return ONLY valid JSON.\n\nExtract:\n- methodology_tags: [\"van_westendorp\", \"conjoint\", \"maxdiff\", \"nps\", \"satisfaction\"]\n- industry_category: \"electronics|healthcare|financial|retail|automotive\"\n- research_goal: \"pricing_research|feature_research|satisfaction_research|brand_research|market_sizing\"\n- quality_score: 0.0-1.0\n- suggested_title: \"[descriptive title]\"\n\nMethodology Detection:\n- Van Westendorp: \"too cheap\", \"too expensive\" questions\n- Conjoint: Choice scenarios with attributes\n- MaxDiff: \"Most/Least important\" selections\n- NPS: \"How likely to recommend\""
+                
+                hyperparams = get_json_optimized_hyperparameters("rfq_parsing")
+                
+                # Prepare response format based on provider
+                response_format = None
+                if self.provider_name == "openai":
+                    from src.utils.json_generation_utils import JSONGenerationUtils
+                    schema = JSONGenerationUtils.get_rfq_parsing_schema()
+                    response_format = {"json_schema": schema}
+                else:
+                    response_format = {"type": "json_object"}
+                
+                result = await self.llm_provider.generate(
+                    prompt=prompt,
+                    system_prompt=system_prompt_text,
+                    model=self.model,
+                    temperature=hyperparams.get("temperature", 0.1),
+                    max_tokens=hyperparams.get("max_tokens", 1000),
+                    response_format=response_format
                 )
+                
+                output = result["output"]
 
-            logger.debug("Processing LLM response", extra={"streaming": hasattr(output, '__iter__') and not isinstance(output, str)})
-            if hasattr(output, '__iter__') and not isinstance(output, str):
-                json_content = "".join(str(chunk) for chunk in output).strip()
-            else:
-                json_content = str(output).strip()
+            logger.debug("Processing LLM response")
+            json_content = str(output).strip()
 
             logger.debug(
                 "Parsing JSON response",
@@ -334,7 +382,7 @@ Return ONLY a JSON object with this exact structure:
                             "json_content_length": len(json_content),
                         },
                         model_name=self.model,
-                        model_provider="replicate",
+                        model_provider=self.provider_name,
                         purpose="field_extraction",
                         input_prompt=prompt[:1000] if len(prompt) > 1000 else prompt,
                     )

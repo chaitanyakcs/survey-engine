@@ -591,6 +591,17 @@ class WorkflowService:
                 # Convert string IDs to UUIDs for used_golden_sections
                 used_sections = final_state.get("used_golden_sections", [])
                 survey.used_golden_sections = [UUID(s) if isinstance(s, str) else s for s in used_sections] if used_sections else []
+                
+                # Track feedback questions (questions with comments used in digest)
+                # Combine both similarity-matched and feedback digest questions for tracking
+                feedback_questions = final_state.get("used_feedback_questions", [])
+                if feedback_questions:
+                    all_question_ids = list(survey.used_golden_questions) if survey.used_golden_questions else []
+                    feedback_question_ids = [UUID(q) if isinstance(q, str) else q for q in feedback_questions]
+                    # Merge but avoid duplicates
+                    all_question_ids.extend([qid for qid in feedback_question_ids if qid not in all_question_ids])
+                    survey.used_golden_questions = all_question_ids
+                    logger.info(f"✅ [WorkflowService] Tracking {len(feedback_question_ids)} feedback questions in addition to {len(used_questions)} similarity-matched questions")
 
                 # Check if this is a failed survey (minimal fallback due to LLM failure)
                 generated_survey = final_state.get("generated_survey", {})
@@ -608,13 +619,15 @@ class WorkflowService:
                 logger.info(f"✅ [WorkflowService] Survey record updated: status={survey.status}, golden_examples_used={len(survey.used_golden_examples)}")
                 
                 # Track golden content usage (non-blocking, won't fail survey generation)
+                # This includes both similarity-matched questions AND feedback digest questions
                 try:
                     from src.services.golden_content_tracking_service import GoldenContentTrackingService
                     tracking_service = GoldenContentTrackingService(self.db)
+                    # survey.used_golden_questions now includes both types after merging above
                     await tracking_service.track_golden_content_usage(
                         survey_id=survey.id,
-                        question_ids=final_state.get("used_golden_questions", []),
-                        section_ids=final_state.get("used_golden_sections", [])
+                        question_ids=survey.used_golden_questions if survey.used_golden_questions else [],
+                        section_ids=survey.used_golden_sections if survey.used_golden_sections else []
                     )
                 except Exception as track_error:
                     logger.warning(f"⚠️ [WorkflowService] Golden content tracking failed (non-critical): {str(track_error)}")
@@ -642,6 +655,15 @@ class WorkflowService:
                         # Convert string IDs to UUIDs for used_golden_sections
                         used_sections = final_state.get("used_golden_sections", [])
                         survey.used_golden_sections = [UUID(s) if isinstance(s, str) else s for s in used_sections] if used_sections else []
+                        
+                        # Track feedback questions (combine with similarity-matched questions)
+                        feedback_questions = final_state.get("used_feedback_questions", [])
+                        if feedback_questions:
+                            all_question_ids = list(survey.used_golden_questions) if survey.used_golden_questions else []
+                            feedback_question_ids = [UUID(q) if isinstance(q, str) else q for q in feedback_questions]
+                            # Merge but avoid duplicates
+                            all_question_ids.extend([qid for qid in feedback_question_ids if qid not in all_question_ids])
+                            survey.used_golden_questions = all_question_ids
 
                         # Check if this is a failed survey (minimal fallback due to LLM failure)
                         generated_survey = final_state.get("generated_survey", {})
@@ -744,11 +766,10 @@ class WorkflowService:
 
             # CRITICAL FIX: Use the same node instances as the main workflow to ensure consistency
             # Create nodes with the same database session and configuration as the main workflow
-            from src.workflows.nodes import GeneratorAgent, ValidatorAgent
+            from src.workflows.nodes import GeneratorAgent
 
             # Use the same database session as the main workflow service
             generator = GeneratorAgent(self.db, connection_manager=self.connection_manager)
-            validator = ValidatorAgent(self.db, connection_manager=self.connection_manager)
 
             # Send progress update for generation - continue from where human review ended
             try:
@@ -779,66 +800,84 @@ class WorkflowService:
                     if hasattr(initial_state, key):
                         setattr(initial_state, key, value)
 
-            # Send progress update for validation - continue from where generation ended
+            # Save survey to database immediately after generation (before evaluation)
+            # This ensures survey is available in UI even if evaluation fails later
+            try:
+                # Ensure we have a healthy database session
+                if not self._ensure_healthy_db_session():
+                    raise Exception("Failed to establish healthy database session")
+
+                survey = self.db.query(Survey).filter(Survey.id == survey_id).first()
+                if survey:
+                    # Refresh to get latest data
+                    self.db.refresh(survey)
+
+                    # Save generation results immediately
+                    # CRITICAL: Save truly raw response from LLM API (before any processing)
+                    # This should work even when generation fails - raw_response may be in generation_metadata from error handling
+                    raw_response = generation_result.get("generation_metadata", {}).get("raw_response")
+                    if raw_response:
+                        # Store raw response as pure text (may be string or already JSON string)
+                        survey.raw_output = raw_response if isinstance(raw_response, str) else str(raw_response)
+                        logger.info(f"💾 [WorkflowService] Saved raw LLM response to survey.raw_output (length: {len(survey.raw_output) if survey.raw_output else 0})")
+                    else:
+                        # Fallback: check if there's an error with raw_response attached
+                        error_message = generation_result.get("error_message")
+                        if error_message:
+                            logger.warning(f"⚠️ [WorkflowService] Generation failed: {error_message}")
+                            logger.warning("⚠️ [WorkflowService] No raw response found in generation_metadata - cannot save raw response")
+                        else:
+                            # Fallback: use parsed survey if raw response not available
+                            survey.raw_output = generation_result.get("raw_survey")
+                            logger.warning("⚠️ [WorkflowService] Raw response not found in generation_metadata, using parsed survey as fallback")
+                    
+                    # Save parsed/processed survey as final_output
+                    survey.final_output = generation_result.get("generated_survey")
+                    # Convert state UUID lists to survey arrays
+                    from uuid import UUID
+                    survey.used_golden_examples = initial_state.used_golden_examples
+                    # Combine feedback questions with similarity-matched questions
+                    all_questions = list(initial_state.used_golden_questions) if initial_state.used_golden_questions else []
+                    if initial_state.used_feedback_questions:
+                        all_questions.extend([qid for qid in initial_state.used_feedback_questions if qid not in all_questions])
+                    survey.used_golden_questions = all_questions
+                    survey.used_golden_sections = initial_state.used_golden_sections
+                    
+                    # Check if this is a failed survey (minimal fallback due to LLM failure)
+                    generated_survey = generation_result.get("generated_survey", {})
+                    is_failed_survey = generated_survey.get('metadata', {}).get('generation_failed', False)
+
+                    if is_failed_survey:
+                        logger.warning(f"⚠️ [WorkflowService] Survey {survey.id} marked as draft due to generation failure")
+                        survey.status = "draft"
+                        survey.pillar_scores = None
+                    else:
+                        # Set status to draft initially - will be updated to validated after evaluation if it passes
+                        survey.status = "draft"
+                        survey.pillar_scores = None  # Will be set after evaluation
+
+                    self.db.commit()
+                    logger.info(f"✅ [WorkflowService] Survey saved immediately after generation: status={survey.status}, survey_id={survey_id}")
+                else:
+                    logger.warning(f"⚠️ [WorkflowService] Survey not found for immediate save: {survey_id}")
+            except Exception as e:
+                logger.error(f"❌ [WorkflowService] Failed to save survey after generation: {str(e)}", exc_info=True)
+                self.db.rollback()
+                # Don't fail the workflow for database update issues - continue to evaluation
+
+            # Note: AI evaluation has been removed from the workflow
+            # The workflow now goes directly from golden_validation to completion_handler
+            # Users can trigger evaluation manually from SurveyPreview/SurveyInsights if needed
+            
+            # Send progress update - generation completed, workflow continues with golden validation
             try:
                 progress_tracker = get_progress_tracker(workflow_id)
-                # Complete generation step first
+                # Complete generation step
                 progress_data = progress_tracker.get_completion_data("generating_questions")
-                progress_data["message"] = "Generation completed - starting validation..."
+                progress_data["message"] = "Generation completed - proceeding to validation..."
                 await ws_client.send_progress_update(workflow_id, progress_data)
-                
-                # Check if LLM evaluation is enabled before sending validation progress
-                from src.services.settings_service import SettingsService
-                settings_service = SettingsService(self.db)
-                evaluation_settings = settings_service.get_evaluation_settings()
-                enable_llm_evaluation = evaluation_settings.get('enable_llm_evaluation', True)
-                
-                if enable_llm_evaluation:
-                    # Then start validation
-                    progress_data = progress_tracker.get_progress_data("validation_scoring")
-                    await ws_client.send_progress_update(workflow_id, progress_data)
-                else:
-                    # Skip validation and go directly to completion
-                    progress_data = progress_tracker.get_progress_data("finalizing")
-                    progress_data["message"] = "Skipping validation - LLM evaluation disabled"
-                    await ws_client.send_progress_update(workflow_id, progress_data)
             except Exception as ws_error:
-                logger.warning(f"⚠️ [WorkflowService] Failed to send validation progress update: {str(ws_error)}")
-
-            # Use the same settings check from above
-            
-            if not enable_llm_evaluation:
-                logger.info("⏭️ [WorkflowService] LLM evaluation disabled, skipping validation step")
-                # Create a mock validation result to maintain workflow consistency
-                validation_result = {
-                    "pillar_scores": {},
-                    "quality_gate_passed": True,  # Skip validation means pass
-                    "validation_results": {"skipped": "LLM evaluation disabled"},
-                    "retry_count": 0,
-                    "workflow_should_continue": True,
-                    "error_message": None
-                }
-                logger.info("✅ [WorkflowService] Validation skipped - LLM evaluation disabled")
-            else:
-                # Execute validation step directly
-                logger.info("🚀 [WorkflowService] Starting direct validation execution")
-                try:
-                    validation_result = await validator(initial_state)
-                    logger.info(f"✅ [WorkflowService] Validation completed. Result keys: {list(validation_result.keys()) if isinstance(validation_result, dict) else 'not dict'}")
-                except Exception as val_error:
-                    logger.error(f"❌ [WorkflowService] Validation step failed: {str(val_error)}", exc_info=True)
-                    # Send error notification
-                    await ws_client.send_progress_update(workflow_id, {
-                        "type": "error",
-                        "message": f"Survey validation failed: {str(val_error)}"
-                    })
-                    raise val_error
-
-            # Update the state with validation results
-            if isinstance(validation_result, dict):
-                for key, value in validation_result.items():
-                    if hasattr(initial_state, key):
-                        setattr(initial_state, key, value)
+                logger.warning(f"⚠️ [WorkflowService] Failed to send progress update: {str(ws_error)}")
 
             # Update survey with final results - use the same logic as the main workflow
             try:
@@ -859,19 +898,32 @@ class WorkflowService:
                     # Convert state UUID lists to survey arrays
                     from uuid import UUID
                     survey.used_golden_examples = initial_state.used_golden_examples
-                    survey.used_golden_questions = initial_state.used_golden_questions  
+                    # Combine feedback questions with similarity-matched questions
+                    all_questions = list(initial_state.used_golden_questions) if initial_state.used_golden_questions else []
+                    if initial_state.used_feedback_questions:
+                        all_questions.extend([qid for qid in initial_state.used_feedback_questions if qid not in all_questions])
+                    survey.used_golden_questions = all_questions
                     survey.used_golden_sections = initial_state.used_golden_sections
 
                     # Check if this is a failed survey (minimal fallback due to LLM failure)
                     generated_survey = generation_result.get("generated_survey", {})
                     is_failed_survey = generated_survey.get('metadata', {}).get('generation_failed', False)
 
+                    # Check if evaluation failed
+                    evaluation_failed = validation_result.get("evaluation_failed", False)
+
                     if is_failed_survey:
-                        logger.warning(f"⚠️ [WorkflowService] Survey {survey.id} marked as failed due to generation failure (prompt review path)")
-                        survey.status = "failed"
+                        logger.warning(f"⚠️ [WorkflowService] Survey {survey.id} marked as draft due to generation failure (prompt review path)")
+                        survey.status = "draft"  # Changed from "failed" to "draft" - survey is still available
                         survey.pillar_scores = None  # Don't store pillar scores for failed surveys
+                    elif evaluation_failed:
+                        # Evaluation failed but generation succeeded - keep survey as draft
+                        logger.warning(f"⚠️ [WorkflowService] Survey {survey.id} evaluation failed but survey is available")
+                        survey.status = "draft"  # Keep as draft since evaluation failed
+                        survey.pillar_scores = None  # Don't store pillar scores since evaluation failed
                     else:
-                        survey.pillar_scores = generation_result.get("pillar_scores")
+                        # Both generation and evaluation succeeded
+                        survey.pillar_scores = validation_result.get("pillar_scores") or generation_result.get("pillar_scores")
                         survey.status = "validated" if validation_result.get("quality_gate_passed", False) else "draft"
 
                     self.db.commit()

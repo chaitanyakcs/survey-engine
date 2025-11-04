@@ -134,6 +134,49 @@ class APIService {
     }
   }
 
+  async triggerEvaluation(surveyId: string): Promise<{status: string, data?: any, message?: string}> {
+    try {
+      console.log('🚀 [API] Triggering evaluation for survey:', surveyId);
+      const response = await fetch(`${API_BASE_URL}/v1/pillar-scores/${surveyId}/run-evaluation`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to trigger evaluation: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      console.log('🚀 [API] Evaluation trigger response:', result);
+      return result;
+    } catch (error) {
+      console.error('❌ [API] Failed to trigger evaluation:', error);
+      throw error;
+    }
+  }
+
+  async checkEvaluationStatus(surveyId: string): Promise<any> {
+    try {
+      // Reuse fetchPillarScores to check status
+      const pillarScores = await this.fetchPillarScores(surveyId);
+      
+      // Check if evaluation is complete
+      const isComplete = pillarScores.weighted_score > 0 && 
+                        pillarScores.summary && 
+                        !pillarScores.summary.toLowerCase().includes('in progress');
+      
+      return {
+        ...pillarScores,
+        isComplete
+      };
+    } catch (error) {
+      console.error('❌ [API] Failed to check evaluation status:', error);
+      throw error;
+    }
+  }
+
   async getGoldenQuestionUsage(questionId: string): Promise<any[]> {
     try {
       const response = await fetch(`${API_BASE_URL}/v1/golden-pairs/questions/${questionId}/usage`);

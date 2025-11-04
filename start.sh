@@ -103,7 +103,7 @@ run_migrations() {
     
     # Start FastAPI server temporarily for migrations
     log_info "Starting FastAPI server for migrations..."
-    $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port 8000 &
+    $UV_CMD run --no-project uvicorn src.main:app --host 0.0.0.0 --port 8000 &
     local migration_pid=$!
     
     # Wait for server to be ready
@@ -172,7 +172,7 @@ start_fastapi() {
     log_info "Starting FastAPI server on port $port..."
     
     # Manual deployment only - no auto-reload
-    if ! $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 900; then
+    if ! $UV_CMD run --no-project uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 900; then
         log_error "Failed to start FastAPI server"
         exit 1
     fi
@@ -233,7 +233,7 @@ start_consolidated() {
     log_info "🔄 Step 2: Starting FastAPI server on port $fastapi_port..."
     log_success "🚀 All services ready! Starting FastAPI..."
     # Manual deployment only - no auto-reload
-    $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $fastapi_port --timeout-keep-alive 900
+    $UV_CMD run --no-project uvicorn src.main:app --host 0.0.0.0 --port $fastapi_port --timeout-keep-alive 900
 }
 
 # Function to start WebSocket server
@@ -291,13 +291,13 @@ start_both() {
     # Start FastAPI in background
     log_info "Starting FastAPI server..."
     local port=8000
-    log_info "FastAPI command: $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 900"
+    log_info "FastAPI command: $UV_CMD run --no-project uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 900"
     
     # Start FastAPI and capture output for debugging
-    log_info "Starting FastAPI with command: $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 900"
+    log_info "Starting FastAPI with command: $UV_CMD run --no-project uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 900"
     
     # Manual deployment only - no auto-reload
-    $UV_CMD run uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 900 > /tmp/fastapi.log 2>&1 &
+    $UV_CMD run --no-project uvicorn src.main:app --host 0.0.0.0 --port $port --timeout-keep-alive 900 > /tmp/fastapi.log 2>&1 &
     FASTAPI_PID=$!
     log_success "FastAPI server started with PID $FASTAPI_PID"
     
@@ -424,9 +424,11 @@ main() {
     log_info "Service: ${SERVICE:-'both'}"
     log_info "Debug mode: ${DEBUG:-'false'}"
     
-    # Test Python imports (only show errors)
-    if ! python3 -c "import src.main" > /dev/null 2>&1; then
+    # Test Python imports using uv with --no-project flag (uses system Python with installed packages)
+    if ! $UV_CMD run --no-project python -c "import src.main" > /dev/null 2>&1; then
         log_error "Failed to import src.main - check Python environment"
+        log_error "Attempting to show import error details:"
+        $UV_CMD run --no-project python -c "import src.main" 2>&1 || true
         exit 1
     fi
     

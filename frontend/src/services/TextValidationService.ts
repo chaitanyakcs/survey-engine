@@ -177,7 +177,7 @@ export class TextValidationService {
 
   private static generateStudyIntro(method: string, estimatedTime: string, rfq?: EnhancedRFQRequest): string {
     const methodName = method.replace('_', ' ').toLowerCase();
-    const businessContext = rfq?.business_context?.business_objective || 'market research';
+    const businessContext = rfq?.business_context?.business_problem_and_objective || 'market research';
 
     return `Thank you for agreeing to participate in this ${methodName} study. Your responses will help us understand ${businessContext}. This survey should take approximately ${estimatedTime} to complete.
 

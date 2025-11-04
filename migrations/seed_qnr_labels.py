@@ -12,6 +12,9 @@ logger = logging.getLogger(__name__)
 
 # Hardcoded QNR label data from CSVs
 QNR_LABELS_DATA = {
+    'sample_plan': [
+        {'name': 'Study_Intro', 'description': 'Thanks for agreeing, inform eligibility, state LOI', 'mandatory': True, 'label_type': 'Text', 'applicable_labels': []},
+    ],
     'screener': [
         {'name': 'Category_Usage_Frequency', 'description': 'How often you use', 'mandatory': True, 'label_type': 'QNR', 'applicable_labels': []},
         {'name': 'Medical_Conditions_General', 'description': 'Multiselect', 'mandatory': True, 'label_type': 'QNR', 'applicable_labels': ['Consumer Health', 'Healthcare', 'MedTech', 'Patients']},
@@ -19,7 +22,6 @@ QNR_LABELS_DATA = {
         {'name': 'Category_Usage_Financial', 'description': 'How much you spend now and in future', 'mandatory': True, 'label_type': 'QNR', 'applicable_labels': []},
         {'name': 'Demog_Basic', 'description': 'Age, Gender. Check categories specific to country', 'mandatory': True, 'label_type': 'QNR', 'applicable_labels': []},
         {'name': 'Recent_Participation', 'description': 'Participated in Market Research study recently. Terminate', 'mandatory': True, 'label_type': 'QNR', 'applicable_labels': []},
-        {'name': 'Study_Intro', 'description': 'Thanks for agreeing, inform eligibility, state LOI', 'mandatory': True, 'label_type': 'Text', 'applicable_labels': []},
         {'name': 'Medical_Conditions_Study', 'description': 'Current, Past and future', 'mandatory': True, 'label_type': 'QNR', 'applicable_labels': ['Consumer Health', 'Healthcare', 'MedTech', 'Patients']},
         {'name': 'Category_Usage_Consider', 'description': 'are you considering in the future', 'mandatory': True, 'label_type': 'QNR', 'applicable_labels': []},
         {'name': 'User_Categorization_Logic', 'description': 'User/Non-User, Continue/Terminate, Other categorization rules', 'mandatory': True, 'label_type': 'Rules', 'applicable_labels': []},
@@ -87,16 +89,28 @@ QNR_LABELS_DATA = {
         {'name': 'Media_cons', 'description': 'What platforms active on? Where do you consume information', 'mandatory': False, 'label_type': 'QNR', 'applicable_labels': []},
         {'name': 'Adoption_behavior', 'description': 'Adoption to new products and tech', 'mandatory': False, 'label_type': 'QNR', 'applicable_labels': []},
         {'name': 'Adnl_awareness', 'description': 'Aware of features and potential new tech', 'mandatory': False, 'label_type': 'QNR', 'applicable_labels': []},
+    ],
+    'programmer_instructions': [
+        {'name': 'Survey_Closing', 'description': 'Thank you message and survey closing text', 'mandatory': True, 'label_type': 'Text', 'applicable_labels': []},
+        {'name': 'Routing_Logic', 'description': 'IF/THEN/ELSE routing logic instructions', 'mandatory': False, 'label_type': 'Rules', 'applicable_labels': []},
+        {'name': 'Quota_Checks', 'description': 'Quota checks and controls for sample management', 'mandatory': False, 'label_type': 'Rules', 'applicable_labels': []},
+        {'name': 'Termination_Rules', 'description': 'Termination rules and eligibility criteria', 'mandatory': False, 'label_type': 'Rules', 'applicable_labels': []},
+        {'name': 'Skip_Logic', 'description': 'Skip logic requirements for question flow', 'mandatory': False, 'label_type': 'Rules', 'applicable_labels': []},
+        {'name': 'SEC_Calculation', 'description': 'Socio-economic classification calculations', 'mandatory': False, 'label_type': 'Rules', 'applicable_labels': []},
+        {'name': 'Validation_Rules', 'description': 'Validation rules and data quality checks', 'mandatory': False, 'label_type': 'Rules', 'applicable_labels': []},
+        {'name': 'Randomization_Logic', 'description': 'Question or option randomization instructions', 'mandatory': False, 'label_type': 'Rules', 'applicable_labels': []},
     ]
 }
 
 # Category to section mapping
 CATEGORY_TO_SECTION = {
+    'sample_plan': 1,
     'screener': 2,
     'brand': 3,
     'concept': 4,
     'methodology': 5,
-    'additional': 6
+    'additional': 6,
+    'programmer_instructions': 7
 }
 
 
@@ -127,6 +141,7 @@ def seed_qnr_labels(db: Session) -> int:
                         mandatory = EXCLUDED.mandatory,
                         label_type = EXCLUDED.label_type,
                         applicable_labels = EXCLUDED.applicable_labels,
+                        category = EXCLUDED.category,
                         section_id = EXCLUDED.section_id,
                         display_order = EXCLUDED.display_order,
                         updated_at = NOW()

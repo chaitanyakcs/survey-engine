@@ -324,7 +324,7 @@ export class RFQTemplateService {
     if (rfq.title && rfq.title.length > 10) clarity_score += 0.2;
     if (rfq.description && rfq.description.length > 100) clarity_score += 0.3;
     if (rfq.business_context?.company_product_background) clarity_score += 0.3;
-    if (rfq.business_context?.business_objective) clarity_score += 0.2;
+    if (rfq.business_context?.business_problem_and_objective) clarity_score += 0.2;
 
     // Assess specificity
     if (rfq.research_objectives?.key_research_questions && rfq.research_objectives.key_research_questions.length > 0) specificity_score += 0.4;

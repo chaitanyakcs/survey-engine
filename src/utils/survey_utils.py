@@ -44,6 +44,59 @@ def get_questions_count(survey: Optional[Dict[str, Any]]) -> int:
     return len(extract_all_questions(survey))
 
 
+def get_questions_and_instructions_count(survey: Optional[Dict[str, Any]]) -> tuple[int, int]:
+    """
+    Get the count of questions and instructions separately in a survey
+    
+    Args:
+        survey: Survey object in either legacy or sectioned format
+    
+    Returns:
+        tuple: (question_count, instruction_count)
+    """
+    if not survey:
+        return 0, 0
+    
+    question_count = 0
+    instruction_count = 0
+    
+    # Check sections format
+    if survey.get("sections"):
+        for section in survey.get("sections", []):
+            # Count questions vs instructions in section questions
+            for question in section.get("questions", []):
+                if question.get("type") == "instruction":
+                    instruction_count += 1
+                else:
+                    question_count += 1
+            
+            # Count instructions in introText
+            intro_text = section.get("introText")
+            if intro_text and intro_text.get("type") == "instruction":
+                instruction_count += 1
+            
+            # Count instructions in closingText
+            closing_text = section.get("closingText")
+            if closing_text and closing_text.get("type") == "instruction":
+                instruction_count += 1
+            
+            # Count instructions in textBlocks
+            text_blocks = section.get("textBlocks", [])
+            for text_block in text_blocks:
+                if text_block.get("type") == "instruction":
+                    instruction_count += 1
+    
+    # Check legacy format
+    elif survey.get("questions"):
+        for question in survey.get("questions", []):
+            if question.get("type") == "instruction":
+                instruction_count += 1
+            else:
+                question_count += 1
+    
+    return question_count, instruction_count
+
+
 def validate_survey_json(survey: Optional[Dict[str, Any]]) -> tuple[bool, List[str]]:
     """
     Validate a survey JSON structure

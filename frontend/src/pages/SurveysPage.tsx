@@ -848,7 +848,10 @@ export const SurveysPage: React.FC = () => {
                                     })()}
                                   </div>
                                   <span className="text-sm text-gray-500">
-                                    {survey.question_count} questions
+                                    {survey.question_count} {survey.question_count === 1 ? 'question' : 'questions'}
+                                    {survey.instruction_count > 0 && (
+                                      <> • {survey.instruction_count} {survey.instruction_count === 1 ? 'instruction' : 'instructions'}</>
+                                    )}
                                   </span>
                                   {survey.estimated_time && (
                                     <span className="text-sm text-gray-500">

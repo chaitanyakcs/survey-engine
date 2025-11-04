@@ -928,6 +928,11 @@ async def preview_survey_generation_prompt(
         rfq_id = request.rfq_id or f"preview-{str(uuid4())}"
         logger.info(f"📋 [RFQ API] Using RFQ ID: {rfq_id}")
         
+        # Extract generation_config from enhanced_rfq_data if available
+        generation_config = {}
+        if request.enhanced_rfq_data and isinstance(request.enhanced_rfq_data, dict):
+            generation_config = request.enhanced_rfq_data.get("generation_config", {})
+        
         # Build context similar to what the workflow would create
         context = {
             "rfq_id": rfq_id,
@@ -938,7 +943,8 @@ async def preview_survey_generation_prompt(
                 "segment": request.target_segment,
                 "goal": request.research_goal
             },
-            "enhanced_rfq_data": request.enhanced_rfq_data
+            "enhanced_rfq_data": request.enhanced_rfq_data,
+            "generation_config": generation_config
         }
         
         # Extract unmapped_context from enhanced RFQ data if available

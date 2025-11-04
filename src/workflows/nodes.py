@@ -111,6 +111,7 @@ class GoldenRetrieverNode:
                     golden_examples = []
                     golden_sections = []
                     golden_questions = []
+                    feedback_digest = None
                 else:
                     # Lazy create retrieval service only when we actually need it
                     if fresh_retrieval_service is None:
@@ -146,6 +147,18 @@ class GoldenRetrieverNode:
                         limit=8  # Increased limit since we're not filtering by labels
                     )
                     logger.info(f"✅ [GoldenRetriever] Retrieved {len(golden_questions)} golden questions by similarity")
+                    
+                    # Retrieve feedback digest from all questions with comments
+                    try:
+                        feedback_digest = await fresh_retrieval_service.get_feedback_digest(
+                            methodology_tags=None,
+                            industry=industry,  # Use industry extracted above
+                            limit=50
+                        )
+                        logger.info(f"✅ [GoldenRetriever] Generated feedback digest from {feedback_digest.get('total_feedback_count', 0)} questions with comments")
+                    except Exception as e:
+                        logger.warning(f"⚠️ [GoldenRetriever] Failed to generate feedback digest: {str(e)}")
+                        feedback_digest = None
                 
                 # Tier 2: Methodology blocks
                 methodology_blocks = []
@@ -173,6 +186,11 @@ class GoldenRetrieverNode:
                 if fresh_db is not None:
                     fresh_db.close()
             
+            # Extract question IDs from feedback digest for tracking
+            feedback_question_ids = []
+            if feedback_digest and feedback_digest.get('question_ids'):
+                feedback_question_ids = [UUID(qid) for qid in feedback_digest['question_ids']]
+            
             # Update the state with the retrieved data
             state.golden_examples = golden_examples
             # Store multi-level retrieval in state/context
@@ -180,9 +198,11 @@ class GoldenRetrieverNode:
             state.golden_questions = golden_questions
             state.methodology_blocks = methodology_blocks
             state.template_questions = template_questions
+            state.feedback_digest = feedback_digest
             state.used_golden_examples = [UUID(ex["id"]) for ex in golden_examples if "id" in ex]
             state.used_golden_questions = [UUID(q["id"]) for q in golden_questions if "id" in q]
             state.used_golden_sections = [UUID(s["id"]) for s in golden_sections if "id" in s]
+            state.used_feedback_questions = feedback_question_ids  # Track questions from feedback digest
             
             return {
                 "golden_examples": golden_examples,
@@ -190,9 +210,11 @@ class GoldenRetrieverNode:
                 "golden_questions": golden_questions,
                 "methodology_blocks": methodology_blocks,
                 "template_questions": template_questions,
+                "feedback_digest": feedback_digest,
                 "used_golden_examples": [ex["id"] for ex in golden_examples],
                 "used_golden_questions": [str(q["id"]) for q in golden_questions if "id" in q],
                 "used_golden_sections": [str(s["id"]) for s in golden_sections if "id" in s],
+                "used_feedback_questions": [str(qid) for qid in feedback_question_ids],  # Track feedback questions
                 "error_message": None
             }
             
@@ -215,11 +237,20 @@ class ContextBuilderNode:
             logger.info(f"🔍 [ContextBuilderNode] Survey ID type: {type(state.survey_id)}")
             logger.info(f"🔍 [ContextBuilderNode] RFQ ID: {state.rfq_id}")
             
+            # Extract generation_config from enhanced_rfq_data if available
+            generation_config = {}
+            if state.enhanced_rfq_data and isinstance(state.enhanced_rfq_data, dict):
+                generation_config = state.enhanced_rfq_data.get("generation_config", {})
+                if generation_config:
+                    logger.info(f"⚙️ [ContextBuilderNode] Found generation_config: {generation_config}")
+            
             context = {
                 # Note: survey_id is used only for audit tracking, not content generation
                 "audit_survey_id": str(state.survey_id) if state.survey_id else None,
                 "workflow_id": str(state.workflow_id) if state.workflow_id else None,
                 "rfq_id": str(state.rfq_id) if state.rfq_id else None,
+                # Include feedback digest from questions with comments
+                "feedback_digest": state.feedback_digest,
                 "rfq_details": {
                     "text": state.rfq_text,
                     "title": state.rfq_title,
@@ -235,7 +266,9 @@ class ContextBuilderNode:
                 # Enhanced RFQ data for text requirements and enriched context
                 "enhanced_rfq_data": state.enhanced_rfq_data,
                 # Unmapped context from RFQ parsing for additional survey generation context
-                "unmapped_context": state.unmapped_context or ""
+                "unmapped_context": state.unmapped_context or "",
+                # Generation configuration for prompt optimization
+                "generation_config": generation_config
             }
             
             logger.info(f"🔍 [ContextBuilderNode] Final context audit_survey_id: {context.get('audit_survey_id')}")
@@ -411,9 +444,52 @@ class GeneratorAgent:
             }
         except Exception as e:
             self.logger.error(f"❌ [GeneratorAgent] Exception during generation: {str(e)}", exc_info=True)
-            return {
+            
+            # CRITICAL: Try to extract raw_response from exception chain
+            from src.services.generation_service import SurveyGenerationError
+            raw_response = None
+            
+            # Traverse exception chain to find SurveyGenerationError with raw_response
+            current_exception = e
+            depth = 0
+            max_depth = 5  # Prevent infinite loops
+            
+            while current_exception and depth < max_depth:
+                # Check if current exception has raw_response
+                if isinstance(current_exception, SurveyGenerationError) and current_exception.raw_response:
+                    raw_response = current_exception.raw_response
+                    self.logger.info(f"🔍 [GeneratorAgent] Captured raw response from SurveyGenerationError at depth {depth} (length: {len(raw_response)})")
+                    break
+                elif hasattr(current_exception, 'raw_response') and current_exception.raw_response:
+                    raw_response = current_exception.raw_response
+                    self.logger.info(f"🔍 [GeneratorAgent] Captured raw response from exception at depth {depth} (length: {len(raw_response)})")
+                    break
+                
+                # Move to next level in exception chain
+                if hasattr(current_exception, '__cause__') and current_exception.__cause__:
+                    current_exception = current_exception.__cause__
+                elif hasattr(current_exception, '__context__') and current_exception.__context__:
+                    current_exception = current_exception.__context__
+                else:
+                    break
+                depth += 1
+            
+            if not raw_response:
+                self.logger.warning(f"⚠️ [GeneratorAgent] Could not extract raw_response from exception chain (checked {depth} levels)")
+            
+            result = {
                 "error_message": f"Survey generation failed: {str(e)}"
             }
+            
+            # Include raw_response in result so it can be saved even when generation fails
+            if raw_response:
+                result["generation_metadata"] = {
+                    "raw_response": raw_response,
+                    "error": True
+                }
+                self.logger.info(f"💾 [GeneratorAgent] Included raw response in error result (length: {len(raw_response)})")
+            
+            return result
 
 
 class GoldenValidatorNode:
@@ -914,110 +990,35 @@ class ValidatorAgent:
     def __init__(self, db: Session, connection_manager=None):
         self.db = db
         self.connection_manager = connection_manager
-        # Lazy import to avoid heavy settings init during tests
-        from src.services.evaluator_service import EvaluatorService
-        self.evaluator_service = EvaluatorService(db_session=db)
         import logging
         self.logger = logging.getLogger(__name__)
 
     async def __call__(self, state: SurveyGenerationState) -> Dict[str, Any]:
         """
-        Evaluate survey quality using the EvaluatorService
+        Run basic validation (schema, methodology) without AI evaluation.
+        AI evaluation is now user-triggered from SurveyPreview.
         """
         try:
-            self.logger.info("🔍 [ValidatorAgent] Starting survey quality evaluation...")
+            self.logger.info("🔍 [ValidatorAgent] Starting basic validation (no AI evaluation)...")
 
             # Check if we have a generated survey
             if not state.generated_survey:
                 self.logger.error("❌ [ValidatorAgent] No generated survey found in state")
                 return {
-                    "error_message": "No survey available for evaluation",
-                    "pillar_scores": {},
-                    "quality_gate_passed": False
-                }
-
-            # Check evaluation settings to determine validation mode
-            try:
-                from src.services.settings_service import SettingsService
-                from src.database import get_db
-                
-                fresh_db = next(get_db())
-                settings_service = SettingsService(fresh_db)
-                evaluation_settings = settings_service.get_evaluation_settings()
-                enable_llm_evaluation = evaluation_settings.get('enable_llm_evaluation', True)
-                fresh_db.close()
-                
-                if not enable_llm_evaluation:
-                    self.logger.info("⏭️ [ValidatorAgent] LLM evaluation disabled, running basic validation only")
-                    return await self._run_basic_validation(state)
-                else:
-                    self.logger.info("✅ [ValidatorAgent] LLM evaluation enabled, running full evaluation")
-            except Exception as e:
-                self.logger.warning(f"⚠️ [ValidatorAgent] Could not check evaluation settings: {e}, defaulting to full evaluation")
-                # Continue with full evaluation if settings check fails
-
-            # Check if this is a failed survey that should skip evaluation
-            is_failed_survey = state.generated_survey.get('metadata', {}).get('generation_failed', False)
-            skip_evaluation = state.generated_survey.get('metadata', {}).get('skip_evaluation', False)
-
-            if is_failed_survey or skip_evaluation:
-                self.logger.warning(f"⚠️ [ValidatorAgent] Skipping evaluation for failed survey (generation_failed={is_failed_survey}, skip_evaluation={skip_evaluation})")
-                return {
-                    "pillar_scores": {},
-                    "quality_gate_passed": False,
+                    "error_message": "No survey available for validation",
                     "validation_results": {"schema_valid": False, "methodology_compliant": False},
-                    "retry_count": state.retry_count,
-                    "workflow_should_continue": True,
-                    # Don't clear error_message if it was set by a previous node
-                    "error_message": state.error_message if state.error_message else None,
-                    "evaluation_skipped": True
+                    "workflow_should_continue": True
                 }
 
-            # Get a fresh database session to avoid transaction issues
+            # Get a fresh database session
+            from src.database import get_db
             fresh_db = next(get_db())
 
             try:
-                # Update the evaluator service with fresh database session and workflow info
-                self.evaluator_service.db_session = fresh_db
-                self.evaluator_service.workflow_id = state.workflow_id
-                self.evaluator_service.connection_manager = self.connection_manager
-                self.evaluator_service.survey_id = state.survey_id
-                self.evaluator_service.rfq_id = state.rfq_id
-
-                # Initialize WebSocket client if available
-                if self.connection_manager and state.workflow_id:
-                    from src.services.websocket_client import WebSocketNotificationService
-                    self.evaluator_service.ws_client = WebSocketNotificationService(self.connection_manager)
-                else:
-                    self.evaluator_service.ws_client = None
-
-                self.logger.info(f"📊 [ValidatorAgent] Evaluating survey with {len(state.generated_survey.get('sections', []))} sections")
-
-                # Run the evaluation
-                evaluation_result = await self.evaluator_service.evaluate_survey(
-                    survey_data=state.generated_survey,
-                    rfq_text=state.rfq_text
-                )
-
-                # Extract pillar scores from evaluation result (the result IS the pillar scores)
-                pillar_scores = evaluation_result
-
-                self.logger.info(f"✅ [ValidatorAgent] Evaluation completed")
-
-                # Determine if quality gate passed based on weighted score
-                weighted_score = pillar_scores.get('weighted_score', 0)
-                quality_threshold = 0.75  # 75% threshold for quality gate
-                quality_gate_passed = weighted_score >= quality_threshold
-
-                self.logger.info(f"🎯 [ValidatorAgent] Quality gate: {'PASSED' if quality_gate_passed else 'FAILED'} (Score: {weighted_score:.1%}, Threshold: {quality_threshold:.1%})")
-
-                # Update the state with the evaluation results
-                state.pillar_scores = pillar_scores
-                state.quality_gate_passed = quality_gate_passed
-
-                # Also run basic validation (schema, methodology, golden similarity) for informational purposes only
+                # Run basic validation (schema, methodology, golden similarity) for informational purposes only
                 validation_results = {"schema_valid": True, "methodology_compliant": True, "schema_warnings": []}
                 golden_similarity_score = 0.0
+                
                 if state.generated_survey:
                     try:
                         from src.services.validation_service import ValidationService
@@ -1056,27 +1057,17 @@ class ValidatorAgent:
                         self.logger.warning(f"⚠️ [ValidatorAgent] Basic validation failed (non-blocking): {validation_error}")
                         validation_results["schema_warnings"] = [f"Validation error: {str(validation_error)}"]
 
-                # Retries disabled - keep retry count unchanged
-                # Evaluation is informational, not blocking
-                updated_retry_count = state.retry_count
-
-                if not quality_gate_passed:
-                    self.logger.info(f"🔍 [ValidatorAgent] Quality below threshold ({weighted_score:.1%}), but continuing workflow - retries disabled")
-                else:
-                    self.logger.info(f"✅ [ValidatorAgent] Quality above threshold ({weighted_score:.1%})")
-
+                # Always continue workflow regardless of validation results
                 result = {
-                    "pillar_scores": pillar_scores,
-                    "quality_gate_passed": quality_gate_passed,  # Informational only
                     "validation_results": validation_results,
-                    "golden_similarity_score": golden_similarity_score,  # Added golden similarity check
-                    "retry_count": updated_retry_count,  # Unchanged
-                    "workflow_should_continue": True,  # Always continue regardless of quality
+                    "golden_similarity_score": golden_similarity_score,
+                    "retry_count": state.retry_count,
+                    "workflow_should_continue": True,
                     # Don't clear error_message if it was set by a previous node
                     "error_message": state.error_message if state.error_message else None
                 }
 
-                self.logger.info(f"🏛️ [ValidatorAgent] Returning result with quality_gate_passed: {quality_gate_passed}")
+                self.logger.info(f"✅ [ValidatorAgent] Basic validation completed, workflow continuing")
 
             finally:
                 # Close the fresh database session
@@ -1088,11 +1079,11 @@ class ValidatorAgent:
             return result
 
         except Exception as e:
-            self.logger.error(f"❌ [ValidatorAgent] Exception during evaluation: {str(e)}", exc_info=True)
+            self.logger.error(f"❌ [ValidatorAgent] Exception during validation: {str(e)}", exc_info=True)
             return {
-                "error_message": f"Survey evaluation failed: {str(e)}",
-                "pillar_scores": {},
-                "quality_gate_passed": False
+                "error_message": f"Survey validation failed: {str(e)}",
+                "validation_results": {"schema_valid": False, "methodology_compliant": False},
+                "workflow_should_continue": True
             }
 
     async def _run_basic_validation(self, state: SurveyGenerationState) -> Dict[str, Any]:

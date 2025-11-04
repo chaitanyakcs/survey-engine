@@ -8,19 +8,10 @@ import {
   StarIcon
 } from '@heroicons/react/24/outline';
 import { SurveyGenerationIndicator } from './SurveyGenerationIndicator';
+import { SurveyListItem } from '../types';
 
 interface SurveyCardProps {
-  survey: {
-    id: string;
-    title: string;
-    description: string;
-    status: string;
-    created_at: string;
-    methodology_tags: string[];
-    quality_score?: number;
-    estimated_time?: number;
-    question_count: number;
-  };
+  survey: SurveyListItem;
   isSelected: boolean;
   onSelect: () => void;
   onDelete: () => void;
@@ -210,7 +201,12 @@ export const SurveyCard: React.FC<SurveyCardProps> = ({
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2 bg-white/80 px-3 py-1.5 rounded-lg shadow-sm">
                 <ChartBarIcon className="h-4 w-4 text-secondary-500" />
-                <span className="font-medium">{survey.question_count} questions</span>
+                <span className="font-medium">
+                  {survey.question_count} {survey.question_count === 1 ? 'question' : 'questions'}
+                  {survey.instruction_count > 0 && (
+                    <> • {survey.instruction_count} {survey.instruction_count === 1 ? 'instruction' : 'instructions'}</>
+                  )}
+                </span>
               </div>
               {survey.estimated_time && (
                 <div className="flex items-center space-x-2 bg-white/80 px-3 py-1.5 rounded-lg shadow-sm">

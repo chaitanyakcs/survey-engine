@@ -326,16 +326,35 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
         """Run golden validation with progress update"""
         progress_tracker = get_progress_tracker(state.workflow_id)
         
+        # Initialize WebSocket client if connection_manager is available
+        if connection_manager:
+            from src.services.websocket_client import WebSocketNotificationService
+            ws_client = WebSocketNotificationService(connection_manager)
+        else:
+            ws_client = None
+        
         try:
-            logger.info(f"📡 [Workflow] Sending progress update: golden_validation for workflow_id={state.workflow_id}")
-            progress_data = progress_tracker.get_progress_data("validation_scoring")
-            progress_data["message"] = "Validating against golden examples and structure..."
-            await ws_client.send_progress_update(state.workflow_id, progress_data)
-            logger.info(f"✅ [Workflow] Progress update sent successfully: golden_validation")
+            if ws_client:
+                logger.info(f"📡 [Workflow] Sending progress update: golden_validation for workflow_id={state.workflow_id}")
+                progress_data = progress_tracker.get_progress_data("validation_scoring")
+                progress_data["message"] = "Validating against golden examples and structure..."
+                await ws_client.send_progress_update(state.workflow_id, progress_data)
+                logger.info(f"✅ [Workflow] Progress update sent successfully: golden_validation")
         except Exception as e:
             logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
         
         result = await golden_validator(state)
+        
+        # Send finalizing progress update (since we skip AI evaluation now)
+        try:
+            if ws_client:
+                logger.info(f"📡 [Workflow] Sending progress update: finalizing for workflow_id={state.workflow_id}")
+                progress_data = progress_tracker.get_progress_data("finalizing")
+                progress_data["message"] = "Finalizing survey generation..."
+                await ws_client.send_progress_update(state.workflow_id, progress_data)
+                logger.info(f"✅ [Workflow] Progress update sent successfully: finalizing")
+        except Exception as e:
+            logger.error(f"❌ [Workflow] Failed to send finalizing progress update: {str(e)}")
         
         logger.info(f"✅ [Workflow] Golden validation completed")
         return result
@@ -415,55 +434,7 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     )
     workflow.add_edge("generate", "detect_labels")  # Always run label detection after generation
     workflow.add_edge("detect_labels", "golden_validation")  # Always run golden validation
-    
-    # Conditional edge to check if LLM validation should be skipped
-    def should_run_llm_validation(state: SurveyGenerationState) -> str:
-        """
-        Check if LLM-based validation should be run based on settings or generation errors
-        """
-        try:
-            logger.info(f"🔍 [Workflow] should_run_llm_validation called - error_message: {state.error_message}, generated_survey: {bool(state.generated_survey)}")
-            
-            # First check if generation failed - if so, skip validation
-            if state.error_message:
-                logger.info(f"🔍 [Workflow] Generation failed with error: {state.error_message}, skipping validation")
-                return "completion_handler"
-            
-            # Check if no survey was generated - if so, skip validation
-            if not state.generated_survey:
-                logger.info("🔍 [Workflow] No survey generated, skipping validation")
-                return "completion_handler"
-            
-            from src.services.settings_service import SettingsService
-            from src.database import get_db
-            
-            # Get evaluation settings
-            db = next(get_db())
-            settings_service = SettingsService(db)
-            evaluation_settings = settings_service.get_evaluation_settings()
-            
-            enable_llm_evaluation = evaluation_settings.get('enable_llm_evaluation', True)
-            
-            if not enable_llm_evaluation:
-                logger.info(f"⏭️ [Workflow] LLM evaluation disabled, running basic validation only")
-                return "validate"  # Still run validation but with basic mode
-            else:
-                logger.info(f"✅ [Workflow] LLM evaluation enabled, running full validation")
-                return "validate"
-        except Exception as e:
-            logger.error(f"❌ [Workflow] Error checking evaluation settings: {e}")
-            # Default to validation if there's an error
-            return "validate"
-
-    # Add conditional edge to check if validation should be skipped
-    workflow.add_conditional_edges(
-        "golden_validation",
-        should_run_llm_validation,
-        {
-            "validate": "validate",
-            "completion_handler": "completion_handler"
-        }
-    )
+    workflow.add_edge("golden_validation", "completion_handler")  # Skip AI evaluation, go directly to completion
     
     # Add a pause node for human review
     async def pause_for_review(state: SurveyGenerationState) -> Dict[str, Any]:

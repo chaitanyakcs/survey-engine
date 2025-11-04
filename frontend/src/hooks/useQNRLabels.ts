@@ -25,19 +25,27 @@ interface QNRResponse {
   updated_at?: string;
 }
 
+interface ExtendedQNRLabel extends QNRLabel {
+  id?: number;
+  section_id?: number;
+  display_order?: number;
+  detection_patterns?: string[];
+}
+
 interface UseQNRLabelsReturn {
-  labels: QNRLabel[];
+  labels: ExtendedQNRLabel[];
   sections: Array<{ id: number; name: string; description: string; display_order: number; mandatory: boolean; active: boolean }>;
   loading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
+  fetchLabelsBySection: (sectionId: number) => Promise<ExtendedQNRLabel[]>;
   createLabel: (label: Partial<QNRLabel>) => Promise<void>;
   updateLabel: (id: number, updates: Partial<QNRLabel>) => Promise<void>;
   deleteLabel: (id: number) => Promise<void>;
 }
 
 export const useQNRLabels = (options: UseQNRLabelsOptions = {}): UseQNRLabelsReturn => {
-  const [labels, setLabels] = useState<QNRLabel[]>([]);
+  const [labels, setLabels] = useState<ExtendedQNRLabel[]>([]);
   const [sections, setSections] = useState<Array<{ id: number; name: string; description: string; display_order: number; mandatory: boolean; active: boolean }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,13 +74,17 @@ export const useQNRLabels = (options: UseQNRLabelsOptions = {}): UseQNRLabelsRet
       const data = await response.json();
       // API returns either a list directly or an object with 'labels' key
       const labelsArray = Array.isArray(data) ? data : (data.labels || []);
-      const apiLabels: QNRLabel[] = labelsArray.map((label: QNRResponse) => ({
+      const apiLabels: ExtendedQNRLabel[] = labelsArray.map((label: QNRResponse) => ({
+        id: label.id,
         name: label.name,
         description: label.description,
         category: label.category as QNRLabel['category'],
         mandatory: label.mandatory,
         applicableLabels: label.applicable_labels || [],
-        type: label.label_type as QNRLabel['type']
+        type: label.label_type as QNRLabel['type'],
+        section_id: label.section_id,
+        display_order: label.display_order,
+        detection_patterns: label.detection_patterns || []
       }));
 
       setLabels(apiLabels);
@@ -127,7 +139,21 @@ export const useQNRLabels = (options: UseQNRLabelsOptions = {}): UseQNRLabelsRet
         }
       }
 
-      setLabels(filteredLabels);
+      // Add section_id to static labels (map by category for backwards compatibility)
+      const categoryToSection: Record<string, number> = {
+        'screener': 2,
+        'brand': 3,
+        'concept': 4,
+        'methodology': 5,
+        'additional': 6
+      };
+      
+      const staticLabelsWithSection: ExtendedQNRLabel[] = filteredLabels.map(l => ({
+        ...l,
+        section_id: categoryToSection[l.category] || 1
+      }));
+      
+      setLabels(staticLabelsWithSection);
       
       // Create sections from static data
       const sectionNames = [
@@ -206,12 +232,56 @@ export const useQNRLabels = (options: UseQNRLabelsOptions = {}): UseQNRLabelsRet
     }
   }, [useApi, refetch]);
 
+  // Fetch labels for a specific section
+  const fetchLabelsBySection = useCallback(async (sectionId: number): Promise<ExtendedQNRLabel[]> => {
+    try {
+      const response = await fetch(`/api/v1/qnr-labels?section_id=${sectionId}&active_only=true`);
+      if (!response.ok) throw new Error(`API error: ${response.status}`);
+      
+      const data = await response.json();
+      const labelsArray = Array.isArray(data) ? data : (data.labels || []);
+      
+      return labelsArray.map((label: QNRResponse) => ({
+        id: label.id,
+        name: label.name,
+        description: label.description,
+        category: label.category as QNRLabel['category'],
+        mandatory: label.mandatory,
+        applicableLabels: label.applicable_labels || [],
+        type: label.label_type as QNRLabel['type'],
+        section_id: label.section_id,
+        display_order: label.display_order,
+        detection_patterns: label.detection_patterns || []
+      }));
+    } catch (err) {
+      console.warn(`⚠️ [useQNRLabels] Failed to fetch labels for section ${sectionId}:`, err);
+      // Fallback: filter from static labels by category
+      const sectionMap: Record<number, string> = {
+        1: 'screener',
+        2: 'screener',
+        3: 'brand',
+        4: 'concept',
+        5: 'methodology',
+        6: 'additional',
+        7: 'screener'
+      };
+      const category = sectionMap[sectionId];
+      if (category) {
+        return QNR_LABELS
+          .filter(l => l.category === category)
+          .map(l => ({ ...l, section_id: sectionId }));
+      }
+      return [];
+    }
+  }, []);
+
   return {
     labels,
     sections,
     loading,
     error,
     refetch,
+    fetchLabelsBySection,
     createLabel,
     updateLabel,
     deleteLabel

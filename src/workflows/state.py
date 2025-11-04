@@ -37,6 +37,7 @@ class SurveyGenerationState(BaseModel):
     # Multi-level RAG
     golden_sections: List[Dict[str, Any]] = []
     golden_questions: List[Dict[str, Any]] = []
+    feedback_digest: Optional[Dict[str, Any]] = None  # Feedback digest from questions with comments
     
     context: Dict[str, Any] = {}
     
@@ -49,8 +50,9 @@ class SurveyGenerationState(BaseModel):
     
     golden_similarity_score: Optional[float] = None
     used_golden_examples: List[UUID] = []
-    used_golden_questions: List[UUID] = []
+    used_golden_questions: List[UUID] = []  # Questions retrieved via similarity matching
     used_golden_sections: List[UUID] = []
+    used_feedback_questions: List[UUID] = []  # Questions with comments from feedback digest
     
     retry_count: int = 0
     max_retries: int = 1  # Reduced to prevent long loops

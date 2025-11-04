@@ -91,6 +91,13 @@ export const getQuestionCount = (survey: Survey): number => {
 };
 
 // Enhanced RFQ Types
+export interface ConceptStimulus {
+  id: string;
+  title: string;
+  description: string;
+  display_order?: number;
+}
+
 export interface RFQObjective {
   id: string;
   title: string;
@@ -151,60 +158,48 @@ export interface EnhancedRFQRequest {
   title: string;
   description: string;
 
-  // ========== BUSINESS CONTEXT ==========
+  // ========== BUSINESS CONTEXT (SIMPLIFIED) ==========
   business_context: {
-    company_product_background: string;    // Background on company, product & research
-    business_problem: string;              // What business wants to achieve
-    business_objective: string;            // Business objective from research
-    // Enhanced fields
-    stakeholder_requirements?: string;     // Key stakeholder needs and requirements
-    decision_criteria?: string;            // What defines success for this research
+    company_product_background: string;      // Background on company, product & research
+    business_problem_and_objective: string;  // MERGED: Combined business problem and objective
+    sample_requirements?: string;            // RENAMED: Consumer/sample type requirements (formerly stakeholder_requirements)
+    // Removed: decision_criteria (moved to additional_info)
     budget_range?: 'under_10k' | '10k_25k' | '25k_50k' | '50k_100k' | 'over_100k';
     timeline_constraints?: 'urgent_1_week' | 'fast_2_weeks' | 'standard_4_weeks' | 'extended_8_weeks' | 'flexible';
   };
 
-  // ========== RESEARCH OBJECTIVES ==========
+  // ========== RESEARCH OBJECTIVES (SIMPLIFIED) ==========
   research_objectives: {
     research_audience: string;             // Respondent type, demographics, segments
     success_criteria: string;              // Desired outcome / success criteria
     key_research_questions: string[];     // Key research questions & considerations
-    // Enhanced fields
-    success_metrics?: string;              // How research success will be measured
-    validation_requirements?: string;      // What validation is needed
-    measurement_approach?: 'quantitative' | 'qualitative' | 'mixed_methods';
+    // Removed: success_metrics, validation_requirements, measurement_approach (moved to additional_info)
   };
 
-  // ========== METHODOLOGY ==========
+  // ========== METHODOLOGY (SIMPLIFIED) ==========
   methodology: {
     primary_method: 'van_westendorp' | 'gabor_granger' | 'conjoint' | 'basic_survey';
     stimuli_details?: string;             // Concept details, price ranges
-    methodology_requirements?: string;     // Additional methodology notes
-    // Enhanced fields
-    complexity_level?: 'simple' | 'intermediate' | 'complex' | 'expert_level';
-    required_methodologies?: string[];     // Specific methodologies required
-    sample_size_target?: string;          // Target number of respondents
+    // Removed: methodology_requirements, complexity_level, required_methodologies, sample_size_target (moved to additional_info)
   };
 
-  // ========== SURVEY REQUIREMENTS ==========
+  // ========== SURVEY REQUIREMENTS (SIMPLIFIED) ==========
   survey_requirements: {
     sample_plan: string;                  // Sample structure, LOI, recruiting criteria
     required_sections?: string[];         // QNR structure sections (moved to survey_structure)
-    must_have_questions: string[];        // Must-have Qs per respondent type
     screener_requirements?: string;       // Screener & respondent tagging rules
-    // Enhanced fields
     completion_time_target?: 'under_5min' | '5_10min' | '10_15min' | '15_20min' | '20_30min' | 'over_30min';
     device_compatibility?: 'mobile_only' | 'desktop_only' | 'mobile_first' | 'desktop_first' | 'all_devices';
-    accessibility_requirements?: 'basic' | 'wcag_aa' | 'wcag_aaa' | 'custom';
-    data_quality_requirements?: 'basic' | 'standard' | 'premium';
+    // Removed: must_have_questions, accessibility_requirements, data_quality_requirements (moved to additional_info)
   };
 
-  // ========== ADVANCED CLASSIFICATION ==========
+  // ========== ADVANCED CLASSIFICATION (SIMPLIFIED) ==========
   advanced_classification?: {
     industry_classification?: string;      // From INDUSTRY_CLASSIFICATIONS
     respondent_classification?: string;    // From RESPONDENT_TYPES
     methodology_tags?: string[];          // From METHODOLOGY_TAGS
-    compliance_requirements?: string[];   // GDPR, CCPA, Healthcare, Financial, etc.
     target_countries?: string[];          // Geographic targeting (QNR_Country)
+    // Removed: compliance_requirements (moved to additional_info)
     healthcare_specifics?: {              // Medical/Healthcare requirements
       medical_conditions_general?: boolean;
       medical_conditions_study?: boolean;
@@ -217,6 +212,12 @@ export interface EnhancedRFQRequest {
     qnr_sections?: string[];              // Selected QNR sections
     text_requirements?: string[];         // Required text introduction types
   };
+
+  // ========== CONCEPT STIMULI (NEW) ==========
+  concept_stimuli?: ConceptStimulus[];
+
+  // ========== ADDITIONAL INFORMATION (NEW) ==========
+  additional_info?: string;               // Unmapped context and removed fields (maps to backend unmapped_context)
 
   // ========== SURVEY LOGIC REQUIREMENTS ==========
   survey_logic?: {
@@ -254,6 +255,12 @@ export interface EnhancedRFQRequest {
 
   // ========== SIMPLE META ==========
   rules_and_definitions?: string;        // Rules, definitions, jargon feed
+
+  // ========== GENERATION CONFIGURATION ==========
+  generation_config?: {
+    json_examples_mode?: 'rag_reference' | 'consolidated';  // JSON examples toggle: OFF (rag_reference) or ON (consolidated)
+    pillar_rules_detail?: 'full' | 'digest' | 'none';       // Pillar rules detail level
+  };
 
   // Document Integration
   document_source?: DocumentSource;
@@ -360,6 +367,7 @@ export interface SurveyListItem {
   quality_score?: number;
   estimated_time?: number;
   question_count: number;
+  instruction_count: number;
   annotation?: Record<string, any>;
 }
 
@@ -505,6 +513,7 @@ export interface StreamingStats {
 // Golden Examples Types
 export interface GoldenExample {
   id: string;
+  title?: string;
   rfq_text: string;
   survey_json: Survey;
   methodology_tags: string[];
@@ -1114,6 +1123,9 @@ export interface AppStore {
   submitEnhancedRFQ: (rfq: EnhancedRFQRequest, customPrompt?: string) => Promise<void>;
   fetchSurvey: (surveyId: string) => Promise<void>;
   loadPillarScoresAsync: (surveyId: string) => Promise<any>;
+  evaluationInProgress: Record<string, boolean>;
+  evaluationPollIntervals: Record<string, NodeJS.Timeout>;
+  triggerEvaluationAsync: (surveyId: string) => Promise<void>;
   startPillarEvaluationPolling: (surveyId: string) => void;
   connectWebSocket: (workflowId: string) => void;
   disconnectWebSocket: () => void;

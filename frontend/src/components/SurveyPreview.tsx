@@ -461,7 +461,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
   hideRightPanel = false,
   onSaveTrigger
 }) => {
-  const { currentSurvey, isAnnotationMode, setAnnotationMode, currentAnnotations, saveAnnotations, loadAnnotations } = useAppStore();
+  const { currentSurvey, isAnnotationMode, setAnnotationMode, currentAnnotations, saveAnnotations, loadAnnotations, triggerEvaluationAsync, evaluationInProgress } = useAppStore();
   const survey = propSurvey || currentSurvey;
   const [editedSurvey, setEditedSurvey] = useState<Survey | null>(null);
   const [isEditModeActive, setIsEditModeActive] = useState(isInEditMode);
@@ -1680,13 +1680,34 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
                 });
                 
                 if (!hasPillarBreakdown) {
+                  const surveyId = surveyToDisplay?.survey_id;
+                  const isEvaluating = surveyId ? evaluationInProgress[surveyId] : false;
+                  
                   return (
                     <div className="space-y-3 mb-4">
                       <h4 className="text-xs font-medium text-gray-900">Pillar Analysis</h4>
                       <div className="p-3 bg-gray-50 rounded-lg">
-                        <p className="text-sm text-gray-600">
-                          {hasValidScores ? 'Pillar breakdown data not available for this evaluation.' : 'No evaluation data available.'}
-                        </p>
+                        {isEvaluating ? (
+                          <div className="flex items-center gap-2">
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                            <p className="text-sm text-gray-600">Evaluation in progress...</p>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-2">
+                            <p className="text-sm text-gray-600">
+                              {hasValidScores ? 'Pillar breakdown data not available for this evaluation.' : 'No evaluation data available.'}
+                            </p>
+                            {surveyId && (
+                              <button
+                                onClick={() => triggerEvaluationAsync(surveyId)}
+                                disabled={isEvaluating}
+                                className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                              >
+                                <span>Run Evaluation</span>
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );

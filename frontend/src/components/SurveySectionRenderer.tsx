@@ -32,13 +32,38 @@ const QuestionRenderer: React.FC<QuestionRendererProps> = ({ question, onRespons
     handleResponse(newValues);
   };
 
+  // Generate question text fallback - use text, label, or generate from ID
+  const getQuestionText = () => {
+    if (question.text && question.text.trim()) {
+      return question.text;
+    }
+    // Fallback to label if available
+    if (question.label && question.label.trim()) {
+      // Convert label to readable format (e.g., "informed_consent" -> "Informed Consent")
+      const labelText = question.label
+        .split('_')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ');
+      return labelText;
+    }
+    // Fallback to question ID or default message
+    if (question.id) {
+      return `${question.id.replace('_', ' ')} - Please answer the question below`;
+    }
+    return 'Question text not available';
+  };
+
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-6 mb-4">
       <div className="mb-4">
         <h3 className="text-lg font-medium text-gray-900 mb-2">
-          {question.text}
+          {getQuestionText()}
           {question.required && <span className="text-red-500 ml-1">*</span>}
         </h3>
+        {/* Always show question type for clarity */}
+        <div className="text-sm text-gray-500 mb-2">
+          Type: {question.type.replace('_', ' ')}
+        </div>
       </div>
 
       {/* Render different question types */}
@@ -207,25 +232,65 @@ const QuestionRenderer: React.FC<QuestionRendererProps> = ({ question, onRespons
         />
       )}
 
+      {question.type === 'yes_no' && (
+        <div className="space-y-2">
+          {/* Ensure we have options, default to Yes/No if missing */}
+          {(question.options && question.options.length > 0) ? (
+            question.options.map((option, index) => (
+              <label key={index} className="flex items-center space-x-3">
+                <input
+                  type="radio"
+                  name={question.id}
+                  value={option}
+                  onChange={(e) => handleResponse(e.target.value)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                />
+                <span className="text-gray-700">{option}</span>
+              </label>
+            ))
+          ) : (
+            // Default Yes/No options if not provided
+            <>
+              <label className="flex items-center space-x-3">
+                <input
+                  type="radio"
+                  name={question.id}
+                  value="Yes"
+                  onChange={(e) => handleResponse(e.target.value)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                />
+                <span className="text-gray-700">Yes</span>
+              </label>
+              <label className="flex items-center space-x-3">
+                <input
+                  type="radio"
+                  name={question.id}
+                  value="No"
+                  onChange={(e) => handleResponse(e.target.value)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                />
+                <span className="text-gray-700">No</span>
+              </label>
+            </>
+          )}
+        </div>
+      )}
+
       {question.type === 'instruction' && (
         <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-lg">
           <div className="mb-2">
-            {/* Extract first words before colon as heading */}
-            {(() => {
-              const text = question.text || '';
-              const colonIndex = text.indexOf(':');
-              const heading = colonIndex > 0 ? text.substring(0, colonIndex).trim() : 'Instructions';
-              const content = colonIndex > 0 ? text.substring(colonIndex + 1).trim() : text;
-              
-              return (
-                <>
-                  <h4 className="text-lg font-bold text-blue-900 mb-2">{heading}</h4>
-                  <div className="text-sm text-blue-800 leading-relaxed whitespace-pre-wrap">
-                    {content}
-                  </div>
-                </>
-              );
-            })()}
+            {/* Always show "Instructions" as the main heading */}
+            <div className="flex items-center space-x-2 mb-2">
+              <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                <span className="text-white text-sm font-bold">i</span>
+              </div>
+              <h4 className="text-lg font-bold text-blue-900">Instructions</h4>
+            </div>
+            
+            {/* Display the instruction content */}
+            <div className="text-sm text-blue-800 leading-relaxed whitespace-pre-wrap ml-8">
+              {question.text || 'No instruction text provided'}
+            </div>
           </div>
           
           <div className="mt-3 flex items-center justify-between">

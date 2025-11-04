@@ -110,7 +110,9 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
     clearEnhancedRfqState,
     resetDocumentProcessingState,
     // Edit tracking
-    trackFieldEdit
+    trackFieldEdit,
+    // Generate functionality
+    submitEnhancedRFQ
   } = useAppStore();
 
   console.log('🔍 [EnhancedRFQEditor] Current state:', { 
@@ -202,19 +204,18 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
   // Check if component has been initialized before (persist across remounts)
   const hasBeenInitialized = localStorage.getItem('enhanced_rfq_initialized') === 'true';
   
-  // Check if there's existing user data that should be preserved
+  // Check if there's existing user data that should be preserved (SIMPLIFIED)
   const hasExistingUserData = enhancedRfq.title || 
                             enhancedRfq.description || 
                             enhancedRfq.business_context?.company_product_background ||
-                            enhancedRfq.business_context?.business_problem ||
-                            enhancedRfq.business_context?.business_objective ||
+                            enhancedRfq.business_context?.business_problem_and_objective ||
                             enhancedRfq.research_objectives?.research_audience ||
                             enhancedRfq.research_objectives?.success_criteria ||
                             (enhancedRfq.research_objectives?.key_research_questions && enhancedRfq.research_objectives.key_research_questions.length > 0) ||
                             enhancedRfq.methodology?.stimuli_details ||
-                            enhancedRfq.methodology?.methodology_requirements ||
                             enhancedRfq.survey_requirements?.sample_plan ||
-                            (enhancedRfq.survey_requirements?.must_have_questions && enhancedRfq.survey_requirements.must_have_questions.length > 0);
+                            (enhancedRfq.concept_stimuli && enhancedRfq.concept_stimuli.length > 0) ||
+                            enhancedRfq.additional_info;
 
   // Track if field mappings have been applied to prevent loops
   const fieldMappingsAppliedRef = React.useRef(false);
@@ -277,19 +278,18 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
     const wasRestored = restoreEnhancedRfqState(!isPageRefresh);
     console.log('🔍 [EnhancedRFQEditor] State restoration result', { wasRestored });
     
-    // Check if there's any user data in the form
+    // Check if there's any user data in the form (SIMPLIFIED)
     const hasAnyUserData = enhancedRfq.title || 
                           enhancedRfq.description || 
                           enhancedRfq.business_context?.company_product_background ||
-                          enhancedRfq.business_context?.business_problem ||
-                          enhancedRfq.business_context?.business_objective ||
+                          enhancedRfq.business_context?.business_problem_and_objective ||
                           enhancedRfq.research_objectives?.research_audience ||
                           enhancedRfq.research_objectives?.success_criteria ||
                           (enhancedRfq.research_objectives?.key_research_questions && enhancedRfq.research_objectives.key_research_questions.length > 0) ||
                           enhancedRfq.methodology?.stimuli_details ||
-                          enhancedRfq.methodology?.methodology_requirements ||
                           enhancedRfq.survey_requirements?.sample_plan ||
-                          (enhancedRfq.survey_requirements?.must_have_questions && enhancedRfq.survey_requirements.must_have_questions.length > 0);
+                          (enhancedRfq.concept_stimuli && enhancedRfq.concept_stimuli.length > 0) ||
+                          enhancedRfq.additional_info;
 
     // Update the hasUserData flag
     if (hasAnyUserData) {
@@ -304,8 +304,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
         description: '',
         business_context: {
           company_product_background: '',
-          business_problem: '',
-          business_objective: ''
+          business_problem_and_objective: ''
         },
         research_objectives: {
           research_audience: '',
@@ -315,9 +314,10 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
         methodology: {
           primary_method: 'basic_survey'
         },
+        concept_stimuli: [],
+        additional_info: '',
         survey_requirements: {
-          sample_plan: '',
-          must_have_questions: []
+          sample_plan: ''
         },
         survey_structure: {
           qnr_sections: [
@@ -653,17 +653,25 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
 
                           useAppStore.getState().setEnhancedRfq(rfqUpdates);
 
-                          addToast({
-                            type: 'success',
-                            title: 'Auto-filled from Document',
-                            message: `Applied ${acceptedCount} extracted fields. Review in the sections below. Click "Reset Form" to start fresh with a new RFQ.`,
-                            duration: 8000
-                          });
+                          // Only show toast if survey generation is not in progress
+                          const workflow = useAppStore.getState().workflow;
+                          const isGenerating = workflow.status === 'started' || 
+                                             workflow.status === 'in_progress' || 
+                                             workflow.status === 'paused';
                           
-                          // Automatically advance to Business Context section to show auto-filled content
-                          setTimeout(() => {
-                            setCurrentSectionWithPersistence('business_context');
-                          }, 1000); // Small delay to let user see the success message
+                          if (!isGenerating) {
+                            addToast({
+                              type: 'success',
+                              title: 'Auto-filled from Document',
+                              message: `Applied ${acceptedCount} extracted fields. Review in the sections below. Click "Reset Form" to start fresh with a new RFQ.`,
+                              duration: 8000
+                            });
+                            
+                            // Automatically advance to Business Context section to show auto-filled content
+                            setTimeout(() => {
+                              setCurrentSectionWithPersistence('business_context');
+                            }, 1000); // Small delay to let user see the success message
+                          }
                         } else {
                           addToast({
                             type: 'info',
@@ -803,6 +811,59 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
               <p className="text-gray-600">Create comprehensive research requirements with AI assistance</p>
             </div>
             <div className="flex items-center space-x-3">
+              {/* Preview Button */}
+              <button
+                onClick={onPreview}
+                disabled={isLoading || !onPreview}
+                className="flex items-center space-x-2 px-4 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Preview RFQ before generating"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                <span>Preview</span>
+              </button>
+
+              {/* Generate Button */}
+              <button
+                onClick={async () => {
+                  if (!isLoading) {
+                    try {
+                      await submitEnhancedRFQ(enhancedRfq);
+                    } catch (error) {
+                      console.error('Failed to generate survey:', error);
+                      addToast({
+                        type: 'error',
+                        title: 'Generation Failed',
+                        message: 'Failed to start survey generation. Please try again.',
+                        duration: 5000
+                      });
+                    }
+                  }
+                }}
+                disabled={isLoading || workflow.status === 'started' || workflow.status === 'in_progress'}
+                className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-yellow-500 to-orange-500 text-white rounded-lg hover:from-yellow-600 hover:to-orange-600 transition-all font-medium shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Generate survey directly"
+              >
+                {isLoading || workflow.status === 'started' || workflow.status === 'in_progress' ? (
+                  <>
+                    <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Generating...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    <span>Generate</span>
+                  </>
+                )}
+              </button>
+
               {/* Reset Button - always visible */}
               <button
                 onClick={() => setShowResetConfirm(true)}
@@ -1147,9 +1208,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                         ...enhancedRfq,
                         business_context: {
                           ...enhancedRfq.business_context,
-                          company_product_background: val,
-                          business_problem: enhancedRfq.business_context?.business_problem || '',
-                          business_objective: enhancedRfq.business_context?.business_objective || ''
+                          company_product_background: val
                         }
                       }))}
                       placeholder="Provide background on your company, product, and any relevant research history that influences this study design..."
@@ -1158,84 +1217,43 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                       isAutoFilled={isFieldAutoFilled('business_context.company_product_background')}
                     />
 
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      <FormField
-                        label="Business Problem"
-                        value={enhancedRfq.business_context?.business_problem || ''}
-                        onChange={(value) => setEnhancedRfq({
-                          ...enhancedRfq,
-                          business_context: {
-                            ...enhancedRfq.business_context,
-                            company_product_background: enhancedRfq.business_context?.company_product_background || '',
-                            business_problem: value,
-                            business_objective: enhancedRfq.business_context?.business_objective || ''
-                          }
-                        })}
-                        placeholder="What business challenge or question needs to be addressed?"
-                        type="textarea"
-                        rows={4}
-                        isAutoFilled={isFieldAutoFilled('business_context.business_problem')}
-                      />
+                    <FormField
+                      label="Business Problem & Objective"
+                      value={enhancedRfq.business_context?.business_problem_and_objective || ''}
+                      onChange={(value) => setEnhancedRfq({
+                        ...enhancedRfq,
+                        business_context: {
+                          ...enhancedRfq.business_context,
+                          company_product_background: enhancedRfq.business_context?.company_product_background || '',
+                          business_problem_and_objective: value
+                        }
+                      })}
+                      placeholder="What business challenge needs to be addressed and what does the business want to achieve from this research?"
+                      type="textarea"
+                      rows={5}
+                      isAutoFilled={isFieldAutoFilled('business_context.business_problem_and_objective') || 
+                                    isFieldAutoFilled('business_context.business_problem') || 
+                                    isFieldAutoFilled('business_context.business_objective')}  // Legacy field mappings support
+                    />
 
-                      <FormField
-                        label="Business Objective"
-                        value={enhancedRfq.business_context?.business_objective || ''}
-                        onChange={(value) => setEnhancedRfq({
-                          ...enhancedRfq,
-                          business_context: {
-                            ...enhancedRfq.business_context,
-                            company_product_background: enhancedRfq.business_context?.company_product_background || '',
-                            business_problem: enhancedRfq.business_context?.business_problem || '',
-                            business_objective: value
-                          }
-                        })}
-                        placeholder="What does the business want to achieve from this research?"
-                        type="textarea"
-                        rows={4}
-                        isAutoFilled={isFieldAutoFilled('business_context.business_objective')}
-                      />
-                    </div>
-
-                    {/* Enhanced Business Context Fields */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      <FormField
-                        label="Stakeholder Requirements"
-                        value={enhancedRfq.business_context?.stakeholder_requirements || ''}
-                        onChange={(value) => setEnhancedRfq({
-                          ...enhancedRfq,
-                          business_context: {
-                            ...enhancedRfq.business_context,
-                            company_product_background: enhancedRfq.business_context?.company_product_background || '',
-                            business_problem: enhancedRfq.business_context?.business_problem || '',
-                            business_objective: enhancedRfq.business_context?.business_objective || '',
-                            stakeholder_requirements: value
-                          }
-                        })}
-                        placeholder="Key stakeholder needs and requirements..."
-                        type="textarea"
-                        rows={3}
-                        isAutoFilled={isFieldAutoFilled('business_context.stakeholder_requirements')}
-                      />
-
-                      <FormField
-                        label="Decision Criteria"
-                        value={enhancedRfq.business_context?.decision_criteria || ''}
-                        onChange={(value) => setEnhancedRfq({
-                          ...enhancedRfq,
-                          business_context: {
-                            ...enhancedRfq.business_context,
-                            company_product_background: enhancedRfq.business_context?.company_product_background || '',
-                            business_problem: enhancedRfq.business_context?.business_problem || '',
-                            business_objective: enhancedRfq.business_context?.business_objective || '',
-                            decision_criteria: value
-                          }
-                        })}
-                        placeholder="What defines success for this research..."
-                        type="textarea"
-                        rows={3}
-                        isAutoFilled={isFieldAutoFilled('business_context.decision_criteria')}
-                      />
-                    </div>
+                    <FormField
+                      label="Sample Requirements"
+                      value={enhancedRfq.business_context?.sample_requirements || ''}
+                      onChange={(value) => setEnhancedRfq({
+                        ...enhancedRfq,
+                        business_context: {
+                          ...enhancedRfq.business_context,
+                          company_product_background: enhancedRfq.business_context?.company_product_background || '',
+                          business_problem_and_objective: enhancedRfq.business_context?.business_problem_and_objective || '',
+                          sample_requirements: value
+                        }
+                      })}
+                      placeholder="Describe consumer/sample type requirements (demographics, quotas, target segments)..."
+                      type="textarea"
+                      rows={3}
+                      isAutoFilled={isFieldAutoFilled('business_context.sample_requirements') || 
+                                    isFieldAutoFilled('business_context.stakeholder_requirements')}
+                    />
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                       <FormField
@@ -1245,9 +1263,6 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                           ...enhancedRfq,
                           business_context: {
                             ...enhancedRfq.business_context,
-                            company_product_background: enhancedRfq.business_context?.company_product_background || '',
-                            business_problem: enhancedRfq.business_context?.business_problem || '',
-                            business_objective: enhancedRfq.business_context?.business_objective || '',
                             budget_range: value as 'under_10k' | '10k_25k' | '25k_50k' | '50k_100k' | 'over_100k'
                           }
                         })}
@@ -1269,9 +1284,6 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                           ...enhancedRfq,
                           business_context: {
                             ...enhancedRfq.business_context,
-                            company_product_background: enhancedRfq.business_context?.company_product_background || '',
-                            business_problem: enhancedRfq.business_context?.business_problem || '',
-                            business_objective: enhancedRfq.business_context?.business_objective || '',
                             timeline_constraints: value as 'urgent_1_week' | 'fast_2_weeks' | 'standard_4_weeks' | 'extended_8_weeks' | 'flexible'
                           }
                         })}
@@ -1377,68 +1389,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                       </div>
                       </div>
 
-                      {/* Enhanced Research Objectives Fields */}
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <FormField
-                          label="Success Metrics"
-                          value={enhancedRfq.research_objectives?.success_metrics || ''}
-                          onChange={(value) => setEnhancedRfq({
-                            ...enhancedRfq,
-                            research_objectives: {
-                              ...enhancedRfq.research_objectives,
-                              research_audience: enhancedRfq.research_objectives?.research_audience || '',
-                              success_criteria: enhancedRfq.research_objectives?.success_criteria || '',
-                              key_research_questions: enhancedRfq.research_objectives?.key_research_questions || [],
-                              success_metrics: value
-                            }
-                          })}
-                          placeholder="How research success will be measured..."
-                          type="textarea"
-                          rows={3}
-                          isAutoFilled={isFieldAutoFilled('research_objectives.success_metrics')}
-                        />
-
-                        <FormField
-                          label="Validation Requirements"
-                          value={enhancedRfq.research_objectives?.validation_requirements || ''}
-                          onChange={(value) => setEnhancedRfq({
-                            ...enhancedRfq,
-                            research_objectives: {
-                              ...enhancedRfq.research_objectives,
-                              research_audience: enhancedRfq.research_objectives?.research_audience || '',
-                              success_criteria: enhancedRfq.research_objectives?.success_criteria || '',
-                              key_research_questions: enhancedRfq.research_objectives?.key_research_questions || [],
-                              validation_requirements: value
-                            }
-                          })}
-                          placeholder="What validation is needed..."
-                          type="textarea"
-                          rows={3}
-                          isAutoFilled={isFieldAutoFilled('research_objectives.validation_requirements')}
-                        />
-                      </div>
-
-                      <FormField
-                        label="Measurement Approach"
-                        value={enhancedRfq.research_objectives?.measurement_approach || 'mixed_methods'}
-                        onChange={(value) => setEnhancedRfq({
-                          ...enhancedRfq,
-                          research_objectives: {
-                            ...enhancedRfq.research_objectives,
-                            research_audience: enhancedRfq.research_objectives?.research_audience || '',
-                            success_criteria: enhancedRfq.research_objectives?.success_criteria || '',
-                            key_research_questions: enhancedRfq.research_objectives?.key_research_questions || [],
-                            measurement_approach: value as 'quantitative' | 'qualitative' | 'mixed_methods'
-                          }
-                        })}
-                        type="select"
-                        options={[
-                          { value: 'quantitative', label: 'Quantitative' },
-                          { value: 'qualitative', label: 'Qualitative' },
-                          { value: 'mixed_methods', label: 'Mixed Methods' }
-                        ]}
-                        isAutoFilled={isFieldAutoFilled('research_objectives.measurement_approach')}
-                      />
+                      {/* Research Objectives Enhanced Fields - REMOVED for simplification */}
                     </div>
                   </div>
                 )}
@@ -1503,66 +1454,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                       isAutoFilled={isFieldAutoFilled('methodology.stimuli_details')}
                     />
 
-                    <FormField
-                      label="Methodology Requirements"
-                      value={enhancedRfq.methodology?.methodology_requirements || ''}
-                      onChange={(value) => setEnhancedRfq({
-                        ...enhancedRfq,
-                        methodology: {
-                          ...enhancedRfq.methodology,
-                          primary_method: enhancedRfq.methodology?.primary_method || 'basic_survey',
-                          methodology_requirements: value
-                        }
-                      })}
-                      placeholder="Any specific methodology requirements, constraints, or considerations..."
-                      type="textarea"
-                      rows={3}
-                      isAutoFilled={isFieldAutoFilled('methodology.methodology_requirements')}
-                    />
-
-                    {/* Enhanced Methodology Fields */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      <FormField
-                        label="Complexity Level"
-                        value={enhancedRfq.methodology?.complexity_level || 'standard'}
-                        onChange={(value) => setEnhancedRfq({
-                          ...enhancedRfq,
-                          methodology: {
-                            ...enhancedRfq.methodology,
-                            primary_method: enhancedRfq.methodology?.primary_method || 'basic_survey',
-                            stimuli_details: enhancedRfq.methodology?.stimuli_details || '',
-                            methodology_requirements: enhancedRfq.methodology?.methodology_requirements || '',
-                            complexity_level: value as 'simple' | 'intermediate' | 'complex' | 'expert_level'
-                          }
-                        })}
-                        type="select"
-                        options={[
-                          { value: 'simple', label: 'Simple' },
-                          { value: 'intermediate', label: 'Intermediate' },
-                          { value: 'complex', label: 'Complex' },
-                          { value: 'expert_level', label: 'Expert Level' }
-                        ]}
-                        isAutoFilled={isFieldAutoFilled('methodology.complexity_level')}
-                      />
-
-                      <FormField
-                        label="Sample Size Target"
-                        value={enhancedRfq.methodology?.sample_size_target || ''}
-                        onChange={(value) => setEnhancedRfq({
-                          ...enhancedRfq,
-                          methodology: {
-                            ...enhancedRfq.methodology,
-                            primary_method: enhancedRfq.methodology?.primary_method || 'basic_survey',
-                            stimuli_details: enhancedRfq.methodology?.stimuli_details || '',
-                            methodology_requirements: enhancedRfq.methodology?.methodology_requirements || '',
-                            sample_size_target: value
-                          }
-                        })}
-                        placeholder="e.g., 400-600 respondents"
-                        type="text"
-                        isAutoFilled={isFieldAutoFilled('methodology.sample_size_target')}
-                      />
-                    </div>
+                    {/* Methodology Enhanced Fields - REMOVED for simplification */}
                   </div>
                 )}
 
@@ -1581,8 +1473,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                         ...enhancedRfq,
                         survey_requirements: {
                           ...enhancedRfq.survey_requirements,
-                          sample_plan: value,
-                          must_have_questions: enhancedRfq.survey_requirements?.must_have_questions || []
+                          sample_plan: value
                         }
                       })}
                       placeholder="Include sample structure, LOI, recruiting criteria, target sample size..."
@@ -1593,23 +1484,6 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
 
 
                     <FormField
-                      label="Must-Have Questions"
-                      value={(enhancedRfq.survey_requirements?.must_have_questions || []).join('\n')}
-                      onChange={(value) => setEnhancedRfq({
-                        ...enhancedRfq,
-                        survey_requirements: {
-                          ...enhancedRfq.survey_requirements,
-                          sample_plan: enhancedRfq.survey_requirements?.sample_plan || '',
-                          must_have_questions: value.split('\n').filter(q => q.trim())
-                        }
-                      })}
-                      placeholder="List must-have questions (one per line)..."
-                      type="textarea"
-                      rows={4}
-                      isAutoFilled={isFieldAutoFilled('survey_requirements.must_have_questions')}
-                    />
-
-                    <FormField
                       label="Screener Requirements"
                       value={enhancedRfq.survey_requirements?.screener_requirements || ''}
                       onChange={(value) => setEnhancedRfq({
@@ -1617,7 +1491,6 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                         survey_requirements: {
                           ...enhancedRfq.survey_requirements,
                           sample_plan: enhancedRfq.survey_requirements?.sample_plan || '',
-                          must_have_questions: enhancedRfq.survey_requirements?.must_have_questions || [],
                           screener_requirements: value
                         }
                       })}
@@ -1640,7 +1513,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                       isAutoFilled={isFieldAutoFilled('rules_and_definitions')}
                     />
 
-                    {/* Enhanced Survey Requirements Fields */}
+                    {/* Survey Requirements Enhanced Fields */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                       <FormField
                         label="Completion Time Target"
@@ -1650,7 +1523,6 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                           survey_requirements: {
                             ...enhancedRfq.survey_requirements,
                             sample_plan: enhancedRfq.survey_requirements?.sample_plan || '',
-                            must_have_questions: enhancedRfq.survey_requirements?.must_have_questions || [],
                             completion_time_target: value as 'under_5min' | '5_10min' | '10_15min' | '15_20min' | '20_30min' | 'over_30min'
                           }
                         })}
@@ -1674,7 +1546,6 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                           survey_requirements: {
                             ...enhancedRfq.survey_requirements,
                             sample_plan: enhancedRfq.survey_requirements?.sample_plan || '',
-                            must_have_questions: enhancedRfq.survey_requirements?.must_have_questions || [],
                             device_compatibility: value as 'mobile_only' | 'desktop_only' | 'mobile_first' | 'desktop_first' | 'all_devices'
                           }
                         })}
@@ -1690,50 +1561,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                       />
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      <FormField
-                        label="Accessibility Requirements"
-                        value={enhancedRfq.survey_requirements?.accessibility_requirements || 'basic'}
-                        onChange={(value) => setEnhancedRfq({
-                          ...enhancedRfq,
-                          survey_requirements: {
-                            ...enhancedRfq.survey_requirements,
-                            sample_plan: enhancedRfq.survey_requirements?.sample_plan || '',
-                            must_have_questions: enhancedRfq.survey_requirements?.must_have_questions || [],
-                            accessibility_requirements: value as 'basic' | 'wcag_aa' | 'wcag_aaa' | 'custom'
-                          }
-                        })}
-                        type="select"
-                        options={[
-                          { value: 'basic', label: 'Basic' },
-                          { value: 'wcag_aa', label: 'WCAG AA' },
-                          { value: 'wcag_aaa', label: 'WCAG AAA' },
-                          { value: 'custom', label: 'Custom' }
-                        ]}
-                        isAutoFilled={isFieldAutoFilled('survey_requirements.accessibility_requirements')}
-                      />
-
-                      <FormField
-                        label="Data Quality Requirements"
-                        value={enhancedRfq.survey_requirements?.data_quality_requirements || 'standard'}
-                        onChange={(value) => setEnhancedRfq({
-                          ...enhancedRfq,
-                          survey_requirements: {
-                            ...enhancedRfq.survey_requirements,
-                            sample_plan: enhancedRfq.survey_requirements?.sample_plan || '',
-                            must_have_questions: enhancedRfq.survey_requirements?.must_have_questions || [],
-                            data_quality_requirements: value as 'basic' | 'standard' | 'premium'
-                          }
-                        })}
-                        type="select"
-                        options={[
-                          { value: 'basic', label: 'Basic' },
-                          { value: 'standard', label: 'Standard' },
-                          { value: 'premium', label: 'Premium' }
-                        ]}
-                        isAutoFilled={isFieldAutoFilled('survey_requirements.data_quality_requirements')}
-                      />
-                    </div>
+                    {/* Accessibility and Data Quality Requirements - REMOVED for simplification */}
                   </div>
                 )}
 
@@ -1950,11 +1778,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                               )}
 
                               {/* Van Westendorp Requirements */}
-                              {(enhancedRfq.methodology?.primary_method === 'van_westendorp' || 
-                                enhancedRfq.methodology?.required_methodologies?.some((tag: string) => 
-                                  tag.toLowerCase().includes('van westendorp') || 
-                                  tag.toLowerCase().includes('pricing')
-                                )) && (
+                              {(enhancedRfq.methodology?.primary_method === 'van_westendorp') && (
                                 <>
                                   <div className="text-xs font-medium text-orange-700 mb-1 flex items-center group">
                                     Van Westendorp Pricing:
@@ -1969,11 +1793,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                               )}
 
                               {/* Gabor Granger Requirements */}
-                              {(enhancedRfq.methodology?.primary_method === 'gabor_granger' || 
-                                enhancedRfq.methodology?.required_methodologies?.some((tag: string) => 
-                                  tag.toLowerCase().includes('gabor granger') || 
-                                  tag.toLowerCase().includes('sequential')
-                                )) && (
+                              {(enhancedRfq.methodology?.primary_method === 'gabor_granger') && (
                                 <>
                                   <div className="text-xs font-medium text-purple-700 mb-1 flex items-center group">
                                     Gabor Granger Pricing:
@@ -1997,13 +1817,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                                 obj.toLowerCase().includes('evaluation')
                               ) && !enhancedRfq.business_context?.company_product_background?.toLowerCase().includes('consumer') &&
                               enhancedRfq.methodology?.primary_method !== 'van_westendorp' &&
-                              enhancedRfq.methodology?.primary_method !== 'gabor_granger' &&
-                              !enhancedRfq.methodology?.required_methodologies?.some((tag: string) => 
-                                tag.toLowerCase().includes('van westendorp') || 
-                                tag.toLowerCase().includes('pricing') ||
-                                tag.toLowerCase().includes('gabor granger') || 
-                                tag.toLowerCase().includes('sequential')
-                              ) && (
+                              enhancedRfq.methodology?.primary_method !== 'gabor_granger' && (
                                 <div className="text-sm text-gray-600 italic">No additional requirements detected</div>
                               )}
                             </div>
@@ -2431,39 +2245,8 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
 
                     <div>
                       <label className="block text-sm font-semibold text-gray-800 mb-3">
-                        Compliance Requirements
+                        {/* Compliance Requirements - REMOVED for simplification */}
                       </label>
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                        {[
-                          'Standard Data Protection', 'GDPR Compliance', 'HIPAA Compliance',
-                          'SOC 2 Compliance', 'ISO 27001', 'Custom Compliance'
-                        ].map((requirement) => (
-                          <label key={requirement} className="flex items-center space-x-2 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={(enhancedRfq.advanced_classification?.compliance_requirements || []).includes(requirement)}
-                              onChange={(e) => {
-                                const requirements = [...(enhancedRfq.advanced_classification?.compliance_requirements || [])];
-                                if (e.target.checked) {
-                                  requirements.push(requirement);
-                                } else {
-                                  const index = requirements.indexOf(requirement);
-                                  if (index > -1) requirements.splice(index, 1);
-                                }
-                                setEnhancedRfq({
-                                  ...enhancedRfq,
-                                  advanced_classification: {
-                                    ...enhancedRfq.advanced_classification,
-                                    compliance_requirements: requirements
-                                  }
-                                });
-                              }}
-                              className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                            />
-                            <span className="text-sm font-medium text-gray-700">{requirement}</span>
-                          </label>
-                        ))}
-                      </div>
                     </div>
                   </div>
                 )}

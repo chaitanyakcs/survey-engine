@@ -1,32 +1,31 @@
 #!/usr/bin/env python3
 """
 JSON Generation Utilities
-Centralized utilities for consistent JSON generation and parsing across all LLM services
+Simplified utilities for consistent JSON generation and parsing using modern json-repair library
 """
 
 import json
-import re
 import logging
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 from enum import Enum
 
 logger = logging.getLogger(__name__)
 
+# Import json-repair for malformed JSON fixing
+try:
+    import json_repair
+    JSON_REPAIR_AVAILABLE = True
+except ImportError:
+    JSON_REPAIR_AVAILABLE = False
+    logger.warning("⚠️ [JSONGenerationUtils] json-repair library not available. Install with: pip install json-repair")
+
 
 class JSONParseStrategy(Enum):
     """Strategies for parsing JSON from LLM responses"""
+    PROVIDER_EXTRACT = "provider_extract"
+    JSON_REPAIR = "json_repair"
     DIRECT = "direct"
-    REPLICATE_EXTRACT = "replicate_extract"
-    MARKDOWN_EXTRACT = "markdown_extract"
-    BOUNDARY_EXTRACT = "boundary_extract"
-    SANITIZE_AND_PARSE = "sanitize_and_parse"
-    AGGRESSIVE_SANITIZE = "aggressive_sanitize"
-    FORCE_REBUILD = "force_rebuild"
-    ESCAPED_JSON_HANDLE = "escaped_json_handle"
-    LARGE_JSON_PARSE = "large_json_parse"
-    PARTIAL_JSON_RECOVERY = "partial_json_recovery"
-    BROKEN_JSON_RECOVERY = "broken_json_recovery"
 
 
 @dataclass
@@ -43,59 +42,36 @@ class JSONParseResult:
 class JSONGenerationUtils:
     """
     Centralized utilities for consistent JSON generation and parsing
+    Uses modern json-repair library for reliable malformed JSON handling
     """
     
     # Common JSON generation system prompts
     JSON_ONLY_SYSTEM_PROMPT = """You are a JSON generation assistant. Your ONLY job is to return valid JSON.
 
 CRITICAL RULES:
-1. Return ONLY valid JSON - no explanations, no markdown, no code blocks
+1. Return ONLY valid JSON - no explanations, no markdown, no backticks
 2. Start your response with { and end with }
-3. Use proper JSON syntax with double quotes, correct commas, and brackets
-4. All string values must be on single lines - no line breaks within strings
-5. No trailing commas in objects or arrays
-6. Use null for empty values, not undefined or empty strings
-7. Ensure all required fields are present and properly formatted
+3. Ensure all strings are properly quoted
+4. Ensure all commas are in place
+5. No trailing commas before } or ]
+6. Response must be parseable by json.loads()
 
-Your response must be parseable by json.loads() without any modification."""
+Your response will be parsed as JSON. Make sure it's valid."""
 
-    JSON_SCHEMA_SYSTEM_PROMPT_TEMPLATE = """You are a JSON generation assistant. Your ONLY job is to return valid JSON that matches the specified schema.
+    JSON_SCHEMA_SYSTEM_PROMPT_TEMPLATE = """You are a JSON generation assistant. Your ONLY job is to return valid JSON that matches this schema:
 
-CRITICAL RULES:
-1. Return ONLY valid JSON - no explanations, no markdown, no code blocks
-2. Start your response with { and end with }
-3. Use proper JSON syntax with double quotes, correct commas, and brackets
-4. All string values must be on single lines - no line breaks within strings
-5. No trailing commas in objects or arrays
-6. Use null for empty values, not undefined or empty strings
-7. Follow the exact schema structure provided below
-8. Ensure all required fields are present and properly formatted
-
-REQUIRED SCHEMA:
 {schema}
 
-Your response must be parseable by json.loads() without any modification."""
+CRITICAL RULES:
+1. Return ONLY valid JSON - no explanations, no markdown, no backticks
+2. Start your response with { and end with }
+3. Ensure all required fields from the schema are present
+4. Ensure all strings are properly quoted
+5. Ensure all commas are in place
+6. No trailing commas before } or ]
+7. Response must be parseable by json.loads()
 
-    @staticmethod
-    def get_optimal_hyperparameters_for_json(purpose: str = "general") -> Dict[str, Any]:
-        """Get optimal hyperparameters for JSON generation based on purpose"""
-        base_params = {
-            "top_p": 0.9,
-            "max_tokens": 2000,  # Reduced from 8000 for faster processing
-            "frequency_penalty": 0.0,
-            "presence_penalty": 0.0,
-            "stop_sequences": ["```", "```json", "```\n", "\n\n\n"]  # Stop at code blocks or excessive newlines
-        }
-        
-        # Purpose-specific temperature settings
-        if purpose in ["survey_generation", "generation"]:
-            base_params["temperature"] = 0.7  # Higher creativity for survey generation
-        elif purpose in ["rfq_parsing", "document_parsing", "evaluation"]:
-            base_params["temperature"] = 0.1  # Lower temperature for structured parsing
-        else:
-            base_params["temperature"] = 0.1  # Default to low temperature for consistency
-            
-        return base_params
+Your response will be parsed as JSON. Make sure it's valid and matches the schema."""
 
     @staticmethod
     def create_json_system_prompt(schema: Optional[Dict[str, Any]] = None, purpose: str = "general") -> str:
@@ -206,824 +182,286 @@ Your response must be parseable by json.loads() without any modification."""
     def parse_json_from_response(
         response_content: str, 
         expected_schema: Optional[Dict[str, Any]] = None,
-        strategies: Optional[List[JSONParseStrategy]] = None
+        provider: str = "replicate"
     ) -> JSONParseResult:
         """
-        Parse JSON from LLM response using multiple strategies
+        Parse JSON from LLM response using modern json-repair library
         
         Args:
             response_content: Raw response from LLM
             expected_schema: Optional schema to validate against
-            strategies: List of strategies to try (defaults to all)
+            provider: Provider type ("replicate" or "openai") for extraction
             
         Returns:
             JSONParseResult with success status and parsed data
         """
-        if strategies is None:
-            strategies = list(JSONParseStrategy)
-        
         original_length = len(response_content)
-        logger.info(f"🔍 [JSONGenerationUtils] Starting JSON parsing, length: {original_length}")
+        logger.info(f"🔍 [JSONGenerationUtils] Starting JSON parsing, length: {original_length}, provider: {provider}")
         
-        for strategy in strategies:
-            try:
-                logger.info(f"🔧 [JSONGenerationUtils] Trying strategy: {strategy.value}")
-                result = JSONGenerationUtils._apply_parse_strategy(response_content, strategy)
-                
-                if result.success:
-                    # Validate against schema if provided
+        # Step 1: Minimal extraction - just get the content string to parse
+        content_to_parse = response_content
+        
+        if provider == "replicate":
+            extract_result = JSONGenerationUtils._replicate_extract(response_content)
+            if extract_result.success and extract_result.data:
+                # If we got a string, use it; if we got a dict, it's already parsed
+                if isinstance(extract_result.data, dict):
+                    # Already parsed - validate and return if schema passes
                     if expected_schema:
-                        validation_result = JSONGenerationUtils._validate_against_schema(
-                            result.data, expected_schema
+                        validation_result = JSONGenerationUtils._validate_against_schema(extract_result.data, expected_schema)
+                        if validation_result.success:
+                            return JSONParseResult(
+                                success=True,
+                                data=extract_result.data,
+                                strategy_used=JSONParseStrategy.PROVIDER_EXTRACT,
+                                original_length=original_length,
+                                cleaned_length=len(json.dumps(extract_result.data))
+                            )
+                    else:
+                        return JSONParseResult(
+                            success=True,
+                            data=extract_result.data,
+                            strategy_used=JSONParseStrategy.PROVIDER_EXTRACT,
+                            original_length=original_length,
+                            cleaned_length=len(json.dumps(extract_result.data))
                         )
-                        if not validation_result.success:
-                            logger.warning(f"⚠️ [JSONGenerationUtils] Schema validation failed: {validation_result.error}")
-                            continue
-                    
-                    logger.info(f"✅ [JSONGenerationUtils] Success with strategy: {strategy.value}")
+                else:
+                    # String - use it for parsing below
+                    content_to_parse = str(extract_result.data)
+                    logger.info(f"✅ [JSONGenerationUtils] Extracted 'text' field from Replicate wrapper")
+        elif provider == "openai":
+            extract_result = JSONGenerationUtils._openai_extract(response_content)
+            if extract_result.success and extract_result.data:
+                # Already parsed dict - validate and return if schema passes
+                if isinstance(extract_result.data, dict):
+                    if expected_schema:
+                        validation_result = JSONGenerationUtils._validate_against_schema(extract_result.data, expected_schema)
+                        if validation_result.success:
+                            return JSONParseResult(
+                                success=True,
+                                data=extract_result.data,
+                                strategy_used=JSONParseStrategy.PROVIDER_EXTRACT,
+                                original_length=original_length,
+                                cleaned_length=len(json.dumps(extract_result.data))
+                            )
+                    else:
+                        return JSONParseResult(
+                            success=True,
+                            data=extract_result.data,
+                            strategy_used=JSONParseStrategy.PROVIDER_EXTRACT,
+                            original_length=original_length,
+                            cleaned_length=len(json.dumps(extract_result.data))
+                        )
+        
+        # Step 2: Try direct parsing (minimal attempt before json-repair)
+        try:
+            data = json.loads(content_to_parse.strip())
+            logger.info(f"✅ [JSONGenerationUtils] Direct JSON parsing succeeded")
+            
+            # Validate schema if provided
+            if expected_schema:
+                validation_result = JSONGenerationUtils._validate_against_schema(data, expected_schema)
+                if not validation_result.success:
+                    logger.warning(f"⚠️ [JSONGenerationUtils] Schema validation failed: {validation_result.error}")
+                    # Continue to json-repair even if direct parse worked but schema fails
+                else:
                     return JSONParseResult(
                         success=True,
-                        data=result.data,
-                        strategy_used=strategy,
+                        data=data,
+                        strategy_used=JSONParseStrategy.DIRECT,
                         original_length=original_length,
-                        cleaned_length=len(str(result.data)) if result.data else 0
+                        cleaned_length=len(content_to_parse)
                     )
-                else:
-                    logger.debug(f"⚠️ [JSONGenerationUtils] Strategy {strategy.value} failed: {result.error}")
-                    
-            except Exception as e:
-                logger.debug(f"⚠️ [JSONGenerationUtils] Strategy {strategy.value} exception: {e}")
-                continue
+            else:
+                return JSONParseResult(
+                    success=True,
+                    data=data,
+                    strategy_used=JSONParseStrategy.DIRECT,
+                    original_length=original_length,
+                    cleaned_length=len(content_to_parse)
+                )
+        except json.JSONDecodeError as e:
+            logger.debug(f"⚠️ [JSONGenerationUtils] Direct parsing failed: {e}, trying json-repair")
         
-        # All strategies failed
+        # Step 3: Use json-repair library - let it do the specialized work
+        if JSON_REPAIR_AVAILABLE:
+            try:
+                # json-repair automatically fixes common JSON issues - minimal preprocessing
+                repaired_json = json_repair.repair_json(content_to_parse)
+                data = json.loads(repaired_json)
+                logger.info(f"✅ [JSONGenerationUtils] JSON repair succeeded using json-repair library")
+                
+                # Validate schema if provided
+                if expected_schema:
+                    validation_result = JSONGenerationUtils._validate_against_schema(data, expected_schema)
+                    if not validation_result.success:
+                        logger.warning(f"⚠️ [JSONGenerationUtils] Schema validation failed after repair: {validation_result.error}")
+                        return JSONParseResult(
+                            success=False,
+                            error=f"Schema validation failed: {validation_result.error}",
+                            strategy_used=JSONParseStrategy.JSON_REPAIR,
+                            original_length=original_length,
+                            cleaned_length=len(repaired_json)
+                        )
+                
+                return JSONParseResult(
+                    success=True,
+                    data=data,
+                    strategy_used=JSONParseStrategy.JSON_REPAIR,
+                    original_length=original_length,
+                    cleaned_length=len(repaired_json)
+                )
+            except Exception as e:
+                logger.error(f"❌ [JSONGenerationUtils] JSON repair failed: {e}")
+        else:
+            logger.error(f"❌ [JSONGenerationUtils] json-repair library not available")
+        
+        # All attempts failed
         logger.error(f"❌ [JSONGenerationUtils] All parsing strategies failed")
         return JSONParseResult(
             success=False,
-            error="All parsing strategies failed",
+            error="All parsing strategies failed - JSON is too malformed",
             original_length=original_length,
             cleaned_length=0
         )
 
     @staticmethod
-    def _apply_parse_strategy(content: str, strategy: JSONParseStrategy) -> JSONParseResult:
-        """Apply a specific parsing strategy"""
-        try:
-            if strategy == JSONParseStrategy.DIRECT:
-                return JSONGenerationUtils._direct_parse(content)
-            elif strategy == JSONParseStrategy.MARKDOWN_EXTRACT:
-                return JSONGenerationUtils._markdown_extract(content)
-            elif strategy == JSONParseStrategy.BOUNDARY_EXTRACT:
-                return JSONGenerationUtils._boundary_extract(content)
-            elif strategy == JSONParseStrategy.SANITIZE_AND_PARSE:
-                return JSONGenerationUtils._sanitize_and_parse(content)
-            elif strategy == JSONParseStrategy.AGGRESSIVE_SANITIZE:
-                return JSONGenerationUtils._aggressive_sanitize(content)
-            elif strategy == JSONParseStrategy.REPLICATE_EXTRACT:
-                return JSONGenerationUtils._replicate_extract(content)
-            elif strategy == JSONParseStrategy.FORCE_REBUILD:
-                return JSONGenerationUtils._force_rebuild(content)
-            elif strategy == JSONParseStrategy.ESCAPED_JSON_HANDLE:
-                return JSONGenerationUtils._handle_escaped_json(content)
-            elif strategy == JSONParseStrategy.LARGE_JSON_PARSE:
-                return JSONGenerationUtils._parse_large_json(content)
-            elif strategy == JSONParseStrategy.PARTIAL_JSON_RECOVERY:
-                return JSONGenerationUtils._partial_json_recovery(content)
-            elif strategy == JSONParseStrategy.BROKEN_JSON_RECOVERY:
-                return JSONGenerationUtils._broken_json_recovery(content)
-            else:
-                return JSONParseResult(success=False, error=f"Unknown strategy: {strategy}")
-        except Exception as e:
-            return JSONParseResult(success=False, error=str(e))
-
-    @staticmethod
-    def _direct_parse(content: str) -> JSONParseResult:
-        """Try to parse JSON directly without any modification"""
-        try:
-            data = json.loads(content.strip())
-            return JSONParseResult(success=True, data=data)
-        except json.JSONDecodeError as e:
-            return JSONParseResult(success=False, error=f"Direct parse failed: {e}")
-
-    @staticmethod
-    def _markdown_extract(content: str) -> JSONParseResult:
-        """Extract JSON from markdown code blocks"""
-        try:
-            # Look for JSON in markdown code blocks
-            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', content, re.DOTALL)
-            if json_match:
-                extracted_json = json_match.group(1)
-                data = json.loads(extracted_json)
-                return JSONParseResult(success=True, data=data)
-            else:
-                return JSONParseResult(success=False, error="No JSON found in markdown blocks")
-        except json.JSONDecodeError as e:
-            return JSONParseResult(success=False, error=f"Markdown extract failed: {e}")
-
-    @staticmethod
-    def _boundary_extract(content: str) -> JSONParseResult:
-        """Extract JSON by finding balanced braces"""
-        try:
-            start = content.find('{')
-            if start == -1:
-                return JSONParseResult(success=False, error="No opening brace found")
-            
-            # Find balanced braces
-            brace_count = 0
-            end = start
-            
-            for i in range(start, len(content)):
-                char = content[i]
-                if char == '{':
-                    brace_count += 1
-                elif char == '}':
-                    brace_count -= 1
-                    if brace_count == 0:
-                        end = i + 1
-                        break
-            
-            if brace_count != 0:
-                return JSONParseResult(success=False, error="Unbalanced braces")
-            
-            extracted_json = content[start:end]
-            data = json.loads(extracted_json)
-            return JSONParseResult(success=True, data=data)
-        except json.JSONDecodeError as e:
-            return JSONParseResult(success=False, error=f"Boundary extract failed: {e}")
-
-    @staticmethod
-    def _sanitize_and_parse(content: str) -> JSONParseResult:
-        """Apply gentle sanitization and try to parse"""
-        try:
-            sanitized = JSONGenerationUtils._gentle_sanitize(content)
-            data = json.loads(sanitized)
-            return JSONParseResult(success=True, data=data)
-        except json.JSONDecodeError as e:
-            return JSONParseResult(success=False, error=f"Sanitize and parse failed: {e}")
-
-    @staticmethod
-    def _aggressive_sanitize(content: str) -> JSONParseResult:
-        """Apply aggressive sanitization and try to parse"""
-        try:
-            sanitized = JSONGenerationUtils._aggressive_sanitize_content(content)
-            data = json.loads(sanitized)
-            return JSONParseResult(success=True, data=data)
-        except json.JSONDecodeError as e:
-            return JSONParseResult(success=False, error=f"Aggressive sanitize failed: {e}")
-
-    @staticmethod
     def _replicate_extract(content: str) -> JSONParseResult:
-        """Extract JSON from Replicate API response format"""
+        """Minimal extraction: just get 'text' field if it exists, let json-repair handle parsing"""
         try:
-            logger.info(f"🔧 [JSONGenerationUtils] Replicate extract on {len(content)} chars")
+            logger.debug(f"🔧 [JSONGenerationUtils] Replicate extract on {len(content)} chars")
             
-            # Handle Python dictionary string representation from Replicate
-            # This handles cases like: "{'json_output': {'description': '...', 'sections': [...]}}"
-            
-            # First, try to parse as Python dict string representation
-            import ast
-            parsed_dict = ast.literal_eval(content)
-            logger.info(f"🔍 [JSONGenerationUtils] ast.literal_eval succeeded, type: {type(parsed_dict)}")
-            
-            if isinstance(parsed_dict, dict):
-                logger.info(f"🔍 [JSONGenerationUtils] Parsed dict keys: {list(parsed_dict.keys())}")
-            
-            # Check if it's a Replicate response with 'text' field
-            if isinstance(parsed_dict, dict) and 'text' in parsed_dict:
-                text_content = parsed_dict['text']
-                logger.info(f"🔍 [JSONGenerationUtils] Found 'text' field, type: {type(text_content)}")
-                if isinstance(text_content, str) and text_content.strip().startswith('{'):
-                    # Apply sanitization to fix common JSON issues
-                    sanitized_content = JSONGenerationUtils._gentle_sanitize(text_content.strip())
-                    try:
-                        # Try to parse the sanitized JSON
-                        data = json.loads(sanitized_content)
-                        logger.info(f"✅ [JSONGenerationUtils] Parsed text field as JSON")
-                        return JSONParseResult(success=True, data=data)
-                    except json.JSONDecodeError as e:
-                        logger.warning(f"⚠️ [JSONGenerationUtils] Text field JSON parsing failed: {e}")
-                        # Try more aggressive sanitization
-                        try:
-                            aggressive_sanitized = JSONGenerationUtils._aggressive_sanitize_content(text_content.strip())
-                            data = json.loads(aggressive_sanitized)
-                            logger.info(f"✅ [JSONGenerationUtils] Parsed text field with aggressive sanitization")
-                            return JSONParseResult(success=True, data=data)
-                        except json.JSONDecodeError as e2:
-                            logger.warning(f"⚠️ [JSONGenerationUtils] Aggressive sanitization also failed: {e2}")
-                            # Continue to other strategies
-            
-            # Check if it's a Replicate response with 'json_output' field
-            if isinstance(parsed_dict, dict) and 'json_output' in parsed_dict:
-                json_content = parsed_dict['json_output']
-                logger.info(f"🔍 [JSONGenerationUtils] Found 'json_output' field, type: {type(json_content)}")
-                if isinstance(json_content, dict):
-                    # The json_output is already a dictionary, return it directly
-                    logger.info(f"✅ [JSONGenerationUtils] Found json_output dict with keys: {list(json_content.keys())}")
-                    return JSONParseResult(success=True, data=json_content)
-                elif isinstance(json_content, str) and json_content.strip().startswith('{'):
-                    # Apply sanitization to fix common JSON issues
-                    sanitized_content = JSONGenerationUtils._gentle_sanitize(json_content.strip())
-                    # Try to parse the sanitized JSON
-                    data = json.loads(sanitized_content)
-                    logger.info(f"✅ [JSONGenerationUtils] Parsed json_output string as JSON")
-                    return JSONParseResult(success=True, data=data)
-                else:
-                    # json_output exists but is not a dict or valid JSON string
-                    # Try to extract the actual survey data from the response
-                    logger.warning(f"⚠️ [JSONGenerationUtils] json_output field found but not in expected format: {type(json_content)}")
-                    # Fall through to other strategies
-            
-            # Enhanced: Check for nested response structures
-            # Handle cases where the response might be wrapped in additional layers
-            if isinstance(parsed_dict, dict):
-                # Look for any field that contains survey-like data
-                for key, value in parsed_dict.items():
-                    if isinstance(value, dict):
-                        # Check if this nested dict has survey structure
-                        if any(survey_key in value for survey_key in ['title', 'description', 'sections', 'questions', 'metadata']):
-                            logger.info(f"✅ [JSONGenerationUtils] Found survey data in nested field '{key}' with keys: {list(value.keys())}")
-                            return JSONParseResult(success=True, data=value)
-                
-                # Check if the entire parsed_dict looks like survey data
-                if any(key in parsed_dict for key in ['title', 'description', 'sections', 'questions', 'metadata']):
-                    logger.info(f"✅ [JSONGenerationUtils] Found survey data in root dict with keys: {list(parsed_dict.keys())}")
-                    return JSONParseResult(success=True, data=parsed_dict)
-            
-            logger.warning(f"⚠️ [JSONGenerationUtils] No valid JSON found in Replicate response")
-            return JSONParseResult(success=False, error="No valid JSON found in Replicate response")
-        except (ValueError, SyntaxError, TypeError, json.JSONDecodeError) as e:
-            # If ast.literal_eval fails, try alternative approaches
+            # Minimal work: try to parse outer JSON to see if it has a 'text' field
             try:
-                # Try to extract JSON from the string using regex patterns
-                # Look for patterns like: {'json_output': {...}}
-                import re
+                outer_json = json.loads(content.strip())
+                if isinstance(outer_json, dict) and 'text' in outer_json:
+                    text_content = outer_json['text']
+                    if isinstance(text_content, str):
+                        logger.debug(f"✅ [JSONGenerationUtils] Extracted 'text' field ({len(text_content)} chars), passing to json-repair")
+                        # Return as string - let json-repair do all the parsing work
+                        return JSONParseResult(success=True, data=text_content)
+                    elif isinstance(text_content, dict):
+                        # Already parsed, return it directly
+                        logger.debug(f"✅ [JSONGenerationUtils] 'text' field is already parsed dict")
+                        return JSONParseResult(success=True, data=text_content)
+            except json.JSONDecodeError:
+                # Outer content is not JSON, might be the JSON string directly - let json-repair handle it
+                logger.debug(f"⚠️ [JSONGenerationUtils] Outer content not JSON, passing directly to json-repair")
+                pass
+            
+            # If we get here, either no 'text' field or couldn't parse outer JSON
+            # Pass the raw content to json-repair - it's specialized for this
+            logger.debug(f"⚠️ [JSONGenerationUtils] No 'text' field or outer parse failed, using raw content")
+            return JSONParseResult(success=False, error="No 'text' field found or not JSON")
                 
-                # Pattern to match Python dict with json_output key
-                pattern = r"'json_output':\s*(\{.*?\})"
-                match = re.search(pattern, content, re.DOTALL)
-                if match:
-                    json_str = match.group(1)
-                    # Convert Python dict string to JSON string
-                    json_str = json_str.replace("'", '"')  # Replace single quotes with double quotes
-                    json_str = json_str.replace('True', 'true')  # Convert Python booleans
-                    json_str = json_str.replace('False', 'false')
-                    json_str = json_str.replace('None', 'null')
-                    
-                    # Try to parse the converted JSON
-                    data = json.loads(json_str)
-                    return JSONParseResult(success=True, data=data)
-                
-                # If no json_output pattern found, try to extract the main dict content
-                # Look for the main dictionary content between the outer braces
-                start = content.find('{')
-                if start != -1:
-                    # Find the matching closing brace
-                    brace_count = 0
-                    end = start
-                    for i in range(start, len(content)):
-                        if content[i] == '{':
-                            brace_count += 1
-                        elif content[i] == '}':
-                            brace_count -= 1
-                            if brace_count == 0:
-                                end = i + 1
-                                break
-                    
-                    if brace_count == 0:
-                        dict_content = content[start:end]
-                        # Try to convert Python dict string to JSON
-                        dict_content = dict_content.replace("'", '"')
-                        dict_content = dict_content.replace('True', 'true')
-                        dict_content = dict_content.replace('False', 'false')
-                        dict_content = dict_content.replace('None', 'null')
-                        
-                        data = json.loads(dict_content)
-                        return JSONParseResult(success=True, data=data)
-                
-                return JSONParseResult(success=False, error=f"Replicate extract failed: {e}")
-            except Exception as e2:
-                return JSONParseResult(success=False, error=f"Replicate extract failed: {e2}")
+        except Exception as e:
+            logger.debug(f"⚠️ [JSONGenerationUtils] Replicate extract failed: {e}, will use raw content")
+            return JSONParseResult(success=False, error=f"Extract failed: {e}")
 
     @staticmethod
-    def _force_rebuild(content: str) -> JSONParseResult:
-        """Force rebuild JSON from parts (last resort)"""
+    def _openai_extract(content: str) -> JSONParseResult:
+        """Minimal extraction: OpenAI usually returns JSON directly, let json-repair handle parsing"""
         try:
-            # This is a placeholder for more sophisticated rebuilding logic
-            # For now, we'll try to extract key-value pairs and rebuild
-            rebuilt = JSONGenerationUtils._rebuild_json_from_parts(content)
-            if rebuilt:
-                data = json.loads(rebuilt)
-                return JSONParseResult(success=True, data=data)
-            else:
-                return JSONParseResult(success=False, error="Force rebuild failed")
-        except json.JSONDecodeError as e:
-            return JSONParseResult(success=False, error=f"Force rebuild failed: {e}")
-
-    @staticmethod
-    def _gentle_sanitize(content: str) -> str:
-        """Apply gentle sanitization to fix common JSON issues"""
-        sanitized = content.strip()
-        
-        # Remove any leading/trailing non-JSON text
-        start = sanitized.find('{')
-        end = sanitized.rfind('}') + 1
-        if start != -1 and end > start:
-            sanitized = sanitized[start:end]
-        
-        # Fix common JSON syntax issues
-        # Remove trailing commas
-        sanitized = re.sub(r',\s*}', '}', sanitized)
-        sanitized = re.sub(r',\s*]', ']', sanitized)
-        
-        # Fix missing commas between objects/arrays
-        sanitized = re.sub(r'}\s*{', '}, {', sanitized)
-        sanitized = re.sub(r']\s*\[', '], [', sanitized)
-        sanitized = re.sub(r'}\s*\[', '}, [', sanitized)
-        sanitized = re.sub(r']\s*{', '], {', sanitized)
-        
-        # Fix extra quotes after numbers (common LLM error)
-        # Only fix quotes after numbers that are property values (not keys)
-        # Look for pattern: "property": number" -> "property": number
-        sanitized = re.sub(r':\s*(\d+)"\s*}', r': \1}', sanitized)
-        sanitized = re.sub(r':\s*(\d+)"\s*,', r': \1,', sanitized)
-        sanitized = re.sub(r':\s*(\d+)"\s*$', r': \1', sanitized)
-        
-        # Fix missing quotes around string values
-        sanitized = re.sub(r':\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*([,}])', r': "\1"\2', sanitized)
-        
-        return sanitized
-
-    @staticmethod
-    def _aggressive_sanitize_content(content: str) -> str:
-        """Apply aggressive sanitization to fix more complex JSON issues"""
-        # Start with gentle sanitization
-        sanitized = JSONGenerationUtils._gentle_sanitize(content)
-        
-        # Remove control characters except newlines, tabs, and carriage returns
-        sanitized = ''.join(char for char in sanitized if ord(char) >= 32 or char in '\n\r\t')
-        
-        # Fix common issues with quotes
-        sanitized = re.sub(r"'([^']*)'", r'"\1"', sanitized)  # Single quotes to double quotes
-        sanitized = re.sub(r'([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1"\2":', sanitized)  # Unquoted keys
-        
-        # Fix boolean values
-        sanitized = re.sub(r'\bTrue\b', 'true', sanitized)
-        sanitized = re.sub(r'\bFalse\b', 'false', sanitized)
-        sanitized = re.sub(r'\bNone\b', 'null', sanitized)
-        
-        return sanitized
-
-    @staticmethod
-    def _rebuild_json_from_parts(content: str) -> Optional[str]:
-        """Rebuild JSON from parts (placeholder for more sophisticated logic)"""
-        # This is a simplified version - in practice, you might want more sophisticated rebuilding
-        try:
-            # Try to extract key-value pairs and rebuild
-            # This is a basic implementation - could be enhanced
-            return None  # Placeholder
-        except Exception:
-            return None
-
-    @staticmethod
-    def _handle_escaped_json(content: str) -> JSONParseResult:
-        """Handle JSON with escaped characters and complex formatting"""
-        try:
-            # First, try to decode common escape sequences
-            decoded_content = content
+            logger.debug(f"🔧 [JSONGenerationUtils] OpenAI extract on {len(content)} chars")
             
-            # Handle common escape sequences
-            escape_sequences = {
-                '\\"': '"',  # Escaped quotes
-                '\\n': '\n',  # Newlines
-                '\\r': '\r',  # Carriage returns
-                '\\t': '\t',  # Tabs
-                '\\\\': '\\',  # Backslashes
-            }
-            
-            for escaped, unescaped in escape_sequences.items():
-                decoded_content = decoded_content.replace(escaped, unescaped)
-            
-            # Try to parse the decoded content
-            data = json.loads(decoded_content)
-            return JSONParseResult(success=True, data=data)
-            
-        except json.JSONDecodeError as e:
-            # If that fails, try more aggressive cleaning
+            # Minimal work: try direct parse first (OpenAI structured outputs are usually valid JSON)
             try:
-                # Remove problematic characters that might cause parsing issues
-                cleaned = content
-                
-                # Remove null bytes and control characters (except newlines, tabs, carriage returns)
-                cleaned = ''.join(char for char in cleaned if ord(char) >= 32 or char in '\n\r\t')
-                
-                # Fix common JSON issues
-                cleaned = re.sub(r',\s*}', '}', cleaned)  # Remove trailing commas
-                cleaned = re.sub(r',\s*]', ']', cleaned)  # Remove trailing commas in arrays
-                
-                # Try to find the JSON boundaries more intelligently
-                start = cleaned.find('{')
-                end = cleaned.rfind('}')
-                if start != -1 and end > start:
-                    cleaned = cleaned[start:end+1]
-                
-                data = json.loads(cleaned)
+                data = json.loads(content.strip())
+                logger.debug(f"✅ [JSONGenerationUtils] OpenAI content is valid JSON")
                 return JSONParseResult(success=True, data=data)
+            except json.JSONDecodeError:
+                # Not valid JSON, let json-repair handle it - it's specialized for this
+                logger.debug(f"⚠️ [JSONGenerationUtils] OpenAI content not valid JSON, passing to json-repair")
+                return JSONParseResult(success=False, error="Not valid JSON, will use json-repair")
                 
-            except json.JSONDecodeError as e2:
-                return JSONParseResult(success=False, error=f"Escaped JSON handling failed: {e2}")
         except Exception as e:
-            return JSONParseResult(success=False, error=f"Escaped JSON handling exception: {e}")
-
-    @staticmethod
-    def _parse_large_json(content: str) -> JSONParseResult:
-        """Handle very large JSON responses that might cause memory issues"""
-        try:
-            # For large JSON, try to parse in chunks or with streaming
-            # First, try normal parsing
-            data = json.loads(content)
-            return JSONParseResult(success=True, data=data)
-            
-        except json.JSONDecodeError as e:
-            # If normal parsing fails, try to identify and fix common large JSON issues
-            try:
-                # Check if it's a memory issue by looking at content length
-                if len(content) > 1000000:  # 1MB threshold
-                    logger.warning(f"⚠️ [JSONGenerationUtils] Large JSON detected ({len(content)} chars), using chunked parsing")
-                
-                # Try to find the main JSON object boundaries
-                start = content.find('{')
-                if start == -1:
-                    return JSONParseResult(success=False, error="No JSON object found")
-                
-                # Find the matching closing brace
-                brace_count = 0
-                end = start
-                for i in range(start, len(content)):
-                    if content[i] == '{':
-                        brace_count += 1
-                    elif content[i] == '}':
-                        brace_count -= 1
-                        if brace_count == 0:
-                            end = i + 1
-                            break
-                
-                if brace_count != 0:
-                    return JSONParseResult(success=False, error="Unbalanced braces in large JSON")
-                
-                # Extract the main JSON object
-                json_content = content[start:end]
-                
-                # Apply gentle sanitization
-                sanitized = JSONGenerationUtils._gentle_sanitize(json_content)
-                data = json.loads(sanitized)
-                return JSONParseResult(success=True, data=data)
-                
-            except json.JSONDecodeError as e2:
-                return JSONParseResult(success=False, error=f"Large JSON parsing failed: {e2}")
-        except Exception as e:
-            return JSONParseResult(success=False, error=f"Large JSON parsing exception: {e}")
-
-    @staticmethod
-    def _partial_json_recovery(content: str) -> JSONParseResult:
-        """Attempt to recover partial JSON structures and extract survey data"""
-        try:
-            # This is the most sophisticated recovery method
-            # Try to extract survey structure even from malformed JSON
-            
-            # First, try to find any valid JSON fragments
-            json_objects = []
-            
-            # Look for complete JSON objects within the content
-            start = 0
-            while start < len(content):
-                obj_start = content.find('{', start)
-                if obj_start == -1:
-                    break
-                
-                # Try to find the matching closing brace
-                brace_count = 0
-                obj_end = obj_start
-                for i in range(obj_start, len(content)):
-                    if content[i] == '{':
-                        brace_count += 1
-                    elif content[i] == '}':
-                        brace_count -= 1
-                        if brace_count == 0:
-                            obj_end = i + 1
-                            break
-                
-                if brace_count == 0:
-                    # Found a complete object, try to parse it
-                    obj_content = content[obj_start:obj_end]
-                    try:
-                        obj_data = json.loads(obj_content)
-                        json_objects.append(obj_data)
-                    except json.JSONDecodeError:
-                        pass  # Skip invalid objects
-                
-                start = obj_end + 1
-            
-            # If we found valid JSON objects, try to merge them or use the largest one
-            if json_objects:
-                # Find the object with the most survey-like structure
-                best_object = None
-                best_score = 0
-                
-                for obj in json_objects:
-                    score = 0
-                    if isinstance(obj, dict):
-                        # Score based on survey-like fields
-                        if 'title' in obj:
-                            score += 10
-                        if 'sections' in obj:
-                            score += 20
-                        if 'questions' in obj:
-                            score += 15
-                        if 'metadata' in obj:
-                            score += 5
-                        
-                        # Check for question arrays
-                        if 'sections' in obj and isinstance(obj['sections'], list):
-                            for section in obj['sections']:
-                                if isinstance(section, dict) and 'questions' in section:
-                                    score += len(section['questions']) * 2
-                        
-                        if 'questions' in obj and isinstance(obj['questions'], list):
-                            score += len(obj['questions']) * 2
-                    
-                    if score > best_score:
-                        best_score = score
-                        best_object = obj
-                
-                if best_object and best_score > 0:
-                    return JSONParseResult(success=True, data=best_object)
-            
-            # If no valid JSON objects found, try to extract survey data using text patterns
-            return JSONParseResult(success=False, error="No recoverable JSON structure found")
-            
-        except Exception as e:
-            return JSONParseResult(success=False, error=f"Partial JSON recovery exception: {e}")
-
-    @staticmethod
-    def _broken_json_recovery(content: str) -> JSONParseResult:
-        """Attempt to recover from severely broken JSON with scattered text and malformed structure"""
-        try:
-            logger.info(f"🔧 [JSONGenerationUtils] Attempting broken JSON recovery on {len(content)} characters")
-            
-            # First, try to extract any complete JSON objects
-            json_objects = []
-            
-            # Look for complete JSON objects within the content
-            start = 0
-            while start < len(content):
-                obj_start = content.find('{', start)
-                if obj_start == -1:
-                    break
-                
-                # Try to find the matching closing brace
-                brace_count = 0
-                obj_end = obj_start
-                for i in range(obj_start, len(content)):
-                    if content[i] == '{':
-                        brace_count += 1
-                    elif content[i] == '}':
-                        brace_count -= 1
-                        if brace_count == 0:
-                            obj_end = i + 1
-                            break
-                
-                if brace_count == 0:
-                    # Found a complete object, try to parse it
-                    obj_content = content[obj_start:obj_end]
-                    try:
-                        # Apply aggressive sanitization first
-                        sanitized = JSONGenerationUtils._aggressive_sanitize_content(obj_content)
-                        obj_data = json.loads(sanitized)
-                        json_objects.append(obj_data)
-                        logger.info(f"✅ [JSONGenerationUtils] Recovered JSON object with keys: {list(obj_data.keys()) if isinstance(obj_data, dict) else 'not dict'}")
-                    except json.JSONDecodeError as e:
-                        logger.debug(f"⚠️ [JSONGenerationUtils] Failed to parse object: {e}")
-                        # Try to fix common issues and parse again
-                        try:
-                            # Fix common broken JSON patterns
-                            fixed_content = obj_content
-                            
-                            # Fix missing quotes around keys
-                            fixed_content = re.sub(r'([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1"\2":', fixed_content)
-                            
-                            # Fix single quotes to double quotes
-                            fixed_content = re.sub(r"'([^']*)'", r'"\1"', fixed_content)
-                            
-                            # Fix Python-style booleans and nulls
-                            fixed_content = re.sub(r'\bTrue\b', 'true', fixed_content)
-                            fixed_content = re.sub(r'\bFalse\b', 'false', fixed_content)
-                            fixed_content = re.sub(r'\bNone\b', 'null', fixed_content)
-                            
-                            # Fix trailing commas
-                            fixed_content = re.sub(r',\s*}', '}', fixed_content)
-                            fixed_content = re.sub(r',\s*]', ']', fixed_content)
-                            
-                            # Try parsing the fixed content
-                            obj_data = json.loads(fixed_content)
-                            json_objects.append(obj_data)
-                            logger.info(f"✅ [JSONGenerationUtils] Fixed and recovered JSON object with keys: {list(obj_data.keys()) if isinstance(obj_data, dict) else 'not dict'}")
-                        except json.JSONDecodeError as e2:
-                            logger.debug(f"⚠️ [JSONGenerationUtils] Failed to fix object: {e2}")
-                
-                start = obj_end + 1
-            
-            # If we found valid JSON objects, try to merge them or use the best one
-            if json_objects:
-                # Find the object with the most survey-like structure
-                best_object = None
-                best_score = 0
-                
-                for obj in json_objects:
-                    score = 0
-                    if isinstance(obj, dict):
-                        # Score based on survey-like fields
-                        if 'title' in obj:
-                            score += 10
-                        if 'sections' in obj:
-                            score += 20
-                        if 'questions' in obj:
-                            score += 15
-                        if 'metadata' in obj:
-                            score += 5
-                        
-                        # Check for question arrays
-                        if 'sections' in obj and isinstance(obj['sections'], list):
-                            for section in obj['sections']:
-                                if isinstance(section, dict) and 'questions' in section:
-                                    score += len(section['questions']) * 2
-                        
-                        if 'questions' in obj and isinstance(obj['questions'], list):
-                            score += len(obj['questions']) * 2
-                    
-                    if score > best_score:
-                        best_score = score
-                        best_object = obj
-                
-                if best_object and best_score > 0:
-                    logger.info(f"✅ [JSONGenerationUtils] Broken JSON recovery succeeded with score {best_score}")
-                    return JSONParseResult(success=True, data=best_object)
-            
-            # If no valid JSON objects found, try to extract survey data using text patterns
-            # This is a last resort - try to build a minimal survey structure
-            logger.warning(f"⚠️ [JSONGenerationUtils] No complete JSON objects found, attempting text pattern extraction")
-            
-            # Look for common survey patterns in the text
-            survey_data = {}
-            
-            # Try to extract title
-            title_match = re.search(r'"title"\s*:\s*"([^"]*)"', content)
-            if title_match:
-                survey_data['title'] = title_match.group(1)
-            
-            # Try to extract description
-            desc_match = re.search(r'"description"\s*:\s*"([^"]*)"', content)
-            if desc_match:
-                survey_data['description'] = desc_match.group(1)
-            
-            # Try to extract sections count
-            sections_match = re.search(r'"sections_count"\s*:\s*(\d+)', content)
-            if sections_match:
-                survey_data['sections_count'] = int(sections_match.group(1))
-            
-            # Try to extract methodology tags
-            tags_match = re.search(r'"methodology_tags"\s*:\s*\[(.*?)\]', content, re.DOTALL)
-            if tags_match:
-                tags_text = tags_match.group(1)
-                # Extract individual tags
-                tag_matches = re.findall(r'"([^"]*)"', tags_text)
-                survey_data['methodology_tags'] = tag_matches
-            
-            if survey_data:
-                logger.info(f"✅ [JSONGenerationUtils] Extracted partial survey data: {list(survey_data.keys())}")
-                return JSONParseResult(success=True, data=survey_data)
-            
-            return JSONParseResult(success=False, error="No recoverable JSON structure found in broken content")
-            
-        except Exception as e:
-            return JSONParseResult(success=False, error=f"Broken JSON recovery exception: {e}")
+            logger.debug(f"⚠️ [JSONGenerationUtils] OpenAI extract failed: {e}, will use raw content")
+            return JSONParseResult(success=False, error=f"Extract failed: {e}")
 
     @staticmethod
     def _validate_against_schema(data: Dict[str, Any], schema: Dict[str, Any]) -> JSONParseResult:
-        """Validate parsed data against expected schema"""
+        """Validate parsed JSON against expected schema"""
         try:
-            # Basic schema validation - could be enhanced with jsonschema library
-            if not isinstance(data, dict):
-                return JSONParseResult(success=False, error="Data is not a dictionary")
+            # Log what we're validating for debugging
+            logger.debug(f"🔍 [JSONGenerationUtils] Validating data with keys: {list(data.keys()) if isinstance(data, dict) else 'not a dict'}")
+            logger.debug(f"🔍 [JSONGenerationUtils] Schema requires: {schema.get('required', [])}")
             
             # Check required fields
-            required_fields = schema.get('required', [])
-            for field in required_fields:
-                if field not in data:
-                    return JSONParseResult(success=False, error=f"Missing required field: {field}")
+            if "required" in schema:
+                for field in schema["required"]:
+                    if field not in data:
+                        logger.error(f"❌ [JSONGenerationUtils] Missing required field '{field}'. Data keys: {list(data.keys()) if isinstance(data, dict) else 'not a dict'}")
+                        return JSONParseResult(
+                            success=False,
+                            error=f"Missing required field: {field}"
+                        )
+            
+            # Basic type checking for top-level fields
+            if "properties" in schema:
+                for field, field_schema in schema["properties"].items():
+                    if field in data:
+                        expected_type = field_schema.get("type")
+                        if expected_type == "array" and not isinstance(data[field], list):
+                            return JSONParseResult(
+                                success=False,
+                                error=f"Field '{field}' must be an array"
+                            )
+                        elif expected_type == "object" and not isinstance(data[field], dict):
+                            return JSONParseResult(
+                                success=False,
+                                error=f"Field '{field}' must be an object"
+                            )
+                        elif expected_type == "string" and not isinstance(data[field], str):
+                            return JSONParseResult(
+                                success=False,
+                                error=f"Field '{field}' must be a string"
+                            )
             
             return JSONParseResult(success=True, data=data)
         except Exception as e:
-            return JSONParseResult(success=False, error=f"Schema validation failed: {e}")
-
-    @staticmethod
-    def create_fallback_json(error_message: str, context: str = "") -> Dict[str, Any]:
-        """Create a fallback JSON structure when all parsing fails"""
-        return {
-            "error": True,
-            "message": f"JSON parsing failed: {error_message}",
-            "context": context,
-            "fallback": True,
-            "data": None
-        }
+            return JSONParseResult(
+                success=False,
+                error=f"Schema validation error: {e}"
+            )
 
     @staticmethod
     def log_json_parsing_attempt(
-        response_content: str, 
+        content: str, 
         result: JSONParseResult, 
-        service_name: str = "Unknown"
+        service_name: str
     ) -> None:
-        """Log detailed information about JSON parsing attempt"""
-        logger.info(f"📊 [JSONGenerationUtils] {service_name} JSON parsing result:")
-        logger.info(f"   Success: {result.success}")
-        logger.info(f"   Strategy: {result.strategy_used.value if result.strategy_used else 'None'}")
-        logger.info(f"   Original length: {result.original_length}")
-        logger.info(f"   Cleaned length: {result.cleaned_length}")
-        
-        if not result.success:
-            logger.error(f"   Error: {result.error}")
-            logger.error(f"   Response preview: {response_content[:200]}...")
-            logger.error(f"   Response ending: ...{response_content[-200:]}")
-            
-            # Additional diagnostic information
-            logger.error(f"   Character analysis:")
-            null_bytes_present = '\x00' in response_content
-            logger.error(f"     - Contains null bytes: {null_bytes_present}")
-            control_chars_present = any(ord(c) < 32 and c not in '\n\r\t' for c in response_content[:1000])
-            logger.error(f"     - Contains control chars: {control_chars_present}")
-            starts_with_brace = response_content.strip().startswith('{')
-            logger.error(f"     - Starts with {{: {starts_with_brace}")
-            ends_with_brace = response_content.strip().endswith('}')
-            logger.error(f"     - Ends with }}: {ends_with_brace}")
-            contains_sections = 'sections' in response_content.lower()
-            logger.error(f"     - Contains sections: {contains_sections}")
-            contains_questions = 'questions' in response_content.lower()
-            logger.error(f"     - Contains questions: {contains_questions}")
-            
-            # Check for common issues
-            issues = []
-            if '\\"' in response_content:
-                issues.append("escaped quotes")
-            if response_content.count('{') != response_content.count('}'):
-                issues.append("unbalanced braces")
-            if response_content.count('[') != response_content.count(']'):
-                issues.append("unbalanced brackets")
-            if ',\\n}' in response_content or ',\\n]' in response_content:
-                issues.append("trailing commas")
-            
-            if issues:
-                logger.error(f"   Detected issues: {', '.join(issues)}")
+        """Log JSON parsing attempt for debugging"""
+        if result.success:
+            logger.info(
+                f"✅ [JSONGenerationUtils] {service_name} successfully parsed JSON "
+                f"(strategy: {result.strategy_used.value if result.strategy_used else 'unknown'})"
+            )
         else:
-            # Log success details
-            if result.data and isinstance(result.data, dict):
-                data_keys = list(result.data.keys())
-                logger.info(f"   Parsed data keys: {data_keys}")
-                
-                # Check for survey structure
-                if 'sections' in result.data:
-                    sections_count = len(result.data['sections']) if isinstance(result.data['sections'], list) else 0
-                    logger.info(f"   Sections found: {sections_count}")
-                    
-                    if sections_count > 0 and isinstance(result.data['sections'], list):
-                        total_questions = 0
-                        for section in result.data['sections']:
-                            if isinstance(section, dict) and 'questions' in section:
-                                questions_count = len(section['questions']) if isinstance(section['questions'], list) else 0
-                                total_questions += questions_count
-                        logger.info(f"   Total questions found: {total_questions}")
-                
-                if 'questions' in result.data:
-                    questions_count = len(result.data['questions']) if isinstance(result.data['questions'], list) else 0
-                    logger.info(f"   Direct questions found: {questions_count}")
+            logger.error(
+                f"❌ [JSONGenerationUtils] {service_name} failed to parse JSON: {result.error}"
+            )
 
 
-# Convenience functions for easy integration
 def parse_llm_json_response(
-    response_content: str, 
+    response_content: str,
+    service_name: str = "Unknown",
     expected_schema: Optional[Dict[str, Any]] = None,
-    service_name: str = "Unknown"
-) -> Union[Dict[str, Any], None]:
+    provider: str = "replicate"
+) -> Optional[Dict[str, Any]]:
     """
-    Parse JSON from LLM response with comprehensive error handling
+    Convenience function to parse LLM JSON response
     
     Args:
         response_content: Raw response from LLM
+        service_name: Name of service calling this (for logging)
         expected_schema: Optional schema to validate against
-        service_name: Name of the service for logging
+        provider: Provider type ("replicate" or "openai")
         
     Returns:
-        Parsed JSON data or None if parsing failed
+        Parsed JSON dict or None if parsing failed
     """
     result = JSONGenerationUtils.parse_json_from_response(
-        response_content, expected_schema
+        response_content, expected_schema, provider
     )
     
     JSONGenerationUtils.log_json_parsing_attempt(
@@ -1038,21 +476,47 @@ def parse_llm_json_response(
 
 
 def get_json_optimized_hyperparameters(purpose: str = "general") -> Dict[str, Any]:
-    """Get hyperparameters optimized for JSON generation based on purpose"""
-    return JSONGenerationUtils.get_optimal_hyperparameters_for_json(purpose)
+    """
+    Get hyperparameters optimized for JSON generation
+    
+    Args:
+        purpose: Purpose of generation (general, survey_generation, rfq_parsing)
+        
+    Returns:
+        Dict of hyperparameters optimized for JSON output
+    """
+    base_params = {
+        "temperature": 0.7,  # Lower temperature for more structured output
+        "top_p": 0.9,
+        "max_tokens": 16000,  # Increased for large surveys
+    }
+    
+    if purpose == "survey_generation":
+        return {
+            **base_params,
+            "temperature": 0.7,  # Balance creativity and structure
+        }
+    elif purpose == "rfq_parsing":
+        return {
+            **base_params,
+            "temperature": 0.1,  # Lower temperature for precise extraction
+            "max_tokens": 4000,
+        }
+    
+    return base_params
 
 
+# Standalone wrapper functions for backward compatibility
 def create_json_system_prompt(schema: Optional[Dict[str, Any]] = None, purpose: str = "general") -> str:
     """Create a system prompt optimized for JSON generation"""
     return JSONGenerationUtils.create_json_system_prompt(schema, purpose)
-
-
-def get_survey_generation_schema() -> Dict[str, Any]:
-    """Get schema for survey generation (higher creativity)"""
-    return JSONGenerationUtils.get_survey_generation_schema()
 
 
 def get_rfq_parsing_schema() -> Dict[str, Any]:
     """Get schema for RFQ parsing (structured, precise)"""
     return JSONGenerationUtils.get_rfq_parsing_schema()
 
+
+def get_survey_generation_schema() -> Dict[str, Any]:
+    """Get schema for survey generation (higher creativity)"""
+    return JSONGenerationUtils.get_survey_generation_schema()

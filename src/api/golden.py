@@ -56,10 +56,49 @@ async def list_golden_pairs(
     golden_service = GoldenService(db)
     golden_pairs = golden_service.list_golden_pairs(skip=skip, limit=limit)
     
-    return [
-        GoldenPairResponse(
+    responses = []
+    for pair in golden_pairs:
+        # Extract the best title: prefer final_output title (most accurate), then survey_json title, then extract from RFQ
+        display_title = pair.title
+        if pair.survey_json and isinstance(pair.survey_json, dict):
+            # First try final_output title (most accurate survey title)
+            final_output = pair.survey_json.get('final_output', {})
+            if isinstance(final_output, dict):
+                survey_title = final_output.get('title', '').strip()
+                if survey_title:
+                    display_title = survey_title
+            
+            # If no final_output title, try top-level title
+            if display_title == pair.title:
+                survey_title = pair.survey_json.get('title', '').strip()
+                if survey_title:
+                    display_title = survey_title
+        
+        # Check if title looks like concatenated methodology tags
+        def is_tag_concatenated(title):
+            if not title or len(title) < 10:
+                return False
+            # If title contains 3+ methodology keywords, it's likely concatenated
+            keywords = ['van westendorp', 'conjoint', 'nps', 'pricing study', 'concept testing', 
+                      'market research', 'satisfaction', 'brand tracking', 'attitude']
+            keyword_count = sum(1 for kw in keywords if kw.lower() in title.lower())
+            return keyword_count >= 3
+        
+        # If title looks concatenated, try to extract from RFQ
+        if display_title and is_tag_concatenated(display_title):
+            # Extract meaningful title from RFQ
+            rfq_lines = pair.rfq_text.split('\n')[:5]
+            for line in rfq_lines:
+                line = line.strip()
+                if line and not line.startswith('RFQ') and not line.startswith('REQUEST'):
+                    # Use first meaningful line from RFQ as title
+                    if len(line) > 10 and len(line) < 100:
+                        display_title = line
+                        break
+        
+        responses.append(GoldenPairResponse(
             id=str(pair.id),
-            title=getattr(pair, 'title', None),
+            title=display_title,
             rfq_text=pair.rfq_text,
             survey_json=pair.survey_json,
             methodology_tags=pair.methodology_tags,
@@ -67,9 +106,9 @@ async def list_golden_pairs(
             research_goal=pair.research_goal,
             quality_score=float(pair.quality_score) if pair.quality_score else None,
             usage_count=pair.usage_count
-        )
-        for pair in golden_pairs
-    ]
+        ))
+    
+    return responses
 
 
 @router.post("/", response_model=GoldenPairResponse)

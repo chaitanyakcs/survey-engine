@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     database_password: str = ""
     database_name: str = "survey_engine_db"
     openai_api_key: str = "your_openai_api_key_here"
+    llm_provider: str = "replicate"  # "replicate" or "openai"
     service: str = "backend"
     port: str = "8000"
     

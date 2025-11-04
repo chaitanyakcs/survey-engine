@@ -1227,6 +1227,10 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                                         </span>
                                         <div className="flex-1">
                                           <p className="text-sm text-gray-700">{question.text || 'Question text not available'}</p>
+                                          {/* Always show question type for clarity */}
+                                          <div className="text-xs text-gray-500 mt-1">
+                                            Type: {question.type.replace('_', ' ')}
+                                          </div>
                                           {question.options && question.options.length > 0 && (
                                             <div className="mt-2 space-y-1">
                                               {question.options.map((option, optionIndex) => (

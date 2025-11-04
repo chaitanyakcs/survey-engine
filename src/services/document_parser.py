@@ -30,24 +30,54 @@ class DocumentParser:
     """Service for parsing DOCX documents and converting to survey JSON."""
 
     def __init__(self, db_session: Optional[Any] = None, rfq_parsing_manager: Optional[Any] = None):
-        if not settings.replicate_api_token:
-            error_info = get_api_configuration_error()
-            raise UserFriendlyError(
-                message=error_info["message"],
-                technical_details="REPLICATE_API_TOKEN environment variable is not set",
-                action_required="Configure AI service provider (Replicate or OpenAI)"
-            )
-        self.replicate_client = replicate.Client(api_token=settings.replicate_api_token)
         self.model = self._get_rfq_parsing_model(db_session)  # Get model from RFQ parsing settings
         logger.info(f"🚀 [DocumentParser] Initialized with model: {self.model}")
         logger.info(f"🚀 [DocumentParser] Model source: DocumentParser.__init__")
+        
+        # Initialize LLM provider
+        self.provider_name = self._get_llm_provider()
+        from src.services.llm_provider import create_llm_provider
+        try:
+            self.llm_provider = create_llm_provider(
+                provider=self.provider_name,
+                model=self.model
+            )
+            logger.info(f"✅ [DocumentParser] Initialized {self.provider_name} provider")
+        except Exception as e:
+            logger.error(f"❌ [DocumentParser] Failed to initialize {self.provider_name} provider: {e}")
+            error_info = get_api_configuration_error()
+            raise UserFriendlyError(
+                message=error_info["message"],
+                technical_details=str(e),
+                action_required="Configure AI service provider (Replicate or OpenAI)"
+            )
+        
         self.db_session = db_session
         self.rfq_parsing_manager = rfq_parsing_manager
 
+    def _get_llm_provider(self) -> str:
+        """Get LLM provider - default to replicate for RFQ parsing"""
+        # RFQ parsing defaults to replicate, but can be overridden via settings
+        try:
+            if self.db_session:
+                from src.services.settings_service import SettingsService
+                settings_service = SettingsService(self.db_session)
+                evaluation_settings = settings_service.get_evaluation_settings()
+                
+                if evaluation_settings and 'llm_provider' in evaluation_settings:
+                    provider = evaluation_settings['llm_provider']
+                    logger.debug(f"DocumentParser provider loaded from settings: {provider}")
+                    return provider
+            
+            return settings.llm_provider
+        except Exception as e:
+            logger.warning(f"⚠️ [DocumentParser] Failed to get provider from settings: {e}, using default")
+            return settings.llm_provider
+
     def _get_rfq_parsing_model(self, db_session: Optional[Any] = None) -> str:
         """Get RFQ parsing model from database settings with valid fallback"""
-        # Valid Replicate model for RFQ parsing (never use settings.py)
-        VALID_DEFAULT_MODEL = "openai/gpt-5"
+        # Use structured variant for better JSON output (handles control characters better)
+        VALID_DEFAULT_MODEL = "openai/gpt-5-structured"
         
         try:
             logger.info(f"🔍 [DocumentParser] Starting RFQ parsing model selection...")
@@ -298,7 +328,11 @@ UNKNOWN QUESTION TYPE HANDLING:
 - CRITICAL: If question type cannot be determined, use "instruction" instead of "unknown"
 - CRITICAL: Instructions are non-interactive text blocks that provide context or guidance
 - CRITICAL: Instructions should not have options, scales, or interactive elements
+- CRITICAL: ALWAYS preserve the complete instruction text - never truncate or hide content
+- CRITICAL: Include ALL instruction content, including technical programming notes, routing logic, and termination points
 - EXAMPLE: Text like "Please read the following information carefully" should be type "instruction"
+- EXAMPLE: Text like "IF ELIGIBLE RESPONDENT THEN CONTINUE, ELSE THANK AND TERMINATE" should be type "instruction"
+- EXAMPLE: Text like "SEC CALCULATION GRID: HOUSEHOLD INCOME (R5) x SCORE FOR HOUSEHOLD PROPERTIES (R7)" should be type "instruction"
 
 SECTION MAPPING GUIDANCE:
 - Section 1 (Sample Plan): Introduction text, study overview, recruitment criteria, quotas, confidentiality agreements
@@ -501,7 +535,7 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
             return original_question
 
     def _post_process_instruction(self, question: Dict[str, Any]) -> Dict[str, Any]:
-        """Clean instruction questions - hide technical/termination screens."""
+        """Clean instruction questions while preserving all content."""
         import copy
         import re
         
@@ -509,35 +543,39 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
         text = question.get('text', '')
         
         try:
-            # Flag technical instructions (not respondent-facing)
-            technical_keywords = [
-                'TERMINATING SCREEN',
-                'RESPONDENT TYPE',
-                'QUOTA',
-                'CLASSIFICATION',
-                'Thank & Terminate',
-                'PROGRAMMING NOTE',
-                'RANDOMIZATION:',
-                'Implementation:'
-            ]
+            # Always preserve instruction text - don't filter out technical instructions
+            # Instructions are important for survey programming and should be included
             
-            is_technical = any(keyword.lower() in text.lower() for keyword in technical_keywords)
-            
-            if is_technical:
-                question['label'] = question.get('label', '') or 'Technical_Note'
-                question['description'] = 'Programming instruction - not displayed to respondents'
-            
-            # Remove instruction markers
+            # Clean up common formatting issues but preserve content
             text = re.sub(r'\[TERMINATING SCREEN\]', '', text, flags=re.IGNORECASE)
             text = re.sub(r'\[Show to [^\]]+\]', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\[IF RESPONSE[^\]]*\]', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\[CAPTURE[^\]]*\]', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\[SELECT ONE[^\]]*\]', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\[ALLOW ONLY[^\]]*\]', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\[ANCHOR[^\]]*\]', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\[TERMINATE[^\]]*\]', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\[Thank & Terminate\]', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\[RECRUIT\]', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\[EXCLUSIVE\]', '', text, flags=re.IGNORECASE)
             
-            question['text'] = text.strip()
+            # Clean up extra whitespace
+            text = re.sub(r'\s+', ' ', text).strip()
             
-            logger.info(f"Successfully post-processed instruction question {question.get('id')}")
+            # Update the question text with cleaned version
+            question['text'] = text
+            
+            # Ensure instruction type is preserved
+            question['type'] = 'instruction'
+            
+            # Add helpful metadata for instruction questions
+            if not question.get('description'):
+                question['description'] = 'Survey programming instruction'
+            
             return question
             
         except Exception as e:
-            logger.error(f"Error post-processing instruction {question.get('id')}: {e}", exc_info=True)
+            logger.error(f"Error post-processing instruction question: {e}", exc_info=True)
             return original_question
 
     def _post_process_van_westendorp(self, question: Dict[str, Any]) -> Dict[str, Any]:
@@ -648,7 +686,7 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
         text = question.get('text', '')
         
         try:
-            # Remove programming instructions
+            # Remove programming instructions but preserve the actual question text
             text = re.sub(r'\[FOR US ONLY\][^]]*', '', text, flags=re.IGNORECASE)
             text = re.sub(r'\[FOR UK ONLY\][^]]*', '', text, flags=re.IGNORECASE)
             text = re.sub(r'\[FOR JP ONLY\][^]]*', '', text, flags=re.IGNORECASE)
@@ -658,6 +696,21 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
             
             # Clean up whitespace
             text = re.sub(r'\s+', ' ', text).strip()
+            
+            # If text is empty or missing, try to use label as fallback
+            if not text or not text.strip():
+                label = question.get('label', '')
+                if label and label.strip():
+                    # Convert label to readable format (e.g., "informed_consent" -> "Informed Consent")
+                    label_parts = label.replace('_', ' ').split()
+                    text = ' '.join(word.capitalize() for word in label_parts)
+                    logger.info(f"Using label '{label}' as question text for yes_no question {question.get('id')}")
+                elif question.get('id'):
+                    # Last resort: use question ID
+                    qid = str(question.get('id', '')).replace('_', ' ').replace('-', ' ')
+                    text = ' '.join(word.capitalize() for word in qid.split())
+                    logger.info(f"Using question ID as fallback text for yes_no question {question.get('id')}")
+            
             question['text'] = text
             
             # Ensure standard yes/no options if not present
@@ -672,7 +725,7 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                         cleaned_options.append(clean_option)
                 question['options'] = cleaned_options
             
-            logger.info(f"Successfully post-processed yes_no question {question.get('id')}")
+            logger.info(f"Successfully post-processed yes_no question {question.get('id')} with text: {text[:50]}...")
             return question
             
         except Exception as e:
@@ -753,7 +806,7 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                         audit_service=audit_service,
                         interaction_id=interaction_id,
                         model_name=self.model,
-                        model_provider="replicate",
+                        model_provider=self.provider_name,
                         purpose="document_parsing",
                         input_prompt=prompt,
                         sub_purpose="survey_conversion",
@@ -779,15 +832,27 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                                 estimated_time=35)
                         
                         start_time = time.time()
-                        output = await self.replicate_client.async_run(
-                            self.model,
-                            input={
-                                "prompt": prompt,
-                                "temperature": 0.1,
-                                "max_tokens": 2000,  # Reduced from 4000
-                                "system_prompt": "Parse document to JSON. Return ONLY valid JSON with this structure:\n\n{\n  \"raw_output\": {\n    \"document_text\": \"[original text]\",\n    \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n    \"source_file\": null,\n    \"error\": null\n  },\n  \"final_output\": {\n    \"title\": \"[survey title]\",\n    \"description\": \"[description or null]\",\n    \"metadata\": {\n      \"quality_score\": 0.9,\n      \"estimated_time\": 10,\n      \"methodology_tags\": [\"tag1\", \"tag2\"],\n      \"target_responses\": 100,\n      \"source_file\": null\n    },\n    \"sections\": [\n      {\n        \"id\": 1,\n        \"title\": \"[section title]\",\n        \"description\": \"[section description or null]\",\n        \"introText\": {\n          \"text\": \"[intro text or null]\"\n        },\n        \"textBlocks\": [\n          {\n            \"text\": \"[additional text block or null]\"\n          }\n        ],\n        \"questions\": [\n          {\n            \"id\": \"q1\",\n            \"text\": \"[question text]\",\n            \"type\": \"multiple_choice|single_choice|text|scale|rating|yes_no|dropdown|matrix|ranking|numeric|date|boolean|file_upload|van_westendorp|gabor_granger|conjoint|maxdiff|instruction|display_only|unknown\",\n            \"options\": [\"option1\", \"option2\"],\n            \"required\": true,\n            \"validation\": \"single_select\",\n            \"methodology\": \"van_westendorp|gabor_granger|conjoint|maxdiff|null\",\n            \"routing\": null,\n            \"order\": 1\n          }\n        ]\n      }\n    ],\n    \"parsing_issues\": []\n  }\n}\n\nCRITICAL RULES:\n- MUST use sections format with 7 sections (Sample Plan, Screener, Brand/Product Awareness, Concept Exposure, Methodology, Additional Questions, Programmer Instructions)\n- DO NOT use flat 'questions' array - use 'sections' array instead\n- Each section has id (1-7), title, description, introText, textBlocks, and questions array\n- Use sequential question IDs: q1, q2, q3...\n- For choice questions: put options in \"options\" array\n- For scales: use \"type\":\"scale\" with scale labels in \"options\"\n- For matrices: use \"type\":\"matrix\"\n- Set \"required\": true for most questions\n- Use \"instruction\" type for non-interactive text blocks\n- Return ONLY JSON, no explanations\n\nMethodology Detection:\n- Van Westendorp: \"too cheap\", \"too expensive\" price questions\n- Gabor-Granger: Sequential price acceptance\n- Conjoint: Choice scenarios with attributes\n- MaxDiff: \"Most/Least important\" selections\n- NPS: \"How likely to recommend\" questions"
-                            }
+                        system_prompt_text = "Parse document to JSON. Return ONLY valid JSON with this structure:\n\n{\n  \"raw_output\": {\n    \"document_text\": \"[original text]\",\n    \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n    \"source_file\": null,\n    \"error\": null\n  },\n  \"final_output\": {\n    \"title\": \"[survey title]\",\n    \"description\": \"[description or null]\",\n    \"metadata\": {\n      \"quality_score\": 0.9,\n      \"estimated_time\": 10,\n      \"methodology_tags\": [\"tag1\", \"tag2\"],\n      \"target_responses\": 100,\n      \"source_file\": null\n    },\n    \"sections\": [\n      {\n        \"id\": 1,\n        \"title\": \"[section title]\",\n        \"description\": \"[section description or null]\",\n        \"introText\": {\n          \"text\": \"[intro text or null]\"\n        },\n        \"textBlocks\": [\n          {\n            \"text\": \"[additional text block or null]\"\n          }\n        ],\n        \"questions\": [\n          {\n            \"id\": \"q1\",\n            \"text\": \"[question text]\",\n            \"type\": \"multiple_choice|single_choice|text|scale|rating|yes_no|dropdown|matrix|ranking|numeric|date|boolean|file_upload|van_westendorp|gabor_granger|conjoint|maxdiff|instruction|display_only|unknown\",\n            \"options\": [\"option1\", \"option2\"],\n            \"required\": true,\n            \"validation\": \"single_select\",\n            \"methodology\": \"van_westendorp|gabor_granger|conjoint|maxdiff|null\",\n            \"routing\": null,\n            \"order\": 1\n          }\n        ]\n      }\n    ],\n    \"parsing_issues\": []\n  }\n}\n\nCRITICAL RULES:\n- MUST use sections format with 7 sections (Sample Plan, Screener, Brand/Product Awareness, Concept Exposure, Methodology, Additional Questions, Programmer Instructions)\n- DO NOT use flat 'questions' array - use 'sections' array instead\n- Each section has id (1-7), title, description, introText, textBlocks, and questions array\n- Use sequential question IDs: q1, q2, q3...\n- For choice questions: put options in \"options\" array\n- For scales: use \"type\":\"scale\" with scale labels in \"options\"\n- For matrices: use \"type\":\"matrix\"\n- Set \"required\": true for most questions\n- Use \"instruction\" type for non-interactive text blocks\n- Return ONLY JSON, no explanations\n\nMethodology Detection:\n- Van Westendorp: \"too cheap\", \"too expensive\" price questions\n- Gabor-Granger: Sequential price acceptance\n- Conjoint: Choice scenarios with attributes\n- MaxDiff: \"Most/Least important\" selections\n- NPS: \"How likely to recommend\" questions"
+                        
+                        # Prepare response format based on provider
+                        response_format = None
+                        if self.provider_name == "openai":
+                            from src.utils.json_generation_utils import JSONGenerationUtils
+                            schema = JSONGenerationUtils.get_rfq_parsing_schema()
+                            response_format = {"json_schema": schema}
+                        else:
+                            response_format = {"type": "json_object"}
+                        
+                        result = await self.llm_provider.generate(
+                            prompt=prompt,
+                            system_prompt=system_prompt_text,
+                            model=self.model,
+                            temperature=0.1,
+                            max_tokens=2000,
+                            response_format=response_format
                         )
+                        
+                        output = result["output"]
                         
                         # Process the output and set audit context
                         response_time_ms = int((time.time() - start_time) * 1000)
@@ -808,42 +873,63 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                         )
                 else:
                     # Fallback without auditing
-                    logger.info(f"🚀 [Document Parser] Calling Replicate API without auditing")
+                    logger.info(f"🚀 [Document Parser] Calling {self.provider_name} API without auditing")
                     logger.info(f"🎯 [Document Parser] Using model: {self.model}")
                     logger.info(f"🎯 [Document Parser] Model source: DocumentParser._parse_document_with_llm (non-audited)")
-                    output = await self.replicate_client.async_run(
-                        self.model,
-                        input={
-                        "prompt": prompt,
-                        "temperature": 0.1,
-                        "max_tokens": 2000,  # Reduced from 4000
-                        "system_prompt": "Parse document to JSON. Return ONLY valid JSON with this structure:\n\n{\n  \"raw_output\": {\n    \"document_text\": \"[original text]\",\n    \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n    \"source_file\": null,\n    \"error\": null\n  },\n  \"final_output\": {\n    \"title\": \"[survey title]\",\n    \"description\": \"[description or null]\",\n    \"metadata\": {\n      \"quality_score\": 0.9,\n      \"estimated_time\": 10,\n      \"methodology_tags\": [\"tag1\", \"tag2\"],\n      \"target_responses\": 100,\n      \"source_file\": null\n    },\n    \"sections\": [\n      {\n        \"id\": 1,\n        \"title\": \"[section title]\",\n        \"description\": \"[section description or null]\",\n        \"introText\": {\n          \"text\": \"[intro text or null]\"\n        },\n        \"textBlocks\": [\n          {\n            \"text\": \"[additional text block or null]\"\n          }\n        ],\n        \"questions\": [\n          {\n            \"id\": \"q1\",\n            \"text\": \"[question text]\",\n            \"type\": \"multiple_choice|single_choice|text|scale|rating|yes_no|dropdown|matrix|ranking|numeric|date|boolean|file_upload|van_westendorp|gabor_granger|conjoint|maxdiff|instruction|display_only|unknown\",\n            \"options\": [\"option1\", \"option2\"],\n            \"required\": true,\n            \"validation\": \"single_select\",\n            \"methodology\": \"van_westendorp|gabor_granger|conjoint|maxdiff|null\",\n            \"routing\": null,\n            \"order\": 1\n          }\n        ]\n      }\n    ],\n    \"parsing_issues\": []\n  }\n}\n\nCRITICAL RULES:\n- MUST use sections format with 7 sections (Sample Plan, Screener, Brand/Product Awareness, Concept Exposure, Methodology, Additional Questions, Programmer Instructions)\n- DO NOT use flat 'questions' array - use 'sections' array instead\n- Each section has id (1-7), title, description, introText, textBlocks, and questions array\n- Use sequential question IDs: q1, q2, q3...\n- For choice questions: put options in \"options\" array\n- For scales: use \"type\":\"scale\" with scale labels in \"options\"\n- For matrices: use \"type\":\"matrix\"\n- Set \"required\": true for most questions\n- Use \"instruction\" type for non-interactive text blocks\n- Return ONLY JSON, no explanations\n\nMethodology Detection:\n- Van Westendorp: \"too cheap\", \"too expensive\" price questions\n- Gabor-Granger: Sequential price acceptance\n- Conjoint: Choice scenarios with attributes\n- MaxDiff: \"Most/Least important\" selections\n- NPS: \"How likely to recommend\" questions"
-                    }
-                )
+                    system_prompt_text = "Parse document to JSON. Return ONLY valid JSON with this structure:\n\n{\n  \"raw_output\": {\n    \"document_text\": \"[original text]\",\n    \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n    \"source_file\": null,\n    \"error\": null\n  },\n  \"final_output\": {\n    \"title\": \"[survey title]\",\n    \"description\": \"[description or null]\",\n    \"metadata\": {\n      \"quality_score\": 0.9,\n      \"estimated_time\": 10,\n      \"methodology_tags\": [\"tag1\", \"tag2\"],\n      \"target_responses\": 100,\n      \"source_file\": null\n    },\n    \"sections\": [\n      {\n        \"id\": 1,\n        \"title\": \"[section title]\",\n        \"description\": \"[section description or null]\",\n        \"introText\": {\n          \"text\": \"[intro text or null]\"\n        },\n        \"textBlocks\": [\n          {\n            \"text\": \"[additional text block or null]\"\n          }\n        ],\n        \"questions\": [\n          {\n            \"id\": \"q1\",\n            \"text\": \"[question text]\",\n            \"type\": \"multiple_choice|single_choice|text|scale|rating|yes_no|dropdown|matrix|ranking|numeric|date|boolean|file_upload|van_westendorp|gabor_granger|conjoint|maxdiff|instruction|display_only|unknown\",\n            \"options\": [\"option1\", \"option2\"],\n            \"required\": true,\n            \"validation\": \"single_select\",\n            \"methodology\": \"van_westendorp|gabor_granger|conjoint|maxdiff|null\",\n            \"routing\": null,\n            \"order\": 1\n          }\n        ]\n      }\n    ],\n    \"parsing_issues\": []\n  }\n}\n\nCRITICAL RULES:\n- MUST use sections format with 7 sections (Sample Plan, Screener, Brand/Product Awareness, Concept Exposure, Methodology, Additional Questions, Programmer Instructions)\n- DO NOT use flat 'questions' array - use 'sections' array instead\n- Each section has id (1-7), title, description, introText, textBlocks, and questions array\n- Use sequential question IDs: q1, q2, q3...\n- For choice questions: put options in \"options\" array\n- For scales: use \"type\":\"scale\" with scale labels in \"options\"\n- For matrices: use \"type\":\"matrix\"\n- Set \"required\": true for most questions\n- Use \"instruction\" type for non-interactive text blocks\n- Return ONLY JSON, no explanations\n\nMethodology Detection:\n- Van Westendorp: \"too cheap\", \"too expensive\" price questions\n- Gabor-Granger: Sequential price acceptance\n- Conjoint: Choice scenarios with attributes\n- MaxDiff: \"Most/Least important\" selections\n- NPS: \"How likely to recommend\" questions"
+                    
+                    # Prepare response format based on provider
+                    response_format = None
+                    if self.provider_name == "openai":
+                        from src.utils.json_generation_utils import JSONGenerationUtils
+                        schema = JSONGenerationUtils.get_rfq_parsing_schema()
+                        response_format = {"json_schema": schema}
+                    else:
+                        response_format = {"type": "json_object"}
+                    
+                    result = await self.llm_provider.generate(
+                        prompt=prompt,
+                        system_prompt=system_prompt_text,
+                        model=self.model,
+                        temperature=0.1,
+                        max_tokens=2000,
+                        response_format=response_format
+                    )
+                    
+                    output = result["output"]
             except Exception as audit_error:
                 # If audit fails, log the error but continue with core functionality
                 logger.warning(f"⚠️ [Document Parser] Audit system failed, continuing without audit: {str(audit_error)}")
-                logger.info(f"🚀 [Document Parser] Calling Replicate API without auditing (audit failed)")
-                output = await self.replicate_client.async_run(
-                    self.model,
-                    input={
-                        "prompt": prompt,
-                        "temperature": 0.1,
-                        "max_tokens": 2000,  # Reduced from 4000
-                        "system_prompt": "Parse document to JSON. Return ONLY valid JSON with this structure:\n\n{\n  \"raw_output\": {\n    \"document_text\": \"[original text]\",\n    \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n    \"source_file\": null,\n    \"error\": null\n  },\n  \"final_output\": {\n    \"title\": \"[survey title]\",\n    \"description\": \"[description or null]\",\n    \"metadata\": {\n      \"quality_score\": 0.9,\n      \"estimated_time\": 10,\n      \"methodology_tags\": [\"tag1\", \"tag2\"],\n      \"target_responses\": 100,\n      \"source_file\": null\n    },\n    \"sections\": [\n      {\n        \"id\": 1,\n        \"title\": \"[section title]\",\n        \"description\": \"[section description or null]\",\n        \"introText\": {\n          \"text\": \"[intro text or null]\"\n        },\n        \"textBlocks\": [\n          {\n            \"text\": \"[additional text block or null]\"\n          }\n        ],\n        \"questions\": [\n          {\n            \"id\": \"q1\",\n            \"text\": \"[question text]\",\n            \"type\": \"multiple_choice|single_choice|text|scale|rating|yes_no|dropdown|matrix|ranking|numeric|date|boolean|file_upload|van_westendorp|gabor_granger|conjoint|maxdiff|instruction|display_only|unknown\",\n            \"options\": [\"option1\", \"option2\"],\n            \"required\": true,\n            \"validation\": \"single_select\",\n            \"methodology\": \"van_westendorp|gabor_granger|conjoint|maxdiff|null\",\n            \"routing\": null,\n            \"order\": 1\n          }\n        ]\n      }\n    ],\n    \"parsing_issues\": []\n  }\n}\n\nCRITICAL RULES:\n- MUST use sections format with 7 sections (Sample Plan, Screener, Brand/Product Awareness, Concept Exposure, Methodology, Additional Questions, Programmer Instructions)\n- DO NOT use flat 'questions' array - use 'sections' array instead\n- Each section has id (1-7), title, description, introText, textBlocks, and questions array\n- Use sequential question IDs: q1, q2, q3...\n- For choice questions: put options in \"options\" array\n- For scales: use \"type\":\"scale\" with scale labels in \"options\"\n- For matrices: use \"type\":\"matrix\"\n- Set \"required\": true for most questions\n- Use \"instruction\" type for non-interactive text blocks\n- Return ONLY JSON, no explanations\n\nMethodology Detection:\n- Van Westendorp: \"too cheap\", \"too expensive\" price questions\n- Gabor-Granger: Sequential price acceptance\n- Conjoint: Choice scenarios with attributes\n- MaxDiff: \"Most/Least important\" selections\n- NPS: \"How likely to recommend\" questions"
-                    }
+                logger.info(f"🚀 [Document Parser] Calling {self.provider_name} API without auditing (audit failed)")
+                system_prompt_text = "Parse document to JSON. Return ONLY valid JSON with this structure:\n\n{\n  \"raw_output\": {\n    \"document_text\": \"[original text]\",\n    \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n    \"source_file\": null,\n    \"error\": null\n  },\n  \"final_output\": {\n    \"title\": \"[survey title]\",\n    \"description\": \"[description or null]\",\n    \"metadata\": {\n      \"quality_score\": 0.9,\n      \"estimated_time\": 10,\n      \"methodology_tags\": [\"tag1\", \"tag2\"],\n      \"target_responses\": 100,\n      \"source_file\": null\n    },\n    \"sections\": [\n      {\n        \"id\": 1,\n        \"title\": \"[section title]\",\n        \"description\": \"[section description or null]\",\n        \"introText\": {\n          \"text\": \"[intro text or null]\"\n        },\n        \"textBlocks\": [\n          {\n            \"text\": \"[additional text block or null]\"\n          }\n        ],\n        \"questions\": [\n          {\n            \"id\": \"q1\",\n            \"text\": \"[question text]\",\n            \"type\": \"multiple_choice|single_choice|text|scale|rating|yes_no|dropdown|matrix|ranking|numeric|date|boolean|file_upload|van_westendorp|gabor_granger|conjoint|maxdiff|instruction|display_only|unknown\",\n            \"options\": [\"option1\", \"option2\"],\n            \"required\": true,\n            \"validation\": \"single_select\",\n            \"methodology\": \"van_westendorp|gabor_granger|conjoint|maxdiff|null\",\n            \"routing\": null,\n            \"order\": 1\n          }\n        ]\n      }\n    ],\n    \"parsing_issues\": []\n  }\n}\n\nCRITICAL RULES:\n- MUST use sections format with 7 sections (Sample Plan, Screener, Brand/Product Awareness, Concept Exposure, Methodology, Additional Questions, Programmer Instructions)\n- DO NOT use flat 'questions' array - use 'sections' array instead\n- Each section has id (1-7), title, description, introText, textBlocks, and questions array\n- Use sequential question IDs: q1, q2, q3...\n- For choice questions: put options in \"options\" array\n- For scales: use \"type\":\"scale\" with scale labels in \"options\"\n- For matrices: use \"type\":\"matrix\"\n- Set \"required\": true for most questions\n- Use \"instruction\" type for non-interactive text blocks\n- Return ONLY JSON, no explanations\n\nMethodology Detection:\n- Van Westendorp: \"too cheap\", \"too expensive\" price questions\n- Gabor-Granger: Sequential price acceptance\n- Conjoint: Choice scenarios with attributes\n- MaxDiff: \"Most/Least important\" selections\n- NPS: \"How likely to recommend\" questions"
+                
+                # Prepare response format based on provider
+                response_format = None
+                if self.provider_name == "openai":
+                    from src.utils.json_generation_utils import JSONGenerationUtils
+                    schema = JSONGenerationUtils.get_rfq_parsing_schema()
+                    response_format = {"json_schema": schema}
+                else:
+                    response_format = {"type": "json_object"}
+                
+                result = await self.llm_provider.generate(
+                    prompt=prompt,
+                    system_prompt=system_prompt_text,
+                    model=self.model,
+                    temperature=0.1,
+                    max_tokens=2000,
+                    response_format=response_format
                 )
+                
+                output = result["output"]
             
-            # Replicate returns a generator, join the output
+            # Process LLM response
             logger.info(f"📥 [Document Parser] Processing LLM response")
             logger.debug(f"📥 [Document Parser] Output type: {type(output)}")
             logger.debug(f"📥 [Document Parser] Output value: {output}")
             
-            # Handle different output types from Replicate
-            if hasattr(output, '__iter__') and not isinstance(output, str):
-                json_content = "".join(str(chunk) for chunk in output).strip()
-            else:
-                json_content = str(output).strip()
+            # Handle output from provider
+            json_content = str(output).strip()
             
             # CRITICAL FIX: Handle character array output from LLM
             # Sometimes the LLM returns a character array instead of a JSON string
@@ -926,7 +1012,7 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
                             "json_content_length": len(json_content),
                         },
                         model_name=self.model,
-                        model_provider="replicate",
+                        model_provider=self.provider_name,
                         purpose="document_parsing",
                         input_prompt=prompt[:1000] if len(prompt) > 1000 else prompt,
                     )
@@ -1540,6 +1626,14 @@ IMPORTANT: Return ONLY valid JSON that matches the schema exactly. No explanatio
 
 CRITICAL: You MUST return ONLY valid JSON. No explanations, no markdown, no backticks. Do NOT output character arrays or individual characters separated by spaces. Return a complete JSON string that can be parsed by json.loads().
 
+CRITICAL JSON FORMATTING REQUIREMENTS:
+- Return ONLY valid JSON - no extra text, no explanations
+- Do NOT include control characters (newlines, tabs, or other special characters) inside string values
+- Replace any newlines or control characters in text with spaces
+- Ensure all string values are properly escaped
+- The JSON must be parseable by json.loads() without errors
+- Do NOT split JSON across multiple lines in a way that breaks parsing
+
 DOCUMENT TEXT:
 {document_text}
 
@@ -1550,61 +1644,58 @@ CRITICAL FIELDS (highest priority - extract first):
 
 BUSINESS CONTEXT FIELDS (Critical):
 3. company_product_background - Company background, product context, business overview
-4. business_problem - What business challenge or problem needs to be solved
-5. business_objective - What the business wants to achieve from this research
-6. stakeholder_requirements - Key stakeholder needs and requirements
-7. decision_criteria - What defines success for this research
-8. budget_range - Budget constraints (under_10k, 10k_50k, 50k_100k, 100k_plus)
-9. timeline_constraints - Timeline requirements (rush, standard, flexible)
+4. business_problem_and_objective - MERGE business problem AND business objective into ONE field. Combine: "What business challenge needs to be addressed" + "What the business wants to achieve from this research"
+5. sample_requirements - Consumer/sample type requirements (demographics, quotas, target segments). Previously called stakeholder_requirements.
+6. budget_range - Budget constraints (under_10k, 10k_25k, 25k_50k, 50k_100k, over_100k)
+7. timeline_constraints - Timeline requirements (urgent_1_week, fast_2_weeks, standard_4_weeks, extended_8_weeks, flexible)
 
 RESEARCH OBJECTIVES FIELDS (High Priority):
-10. research_audience - Target audience, demographics, respondent segments
-11. success_criteria - Desired outcome and success criteria
-12. key_research_questions - Key research questions and considerations (as array)
-13. success_metrics - How research success will be measured
-14. validation_requirements - What validation is needed
-15. measurement_approach - Research approach (quantitative, qualitative, mixed_methods)
+8. research_audience - Target audience, demographics, respondent segments
+9. success_criteria - Desired outcome and success criteria
+10. key_research_questions - Key research questions and considerations (as array)
+
+CONCEPT STIMULI (High Priority - if applicable):
+11. concept_stimuli - Array of specific products/concepts to be evaluated. Format: array of objects with "name" and "description" fields
+   - Extract if document mentions specific prototypes, concepts, products, or variants to test
+   - Example: "three vodka prototypes", "Product A/B/C", "Concept 1, 2, 3"
+   - Format example: [{{"name": "Product A", "description": "..."}}, {{"name": "Product B", "description": "..."}}]
 
 ADVANCED CLASSIFICATION FIELDS (High Priority):
-16. industry_classification - Industry type (free text - extract from company background, product context)
-17. respondent_classification - Target respondent type (free text - extract from research audience, demographics)
-18. methodology_tags - Methodology tags and labels (as array)
+12. industry_classification - Industry type (free text - extract from company background, product context)
+13. respondent_classification - Target respondent type (free text - extract from research audience, demographics)
+14. methodology_tags - Methodology tags and labels (as array)
 
 METHODOLOGY FIELDS (High Priority):
-19. primary_method - Research methodology (van_westendorp, gabor_granger, conjoint, basic_survey)
-20. stimuli_details - Concept details, price ranges, stimuli information
-21. methodology_requirements - Additional methodology notes and requirements
-22. complexity_level - Research complexity (simple, standard, advanced)
-23. required_methodologies - Specific methodologies required (as array)
-24. sample_size_target - Target number of respondents
+15. primary_method - Research methodology (van_westendorp, gabor_granger, conjoint, basic_survey)
+16. stimuli_details - Concept details, price ranges, stimuli information
 
 SURVEY REQUIREMENTS FIELDS (Medium Priority):
-25. sample_plan - Sample structure, LOI, recruiting criteria
-26. must_have_questions - Must-have questions per respondent type (as array)
-27. screener_requirements - Screener and respondent qualification requirements, tagging rules, piping logic
-28. completion_time_target - Target completion time (5_10_min, 10_15_min, 15_25_min, 25_plus_min)
-29. device_compatibility - Device requirements (mobile_first, desktop_first, both)
-30. accessibility_requirements - Accessibility needs (standard, enhanced, full_compliance)
-31. data_quality_requirements - Data quality standards (basic, standard, premium)
+17. sample_plan - Sample structure, LOI, recruiting criteria, target sample size
+18. screener_requirements - Screener and respondent qualification requirements, tagging rules, piping logic
+19. completion_time_target - Target completion time (under_5min, 5_10min, 10_15min, 15_20min, 20_30min, over_30min)
+20. device_compatibility - Device requirements (mobile_only, desktop_only, mobile_first, desktop_first, all_devices)
 
 SURVEY STRUCTURE FIELDS (Medium Priority):
-32. qnr_sections_detected - Required QNR sections (as array)
-33. text_requirements_detected - Required text introductions (as array)
+21. qnr_sections_detected - Required QNR sections (as array)
+22. text_requirements_detected - Required text introductions (as array)
 
 SURVEY LOGIC FIELDS (Medium Priority):
-34. requires_piping_logic - Whether piping/carry-forward logic is needed (boolean)
-35. requires_sampling_logic - Whether sampling/randomization logic is needed (boolean)
-36. requires_screener_logic - Whether screener/qualification logic is needed (boolean)
-37. custom_logic_requirements - Custom logic requirements and specifications
+23. requires_piping_logic - Whether piping/carry-forward logic is needed (boolean)
+24. requires_sampling_logic - Whether sampling/randomization logic is needed (boolean)
+25. requires_screener_logic - Whether screener/qualification logic is needed (boolean)
+26. custom_logic_requirements - Custom logic requirements and specifications
 
 BRAND USAGE FIELDS (Medium Priority):
-38. brand_recall_required - Whether brand recall questions are needed (boolean)
-39. brand_awareness_funnel - Whether brand awareness funnel is needed (boolean)
-40. brand_product_satisfaction - Whether brand/product satisfaction is needed (boolean)
-41. usage_frequency_tracking - Whether usage frequency tracking is needed (boolean)
+27. brand_recall_required - Whether brand recall questions are needed (boolean)
+28. brand_awareness_funnel - Whether brand awareness funnel is needed (boolean)
+29. brand_product_satisfaction - Whether brand/product satisfaction is needed (boolean)
+30. usage_frequency_tracking - Whether usage frequency tracking is needed (boolean)
 
 RULES AND DEFINITIONS FIELDS (Medium Priority):
-42. rules_and_definitions - Rules, definitions, jargon feed, special terms, terminology requirements
+31. rules_and_definitions - Rules, definitions, jargon feed, special terms, terminology requirements
+
+UNMAPPED_CONTEXT FIELD (Medium Priority):
+32. unmapped_context - Any additional context that doesn't fit into structured fields (including deprecated field information). See UNMAPPED_CONTEXT FIELD instructions above.
 
 SIMPLIFIED FIELD-SPECIFIC EXTRACTION GUIDANCE:
 
@@ -1625,25 +1716,15 @@ COMPANY_PRODUCT_BACKGROUND (Critical):
 - Patterns: "Company background", "Business context", "About [company]"
 - Strategy: Extract company and product context paragraphs
 
-BUSINESS_PROBLEM (Critical):
-- Keywords: "problem", "challenge", "issue", "need", "goal"
-- Patterns: "Business challenge", "We need to", "The problem is"
-- Strategy: Extract problem statement sentences
+BUSINESS_PROBLEM_AND_OBJECTIVE (Critical - MERGED FIELD):
+- Keywords: "problem", "challenge", "issue", "need", "goal", "objective", "achieve", "outcome", "want to"
+- Patterns: "Business challenge", "We need to", "The problem is", "Business objective", "We want to achieve", "The goal is"
+- Strategy: Extract BOTH problem statements AND objective statements, then COMBINE into one field. Format: "Problem: [problem text]. Objective: [objective text]"
 
-BUSINESS_OBJECTIVE (Critical):
-- Keywords: "objective", "goal", "achieve", "outcome", "want to"
-- Patterns: "Business objective", "We want to achieve", "The goal is"
-- Strategy: Extract objective statements
-
-STAKEHOLDER_REQUIREMENTS (Critical):
-- Keywords: "stakeholder", "decision maker", "key users", "requirements"
-- Patterns: "Stakeholder needs", "Decision maker requirements", "Key user needs"
-- Strategy: Extract stakeholder and decision maker requirements
-
-DECISION_CRITERIA (Critical):
-- Keywords: "success", "criteria", "measure", "evaluate", "judge"
-- Patterns: "Success criteria", "How we measure success", "Decision criteria"
-- Strategy: Extract success measurement criteria
+SAMPLE_REQUIREMENTS (Critical - RENAMED from stakeholder_requirements):
+- Keywords: "consumer", "sample", "respondent", "demographics", "target", "qualifications", "quotas", "segments"
+- Patterns: "Target sample", "Respondent requirements", "Consumer type", "Sample demographics", "Qualification criteria"
+- Strategy: Extract consumer/sample type requirements, demographics, quotas, and target segments
 
 BUDGET_RANGE (Critical):
 - Keywords: "budget", "cost", "price", "under", "less than", "more than"
@@ -1850,27 +1931,16 @@ BRAND_USAGE_REQUIREMENTS (Medium):
 - usage_frequency_tracking: Keywords: "how often", "frequency", "usage", "habits", "occasions"
 - Strategy: Detect brand/product research focus
 
-ENHANCED BUSINESS CONTEXT (Medium):
-- stakeholder_requirements: Keywords: "stakeholders", "requirements", "needs", "expectations"
-- decision_criteria: Keywords: "criteria", "decision", "evaluate", "success metrics"
+SIMPLIFIED BUSINESS CONTEXT (Medium):
+- sample_requirements: Keywords: "consumer", "sample", "respondent", "demographics", "target", "qualifications", "quotas", "segments"
 - budget_range: Keywords: "budget", "cost", "investment", "under", "over", "$", "k", "million"
 - timeline_constraints: Keywords: "urgent", "deadline", "timeline", "rush", "flexible", "standard"
 
-ENHANCED RESEARCH OBJECTIVES (Medium):
-- success_metrics: Keywords: "success", "metrics", "KPI", "measure", "target", "goal"
-- validation_requirements: Keywords: "validate", "verify", "confirm", "test", "proof"
-- measurement_approach: Keywords: "quantitative", "qualitative", "mixed", "approach", "method"
-
-ENHANCED METHODOLOGY (Medium):
-- complexity_level: Keywords: "simple", "standard", "complex", "advanced", "basic", "sophisticated"
-- required_methodologies: Keywords: Multiple methodology names in array format
-- sample_size_target: Keywords: "sample", "respondents", "participants", "n=", "size"
-
-ENHANCED SURVEY REQUIREMENTS (Medium):
+SIMPLIFIED SURVEY REQUIREMENTS (Medium):
 - completion_time_target: Keywords: "time", "minutes", "duration", "length", "LOI"
 - device_compatibility: Keywords: "mobile", "desktop", "tablet", "device", "responsive"
-- accessibility_requirements: Keywords: "accessibility", "ADA", "508", "WCAG", "accessible"
-- data_quality_requirements: Keywords: "quality", "validation", "attention", "checks"
+
+NOTE: Fields like decision_criteria, success_metrics, validation_requirements, measurement_approach, complexity_level, required_methodologies, sample_size_target, must_have_questions, accessibility_requirements, and data_quality_requirements have been REMOVED. If you find information about these deprecated fields, add them to the "unmapped_context" field instead.
 
 EXTRACTION STRATEGY:
 1. First scan for CRITICAL FIELDS using field-specific patterns above
@@ -1938,11 +2008,15 @@ INSTRUCTIONS:
    - reasoning: why this text maps to this field
    - priority: field priority level (critical/high/medium)
 
-UNMAPPED_CONTEXT FIELD:
-- Purpose: Capture any useful information that doesn't fit into structured fields but could help with survey generation
-- Examples: Methodology preferences, tone requirements, special constraints, stakeholder notes, cultural considerations, brand guidelines, specific terminology preferences
-- Strategy: Look for contextual details, preferences, or requirements that would influence survey design but aren't captured in the structured fields
-- Limit: Maximum 200 words, focus on actionable information for survey generation
+UNMAPPED_CONTEXT FIELD (IMPORTANT):
+- Purpose: Capture ANY useful information that doesn't fit into the simplified structured fields but could help with survey generation
+- DEPRECATED FIELDS TO CAPTURE HERE: If you find information about these fields, add them to unmapped_context:
+  * decision_criteria, success_metrics, validation_requirements, measurement_approach
+  * methodology_requirements, complexity_level, required_methodologies, sample_size_target
+  * must_have_questions, accessibility_requirements, data_quality_requirements
+- Other examples: Methodology preferences, tone requirements, special constraints, stakeholder notes (beyond sample_requirements), cultural considerations, brand guidelines, specific terminology preferences, geographic quotas, venue details, session requirements
+- Strategy: Look for contextual details, preferences, or requirements that would influence survey design but aren't captured in the structured fields. Include any information from deprecated fields.
+- Format: Concise paragraph or bullet points, maximum 300 words, focus on actionable information for survey generation
 - If no additional context exists, use empty string ""
 
 EXPECTED JSON STRUCTURE:
@@ -1994,35 +2068,19 @@ EXPECTED JSON STRUCTURE:
       "priority": "critical"
     }},
     {{
-      "field": "business_problem",
-      "value": "Need to prioritize which features to develop for next product release",
+      "field": "business_problem_and_objective",
+      "value": "Problem: Need to prioritize which features to develop for next product release. Objective: Determine which features to prioritize for next product release based on customer value and development effort.",
       "confidence": 0.85,
-      "source": "The challenge we face is determining which features...",
-      "reasoning": "Clear problem statement in business context",
+      "source": "The challenge we face is determining which features... Our objective is to determine feature priorities...",
+      "reasoning": "Merged problem and objective statements from business context",
       "priority": "critical"
     }},
     {{
-      "field": "business_objective",
-      "value": "Determine which features to prioritize for next product release",
-      "confidence": 0.85,
-      "source": "Our objective is to determine feature priorities...",
-      "reasoning": "Clear business objective statement",
-      "priority": "critical"
-    }},
-    {{
-      "field": "stakeholder_requirements",
-      "value": "Product managers, engineering team, and executive leadership need input",
+      "field": "sample_requirements",
+      "value": "Product managers, engineering team, and executive leadership need input. Small business owners, 25-50 years old, currently using productivity software.",
       "confidence": 0.75,
-      "source": "Stakeholders include product managers and engineering...",
-      "reasoning": "Stakeholder requirements mentioned in context",
-      "priority": "critical"
-    }},
-    {{
-      "field": "decision_criteria",
-      "value": "Feature prioritization based on customer value and development effort",
-      "confidence": 0.80,
-      "source": "We need to balance customer value with development effort...",
-      "reasoning": "Decision criteria implied from business context",
+      "source": "Stakeholders include product managers and engineering... Target participants: small business owners aged 25-50...",
+      "reasoning": "Consumer/sample type requirements from stakeholder and audience sections",
       "priority": "critical"
     }},
     {{
@@ -2066,27 +2124,19 @@ EXPECTED JSON STRUCTURE:
       "priority": "high"
     }},
     {{
-      "field": "success_metrics",
-      "value": "Feature importance scores, relative value rankings, and interaction effects",
+      "field": "concept_stimuli",
+      "value": [{{"name": "Product A", "description": "Basic feature set"}}, {{"name": "Product B", "description": "Enhanced feature set"}}],
       "confidence": 0.80,
-      "source": "Metrics: importance scores, rankings, interaction effects",
-      "reasoning": "Success metrics mentioned in context",
+      "source": "Three product variants to test: A, B, C...",
+      "reasoning": "Multiple prototypes/concepts mentioned for testing",
       "priority": "high"
     }},
     {{
-      "field": "validation_requirements",
-      "value": "Statistical significance testing and confidence intervals",
-      "confidence": 0.75,
-      "source": "Need statistical validation with confidence intervals",
-      "reasoning": "Validation requirements mentioned",
-      "priority": "high"
-    }},
-    {{
-      "field": "measurement_approach",
-      "value": "quantitative",
-      "confidence": 0.85,
-      "source": "Quantitative research approach using conjoint analysis",
-      "reasoning": "Quantitative approach explicitly mentioned",
+      "field": "rules_and_definitions",
+      "value": "Define 'feature importance' as customer preference ranking. 'Relative value' refers to trade-off analysis between features. 'Interaction effects' means how features influence each other.",
+      "confidence": 0.80,
+      "source": "Key terms: feature importance, relative value, interaction effects",
+      "reasoning": "Specialized terminology requiring clear definitions for survey consistency",
       "priority": "high"
     }},
     {{
@@ -2106,32 +2156,8 @@ EXPECTED JSON STRUCTURE:
       "priority": "high"
     }},
     {{
-      "field": "methodology_requirements",
-      "value": "Conjoint analysis with 16 choice tasks, randomized presentation",
-      "confidence": 0.80,
-      "source": "16 choice tasks with randomized presentation order",
-      "reasoning": "Methodology requirements specified",
-      "priority": "high"
-    }},
-    {{
-      "field": "complexity_level",
-      "value": "advanced",
-      "confidence": 0.75,
-      "source": "Complex conjoint analysis with multiple attributes",
-      "reasoning": "Advanced complexity due to conjoint methodology",
-      "priority": "high"
-    }},
-    {{
-      "field": "required_methodologies",
-      "value": ["conjoint", "choice_modeling", "statistical_analysis"],
-      "confidence": 0.85,
-      "source": "Conjoint analysis, choice modeling, and statistical analysis required",
-      "reasoning": "Required methodologies explicitly mentioned",
-      "priority": "high"
-    }},
-    {{
-      "field": "sample_size_target",
-      "value": "500",
+      "field": "sample_plan",
+      "value": "n=500; 50% urban, 50% suburban; age 25-55; balanced gender; monthly users of productivity software",
       "confidence": 0.90,
       "source": "Sample size: 500 respondents",
       "reasoning": "Sample size explicitly stated",
@@ -2143,14 +2169,6 @@ EXPECTED JSON STRUCTURE:
       "confidence": 0.85,
       "source": "Recruit 500 small business owners, 15-minute survey via panel",
       "reasoning": "Sample plan details provided",
-      "priority": "medium"
-    }},
-    {{
-      "field": "must_have_questions",
-      "value": ["Feature importance ranking", "Purchase intent", "Demographics"],
-      "confidence": 0.80,
-      "source": "Must include: feature ranking, purchase intent, demographics",
-      "reasoning": "Required questions mentioned",
       "priority": "medium"
     }},
     {{
@@ -2167,22 +2185,6 @@ EXPECTED JSON STRUCTURE:
       "confidence": 0.80,
       "source": "Survey should work on mobile and desktop",
       "reasoning": "Device compatibility requirements mentioned",
-      "priority": "medium"
-    }},
-    {{
-      "field": "accessibility_requirements",
-      "value": "standard",
-      "confidence": 0.75,
-      "source": "Standard accessibility compliance needed",
-      "reasoning": "Accessibility requirements mentioned",
-      "priority": "medium"
-    }},
-    {{
-      "field": "data_quality_requirements",
-      "value": "premium",
-      "confidence": 0.80,
-      "source": "High-quality data with validation checks required",
-      "reasoning": "Premium data quality requirements mentioned",
       "priority": "medium"
     }},
     {{
@@ -2321,11 +2323,11 @@ COMPLETE JSON EXAMPLE:
       "priority": "high"
     }},
     {{
-      "field": "sample_size_target",
-      "value": "800-1200",
+      "field": "sample_plan",
+      "value": "n=800-1200; current contact lens wearers (70%), age 18-45 with focus on 25-34, 60% female/40% male, middle to upper-middle income, monthly replacement users",
       "confidence": 0.97,
       "source": "Total Sample Size: 800-1,200 respondents",
-      "reasoning": "Explicit sample size range provided",
+      "reasoning": "Sample size and plan details provided",
       "priority": "high"
     }},
     {{
@@ -2345,7 +2347,7 @@ COMPLETE JSON EXAMPLE:
       "priority": "medium"
     }}
   ],
-  "unmapped_context": "Any additional useful information from the document that doesn't fit into the structured fields above but could be valuable for survey generation. This might include methodology preferences, tone requirements, special constraints, stakeholder notes, or other contextual details. Keep this concise (maximum 200 words) and focus on information that would help create better surveys."
+  "unmapped_context": "Any additional useful information from the document that doesn't fit into the structured fields above but could be valuable for survey generation. IMPORTANT: If you find information about deprecated fields (decision_criteria, success_metrics, validation_requirements, measurement_approach, methodology_requirements, complexity_level, required_methodologies, sample_size_target, must_have_questions, accessibility_requirements, data_quality_requirements), include them here. Also include: methodology preferences, tone requirements, special constraints, stakeholder notes (beyond sample_requirements), cultural considerations, geographic quotas, venue details, session requirements. Keep this concise (maximum 300 words) and focus on actionable information that would help create better surveys."
 }}
 
 REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or formatting.
@@ -2370,7 +2372,7 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
                         audit_service=audit_service,
                         interaction_id=interaction_id,
                         model_name=self.model,
-                        model_provider="replicate",
+                        model_provider=self.provider_name,
                         purpose="document_parsing",
                         input_prompt=prompt,
                         sub_purpose="rfq_extraction",
@@ -2385,30 +2387,37 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
                         },
                         tags=["document_parsing", "rfq_extraction"]
                     ) as audit_context:
-                        logger.info(f"🚀 [Document Parser] Calling Replicate API for RFQ extraction with auditing")
+                        logger.info(f"🚀 [Document Parser] Calling {self.provider_name} API for RFQ extraction with auditing")
                         logger.info(f"🎯 [Document Parser] Using model: {self.model}")
                         logger.info(f"🎯 [Document Parser] Model source: DocumentParser.extract_rfq_data (audited)")
                         start_time = time.time()
-                        output = await self.replicate_client.async_run(
-                            self.model,
-                            input={
-                                "prompt": prompt,
-                                "temperature": 0.1,
-                                "max_tokens": 4000,
-                                "system_prompt": "You are an expert at extracting structured information from research documents. You MUST return ONLY valid JSON that can be parsed by json.loads(). No explanations, no markdown, no backticks. Do NOT output character arrays or individual characters separated by spaces. The response must be a complete, valid JSON object matching the provided schema exactly."
-                            }
+                        system_prompt_text = "You are an expert at extracting structured information from research documents. You MUST return ONLY valid JSON that can be parsed by json.loads(). No explanations, no markdown, no backticks. Do NOT output character arrays or individual characters separated by spaces. The response must be a complete, valid JSON object matching the provided schema exactly."
+                        
+                        # Prepare response format based on provider
+                        response_format = None
+                        if self.provider_name == "openai":
+                            from src.utils.json_generation_utils import JSONGenerationUtils
+                            schema = JSONGenerationUtils.get_rfq_parsing_schema()
+                            response_format = {"json_schema": schema}
+                        else:
+                            response_format = {"type": "json_object"}
+                        
+                        result = await self.llm_provider.generate(
+                            prompt=prompt,
+                            system_prompt=system_prompt_text,
+                            model=self.model,
+                            temperature=0.1,
+                            max_tokens=4000,
+                            response_format=response_format
                         )
+                        
+                        output = result["output"]
                         
                         # Process the output and set audit context
                         response_time_ms = int((time.time() - start_time) * 1000)
                         
                         # Capture raw response immediately (unprocessed)
-                        if hasattr(output, '__iter__') and not isinstance(output, str):
-                            raw_response = "".join(str(chunk) for chunk in output)
-                        else:
-                            raw_response = str(output)
-                        
-                        # Process the output for further use
+                        raw_response = output
                         processed_output = raw_response.strip()
                         
                         # Set raw response (unprocessed) and processed output
@@ -2418,30 +2427,57 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
                         )
                 else:
                     # Fallback without auditing
-                    logger.info(f"🚀 [Document Parser] Calling Replicate API for RFQ extraction without auditing")
+                    logger.info(f"🚀 [Document Parser] Calling {self.provider_name} API for RFQ extraction without auditing")
                     logger.info(f"🎯 [Document Parser] Using model: {self.model}")
                     logger.info(f"🎯 [Document Parser] Model source: DocumentParser.extract_rfq_data (non-audited)")
-                    output = await self.replicate_client.async_run(
-                        self.model,
-                        input={
-                            "prompt": prompt,
-                            "temperature": 0.1,
-                            "max_tokens": 4000,
-                            "system_prompt": "You are an expert at extracting structured information from research documents. You MUST return ONLY valid JSON that can be parsed by json.loads(). No explanations, no markdown, no backticks. Do NOT output character arrays or individual characters separated by spaces. The response must be a complete, valid JSON object matching the provided schema exactly."
-                        }
+                    system_prompt_text = "You are an expert at extracting structured information from research documents. You MUST return ONLY valid JSON that can be parsed by json.loads(). No explanations, no markdown, no backticks. Do NOT output character arrays or individual characters separated by spaces. The response must be a complete, valid JSON object matching the provided schema exactly."
+                    
+                    # Prepare response format based on provider
+                    response_format = None
+                    if self.provider_name == "openai":
+                        from src.utils.json_generation_utils import JSONGenerationUtils
+                        schema = JSONGenerationUtils.get_rfq_parsing_schema()
+                        response_format = {"json_schema": schema}
+                    else:
+                        response_format = {"type": "json_object"}
+                    
+                    result = await self.llm_provider.generate(
+                        prompt=prompt,
+                        system_prompt=system_prompt_text,
+                        model=self.model,
+                        temperature=0.1,
+                        max_tokens=4000,
+                        response_format=response_format
                     )
+                    
+                    output = result["output"]
             except Exception as audit_error:
                 # If audit fails, log the error but continue with core functionality
                 logger.warning(f"⚠️ [Document Parser] Audit system failed, continuing without audit: {str(audit_error)}")
-                logger.info(f"🚀 [Document Parser] Calling Replicate API for RFQ extraction without auditing (audit failed)")
-                output = await self.replicate_client.async_run(
-                    self.model,
-                    input={
-                        "prompt": prompt,
-                        **get_json_optimized_hyperparameters("rfq_parsing"),
-                        "system_prompt": "You are an expert at extracting structured information from research documents. You MUST return ONLY valid JSON that can be parsed by json.loads(). No explanations, no markdown, no backticks. Do NOT output character arrays or individual characters separated by spaces. The response must be a complete, valid JSON object matching the provided schema exactly."
-                    }
+                logger.info(f"🚀 [Document Parser] Calling {self.provider_name} API for RFQ extraction without auditing (audit failed)")
+                system_prompt_text = "You are an expert at extracting structured information from research documents. You MUST return ONLY valid JSON that can be parsed by json.loads(). No explanations, no markdown, no backticks. Do NOT output character arrays or individual characters separated by spaces. The response must be a complete, valid JSON object matching the provided schema exactly."
+                
+                hyperparams = get_json_optimized_hyperparameters("rfq_parsing")
+                
+                # Prepare response format based on provider
+                response_format = None
+                if self.provider_name == "openai":
+                    from src.utils.json_generation_utils import JSONGenerationUtils
+                    schema = JSONGenerationUtils.get_rfq_parsing_schema()
+                    response_format = {"json_schema": schema}
+                else:
+                    response_format = {"type": "json_object"}
+                
+                result = await self.llm_provider.generate(
+                    prompt=prompt,
+                    system_prompt=system_prompt_text,
+                    model=self.model,
+                    temperature=hyperparams.get("temperature", 0.1),
+                    max_tokens=hyperparams.get("max_tokens", 4000),
+                    response_format=response_format
                 )
+                
+                output = result["output"]
 
             # Process the response - use raw response if available from audit context
             if hasattr(output, '__iter__') and not isinstance(output, str):
@@ -2638,7 +2674,13 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
         logger.info("🔧 [Document Parser] Trying gentle sanitization...")
         try:
             sanitized = self._gentle_sanitize_json(raw_text)
-            result = json.loads(sanitized)
+            # Use Python's json.loads with strict=False (Python 3.9+) to handle control chars
+            # If strict=False not available, fall back to regular loads
+            try:
+                result = json.loads(sanitized, strict=False)
+            except TypeError:
+                # Python < 3.9 doesn't support strict parameter
+                result = json.loads(sanitized)
             logger.info(f"✅ [Document Parser] Sanitized JSON parsing succeeded!")
             self._validate_and_fix_rfq_structure(result)
             return result
@@ -2688,15 +2730,92 @@ REMEMBER: Return ONLY the JSON structure above. No other text, explanations, or 
             raw_text = raw_text[:end_idx + 1]
             logger.info(f"🧹 [Document Parser] Removed text after last brace")
 
-        # Fix common JSON issues
-        sanitized = raw_text
-
+        # CRITICAL: Handle extreme case where JSON has spaces/newlines between EVERY character
+        # This happens when Replicate returns character-by-character streaming
+        # Strategy: Remove all whitespace between JSON structural characters, but preserve string content
+        
+        # First, remove control characters
+        sanitized = re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f]', '', raw_text)
+        
+        # Handle string values separately - preserve their content but clean whitespace
+        def clean_string(match):
+            """Clean whitespace within JSON string values"""
+            content = match.group(1)
+            # Remove all whitespace first to get clean content
+            content_no_ws = re.sub(r'\s+', '', content)
+            
+            # Heuristic to distinguish identifiers from text content:
+            # - Identifiers: have underscores OR are short pure alphanumeric
+            # - Text content: has punctuation, mixed case, or is longer descriptive text
+            has_underscore = '_' in content_no_ws
+            has_punctuation = bool(re.search(r'[^\w\s]', content_no_ws))  # Has non-word chars
+            has_mixed_case = bool(re.search(r'[a-z]', content_no_ws)) and bool(re.search(r'[A-Z]', content_no_ws))
+            is_pure_alnum = re.match(r'^[a-zA-Z0-9_]+$', content_no_ws)
+            is_short = len(content_no_ws) < 30
+            
+            # If it has underscores, it's definitely an identifier
+            # If it's short pure alphanumeric (no punctuation, no mixed case), it's likely an identifier
+            if has_underscore or (is_pure_alnum and is_short and not has_mixed_case):
+                # Looks like a field name/identifier - remove all whitespace
+                cleaned = content_no_ws
+            else:
+                # Looks like text content - need to handle character-by-character spacing
+                # Strategy: Multiple consecutive spaces indicate word boundaries
+                # Single spaces between characters should be removed
+                # First, mark word boundaries by replacing 2+ spaces with a special marker
+                temp = re.sub(r'\s{2,}', ' __WORD_BOUNDARY__ ', content)
+                # Remove all remaining whitespace (single spaces between chars)
+                temp = re.sub(r'\s+', '', temp)
+                # Restore word boundaries as single spaces
+                cleaned = re.sub(r'__WORD_BOUNDARY__', ' ', temp).strip()
+                # Add word boundaries before capital letters (if no space exists)
+                # This handles cases like "VodkaOne" -> "Vodka One"
+                # But be conservative: only if lowercase followed by uppercase
+                cleaned = re.sub(r'([a-z])([A-Z])', r'\1 \2', cleaned)
+                # Final cleanup: collapse any remaining multiple spaces
+                cleaned = re.sub(r' +', ' ', cleaned)
+            return f'"{cleaned}"'
+        
+        # Extract and clean string values first
+        sanitized = re.sub(r'"([^"]*)"', clean_string, sanitized)
+        
+        # Now remove ALL whitespace between JSON structural characters (outside strings)
+        # This handles the case where every character is separated by spaces/newlines
+        # We'll use a state machine approach: track if we're inside a string
+        
+        result = []
+        in_string = False
+        escape_next = False
+        
+        for char in sanitized:
+            if escape_next:
+                result.append(char)
+                escape_next = False
+                continue
+            
+            if char == '\\':
+                result.append(char)
+                escape_next = True
+                continue
+            
+            if char == '"':
+                in_string = not in_string
+                result.append(char)
+                continue
+            
+            if in_string:
+                # Inside string - keep the character (already cleaned)
+                result.append(char)
+            else:
+                # Outside string - skip whitespace, keep everything else
+                if not char.isspace():
+                    result.append(char)
+        
+        sanitized = ''.join(result)
+        
         # Remove trailing commas before closing brackets/braces
         sanitized = re.sub(r',\s*}', '}', sanitized)
         sanitized = re.sub(r',\s*]', ']', sanitized)
-
-        # Fix newlines within strings (common LLM issue)
-        sanitized = re.sub(r'"([^"]*)\n([^"]*)"', r'"\1 \2"', sanitized)
 
         logger.info(f"🧹 [Document Parser] Gentle sanitization complete. Length: {len(raw_text)} -> {len(sanitized)}")
         return sanitized

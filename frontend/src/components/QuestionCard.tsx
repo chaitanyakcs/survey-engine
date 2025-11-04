@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { Question, QuestionAnnotation } from '../types';
 import MatrixLikert from './MatrixLikert';
@@ -58,13 +58,37 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   
   const [isSaving, setIsSaving] = useState(false);
 
+  // Generate question text fallback - use text, label, or generate from ID
+  const getQuestionText = useMemo(() => {
+    if (question.text && question.text.trim()) {
+      return question.text;
+    }
+    // Fallback to label if available
+    if (question.label && question.label.trim()) {
+      // Convert label to readable format (e.g., "informed_consent" -> "Informed Consent")
+      const labelText = question.label
+        .split('_')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ');
+      return labelText;
+    }
+    // Fallback to question ID or default message
+    if (question.id) {
+      // Extract meaningful part from ID (e.g., "Q1 validation_check" -> "Validation Check")
+      const idParts = question.id.replace(/^Q\d+\s*/i, '').replace('_', ' ').split(' ');
+      const readableId = idParts.map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
+      return readableId || `${question.id} - Please answer the question below`;
+    }
+    return 'Question text not available';
+  }, [question.text, question.label, question.id]);
+
   // Sync state when question changes
   useEffect(() => {
-    setEditedText(question.text);
+    setEditedText(getQuestionText);
     setEditedDescription(question.description || '');
     setEditedLabel(question.label || '');
     setEditedCategory(question.category || '');
-  }, [question]);
+  }, [question, getQuestionText]);
 
   // Handler functions for inline editing
   const handleTextSave = async () => {
@@ -286,9 +310,8 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       {/* Question Content */}
       <div className="mb-4">
         <div>
-          {/* Question Text - Only show in editing mode, not in annotation mode */}
-          {!isAnnotationMode && question.type !== 'instruction' && 
-           !['yes_no', 'van_westendorp', 'dropdown', 'conjoint', 'matrix_likert', 'constant_sum', 'gabor_granger', 'numeric_grid', 'numeric_open'].includes(question.type) && (
+          {/* Question Text - Always show question text for all question types (except instructions which have their own display, and specialized types which render their own) */}
+          {!isAnnotationMode && question.type !== 'instruction' && !['matrix_likert', 'constant_sum', 'gabor_granger', 'numeric_grid', 'numeric_open'].includes(question.type) && (
             <div className="mb-3">
               {isEditingSurvey && isEditingText ? (
                 <div className="flex items-start space-x-2">
@@ -345,7 +368,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   }}
                   title={isEditingSurvey ? "Click to edit question text" : ""}
                 >
-                  {question.text}
+                  {getQuestionText}
                 </h3>
               )}
             </div>
@@ -831,7 +854,12 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                       // Technical instruction - distinct styling
                       <div className="bg-gray-100 border-l-4 border-gray-500 p-4 rounded-r-lg">
                         <div className="mb-2">
-                          <h4 className="text-sm font-semibold text-gray-700">Technical Note / Programming Instruction</h4>
+                          <div className="flex items-center space-x-2 mb-2">
+                            <div className="w-5 h-5 bg-gray-500 rounded-full flex items-center justify-center">
+                              <span className="text-white text-xs font-bold">i</span>
+                            </div>
+                            <h4 className="text-sm font-semibold text-gray-700">Instructions</h4>
+                          </div>
                         </div>
                         {isEditingSurvey && isEditingText ? (
                           <div className="flex items-start space-x-2">
