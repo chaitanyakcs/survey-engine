@@ -211,6 +211,13 @@ class InstructionModule:
             "- Remove [SHOW], [RANDOMIZE], [IF RESPONSE], etc.",
             "- Clean, respondent-facing language only",
             "",
+            "### OPEN_ENDED_LIMIT_RULES:",
+            "- open_ended_count ≤ 12% of respondent-facing questions AND ≤ 6 total",
+            "- If total respondent questions < 20 → hard cap = 3",
+            "- Only NPS 'why' + ≤ 2 targeted follow-ups may be required: true",
+            "- Record counts in metadata:",
+            "  {\"open_ended_count\": <int>, \"open_ended_limit\": {\"pct\": 12, \"max\": 6, \"small_cap\": 3}}",
+            "",
             "## JSON Format:",
             "- Valid JSON parseable by json.loads()",
             "- No line breaks within string values",
@@ -351,9 +358,49 @@ class InstructionModule:
             "- NO programmer codes in options: Use 'Male' not '01 | Male'",
             "- NO special instructions: Remove [RANDOMIZE], [ANCHOR], etc.",
             "- Clean, respondent-facing text only",
+            "",
+            "### FORCE_SINGLE_CHOICE_FOR_BEST_FIT:",
+            "- If text contains any of [\"best fit\", \"best describes\", \"best matches\", \"which best\", \"pick the best\", \"single best\"] → must be 'single_choice'",
+            "- Auto-convert multiple_select→single_choice; log in metadata.enforced_conversions",
             ""
         ]
         sections.append(PromptSection("question_guidelines", question_guidelines, order=3.3))
+        
+        # 3.35 Question Numbering and Format Rules
+        question_format_rules = [
+            "# 3.35 QUESTION NUMBERING AND FORMAT RULES",
+            "",
+            "### QUESTION_NUMBERING_AND_FORMAT_RULES:",
+            "",
+            "## Question IDs:",
+            "- Format: <SectionCode>Q<NN>, starting 01",
+            "- Section codes: SP (Section 1), SQ (Section 2), BQ (Section 3), CQ (Section 4), MQ (Section 5), AQ (Section 6), PQ (Section 7)",
+            "- Examples: SQ01, BQ03, MQ02, CQ15",
+            "- Each section starts numbering from 01",
+            "",
+            "## Purchase-Intent 1-5 Format:",
+            "- Use this exact format for purchase intent questions:",
+            "- \"On a scale of 1 to 5, where 1 is 'Definitely will not purchase' and 5 is 'Definitely will purchase', how likely are you to buy <Product> at <Price>?\"",
+            "- Replace <Product> and <Price> with actual values from RFQ",
+            "",
+            "## Matrix Likert Format:",
+            "- text ends with ?, : or . then comma-separated attributes",
+            "- attributes→rows; options→columns",
+            "- Example options: ['Not important', 'Somewhat important', 'Neutral', 'Important', 'Very important']",
+            "- Example structure:",
+            "```json",
+            "{",
+            '  "id": "MQ01",',
+            '  "text": "How important are these attributes to you?: Flavor, Price, Brand, Packaging",',
+            '  "type": "matrix_likert",',
+            '  "attributes": ["Flavor", "Price", "Brand", "Packaging"],',
+            '  "options": ["Not important", "Somewhat important", "Neutral", "Important", "Very important"],',
+            '  "required": true',
+            "}",
+            "```",
+            ""
+        ]
+        sections.append(PromptSection("question_format_rules", question_format_rules, order=3.35))
         
         # 3.4 Evaluation Framework (condensed)
         if pillar_rules_context:
@@ -799,6 +846,9 @@ class OutputModule:
             "- [ ] For NPS: Score question + why follow-up",
             "- [ ] Rating questions have follow-ups where appropriate (10-15%)",
             "- [ ] Open-ended questions present (10-15% of total)",
+            "- [ ] Open-ended ≤ 12% or ≤6 (cap 3 if <20Q); metadata.open_ended_count = actual count",
+            "- [ ] \"Best fit/describes/matches\" → single_choice only; conversions logged in metadata",
+            "- [ ] Question IDs follow format: <SectionCode>Q<NN> (SP, SQ, BQ, CQ, MQ, AQ, PQ)",
             "- [ ] NO placeholder text ([BRAND], [PRODUCT], etc.)",
             "- [ ] NO programming codes in question text or options",
             "- [ ] Clean, respondent-facing language",

@@ -296,7 +296,7 @@ class QuestionAnnotation(Base):
         Index('idx_question_annotations_annotator_id', 'annotator_id'),
         Index('idx_question_annotations_ai_generated', 'ai_generated'),
         Index('idx_question_annotations_human_overridden', 'human_overridden'),
-        Index('idx_question_annotations_unique', 'question_id', 'annotator_id', unique=True),
+        Index('idx_question_annotations_unique', 'question_id', 'annotator_id', 'survey_id', unique=True),
     )
 
 
@@ -356,7 +356,7 @@ class SectionAnnotation(Base):
         Index('idx_section_annotations_annotator_id', 'annotator_id'),
         Index('idx_section_annotations_ai_generated', 'ai_generated'),
         Index('idx_section_annotations_human_overridden', 'human_overridden'),
-        Index('idx_section_annotations_unique', 'section_id', 'annotator_id', unique=True),
+        Index('idx_section_annotations_unique', 'section_id', 'annotator_id', 'survey_id', unique=True),
     )
 
 

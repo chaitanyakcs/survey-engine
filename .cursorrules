@@ -56,6 +56,7 @@ This is a full-stack AI-powered survey generation engine that transforms RFQs in
 - Follow the existing component structure in `frontend/src/`
 - Handle WebSocket connections for real-time updates
 - Use ErrorClassifier for user-friendly error messages
+- **Build Verification**: Always run `npm run build` in the `frontend/` directory after making frontend changes to catch TypeScript errors, build issues, and ensure the code compiles successfully before committing
 
 ### Database
 - Use SQL migrations in `migrations/` directory for database schema changes
@@ -396,6 +397,7 @@ file_path = await exporter.export(survey_data, output_path)
 - Follow security best practices for API endpoints
 - Update documentation when adding features
 - Run linting and type checking before committing
+- **Frontend Changes**: Always run `cd frontend && npm run build` after making frontend changes to verify TypeScript compilation and catch build errors before committing
 
 ## Meta-Rule: Regression Documentation
 - **When regressions are discovered, document the learnings and prevention strategies in cursor rules**

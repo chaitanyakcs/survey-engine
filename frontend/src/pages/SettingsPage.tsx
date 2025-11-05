@@ -571,21 +571,17 @@ export const SettingsPage: React.FC = () => {
                         <label className="block text-sm font-medium text-gray-700 mb-2">LLM Provider</label>
                         <select
                           value={settings.llm_provider}
-                          onChange={(e) => {
-                            const newProvider = e.target.value as 'replicate' | 'openai';
-                            setSettings({ ...settings, llm_provider: newProvider });
-                            // Fetch models for the new provider
-                            fetchGenerationModels(newProvider);
-                          }}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                          disabled
+                          aria-readonly="true"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed"
                         >
                           <option value="replicate">Replicate</option>
                           <option value="openai">OpenAI</option>
                         </select>
                         <p className="text-xs text-gray-500 mt-1">
                           {settings.llm_provider === 'openai' 
-                            ? 'Requires OPENAI_API_KEY environment variable' 
-                            : 'Requires REPLICATE_API_TOKEN environment variable'}
+                            ? 'Requires OPENAI_API_KEY environment variable (Read-only)' 
+                            : 'Requires REPLICATE_API_TOKEN environment variable (Read-only)'}
                         </p>
                       </div>
                       
@@ -595,14 +591,15 @@ export const SettingsPage: React.FC = () => {
                           <label className="block text-sm font-medium text-gray-700 mb-2">Survey Generation</label>
                           <select
                             value={settings.generation_model}
-                            onChange={(e) => setSettings({ ...settings, generation_model: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                            disabled
+                            aria-readonly="true"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed"
                           >
                             {generationModels.map((m) => (
                               <option key={m} value={m}>{m}</option>
                             ))}
                           </select>
-                          <p className="text-xs text-gray-500 mt-1">Generates surveys</p>
+                          <p className="text-xs text-gray-500 mt-1">Generates surveys (Read-only)</p>
                         </div>
 
                         {/* Embedding Model */}
@@ -611,6 +608,7 @@ export const SettingsPage: React.FC = () => {
                           <select
                             value={settings.embedding_model}
                             disabled
+                            aria-readonly="true"
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed"
                           >
                             {embeddingModels.map((m) => (
@@ -626,6 +624,7 @@ export const SettingsPage: React.FC = () => {
                           <select
                             value={rfqParsing.parsing_model}
                             disabled
+                            aria-readonly="true"
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed"
                           >
                             {rfqModels.map((m) => (
