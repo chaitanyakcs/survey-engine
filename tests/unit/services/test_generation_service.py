@@ -546,6 +546,47 @@ class TestGenerationServiceIntegration:
             assert survey["confidence_score"] == 0.9
 
     @pytest.mark.asyncio
+    async def test_empty_survey_rejection(self, generation_service):
+        """Test that empty surveys are rejected during validation"""
+        # Create an empty survey structure
+        empty_survey = {
+            "title": "Empty Survey",
+            "description": "This survey has no questions",
+            "sections": []  # Empty sections array
+        }
+        
+        # Attempt to validate and fix structure - should raise ValueError
+        with pytest.raises(ValueError, match="Generated survey is empty"):
+            generation_service._validate_and_fix_survey_structure(empty_survey)
+    
+    @pytest.mark.asyncio
+    async def test_empty_survey_with_empty_sections(self, generation_service):
+        """Test that surveys with sections but no questions are rejected"""
+        # Create a survey with sections but no questions
+        empty_survey = {
+            "title": "Empty Survey",
+            "description": "This survey has sections but no questions",
+            "sections": [
+                {
+                    "id": 1,
+                    "title": "Section 1",
+                    "description": "Empty section",
+                    "questions": []  # Empty questions array
+                },
+                {
+                    "id": 2,
+                    "title": "Section 2",
+                    "description": "Another empty section",
+                    "questions": []  # Empty questions array
+                }
+            ]
+        }
+        
+        # Attempt to validate and fix structure - should raise ValueError
+        with pytest.raises(ValueError, match="Generated survey is empty"):
+            generation_service._validate_and_fix_survey_structure(empty_survey)
+    
+    @pytest.mark.asyncio
     async def test_error_recovery_workflow(self, integration_service):
         """Test error recovery and fallback mechanisms"""
         context = {"rfq_text": "Test survey"}

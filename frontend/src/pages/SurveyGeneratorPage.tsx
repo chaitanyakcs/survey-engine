@@ -12,7 +12,7 @@ import { RecoveryAction } from '../types';
 
 
 export const SurveyGeneratorPage: React.FC = () => {
-  const { workflow, currentSurvey, toasts, removeToast, addToast, resetWorkflow, clearEnhancedRfqState, loadPillarScoresAsync } = useAppStore();
+  const { workflow, currentSurvey, toasts, removeToast, addToast, resetWorkflow, clearEnhancedRfqState } = useAppStore();
   const [currentView, setCurrentView] = useState<'survey' | 'golden-examples' | 'surveys' | 'settings' | 'annotation-insights' | 'llm-review'>('survey');
   const { mainContentClasses } = useSidebarLayout();
 
@@ -36,18 +36,8 @@ export const SurveyGeneratorPage: React.FC = () => {
     if (workflow.status === 'completed' && !currentSurvey && workflow.survey_id && !workflow.survey_fetch_failed) {
       console.log('🔄 [SurveyGeneratorPage] Workflow completed but survey not loaded, fetching survey:', workflow.survey_id);
       useAppStore.getState().fetchSurvey(workflow.survey_id).then(() => {
-        // After successfully fetching the survey, load pillar scores with a small delay
-        console.log('🏛️ [SurveyGeneratorPage] Survey fetched, loading pillar scores');
-        if (workflow.survey_id) {
-          // Add a small delay to prevent API call conflicts
-          setTimeout(() => {
-            if (workflow.survey_id) {
-              loadPillarScoresAsync(workflow.survey_id).catch((error) => {
-                console.warn('⚠️ [SurveyGeneratorPage] Failed to load pillar scores after fallback fetch:', error);
-              });
-            }
-          }, 2000); // Increased delay to 2 seconds to prevent overwhelming backend
-        }
+        // Survey fetched - evaluation will be manually triggered by user if needed
+        console.log('✅ [SurveyGeneratorPage] Survey fetched successfully');
       }).catch((error) => {
         console.error('❌ [SurveyGeneratorPage] Failed to fetch survey:', error);
         // If survey doesn't exist, clean up the workflow state
@@ -57,7 +47,7 @@ export const SurveyGeneratorPage: React.FC = () => {
         }
       });
     }
-  }, [workflow.status, currentSurvey, workflow.survey_id, workflow.survey_fetch_failed, resetWorkflow, loadPillarScoresAsync]);
+  }, [workflow.status, currentSurvey, workflow.survey_id, workflow.survey_fetch_failed, resetWorkflow]);
 
   // Load survey from URL parameters if present (run once on mount)
   React.useEffect(() => {
@@ -105,16 +95,8 @@ export const SurveyGeneratorPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSurvey?.survey_id, workflow.status]); // Only watch survey_id, not the entire object
 
-  // Load pillar scores asynchronously when survey is available (non-blocking)
-  React.useEffect(() => {
-    if (currentSurvey && !currentSurvey.pillar_scores) {
-      console.log('🏛️ [SurveyGeneratorPage] Loading pillar scores in background');
-      loadPillarScoresAsync(currentSurvey.survey_id).catch((error) => {
-        console.warn('⚠️ [SurveyGeneratorPage] Background pillar scores loading failed:', error);
-        // Don't show error to user - this is a background operation
-      });
-    }
-  }, [currentSurvey, loadPillarScoresAsync]);
+  // Note: Pillar scores are no longer automatically loaded after survey generation
+  // Users must manually trigger evaluation via the "Run Evaluation" button
 
   const handleViewChange = (view: 'survey' | 'golden-examples' | 'surveys' | 'settings' | 'annotation-insights' | 'llm-review') => {
     if (view === 'surveys') {

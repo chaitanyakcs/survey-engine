@@ -101,7 +101,7 @@ class InputsModule:
     """MODULE 2: Inputs - Background and Context"""
     
     @staticmethod
-    def build(context: Dict[str, Any], rfq_text: str) -> PromptModule:
+    def build(context: Dict[str, Any], rfq_text: str, db_session=None) -> PromptModule:
         """Build inputs and context sections"""
         sections = []
         
@@ -115,41 +115,8 @@ class InputsModule:
         ]
         sections.append(PromptSection("rfq_input", rfq_content, order=2.1))
         
-        # QNR Structure
-        structure_content = [
-            "# QNR STRUCTURE - 7-Section Framework",
-            "",
-            "Your survey MUST follow this exact 7-section structure:",
-            "",
-            "## Section 1: Sample Plan",
-            "Purpose: Sample quotas, screening criteria, demographic targets",
-            "Text blocks: Study_Intro (introText - MANDATORY)",
-            "",
-            "## Section 2: Screener",
-            "Purpose: Qualification questions to identify eligible respondents",
-            "Text blocks: Screener intro (introText - MANDATORY)",
-            "",
-            "## Section 3: Brand/Product Awareness",
-            "Purpose: Brand awareness, usage, and familiarity questions",
-            "Text blocks: Section intro (introText - MANDATORY)",
-            "",
-            "## Section 4: Concept Exposure",
-            "Purpose: Main research content - product/concept evaluation",
-            "Text blocks: Concept/Product instructions (introText - MANDATORY)",
-            "",
-            "## Section 5: Methodology",
-            "Purpose: Methodology-specific questions (pricing, MaxDiff, etc.)",
-            "Text blocks: Methodology instructions (introText - MANDATORY)",
-            "",
-            "## Section 6: Additional Questions",
-            "Purpose: Demographics, psychographics, behavioral questions",
-            "Text blocks: Section intro (introText - MANDATORY)",
-            "",
-            "## Section 7: Programmer Instructions",
-            "Purpose: Technical routing, quotas, termination rules",
-            "Text blocks: Survey_Closing (closingText - MANDATORY)",
-            ""
-        ]
+        # QNR Structure - Enhanced with database-driven section names/descriptions
+        structure_content = InputsModule._build_qnr_structure_content(db_session)
         sections.append(PromptSection("qnr_structure", structure_content, order=2.2))
         
         # Additional Research Context
@@ -172,19 +139,178 @@ class InputsModule:
         
         sections.append(PromptSection("research_context", context_parts, order=2.3))
         
+        # Concept Files Section (if available) - Only references, not file content
+        concept_files = context.get("concept_files", [])
+        if concept_files:
+            # Separate general files from stimulus-specific files
+            general_files = [f for f in concept_files if not f.get("concept_stimulus_id")]
+            stimulus_files = {}
+            for f in concept_files:
+                if f.get("concept_stimulus_id"):
+                    stimulus_id = f["concept_stimulus_id"]
+                    if stimulus_id not in stimulus_files:
+                        stimulus_files[stimulus_id] = []
+                    stimulus_files[stimulus_id].append(f)
+            
+            concept_files_content = [
+                "# CONCEPT FILES FOR SECTION 4 (CONCEPT EXPOSURE)",
+                "",
+                "**CRITICAL**: Include these concept file references in Section 4 textBlocks:",
+                ""
+            ]
+            
+            # List files concisely - just filename and URL reference
+            if general_files:
+                for file in general_files:
+                    file_type = "img" if file.get("content_type", "").startswith("image/") else "doc"
+                    concept_files_content.append(f"- {file.get('original_filename', file.get('filename', 'Unknown'))} ({file_type}): {file.get('file_url', 'N/A')}")
+            
+            if stimulus_files:
+                for stimulus_id, files in stimulus_files.items():
+                    for file in files:
+                        file_type = "img" if file.get("content_type", "").startswith("image/") else "doc"
+                        concept_files_content.append(f"- {file.get('original_filename', file.get('filename', 'Unknown'))} ({file_type}, stimulus:{stimulus_id}): {file.get('file_url', 'N/A')}")
+            
+            concept_files_content.extend([
+                "",
+                "**INSTRUCTIONS:** Add these file references to Section 4 textBlocks as markdown links: [filename](url)",
+                ""
+            ])
+            
+            sections.append(PromptSection("concept_files", concept_files_content, order=2.4))
+        
         return PromptModule(
             name="MODULE 2: INPUTS - Background and Context",
             order=2,
             sections=sections,
             required=True
         )
+    
+    @staticmethod
+    def _build_qnr_structure_content(db_session=None) -> List[str]:
+        """Build concise QNR structure content with database-driven section names/descriptions and text block requirements"""
+        # Fetch sections and text block labels from database if available
+        db_sections = {}
+        text_block_labels = {}  # section_id -> list of text block labels
+        
+        if db_session:
+            try:
+                from src.services.qnr_label_service import QNRLabelService
+                qnr_service = QNRLabelService(db_session)
+                
+                # Get sections
+                sections_list = qnr_service.get_sections()
+                db_sections = {s['id']: s for s in sections_list}
+                
+                # Get text block labels (label_type='Text')
+                all_labels = qnr_service.get_all_labels_for_prompt()
+                for label in all_labels:
+                    if label.get('label_type') == 'Text':
+                        section_id = label.get('section_id')
+                        if section_id not in text_block_labels:
+                            text_block_labels[section_id] = []
+                        text_block_labels[section_id].append(label)
+                
+                logger.info(f"✅ [InputsModule] Loaded {len(db_sections)} sections and {sum(len(v) for v in text_block_labels.values())} text block labels from database")
+            except Exception as e:
+                logger.warning(f"⚠️ [InputsModule] Failed to load from database, using fallback: {e}")
+        
+        # Hardcoded fallback sections with detailed instructions
+        fallback_sections = {
+            1: {"name": "Sample Plan", "description": "Sample quotas, screening criteria, demographic targets"},
+            2: {"name": "Screener", "description": "Qualification questions to identify eligible respondents"},
+            3: {"name": "Brand/Product Awareness", "description": "Brand awareness, usage, and familiarity questions"},
+            4: {"name": "Concept Exposure", "description": "Main research content - product/concept evaluation"},
+            5: {"name": "Methodology", "description": "Methodology-specific questions (pricing, MaxDiff, etc.)"},
+            6: {"name": "Additional Questions", "description": "Demographics, psychographics, behavioral questions"},
+            7: {"name": "Programmer Instructions", "description": "Technical routing, quotas, termination rules"}
+        }
+        
+        # Hardcoded fallback text block requirements (if database unavailable)
+        fallback_text_blocks = {
+            1: [],  # Sample Plan has NO introText - only samplePlanData table
+            2: ["Screener intro (introText - MANDATORY)"],
+            3: ["Section intro (introText - MANDATORY)"],
+            4: ["Concept/Product instructions (introText - MANDATORY)"],
+            5: ["Methodology instructions (introText - MANDATORY)"],
+            6: ["Section intro (introText - MANDATORY)"],
+            7: ["Survey_Closing (closingText - MANDATORY)"]
+        }
+        
+        # Build text block requirements from database or fallback
+        text_block_requirements = {}
+        for section_id in range(1, 8):
+            if section_id in text_block_labels and text_block_labels[section_id]:
+                # Use database text block labels
+                blocks = []
+                for label in sorted(text_block_labels[section_id], key=lambda x: x.get('display_order', 999)):
+                    name = label['name']
+                    mandatory = "MANDATORY" if label.get('mandatory') else "optional"
+                    # Determine placement based on label name
+                    if 'Closing' in name or 'Survey_Closing' in name:
+                        placement = "closingText"
+                    elif 'Intro' in name or name in ['Study_Intro', 'Concept_Intro']:
+                        placement = "introText"
+                    else:
+                        placement = "textBlocks"
+                    blocks.append(f"{name} ({placement} - {mandatory})")
+                text_block_requirements[section_id] = ", ".join(blocks) if blocks else fallback_text_blocks.get(section_id, [""])[0]
+            else:
+                # Fallback to hardcoded
+                text_block_requirements[section_id] = fallback_text_blocks.get(section_id, [""])[0]
+        
+        # Special instructions per section
+        special_instructions = {
+            4: "**IMPORTANT**: If concept files (images/documents) are provided, include them in textBlocks with file URLs"
+        }
+        
+        structure_content = [
+            "# QNR STRUCTURE - 7-Section Framework",
+            "",
+            "Your survey MUST follow this exact 7-section structure:",
+            ""
+        ]
+        
+        # Build section entries using database names/descriptions where available
+        for section_id in range(1, 8):
+            # Use database section if available, otherwise fallback
+            if section_id in db_sections:
+                section_name = db_sections[section_id]['name']
+                section_desc = db_sections[section_id]['description']
+            else:
+                section_name = fallback_sections[section_id]['name']
+                section_desc = fallback_sections[section_id]['description']
+            
+            structure_content.extend([
+                f"## Section {section_id}: {section_name}",
+                f"Purpose: {section_desc}",
+                f"Text blocks: {text_block_requirements[section_id]}",
+                ""
+            ])
+            
+            # Add special instructions if any
+            if section_id in special_instructions:
+                structure_content.append(special_instructions[section_id])
+                structure_content.append("")
+        
+        # Add cross-reference to detailed requirements
+        structure_content.extend([
+            "",
+            "**For detailed requirements**: See MODULE 3 for:",
+            "- Text block templates and examples",
+            "- Section-specific instructions (samplePlanData, concept files, etc.)",
+            "- Standard question types (QNR Taxonomy)",
+            ""
+        ])
+        
+        return structure_content
 
 
 class InstructionModule:
     """MODULE 3: Instructions - How to Generate (MOST CRITICAL)"""
     
     @staticmethod
-    def build(context: Dict[str, Any], methodology_tags: List[str], pillar_rules_context: str) -> PromptModule:
+    def build(context: Dict[str, Any], methodology_tags: List[str], pillar_rules_context: str, annotation_insights_section: Optional[PromptSection] = None, text_requirements_section: Optional[PromptSection] = None, qnr_taxonomy_section: Optional[PromptSection] = None) -> PromptModule:
         """Build comprehensive instruction sections"""
         sections = []
         
@@ -195,12 +321,12 @@ class InstructionModule:
             "These requirements are ABSOLUTE and NON-NEGOTIABLE:",
             "",
             "## Survey Structure:",
-            "- MUST generate exactly 7 sections (Sample Plan, Screener, Brand/Product Awareness, Concept Exposure, Methodology, Additional Questions, Programmer Instructions)",
+            "- MUST generate exactly 7 sections (see MODULE 2 for section structure)",
             "- Each section MUST have an integer 'id' field (1-7)",
+            "- Follow section purposes and text block requirements from MODULE 2",
             "",
             "## Text Blocks - CRITICAL:",
-            "- Sections 1-6: MUST have 'introText' field with welcome/context",
-            "- Section 7: MUST have 'closingText' field thanking respondent",
+            "- See MODULE 3 Section 3.7 for complete text block requirements and templates",
             "- All text blocks MUST have: id, type, label, content, mandatory: true",
             "- NO empty text blocks, NO placeholder text",
             "",
@@ -210,6 +336,14 @@ class InstructionModule:
             "- NO programming instructions in question text",
             "- Remove [SHOW], [RANDOMIZE], [IF RESPONSE], etc.",
             "- Clean, respondent-facing language only",
+            "",
+            "### Placeholder Substitution Rules:",
+            "- Automatically replace [TOPIC from RFQ] with actual topic from RFQ",
+            "- Automatically replace [X] minutes with actual estimated time from RFQ",
+            "- Automatically replace [timeframe] with actual timeframe (e.g., 'past 3 months', 'past year')",
+            "- Automatically replace [product/concept description] with actual product/concept details",
+            "- Automatically replace [purpose from RFQ] with actual research purpose",
+            "- If placeholders remain after substitution, DO NOT submit - extract actual values from RFQ",
             "",
             "### OPEN_ENDED_LIMIT_RULES:",
             "- open_ended_count ≤ 12% of respondent-facing questions AND ≤ 6 total",
@@ -227,11 +361,16 @@ class InstructionModule:
         ]
         sections.append(PromptSection("mandatory_quality", mandatory_content, order=3.1))
         
-        # 3.2 Methodology-Specific Depth Requirements (NEW - KEY FIX)
+        # 3.2 Additional Instructions from RFQ Generation
         methodology_depth = [
-            "# 3.2 METHODOLOGY-SPECIFIC DEPTH REQUIREMENTS",
+            "# 3.2 ADDITIONAL INSTRUCTIONS FROM RFQ GENERATION",
             "",
-            "Match the question depth and patterns of the methodology:",
+            "These instructions are derived from the RFQ and methodology requirements:",
+            "",
+            "## Question Depth Ranges:",
+            "- General quantitative surveys: 18-30 questions",
+            "- Follow-up questions: 10-15% of rating questions",
+            "- Methodology-specific counts below",
             ""
         ]
         
@@ -285,6 +424,32 @@ class InstructionModule:
                 "## BRAND TRACKING:",
                 "**Question Density**: 15-25 questions",
                 "**Required Flow**: Awareness → Usage → Preference → Perception cascade",
+                ""
+            ])
+        
+        # Add pricing method defaults if pricing methodology
+        if any(tag in ['van_westendorp', 'gabor_granger', 'pricing', 'price_elasticity'] for tag in methodology_lower):
+            methodology_depth.extend([
+                "",
+                "## Pricing Method Defaults:",
+                "- Default to Gabor-Granger + Van Westendorp when pricing research mentioned",
+                "- Derive 5 price points from MSRP: [0.6×, 0.8×, 1×, 1.2×, 1.5×]",
+                "- Gabor-Granger: Include programming instruction for randomizing first shown price point",
+                "- Van Westendorp: Ensure all 4 required questions are included",
+                "- Include metadata.price_simulator field if price elasticity simulator requested",
+                ""
+            ])
+        
+        # Add screener segment mapping if segments mentioned in RFQ
+        rfq_text_lower = context.get("rfq_details", {}).get("text", "").lower()
+        if any(segment in rfq_text_lower for segment in ['segment t', 'segment e', 'segment w', 'segment n', 'segments t/e/w/n']):
+            methodology_depth.extend([
+                "",
+                "## Screener Segment Mapping:",
+                "- Map segments T/E/W/N to qualification questions",
+                "- Include termination logic for disqualified segments",
+                "- Add quota JSON block for segment targets",
+                "- All qualification questions belong in Section 2 (Screener)",
                 ""
             ])
         
@@ -362,13 +527,6 @@ class InstructionModule:
             "### FORCE_SINGLE_CHOICE_FOR_BEST_FIT:",
             "- If text contains any of [\"best fit\", \"best describes\", \"best matches\", \"which best\", \"pick the best\", \"single best\"] → must be 'single_choice'",
             "- Auto-convert multiple_select→single_choice; log in metadata.enforced_conversions",
-            ""
-        ]
-        sections.append(PromptSection("question_guidelines", question_guidelines, order=3.3))
-        
-        # 3.35 Question Numbering and Format Rules
-        question_format_rules = [
-            "# 3.35 QUESTION NUMBERING AND FORMAT RULES",
             "",
             "### QUESTION_NUMBERING_AND_FORMAT_RULES:",
             "",
@@ -379,9 +537,32 @@ class InstructionModule:
             "- Each section starts numbering from 01",
             "",
             "## Purchase-Intent 1-5 Format:",
-            "- Use this exact format for purchase intent questions:",
-            "- \"On a scale of 1 to 5, where 1 is 'Definitely will not purchase' and 5 is 'Definitely will purchase', how likely are you to buy <Product> at <Price>?\"",
-            "- Replace <Product> and <Price> with actual values from RFQ",
+            "- **With Price**: Use this exact format for price-based purchase intent questions:",
+            "  - \"On a scale of 1 to 5, where 1 is 'Definitely will not purchase' and 5 is 'Definitely will purchase', how likely are you to buy <Product> at <Price>?\"",
+            "  - Replace <Product> and <Price> with actual values from RFQ",
+            "",
+            "- **Without Price**: Also include purchase likelihood question WITHOUT price (MANDATORY for Concept Reaction section):",
+            "  - \"On a scale of 1 to 5, where 1 is 'Definitely will not purchase' and 5 is 'Definitely will purchase', how likely are you to purchase <Product>?\"",
+            "  - Replace <Product> with actual product name from RFQ (no price mentioned)",
+            "  - This is separate from price-based purchase intent and should be included in Section 4 (Concept Reaction)",
+            "",
+            "## Satisfaction Scale Format (1-5 with Text Labels):",
+            "- **CRITICAL**: All Brand_Product_Satisfaction questions MUST use this exact format:",
+            "- Type: 'scale'",
+            "- Options: ['1', '2', '3', '4', '5']",
+            "- scale_labels: {'1': 'Very Dissatisfied', '2': 'Dissatisfied', '3': 'Neutral', '4': 'Satisfied', '5': 'Very Satisfied'}",
+            "- Example question: 'How satisfied are you with [Brand Name]?'",
+            "- Example JSON structure:",
+            "```json",
+            "{",
+            '  "id": "BQ05",',
+            '  "text": "How satisfied are you with Brand X?",',
+            '  "type": "scale",',
+            '  "options": ["1", "2", "3", "4", "5"],',
+            '  "scale_labels": {"1": "Very Dissatisfied", "2": "Dissatisfied", "3": "Neutral", "4": "Satisfied", "5": "Very Satisfied"},',
+            '  "required": true',
+            "}",
+            "```",
             "",
             "## Matrix Likert Format:",
             "- text ends with ?, : or . then comma-separated attributes",
@@ -398,9 +579,14 @@ class InstructionModule:
             '  "required": true',
             "}",
             "```",
+            "",
+            "## Routing Text Patterns:",
+            "- 'ASK IF CODED...' is ACCEPTABLE for follow-up questions (e.g., 'ASK IF CODED 7 TO 11 IN q_liking')",
+            "- Other programmer tokens are NOT allowed: [SHOW], [RANDOMIZE], [IF RESPONSE], [TERMINATE], QUOTAS:, CLASSIFY AS",
+            "- Remove all programmer tokens except conditional follow-up patterns",
             ""
         ]
-        sections.append(PromptSection("question_format_rules", question_format_rules, order=3.35))
+        sections.append(PromptSection("question_guidelines", question_guidelines, order=3.3))
         
         # 3.4 Evaluation Framework (condensed)
         if pillar_rules_context:
@@ -414,23 +600,89 @@ class InstructionModule:
             ]
             sections.append(PromptSection("evaluation_framework", eval_content, order=3.4))
         
-        # 3.5 Static Text Requirements (NEW - TEXT BLOCKS FIX)
-        static_text = [
-            "# 3.5 STATIC TEXT BLOCK REQUIREMENTS",
+        # 3.5 Additional Feedback from Reviews (annotation insights)
+        if annotation_insights_section:
+            # Reorder to 3.5
+            annotation_insights_section.order = 3.5
+            sections.append(annotation_insights_section)
+        
+        # 3.6 REMOVED - Merged into consolidated section 3.7
+        
+        # 3.7 Consolidated Requirements & Taxonomy (NEW)
+        consolidated_section = InstructionModule._build_consolidated_requirements_section(context.get('db_session'), context)
+        if consolidated_section:
+            sections.append(consolidated_section)
+        
+        # OLD 3.6 Static Text Requirements - REMOVED
+        old_static_text_marker = [
+            "# 3.6 STATIC TEXT BLOCK REQUIREMENTS",
             "",
             "Every survey MUST include these text blocks with proper structure:",
             "",
             "## SECTION 1 - Sample Plan:",
-            "### MANDATORY: introText (Study_Intro)",
+            "**CRITICAL**: Section 1 contains ONLY sample details, quotas, recruitment criteria - NO respondent questions",
+            "All qualification questions belong in Section 2 (Screener)",
+            "",
+            "### MANDATORY: samplePlanData (Tabular Structure)",
+            "Section 1 MUST have 'samplePlanData' field (NOT 'questions' array)",
+            "**CRITICAL**: DO NOT include a 'questions' field in Section 1 at all - not even an empty array",
+            "Generate tabular structure from RFQ sample plan information with:",
+            "",
+            "**Structure Requirements:**",
+            "- overallSample: Overall sample breakdown with totalSize and demographic breakdowns",
+            "- subsamples: Array of subsample definitions (if specified in RFQ)",
+            "- quotas: Quota targets and minimum cell sizes (if specified)",
+            "",
+            "**Demographic Breakdowns to Extract:**",
+            "- ageGroups: Age ranges with count and percentage (e.g., [{\"range\": \"18-24\", \"count\": 80, \"percentage\": 20}])",
+            "- gender: Gender distribution with count and percentage",
+            "- income: Income brackets with count and percentage",
+            "- otherDemographics: Array of objects with category and breakdown array (e.g., [{\"category\": \"Education\", \"breakdown\": [{\"label\": \"Bachelor's\", \"count\": 200, \"percentage\": 50}]}])",
+            "",
+            "**Subsample Structure:**",
+            "- Each subsample must have: name, totalSize, demographic breakdowns, and criteria (qualification description)",
+            "- Subsamples should match RFQ specifications (e.g., 'Primary Target', 'Secondary Market', etc.)",
+            "",
+            "**Extraction from RFQ:**",
+            "- Parse sample size from RFQ (e.g., 'n=400', '800-1200 respondents')",
+            "- Extract age ranges mentioned (e.g., 'age 18-45', '25-34 focus')",
+            "- Extract gender splits (e.g., '60% female/40% male', 'balanced gender')",
+            "- Extract income brackets (e.g., 'middle to upper-middle income', '$50k-$100k')",
+            "- Extract any other demographic requirements mentioned",
+            "- Calculate percentages based on total sample size",
+            "- If specific counts not provided, estimate based on percentages or evenly distribute",
+            "",
+            "**Example Structure:**",
             "```json",
-            '"introText": {',
-            '  "id": "intro_1",',
-            '  "type": "study_intro",',
-            '  "label": "Study_Intro",',
-            '  "content": "Thank you for agreeing to participate in this research study. We are conducting a survey about [TOPIC from RFQ]. The survey will take approximately [X] minutes. Your participation is voluntary, and you may stop at any time. Your responses will be kept confidential and used for research purposes only.",',
-            '  "mandatory": true',
-            "}",
+            '"samplePlanData": {',
+            '  "overallSample": {',
+            '    "totalSize": 400,',
+            '    "ageGroups": [',
+            '      {"range": "18-24", "count": 80, "percentage": 20},',
+            '      {"range": "25-34", "count": 120, "percentage": 30}',
+            '    ],',
+            '    "gender": [',
+            '      {"label": "Male", "count": 200, "percentage": 50},',
+            '      {"label": "Female", "count": 200, "percentage": 50}',
+            '    ]',
+            '  },',
+            '  "subsamples": [',
+            '    {',
+            '      "name": "Primary Target",',
+            '      "totalSize": 280,',
+            '      "ageGroups": [...],',
+            '      "criteria": "Age 25-44, current users"',
+            '    }',
+            '  ]',
+            '}',
             "```",
+            "",
+            "### CRITICAL: NO introText for Sample Plan Section",
+            "**DO NOT include introText field in Section 1 (Sample Plan)**",
+            "The Sample Plan section should display ONLY the table (samplePlanData) and recruiting criteria",
+            "GEOGRAPHY and LOI information should be parsed from RFQ but stored in survey metadata, NOT in Sample Plan introText",
+            "If GEOGRAPHY or LOI is mentioned in the RFQ, extract it but do NOT include it in the Sample Plan section's introText field",
+            "The Sample Plan section should have NO introText, NO textBlocks, and NO questions - ONLY samplePlanData",
             "",
             "### OPTIONAL: textBlocks (Confidentiality Agreement)",
             "```json",
@@ -444,18 +696,35 @@ class InstructionModule:
             "```",
             "",
             "## SECTION 2 - Screener:",
+            "**CRITICAL**: All qualification questions from Sample Plan section belong here",
+            "NO additional demographics unless used as screening criteria",
+            "",
             "### MANDATORY: introText",
+            "**Template** (include eligibility notice):",
             "```json",
             '"introText": {',
             '  "id": "intro_2",',
             '  "type": "section_intro",',
             '  "label": "Screener_Intro",',
-            '  "content": "We will now ask a few questions to confirm your eligibility for this study.",',
+            '  "content": "We will now ask a few questions to confirm your eligibility for this study. After answering these questions, you will be informed of your eligibility to participate in a [REPLACE: actual minutes] minute survey.",',
             '  "mandatory": true',
             "}",
             "```",
             "",
+            "### MANDATORY Screener Questions:",
+            "**CRITICAL**: The following questions MUST be included in Section 2:",
+            "",
+            "1. **Category_Usage_Frequency**: MANDATORY - Include a question asking 'How often do you use products in this category?' with frequency options (e.g., Daily, Weekly, Monthly, Rarely, Never)",
+            "",
+            "2. **Category_Usage_Financial**: MANDATORY - Include a question asking 'How much do you spend on products in this category?' covering both current spending and future spending intentions",
+            "",
+            "3. **Recent_Participation**: MANDATORY - Include a question asking about participation in market research studies in the past X months (typically 3-6 months). Format: 'Have you participated in any market research studies in the past [X] months?' with clear termination logic if answered 'Yes'",
+            "",
             "## SECTION 3 - Brand/Product Awareness:",
+            "**Flow**: Start with broad category usage (need → product types → frequency → spend) → then top of mind recall",
+            "Awareness usage funnel: Show as ONE question (not 4-5 separate questions)",
+            "If multiple products usage: Capture satisfaction and NPS for EACH product",
+            "",
             "### MANDATORY: introText",
             "```json",
             '"introText": {',
@@ -467,30 +736,71 @@ class InstructionModule:
             "}",
             "```",
             "",
-            "### OPTIONAL: textBlocks (if product usage context needed)",
+            "### MANDATORY: Product_Usage text block",
+            "**CRITICAL**: Product_Usage text block is MANDATORY (not optional) - Include it to provide context for brand/product questions",
+            "**Template** (replace [timeframe] with actual timeframe):",
             "```json",
             '"textBlocks": [{',
             '  "id": "text_3_1",',
             '  "type": "product_usage",',
             '  "label": "Product_Usage",',
-            '  "content": "Please think about your usage and experiences with these products over the past [timeframe].",',
+            '  "content": "Please think about your usage and experiences with these products over the past [REPLACE: actual timeframe, e.g., \'3 months\', \'year\'].",',
             '  "mandatory": true',
             "}]",
             "```",
             "",
+            "### MANDATORY Brand/Product Awareness Questions:",
+            "**CRITICAL**: The following questions MUST be included in Section 3:",
+            "",
+            "1. **Brand_Awareness_Funnel**: MANDATORY - Include as a single matrix_likert question with stages: Aware → Considered → Purchased → Continue → Preferred. Format: Each brand as a row, funnel stages as columns/options",
+            "",
+            "2. **Brand_Product_Satisfaction**: MANDATORY - For EACH brand mentioned in Product_Usage responses, generate a satisfaction question. Format:",
+            "   - Type: 'scale'",
+            "   - Options: ['1', '2', '3', '4', '5']",
+            "   - scale_labels: {'1': 'Very Dissatisfied', '2': 'Dissatisfied', '3': 'Neutral', '4': 'Satisfied', '5': 'Very Satisfied'}",
+            "   - Example: 'How satisfied are you with [Brand Name]?'",
+            "",
             "## SECTION 4 - Concept Exposure:",
             "### MANDATORY: introText (for concept/product evaluation)",
+            "**Template** (detailed concept intro):",
             "```json",
             '"introText": {',
             '  "id": "intro_4",',
             '  "type": "concept_intro",',
             '  "label": "Concept_Intro",',
-            '  "content": "You will now be presented with [product/concept description]. Please evaluate it carefully based on the following questions. [Add specific instructions like \'Do not attempt to guess the brand\' for blind tests]",',
+            '  "content": "Now we would like to share with you a product description of a [REPLACE: product category]. We will refer to this [REPLACE: product category] as [REPLACE: product name]. Please take some time to review [REPLACE: product name] and answer the questions that follow. After you finish reading the concept, please click \'NEXT\' to advance to the next screen. The screen will remain open on the concept for 40 seconds to give you the opportunity to read through the concept before you can proceed. If you need more than 40 seconds to read through the concept, you will have as much time as you need. Simply click Next when you are finished reading the concept. The concept description will be available as a hyperlink in the following screens and will open on a separate window to review. Please open the hyperlink, so you can reference it at any time during this survey",',
             '  "mandatory": true',
             "}",
             "```",
             "",
+            "### Mandatory Questions in Concept Reaction:",
+            "- Detailed impression of the concept",
+            "- Trial likelihood",
+            "- Likelihood to buy (WITHOUT price - see below)",
+            "- Follow-up and learn more interest",
+            "- Concept is new and different",
+            "- Meets needs",
+            "- Urgency of purchase",
+            "",
+            "### CRITICAL Concept Reaction Requirements:",
+            "",
+            "1. **Rating at Price**: MANDATORY - Include a rating question that asks about the concept at a specific price point. Format: 'How appealing is this product at $[Price]?' or 'On a scale of 1 to 5, how would you rate this product at $[Price]?' Use appropriate scale (typically 1-5 or 1-11) with clear text labels",
+            "",
+            "2. **Purchase Likelihood WITHOUT Price**: MANDATORY - Include Concept_Purchase_Likelihood question WITHOUT price. Format: 'On a scale of 1 to 5, where 1 is 'Definitely will not purchase' and 5 is 'Definitely will purchase', how likely are you to purchase [Product]?' (no price mentioned). This is separate from price-based purchase intent",
+            "",
+            "3. **Scale Format**: Concept reaction rating questions should use appropriate scale (typically 1-5 or 1-11) with clear text labels. Ensure scale_labels field is properly set",
+            "",
             "## SECTION 5 - Methodology:",
+            "**Flow**: Concept intro first (detailed) → Show concepts and methodology questions one after the other (not interleaved)",
+            "Any comparison questions happen at the end",
+            "Methodology questions must be covered for ALL concepts (not just first one)",
+            "Importance questions: Use ranked/ordered format (not open-ended) - move to Concept Reaction if needed",
+            "",
+            "### CRITICAL: Positioning Questions Exclusion",
+            "**DO NOT generate positioning questions in Section 5 (Methodology)**",
+            "Positioning statements should only come from user-provided content in concept reaction, not system-generated",
+            "If positioning is needed, it should be included in Section 4 (Concept Reaction) as user-provided content, not as a methodology question",
+            "",
             "### MANDATORY: introText",
             "```json",
             '"introText": {',
@@ -503,6 +813,11 @@ class InstructionModule:
             "```",
             "",
             "## SECTION 6 - Additional Questions:",
+            "**Content**: Additional demographics (education, employment, salary, ethnicity) - more sensitive, ask at end",
+            "Product/category engagement & discovery (e.g., social media platforms for consumer electronics)",
+            "Purchase channels, tech adoption, related behavior",
+            "Positioning statement: If needed, comes in concept reaction (user-provided, not system-generated)",
+            "",
             "### MANDATORY: introText",
             "```json",
             '"introText": {',
@@ -515,20 +830,42 @@ class InstructionModule:
             "```",
             "",
             "## SECTION 7 - Programmer Instructions:",
+            "### Programmer Instruction Schema:",
+            "Include programmer instruction questions (type: 'instruction') with structured format:",
+            "",
+            "**prog_quotas** (JSON structure for quota definitions):",
+            "```json",
+            "{",
+            '  "type": "instruction",',
+            '  "text": "QUOTAS: {\\"segment_t\\": 100, \\"segment_e\\": 100, \\"min_cell_size\\": 50}",',
+            '  "mandatory": false',
+            "}",
+            "```",
+            "",
+            "**prog_routing** (JSON structure for routing logic):",
+            "```json",
+            "{",
+            '  "type": "instruction",',
+            '  "text": "ROUTING: IF segment=T THEN continue ELSE IF segment=E THEN continue ELSE terminate",',
+            '  "mandatory": false',
+            "}",
+            "```",
+            "",
             "### MANDATORY: closingText (Survey_Closing)",
+            "**Template** (replace [purpose from RFQ] with actual purpose):",
             "```json",
             '"closingText": {',
             '  "id": "closing_7",',
             '  "type": "survey_closing",',
             '  "label": "Survey_Closing",',
-            '  "content": "Thank you for completing this survey. Your feedback is valuable and will help us [purpose from RFQ]. Your responses have been recorded. You may now close this window.",',
+            '  "content": "Thank you for completing this survey. Your feedback is valuable and will help us [REPLACE: actual research purpose from RFQ]. Your responses have been recorded. You may now close this window.",',
             '  "mandatory": true',
             "}",
             "```",
             "",
             "## IMPLEMENTATION CHECKLIST:",
             "Before submitting, verify:",
-            "- [ ] Section 1 has introText (Study_Intro)",
+            "- [ ] Section 1 has NO introText (Sample Plan displays only table and recruiting criteria)",
             "- [ ] Section 2 has introText (Screener context)",
             "- [ ] Section 3 has introText (Brand awareness context)",
             "- [ ] Section 4 has introText (Concept/Product instructions)",
@@ -541,7 +878,10 @@ class InstructionModule:
             "🚨 MISSING ANY TEXT BLOCK = INVALID SURVEY 🚨",
             ""
         ]
-        sections.append(PromptSection("static_text_requirements", static_text, order=3.5))
+        # OLD static_text section removed - content merged into consolidated section 3.7
+        
+        # OLD custom text requirements section removed - merged into consolidated section 3.7
+        # OLD QNR taxonomy section removed - merged into consolidated section 3.7
         
         return PromptModule(
             name="MODULE 3: INSTRUCTIONS - How to Generate",
@@ -549,6 +889,380 @@ class InstructionModule:
             sections=sections,
             required=True
         )
+    
+    @staticmethod
+    def _build_consolidated_requirements_section(db_session=None, context: Dict[str, Any] = None) -> Optional[PromptSection]:
+        """
+        Build consolidated section combining:
+        1. Text block requirements with templates (intelligent merge of DB + hardcoded)
+        2. Section-specific instructions (samplePlanData, concept files, etc.)
+        3. QNR Taxonomy (question types from database)
+        
+        Returns single comprehensive section for MODULE 3
+        """
+        try:
+            content = [
+                "# 3.7 SURVEY REQUIREMENTS & QUESTION TYPES",
+                "",
+                "This section provides comprehensive requirements for survey structure, text blocks, and question types.",
+                "**Note**: Refer to MODULE 2 for section overview and basic structure.",
+                "",
+            ]
+            
+            # Part 1: Text Block Requirements with Templates
+            content.extend(InstructionModule._build_text_block_requirements(db_session))
+            
+            # Part 2: Section-Specific Instructions  
+            content.extend(InstructionModule._build_section_specific_instructions())
+            
+            # Part 3: QNR Taxonomy
+            if db_session:
+                content.extend(InstructionModule._build_taxonomy_content(db_session))
+            
+            return PromptSection(
+                title="Survey Requirements & Question Types",
+                content=content,
+                order=3.7,
+                required=True
+            )
+        except Exception as e:
+            logger.warning(f"⚠️ [InstructionModule] Failed to build consolidated requirements: {e}")
+            return None
+    
+    @staticmethod
+    def _build_text_block_requirements(db_session=None) -> List[str]:
+        """Build text block requirements with intelligent merge of database labels and hardcoded templates"""
+        content = [
+            "## TEXT BLOCK REQUIREMENTS",
+            "",
+            "Every survey MUST include these text blocks with proper structure.",
+            "Templates below show required fields and example content.",
+            "",
+        ]
+        
+        # Hardcoded templates (comprehensive, don't lose anything)
+        templates = {
+            "Study_Intro": {
+                "section": 1,
+                "placement": "introText",
+                "template": '''### Study_Intro (Section 1 - introText)
+**MANDATORY**
+
+```json
+"introText": {
+  "id": "intro_1",
+  "type": "study_intro",
+  "label": "Study_Intro",
+  "content": "Thank you for agreeing to participate in this research study. We are conducting a survey about [REPLACE: actual topic from RFQ]. The survey will take approximately [REPLACE: actual minutes from RFQ] minutes. Your participation is voluntary, and you may stop at any time. Your responses will be kept confidential and used for research purposes only.",
+  "mandatory": true
+}
+```
+'''
+            },
+            "Confidentiality_Agreement": {
+                "section": 1,
+                "placement": "textBlocks",
+                "template": '''### Confidentiality_Agreement (Section 1 - textBlocks)
+**OPTIONAL**
+
+```json
+"textBlocks": [{
+  "id": "text_1_1",
+  "type": "confidentiality",
+  "label": "Confidentiality_Agreement",
+  "content": "Confidentiality Agreement: Your identity will not be linked to your answers. Results will be used for research purposes only and shared in aggregate. Do not attempt to identify any product or brand during the study.",
+  "mandatory": true
+}]
+```
+'''
+            },
+            "Screener_Intro": {
+                "section": 2,
+                "placement": "introText",
+                "template": '''### Screener_Intro (Section 2 - introText)
+**MANDATORY**
+
+```json
+"introText": {
+  "id": "intro_2",
+  "type": "section_intro",
+  "label": "Screener_Intro",
+  "content": "We will now ask a few questions to confirm your eligibility for this study. After answering these questions, you will be informed of your eligibility to participate in a [REPLACE: actual minutes] minute survey.",
+  "mandatory": true
+}
+```
+'''
+            },
+            "Brand_Awareness_Intro": {
+                "section": 3,
+                "placement": "introText",
+                "template": '''### Brand_Awareness_Intro (Section 3 - introText)
+**MANDATORY**
+
+```json
+"introText": {
+  "id": "intro_3",
+  "type": "section_intro",
+  "label": "Brand_Awareness_Intro",
+  "content": "In this section, we will ask about your awareness and experience with various brands/products.",
+  "mandatory": true
+}
+```
+'''
+            },
+            "Product_Usage": {
+                "section": 3,
+                "placement": "textBlocks",
+                "template": '''### Product_Usage (Section 3 - textBlocks)
+**OPTIONAL** (if product usage context needed)
+
+```json
+"textBlocks": [{
+  "id": "text_3_1",
+  "type": "product_usage",
+  "label": "Product_Usage",
+  "content": "Please think about your usage and experiences with these products over the past [REPLACE: actual timeframe, e.g., '3 months', 'year'].",
+  "mandatory": true
+}]
+```
+'''
+            },
+            "Concept_Intro": {
+                "section": 4,
+                "placement": "introText",
+                "template": '''### Concept_Intro (Section 4 - introText)
+**MANDATORY** (for concept/product evaluation)
+
+```json
+"introText": {
+  "id": "intro_4",
+  "type": "concept_intro",
+  "label": "Concept_Intro",
+  "content": "Now we would like to share with you a product description of a [REPLACE: product category]. We will refer to this [REPLACE: product category] as [REPLACE: product name]. Please take some time to review [REPLACE: product name] and answer the questions that follow. After you finish reading the concept, please click 'NEXT' to advance to the next screen. The screen will remain open on the concept for 40 seconds to give you the opportunity to read through the concept before you can proceed. If you need more than 40 seconds to read through the concept, you will have as much time as you need. Simply click Next when you are finished reading the concept. The concept description will be available as a hyperlink in the following screens and will open on a separate window to review. Please open the hyperlink, so you can reference it at any time during this survey",
+  "mandatory": true
+}
+```
+'''
+            },
+            "Methodology_Intro": {
+                "section": 5,
+                "placement": "introText",
+                "template": '''### Methodology_Intro (Section 5 - introText)
+**MANDATORY**
+
+```json
+"introText": {
+  "id": "intro_5",
+  "type": "section_intro",
+  "label": "Methodology_Intro",
+  "content": "[Methodology-specific instructions - e.g., for pricing: 'We will now ask about your price perceptions', for MaxDiff: 'You will see sets of features...']",
+  "mandatory": true
+}
+```
+'''
+            },
+            "Demographics_Intro": {
+                "section": 6,
+                "placement": "introText",
+                "template": '''### Demographics_Intro (Section 6 - introText)
+**MANDATORY**
+
+```json
+"introText": {
+  "id": "intro_6",
+  "type": "section_intro",
+  "label": "Demographics_Intro",
+  "content": "Finally, we have a few questions about you for classification purposes only.",
+  "mandatory": true
+}
+```
+'''
+            },
+            "Survey_Closing": {
+                "section": 7,
+                "placement": "closingText",
+                "template": '''### Survey_Closing (Section 7 - closingText)
+**MANDATORY**
+
+```json
+"closingText": {
+  "id": "closing_7",
+  "type": "survey_closing",
+  "label": "Survey_Closing",
+  "content": "Thank you for completing this survey. Your feedback is valuable and will help us [REPLACE: actual research purpose from RFQ]. Your responses have been recorded. You may now close this window.",
+  "mandatory": true
+}
+```
+'''
+            }
+        }
+        
+        # Fetch database text block labels if available
+        db_labels = {}
+        if db_session:
+            try:
+                from src.services.qnr_label_service import QNRLabelService
+                qnr_service = QNRLabelService(db_session)
+                all_labels = qnr_service.get_all_labels_for_prompt()
+                for label in all_labels:
+                    if label.get('label_type') == 'Text':
+                        db_labels[label['name']] = label
+                logger.info(f"✅ [InstructionModule] Loaded {len(db_labels)} text block labels from database")
+            except Exception as e:
+                logger.warning(f"⚠️ [InstructionModule] Failed to load text labels from database: {e}")
+        
+        # Intelligent merge: Database labels + hardcoded templates
+        # Group by section
+        sections_text = {}
+        for name, template_data in templates.items():
+            section_id = template_data['section']
+            if section_id not in sections_text:
+                sections_text[section_id] = []
+            sections_text[section_id].append((name, template_data))
+        
+        # Add database-only labels
+        for name, db_label in db_labels.items():
+            if name not in templates:
+                section_id = db_label.get('section_id')
+                if section_id:
+                    if section_id not in sections_text:
+                        sections_text[section_id] = []
+                    # Create minimal template for DB-only label
+                    sections_text[section_id].append((name, {
+                        "section": section_id,
+                        "placement": "textBlocks",
+                        "template": f"### {name}\n{db_label.get('description', '')}\n"
+                    }))
+        
+        # Build content section by section
+        for section_id in sorted(sections_text.keys()):
+            content.append(f"### Section {section_id} Text Blocks")
+            content.append("")
+            for name, template_data in sorted(sections_text[section_id], key=lambda x: x[0]):
+                content.append(template_data['template'])
+                content.append("")
+        
+        content.extend([
+            "**Implementation Checklist**:",
+            "- [ ] All MANDATORY text blocks included",
+            "- [ ] Content customized to RFQ (no placeholders)",
+            "- [ ] All text blocks have: id, type, label, content, mandatory fields",
+            "",
+        ])
+        
+        return content
+    
+    @staticmethod
+    def _build_section_specific_instructions() -> List[str]:
+        """Build section-specific instructions (samplePlanData, concept files, etc.)"""
+        return [
+            "## SECTION-SPECIFIC INSTRUCTIONS",
+            "",
+            "### Section 1: samplePlanData Structure",
+            "**CRITICAL**: Section 1 MUST have 'samplePlanData' field (NOT 'questions' array)",
+            "DO NOT include a 'questions' field in Section 1 at all - not even an empty array",
+            "",
+            "Generate tabular structure from RFQ with:",
+            "- overallSample: totalSize, ageGroups, gender, income, otherDemographics",
+            "- subsamples: Array of subsample definitions (if specified)",
+            "- quotas: minCellSize, targetQuotas (if specified)",
+            "",
+            "Example:",
+            "```json",
+            '"samplePlanData": {',
+            '  "overallSample": {',
+            '    "totalSize": 400,',
+            '    "ageGroups": [{"range": "18-24", "count": 80, "percentage": 20}],',
+            '    "gender": [{"label": "Male", "count": 200, "percentage": 50}]',
+            '  }',
+            '}',
+            "```",
+            "",
+            "### Section 4: Concept Files",
+            "**IMPORTANT**: If concept files (images/documents) are provided, include them in textBlocks with file URLs",
+            "",
+            "### Section 7: Programmer Instructions",
+            "Include programmer instruction questions (type: 'instruction') based on RFQ requirements:",
+            "- Routing logic (IF/THEN/ELSE)",
+            "- Quota checks and controls",
+            "- Termination rules",
+            "- Skip logic",
+            "- SEC calculations",
+            "- Validation rules",
+            "",
+        ]
+    
+    @staticmethod
+    def _build_taxonomy_content(db_session) -> List[str]:
+        """Build QNR taxonomy content from database"""
+        content = [
+            "## QNR TAXONOMY (Standard Question Types)",
+            "",
+            "Standard question types per section from database.",
+            "Select types that match RFQ's industry/methodology.",
+            "",
+        ]
+        
+        try:
+            from src.services.qnr_label_service import QNRLabelService
+            qnr_service = QNRLabelService(db_session)
+            
+            # Get all QNR labels (not Text labels)
+            all_labels = qnr_service.get_all_labels_for_prompt()
+            qnr_labels = [l for l in all_labels if l.get('label_type') == 'QNR']
+            
+            # Group by section
+            labels_by_section = {}
+            for label in qnr_labels:
+                section_id = label.get('section_id')
+                if section_id not in labels_by_section:
+                    labels_by_section[section_id] = []
+                labels_by_section[section_id].append(label)
+            
+            # Section names
+            sections_list = qnr_service.get_sections()
+            section_names = {s['id']: s['name'] for s in sections_list}
+            
+            # Build taxonomy per section
+            for section_id in sorted(labels_by_section.keys()):
+                section_name = section_names.get(section_id, f"Section {section_id}")
+                section_labels = labels_by_section[section_id]
+                
+                content.append(f"### Section {section_id}: {section_name}")
+                content.append("")
+                
+                # Separate mandatory and optional
+                mandatory = sorted([l for l in section_labels if l.get('mandatory')], key=lambda x: x.get('display_order', 999))
+                optional = sorted([l for l in section_labels if not l.get('mandatory')], key=lambda x: x.get('display_order', 999))
+                
+                if mandatory:
+                    content.append("**Mandatory Question Types**:")
+                    for label in mandatory:
+                        name = label['name']
+                        desc = label.get('description', '')[:100]
+                        content.append(f"  • **{name}**: {desc}")
+                    content.append("")
+                
+                if optional:
+                    content.append("**Optional Question Types**:")
+                    for label in optional[:10]:  # Limit to avoid bloat
+                        name = label['name']
+                        desc = label.get('description', '')[:80]
+                        content.append(f"  • {name}: {desc}")
+                    content.append("")
+            
+            content.extend([
+                "**Remember**: Select question types based on semantic relevance to RFQ.",
+                "Don't force-fit question types that don't make sense for the specific research context.",
+                "",
+            ])
+            
+        except Exception as e:
+            logger.warning(f"⚠️ [InstructionModule] Failed to build taxonomy: {e}")
+            content.append("(Taxonomy unavailable - database error)")
+            content.append("")
+        
+        return content
 
 
 class ExampleModule:
@@ -760,7 +1474,57 @@ class OutputModule:
             '        "mandatory": true',
             "      },",
             '      "textBlocks": [...]  // Optional',
-            '      "questions": [...]  // Array of question objects',
+            '      "samplePlanData": {',
+            '        "overallSample": {',
+            '          "totalSize": 400,',
+            '          "ageGroups": [',
+            '            {"range": "18-24", "count": 80, "percentage": 20},',
+            '            {"range": "25-34", "count": 120, "percentage": 30},',
+            '            {"range": "35-44", "count": 120, "percentage": 30},',
+            '            {"range": "45-54", "count": 60, "percentage": 15},',
+            '            {"range": "55+", "count": 20, "percentage": 5}',
+            '          ],',
+            '          "gender": [',
+            '            {"label": "Male", "count": 200, "percentage": 50},',
+            '            {"label": "Female", "count": 200, "percentage": 50}',
+            '          ],',
+            '          "income": [',
+            '            {"range": "$0-$50k", "count": 120, "percentage": 30},',
+            '            {"range": "$50k-$100k", "count": 200, "percentage": 50},',
+            '            {"range": "$100k+", "count": 80, "percentage": 20}',
+            '          ],',
+            '          "otherDemographics": [',
+            '            {',
+            '              "category": "Education",',
+            '              "breakdown": [',
+            '                {"label": "Bachelor\'s degree", "count": 200, "percentage": 50},',
+            '                {"label": "Postgraduate", "count": 100, "percentage": 25}',
+            '              ]',
+            '            }',
+            '          ]',
+            '        },',
+            '        "subsamples": [',
+            '          {',
+            '            "name": "Primary Target",',
+            '            "totalSize": 280,',
+            '            "ageGroups": [',
+            '              {"range": "25-44", "count": 240, "percentage": 86}',
+            '            ],',
+            '            "gender": [',
+            '              {"label": "Male", "count": 140, "percentage": 50},',
+            '              {"label": "Female", "count": 140, "percentage": 50}',
+            '            ],',
+            '            "criteria": "Age 25-44, current users of product category"',
+            '          }',
+            '        ],',
+            '        "quotas": {',
+            '          "minCellSize": 50,',
+            '          "targetQuotas": [',
+            '            {"segment": "segment_t", "target": 100},',
+            '            {"segment": "segment_e", "target": 100}',
+            '          ]',
+            '        }',
+            '      }',
             "    },",
             "    // ... sections 2-6 with similar structure",
             "    {",
@@ -781,10 +1545,21 @@ class OutputModule:
             '    "estimated_time": 20,',
             '    "methodology_tags": ["taste_test", "blind"],',
             '    "target_responses": 400,',
-            '    "sections_count": 7',
+            '    "sections_count": 7,',
+            '    "assumptions_used": {',
+            '      "sample_size": 400,',
+            '      "min_cell_size": 50,',
+            '      "estimated_time": 25',
+            '    }',
             "  }",
             "}",
             "```",
+            "",
+            "## Default Assumptions (if not specified in RFQ):",
+            "- sample_size: 400 (if not specified)",
+            "- min_cell_size: 50 (if not specified)",
+            "- estimated_time: 25 minutes (if not specified)",
+            "- Document defaults in metadata.assumptions_used field",
             ""
         ]
         sections.append(PromptSection("output_structure", structure_content, order=5.1))
@@ -826,8 +1601,19 @@ class OutputModule:
             "",
             "## Structure Validation:",
             "- [ ] Exactly 7 sections (ids 1-7)",
-            "- [ ] Each section has: id, title, description, questions array",
+            "- [ ] Section 1 has: id, title, description, samplePlanData (NO questions field at all - not even empty array)",
+            "- [ ] Sections 2-7 have: id, title, description, questions array",
             "- [ ] Valid JSON format (no syntax errors)",
+            "",
+            "## Sample Plan Data Validation (Section 1):",
+            "- [ ] Section 1 has samplePlanData table (NO questions field - not even empty array)",
+            "- [ ] Section 1 does NOT have a 'questions' field at all",
+            "- [ ] samplePlanData includes overallSample with totalSize and demographic breakdowns",
+            "- [ ] samplePlanData includes subsamples array (if specified in RFQ)",
+            "- [ ] Demographic breakdowns include percentages and counts",
+            "- [ ] Age groups, gender, income, and other demographics extracted from RFQ",
+            "- [ ] Subsamples have name, totalSize, demographic breakdowns, and criteria",
+            "- [ ] Quotas section includes minCellSize and targetQuotas if specified",
             "",
             "## Text Block Validation (CRITICAL):",
             "- [ ] Section 1: Has introText (Study_Intro)",
@@ -849,6 +1635,7 @@ class OutputModule:
             "- [ ] Open-ended ≤ 12% or ≤6 (cap 3 if <20Q); metadata.open_ended_count = actual count",
             "- [ ] \"Best fit/describes/matches\" → single_choice only; conversions logged in metadata",
             "- [ ] Question IDs follow format: <SectionCode>Q<NN> (SP, SQ, BQ, CQ, MQ, AQ, PQ)",
+            "- [ ] Questions follow taxonomy order within each section (mandatory first by display_order, then optional by display_order)",
             "- [ ] NO placeholder text ([BRAND], [PRODUCT], etc.)",
             "- [ ] NO programming codes in question text or options",
             "- [ ] Clean, respondent-facing language",
@@ -861,11 +1648,13 @@ class OutputModule:
             "- [ ] Follow-up questions documented: 'ASK IF CODED...'",
             "",
             "## Format Validation:",
-            "- [ ] Valid JSON (test with json.loads)",
+            "- [ ] **MANDATORY**: Run internal json.loads() validation before output",
+            "- [ ] Valid JSON (test with json.loads() - must parse successfully)",
             "- [ ] No markdown formatting",
             "- [ ] No text outside JSON",
             "- [ ] No line breaks in strings",
             "- [ ] Proper quote escaping",
+            "- [ ] If json.loads() fails, DO NOT submit - fix JSON syntax errors first",
             "",
             "═══════════════════════════════════════════════════════════════",
             "🚨 IF ANY ITEM FAILS: DO NOT SUBMIT - FIX THE ISSUE FIRST 🚨",
@@ -1082,7 +1871,7 @@ class OutputFormatter:
             "🚨 MANDATORY: Include ALL required text blocks (introText, textBlocks, closingText) as specified in text requirements",
             "",
             "## SECTION ORGANIZATION:",
-            "1. **Sample Plan** (id: 1): Participant qualification criteria, recruitment requirements, and quotas",
+            "1. **Sample Plan** (id: 1): Tabular structure with overall sample and subsample demographic breakdowns, quotas, and recruitment criteria. MUST have samplePlanData (NOT questions array)",
             "2. **Screener** (id: 2): Initial qualification questions and basic demographics",
             "3. **Brand/Product Awareness & Usage** (id: 3): Brand recall, awareness funnel, and usage patterns",
             "4. **Concept Exposure** (id: 4): Product/concept introduction and reaction assessment",
@@ -1587,10 +2376,24 @@ class PromptBuilder:
         role_module = RoleModule.build(context)
         
         # MODULE 2: Inputs - Background and Context
-        inputs_module = InputsModule.build(context, rfq_text)
+        inputs_module = InputsModule.build(context, rfq_text, db_session=self.db_session)
         
         # MODULE 3: Instructions - How to Generate (MOST CRITICAL)
-        instruction_module = InstructionModule.build(context, methodology_tags, pillar_context)
+        # Get annotation insights if available
+        annotation_insights = None
+        if self.db_session:
+            try:
+                annotation_insights = await self._build_annotation_insights_section()
+            except Exception as e:
+                logger.warning(f"⚠️ [PromptBuilder] Failed to build annotation insights: {e}")
+        
+        # Text requirements now part of consolidated section in InstructionModule (3.7)
+        
+        # QNR taxonomy and text requirements are now part of consolidated section in InstructionModule
+        # Pass db_session via context for consolidated section to use
+        context['db_session'] = self.db_session
+        
+        instruction_module = InstructionModule.build(context, methodology_tags, pillar_context, annotation_insights, None, None)
         
         # MODULE 4: Examples - Reference Surveys and Patterns
         example_module = ExampleModule.build(golden_examples, rag_context, golden_questions)
@@ -1671,7 +2474,7 @@ class PromptBuilder:
                 "- **closingText structure**: {id, type, label, content, mandatory} - Example: Survey_Closing in Section 7",
                 "",
                 "**QNR SECTION TEXT PLACEMENT MAPPING:**",
-                "- **Sample Plan (Section 1)**: Study_Intro in introText, Confidentiality_Agreement in textBlocks (if needed)",
+                "- **Sample Plan (Section 1)**: NO introText, NO textBlocks - ONLY samplePlanData table with recruiting criteria",
                 "- **Brand/Product Awareness (Section 3)**: Product_Usage in textBlocks (if applicable)",
                 "- **Concept Exposure (Section 4)**: Concept_Intro in introText (if applicable)",
                 "- **Methodology (Section 5)**: Methodology-specific instructions in textBlocks (if needed)",
@@ -1853,16 +2656,24 @@ class PromptBuilder:
                 "This taxonomy provides a comprehensive list of standard question types used in market research surveys.",
                 "Review the RFQ's industry and methodology to determine which question types are relevant.",
                 "",
+                "**Note**: Refer to QNR Structure (Module 2) for section purposes and text block requirements.",
+                "",
+                "**CRITICAL: Maintain the exact order shown in this taxonomy when generating questions**",
+                "- Labels are ordered by display_order within each section",
+                "- Mandatory labels appear first (in display_order), then optional labels (in display_order)",
+                "- Follow this sequence when generating questions for each section",
+                "",
                 "**Instructions for LLM:**",
                 "1. Scan this taxonomy to understand available question types",
                 "2. Select question types that match the RFQ's industry, methodology, and research goals",
                 "3. Skip question types that don't apply (e.g., medical questions for food surveys, taste test for healthcare)",
                 "4. Use golden examples as templates where available",
                 "5. Generate additional relevant questions beyond this taxonomy if needed for comprehensive coverage",
+                "6. **MAINTAIN THE ORDER**: Questions must follow the taxonomy order within each section",
                 ""
             ]
             
-            # Section name mapping
+            # Section name mapping - fetch from database if available, otherwise use fallback
             section_names = {
                 1: "Sample Plan",
                 2: "Screener",
@@ -1872,6 +2683,16 @@ class PromptBuilder:
                 6: "Additional Questions",
                 7: "Programmer Instructions"
             }
+            
+            # Try to get section names from database for consistency
+            try:
+                sections_list = qnr_service.get_sections()
+                for section in sections_list:
+                    section_id = section.get('id')
+                    if section_id in section_names:
+                        section_names[section_id] = section.get('name', section_names[section_id])
+            except Exception as e:
+                logger.debug(f"Could not fetch section names from database for taxonomy: {e}")
             
             # Build section-by-section taxonomy
             for section_id in sorted(labels_by_section.keys()):
@@ -1887,8 +2708,15 @@ class PromptBuilder:
                 mandatory_labels = [l for l in section_labels if l.get('mandatory')]
                 optional_labels = [l for l in section_labels if not l.get('mandatory')]
                 
+                # Sort by display_order within each group
+                mandatory_labels = sorted(mandatory_labels, key=lambda x: x.get('display_order', 999))
+                optional_labels = sorted(optional_labels, key=lambda x: x.get('display_order', 999))
+                
                 if mandatory_labels:
-                    content.append("**Mandatory Question Types:**")
+                    content.append("**🚨 MANDATORY Question Types - MUST BE INCLUDED (in display_order):**")
+                    content.append("")
+                    content.append("**CRITICAL**: All Mandatory Question Types listed below MUST be included in your survey. These are NOT optional - you MUST generate questions for each mandatory label, even if you think they don't apply. Adapt the question to fit the RFQ context while still covering the mandatory label's purpose.")
+                    content.append("")
                     for label in mandatory_labels:
                         name = label['name']
                         desc = label.get('description', '')[:100]  # Truncate for prompt size
@@ -1914,7 +2742,7 @@ class PromptBuilder:
                     content.append("")
                 
                 if optional_labels and len(optional_labels) <= 10:  # Only show if manageable
-                    content.append("**Optional Question Types:**")
+                    content.append("**Optional Question Types (in display_order):**")
                     for label in optional_labels[:10]:  # Limit to avoid bloat
                         name = label['name']
                         desc = label.get('description', '')[:80]
@@ -1940,8 +2768,10 @@ class PromptBuilder:
             
             content.extend([
                 "---",
-                "**Remember:** This is a reference guide. Select question types based on semantic relevance to the RFQ.",
-                "Don't force-fit question types that don't make sense for the specific research context.",
+                "**CRITICAL REMINDER:**",
+                "- **Mandatory labels are REQUIRED** - You MUST include ALL mandatory question types listed above, regardless of RFQ context. Adapt them to fit the research while maintaining their core purpose.",
+                "- **Optional labels** should be included if semantically relevant to the RFQ.",
+                "- **Before submitting**: Verify ALL mandatory question types from the taxonomy are present in your survey.",
                 ""
             ])
             
@@ -2310,9 +3140,9 @@ class PromptBuilder:
             ])
             
             return PromptSection(
-                title="Quality Standards from Expert Review",
+                title="3.5 Additional Feedback from Reviews",
                 content=content,
-                order=3,  # After methodology, before current task
+                order=3.5,  # Section 3.5 in Instruction Module
                 required=True
             )
             

@@ -31,9 +31,6 @@ class EvaluationSettings(BaseModel):
     prompt_review_mode: str = 'disabled'  # 'disabled', 'blocking', 'parallel'
     prompt_review_timeout_hours: int = 24
     
-    # LLM Evaluation Settings
-    enable_llm_evaluation: bool = True  # New setting to make LLM evaluation optional
-    
     # Survey Generation Mode Settings
     quick_mode_enabled: bool = False  # Enable Quick mode toggle in UI
     

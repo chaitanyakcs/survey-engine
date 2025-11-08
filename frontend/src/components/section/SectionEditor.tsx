@@ -170,7 +170,7 @@ export const SectionEditor: React.FC<SectionEditorProps> = ({
             <div className="mt-2 space-y-1">
               {editedSection.questions.map((question, index) => (
                 <div key={question.id} className="text-xs text-gray-500">
-                  {index + 1}. {question.text.substring(0, 50)}
+                  <span className="font-mono">{question.id || `${index + 1}.`}</span> {question.text.substring(0, 50)}
                   {question.text.length > 50 && '...'}
                 </div>
               ))}

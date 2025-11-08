@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from src.database import get_db, RFQ, Survey
 from src.api.dependencies import require_models_ready
@@ -7,11 +8,12 @@ from src.models.enhanced_rfq import (
     EnhancedRFQResponse,
     validate_enhanced_rfq,
     extract_legacy_fields,
-    count_populated_fields
+    count_populated_fields,
+    normalize_enum_values
 )
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
-from uuid import uuid4
+from uuid import uuid4, UUID
 import logging
 import asyncio
 
@@ -28,12 +30,14 @@ class RFQSubmissionRequest(BaseModel):
     research_goal: Optional[str] = None
     enhanced_rfq_data: Optional[dict] = None  # Optional structured Enhanced RFQ data
     custom_prompt: Optional[str] = None  # Custom edited prompt for survey generation
+    rfq_id: Optional[str] = None  # Optional: Reuse existing draft RFQ (preserves concept files)
 
 
 class RFQSubmissionResponse(BaseModel):
     workflow_id: str
     survey_id: str
     status: str
+    rfq_id: Optional[str] = None  # Return RFQ ID (reused or newly created)
 
 
 class DocumentAnalysisRequest(BaseModel):
@@ -77,8 +81,13 @@ async def submit_rfq(
     """
     Submit new RFQ for survey generation
     Returns: workflow_id, survey_id, status (async processing)
+    
+    WARNING: This endpoint ALWAYS starts survey generation.
+    Use /api/v1/rfq/enhanced/draft for saving without generation.
     """
     logger.info(f"🚀 [RFQ API] Received RFQ submission: title='{request.title}', description_length={len(request.description)}, product_category='{request.product_category}'")
+    logger.info(f"🔍 [RFQ API] Request rfq_id: {request.rfq_id}")
+    logger.warning(f"⚠️ [RFQ API] Starting survey generation workflow - this will generate a survey immediately")
     
     try:
         # Generate unique IDs
@@ -87,33 +96,62 @@ async def submit_rfq(
         
         logger.info(f"📋 [RFQ API] Generated workflow_id={workflow_id}, survey_id={survey_id}")
         
-        # Create RFQ record
-        logger.info("💾 [RFQ API] Creating RFQ database record")
+        # Check if we should reuse an existing draft RFQ (to preserve concept files)
+        rfq = None
+        if request.rfq_id:
+            logger.info(f"🔍 [RFQ API] Attempting to reuse existing RFQ: {request.rfq_id}")
+            try:
+                rfq_uuid = UUID(request.rfq_id)
+                rfq = db.query(RFQ).filter(RFQ.id == rfq_uuid).first()
+                if rfq:
+                    logger.info(f"♻️ [RFQ API] Reusing existing draft RFQ: {rfq.id} (preserves concept files)")
+                    # Update the existing RFQ with new data
+                    rfq.title = request.title or rfq.title
+                    rfq.description = request.description
+                    rfq.product_category = request.product_category or rfq.product_category
+                    rfq.target_segment = request.target_segment or rfq.target_segment
+                    rfq.research_goal = request.research_goal or rfq.research_goal
+                    if request.enhanced_rfq_data:
+                        # Merge enhanced_rfq_data if provided
+                        existing_data = rfq.enhanced_rfq_data or {}
+                        existing_data.update(request.enhanced_rfq_data)
+                        rfq.enhanced_rfq_data = existing_data
+                    db.commit()
+                    db.refresh(rfq)
+                    logger.info(f"✅ [RFQ API] Updated existing RFQ: {rfq.id}")
+                else:
+                    logger.warning(f"⚠️ [RFQ API] Requested RFQ ID {request.rfq_id} not found, creating new RFQ")
+            except (ValueError, Exception) as e:
+                logger.warning(f"⚠️ [RFQ API] Invalid RFQ ID {request.rfq_id}: {str(e)}, creating new RFQ")
+        
+        # Create new RFQ record if not reusing existing one
+        if not rfq:
+            logger.info("💾 [RFQ API] Creating new RFQ database record")
 
-        # Check if this is an enhanced RFQ submission
-        is_enhanced_rfq = request.enhanced_rfq_data is not None
-        if is_enhanced_rfq:
-            logger.info(f"🎯 [RFQ API] Enhanced RFQ detected with structured data: objectives={len(request.enhanced_rfq_data.get('objectives', []))}, constraints={len(request.enhanced_rfq_data.get('constraints', []))}")
-            
-            # Extract unmapped_context if present in enhanced_rfq_data
-            unmapped_context = request.enhanced_rfq_data.get('unmapped_context', '')
-            if unmapped_context:
-                logger.info(f"📝 [RFQ API] Found unmapped_context: {len(unmapped_context)} characters")
-                # Store unmapped_context in enhanced_rfq_data for survey generation
-                request.enhanced_rfq_data['unmapped_context'] = unmapped_context
+            # Check if this is an enhanced RFQ submission
+            is_enhanced_rfq = request.enhanced_rfq_data is not None
+            if is_enhanced_rfq:
+                logger.info(f"🎯 [RFQ API] Enhanced RFQ detected with structured data: objectives={len(request.enhanced_rfq_data.get('objectives', []))}, constraints={len(request.enhanced_rfq_data.get('constraints', []))}")
+                
+                # Extract unmapped_context if present in enhanced_rfq_data
+                unmapped_context = request.enhanced_rfq_data.get('unmapped_context', '')
+                if unmapped_context:
+                    logger.info(f"📝 [RFQ API] Found unmapped_context: {len(unmapped_context)} characters")
+                    # Store unmapped_context in enhanced_rfq_data for survey generation
+                    request.enhanced_rfq_data['unmapped_context'] = unmapped_context
 
-        rfq = RFQ(
-            title=request.title,
-            description=request.description,
-            product_category=request.product_category,
-            target_segment=request.target_segment,
-            research_goal=request.research_goal,
-            enhanced_rfq_data=request.enhanced_rfq_data  # Store structured data for analytics
-        )
-        db.add(rfq)
-        db.commit()
-        db.refresh(rfq)
-        logger.info(f"✅ [RFQ API] RFQ record created with ID: {rfq.id}")
+            rfq = RFQ(
+                title=request.title,
+                description=request.description,
+                product_category=request.product_category,
+                target_segment=request.target_segment,
+                research_goal=request.research_goal,
+                enhanced_rfq_data=request.enhanced_rfq_data  # Store structured data for analytics
+            )
+            db.add(rfq)
+            db.commit()
+            db.refresh(rfq)
+            logger.info(f"✅ [RFQ API] RFQ record created with ID: {rfq.id}")
         
         # Create initial survey record
         logger.info("💾 [RFQ API] Creating initial Survey database record")
@@ -179,10 +217,12 @@ async def submit_rfq(
         response = RFQSubmissionResponse(
             workflow_id=workflow_id,
             survey_id=str(survey.id),
-            status="draft"
+            status="draft",
+            rfq_id=str(rfq.id)  # Include RFQ ID (reused or newly created)
         )
         
         logger.info(f"🎉 [RFQ API] Returning async response: {response.model_dump()}")
+        logger.info(f"🔍 [RFQ API] RFQ ID in response: {response.rfq_id}")
         return response
         
     except Exception as e:
@@ -600,6 +640,183 @@ async def get_document_analysis_results(
         )
 
 
+@router.post("/enhanced/draft", response_model=EnhancedRFQResponse)
+async def save_enhanced_rfq_draft(
+    request: Dict[str, Any] = Body(...),  # Accept raw JSON body
+    db: Session = Depends(get_db)
+) -> EnhancedRFQResponse:
+    """
+    Save Enhanced RFQ as draft without starting survey generation.
+    This allows users to save their RFQ and upload concept files before generating the survey.
+    Returns: rfq_id, survey_id, status (draft)
+    
+    CRITICAL: This endpoint does NOT start survey generation.
+    Use /api/v1/rfq/ to start generation.
+    """
+    logger.info(f"💾 [Enhanced RFQ Draft API] Saving Enhanced RFQ as draft (NO generation will be started)")
+    logger.info(f"💾 [Enhanced RFQ Draft API] Request data keys: {list(request.keys())}")
+    logger.info(f"💾 [Enhanced RFQ Draft API] Request data: {request}")
+
+    try:
+        # Normalize enum values before validation
+        normalized_request = normalize_enum_values(request)
+        
+        # Convert dict to EnhancedRFQRequest with extra fields allowed
+        try:
+            validated_rfq = EnhancedRFQRequest(**normalized_request)
+        except Exception as validation_error:
+            logger.error(f"❌ [Enhanced RFQ Draft API] Validation error: {str(validation_error)}")
+            logger.error(f"❌ [Enhanced RFQ Draft API] Request keys: {list(request.keys())}")
+            # For drafts, be more lenient - convert enum fields to strings
+            normalized_request = request.copy()
+            if 'advanced_classification' in normalized_request and normalized_request['advanced_classification']:
+                ac = normalized_request['advanced_classification']
+                if isinstance(ac, dict):
+                    # Convert enum fields to strings if they're not valid enum values
+                    if 'industry_classification' in ac and not isinstance(ac['industry_classification'], str):
+                        ac['industry_classification'] = str(ac['industry_classification'])
+                    if 'respondent_classification' in ac and not isinstance(ac['respondent_classification'], str):
+                        ac['respondent_classification'] = str(ac['respondent_classification'])
+            validated_rfq = EnhancedRFQRequest(**normalized_request)
+        
+        field_count = count_populated_fields(validated_rfq)
+
+        logger.info(f"✅ [Enhanced RFQ Draft API] Validation successful, populated fields: {field_count}")
+
+        # Extract legacy fields for backward compatibility
+        legacy_fields = extract_legacy_fields(validated_rfq)
+
+        # Extract unmapped_context if present (from normalized_request, not validated_rfq)
+        normalized_request_dict = normalized_request if isinstance(normalized_request, dict) else normalized_request.model_dump()
+        unmapped_context = normalized_request_dict.get('unmapped_context', '') or normalized_request_dict.get('additional_info', '')
+        
+        if unmapped_context:
+            logger.info(f"📝 [Enhanced RFQ Draft API] Found unmapped_context: {len(unmapped_context)} characters")
+        
+        # Ensure unmapped_context is included in the stored enhanced_rfq_data
+        validated_rfq_dict = validated_rfq.model_dump()
+        if unmapped_context:
+            validated_rfq_dict['unmapped_context'] = unmapped_context
+
+        # Check if we should update an existing RFQ or create a new one
+        # CRITICAL: Preserve RFQ ID to maintain concept file associations
+        rfq_id_from_request = normalized_request_dict.get('rfq_id')
+        existing_rfq = None
+        
+        if rfq_id_from_request:
+            try:
+                rfq_uuid = UUID(rfq_id_from_request)
+                existing_rfq = db.query(RFQ).filter(RFQ.id == rfq_uuid).first()
+                if existing_rfq:
+                    logger.info(f"♻️ [Enhanced RFQ Draft API] Updating existing RFQ: {existing_rfq.id} (preserves concept files)")
+                else:
+                    logger.warning(f"⚠️ [Enhanced RFQ Draft API] Requested RFQ ID {rfq_id_from_request} not found, creating new RFQ")
+            except (ValueError, TypeError) as e:
+                logger.warning(f"⚠️ [Enhanced RFQ Draft API] Invalid RFQ ID {rfq_id_from_request}: {str(e)}, creating new RFQ")
+
+        # Create RFQ record with enhanced data
+        if existing_rfq:
+            logger.info("💾 [Enhanced RFQ Draft API] Updating existing Enhanced RFQ database record")
+        else:
+            logger.info("💾 [Enhanced RFQ Draft API] Creating new Enhanced RFQ database record")
+
+        # Extract document_upload_id from document_source if present
+        document_upload_id = None
+        doc_source = validated_rfq_dict.get('document_source')
+        if doc_source and doc_source.get('type') == 'upload':
+            from src.database.models import DocumentUpload
+            upload_id = doc_source.get('upload_id')
+            filename = doc_source.get('filename')
+            
+            if upload_id:
+                # Check if upload_id is a valid UUID
+                try:
+                    UUID(str(upload_id))
+                    # It's a valid UUID, query by id only
+                    document_upload = db.query(DocumentUpload).filter(
+                        DocumentUpload.id == upload_id
+                    ).first()
+                    if document_upload:
+                        document_upload_id = document_upload.id
+                        logger.info(f"🔍 [Enhanced RFQ Draft API] Found document upload by UUID: {upload_id}")
+                except (ValueError, TypeError):
+                    # Not a valid UUID, treat as filename
+                    document_upload = db.query(DocumentUpload).filter(
+                        DocumentUpload.filename == str(upload_id)
+                    ).order_by(DocumentUpload.created_at.desc()).first()
+                    if document_upload:
+                        document_upload_id = document_upload.id
+                        logger.info(f"🔍 [Enhanced RFQ Draft API] Found document upload by filename (from upload_id): {upload_id}")
+            elif filename:
+                document_upload = db.query(DocumentUpload).filter(
+                    DocumentUpload.filename == filename
+                ).order_by(DocumentUpload.created_at.desc()).first()
+                if document_upload:
+                    document_upload_id = document_upload.id
+                    logger.info(f"🔍 [Enhanced RFQ Draft API] Found document upload by filename: {filename}")
+        
+        if existing_rfq:
+            # Update existing RFQ (preserves RFQ ID and concept files)
+            existing_rfq.title = legacy_fields.get("title") or existing_rfq.title
+            existing_rfq.description = legacy_fields.get("description") or existing_rfq.description
+            existing_rfq.product_category = legacy_fields.get("product_category") or existing_rfq.product_category
+            existing_rfq.target_segment = legacy_fields.get("target_segment") or existing_rfq.target_segment
+            existing_rfq.research_goal = legacy_fields.get("research_goal") or existing_rfq.research_goal
+            existing_rfq.enhanced_rfq_data = validated_rfq_dict
+            if document_upload_id:
+                existing_rfq.document_upload_id = document_upload_id
+            db.commit()
+            db.refresh(existing_rfq)
+            rfq = existing_rfq
+            logger.info(f"✅ [Enhanced RFQ Draft API] Enhanced RFQ record updated: {rfq.id} (concept files preserved)")
+        else:
+            # Create new RFQ
+            rfq = RFQ(
+                title=legacy_fields.get("title") or "",
+                description=legacy_fields.get("description") or "",
+                product_category=legacy_fields.get("product_category"),
+                target_segment=legacy_fields.get("target_segment"),
+                research_goal=legacy_fields.get("research_goal"),
+                enhanced_rfq_data=validated_rfq_dict,
+                document_upload_id=document_upload_id
+            )
+            db.add(rfq)
+            db.commit()
+            db.refresh(rfq)
+            logger.info(f"✅ [Enhanced RFQ Draft API] Enhanced RFQ record created with ID: {rfq.id}")
+
+        # CRITICAL: Do NOT create a Survey record for draft saves
+        # Survey records should only be created when generation actually starts
+        # This prevents empty draft surveys from appearing in the survey listing
+        logger.info(f"🔒 [Enhanced RFQ Draft API] NOT creating Survey record - surveys only created when generation starts")
+        
+        # Return draft response (NO workflow, NO survey created)
+        response = EnhancedRFQResponse(
+            rfq_id=str(rfq.id),
+            workflow_id=None,  # No workflow for draft - CRITICAL: Must be None
+            survey_id=None,  # No survey created for draft - CRITICAL: Must be None
+            status="draft",
+            enhanced_data_processed=True,
+            field_count=field_count
+        )
+
+        # Final verification that we're not starting generation or creating surveys
+        if response.workflow_id is not None:
+            logger.error(f"❌ [Enhanced RFQ Draft API] CRITICAL ERROR: Draft endpoint returned workflow_id={response.workflow_id} - this should NEVER happen!")
+            raise ValueError("Draft endpoint must not return a workflow_id - generation should not be started")
+        
+        if response.survey_id is not None:
+            logger.error(f"❌ [Enhanced RFQ Draft API] CRITICAL ERROR: Draft endpoint returned survey_id={response.survey_id} - this should NEVER happen!")
+            raise ValueError("Draft endpoint must not return a survey_id - surveys should not be created for drafts")
+        
+        logger.info(f"🎉 [Enhanced RFQ Draft API] Draft saved successfully: rfq_id={rfq.id}, survey_id=None, workflow_id=None (no survey created, no generation)")
+        return response
+
+    except Exception as e:
+        logger.error(f"❌ [Enhanced RFQ Draft API] Failed to save draft: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to save RFQ draft: {str(e)}")
+
+
 @router.post("/enhanced", response_model=EnhancedRFQResponse)
 async def submit_enhanced_rfq(
     request: EnhancedRFQRequest,
@@ -643,8 +860,27 @@ async def submit_enhanced_rfq(
 
         logger.info(f"📋 [Enhanced RFQ API] Generated workflow_id={workflow_id}, survey_id={survey_id}")
 
+        # Check if we should update an existing RFQ or create a new one
+        # CRITICAL: Preserve RFQ ID to maintain concept file associations
+        rfq_id_from_request = validated_rfq_dict.get('rfq_id')
+        existing_rfq = None
+        
+        if rfq_id_from_request:
+            try:
+                rfq_uuid = UUID(rfq_id_from_request)
+                existing_rfq = db.query(RFQ).filter(RFQ.id == rfq_uuid).first()
+                if existing_rfq:
+                    logger.info(f"♻️ [Enhanced RFQ API] Updating existing RFQ: {existing_rfq.id} (preserves concept files)")
+                else:
+                    logger.warning(f"⚠️ [Enhanced RFQ API] Requested RFQ ID {rfq_id_from_request} not found, creating new RFQ")
+            except (ValueError, TypeError) as e:
+                logger.warning(f"⚠️ [Enhanced RFQ API] Invalid RFQ ID {rfq_id_from_request}: {str(e)}, creating new RFQ")
+
         # Create RFQ record with enhanced data
-        logger.info("💾 [Enhanced RFQ API] Creating Enhanced RFQ database record")
+        if existing_rfq:
+            logger.info("💾 [Enhanced RFQ API] Updating existing Enhanced RFQ database record")
+        else:
+            logger.info("💾 [Enhanced RFQ API] Creating new Enhanced RFQ database record")
 
         # Extract document_upload_id from document_source if present
         document_upload_id = None
@@ -672,19 +908,35 @@ async def submit_enhanced_rfq(
                     document_upload_id = document_upload.id
                     logger.info(f"🔍 [Enhanced RFQ API] Found document upload by filename: {filename}")
         
-        rfq = RFQ(
-            title=legacy_fields["title"],
-            description=legacy_fields["description"],
-            product_category=legacy_fields["product_category"],
-            target_segment=legacy_fields["target_segment"],
-            research_goal=legacy_fields["research_goal"],
-            enhanced_rfq_data=validated_rfq_dict,  # Store complete enhanced data with unmapped_context
-            document_upload_id=document_upload_id  # Link to source document if available
-        )
-        db.add(rfq)
-        db.commit()
-        db.refresh(rfq)
-        logger.info(f"✅ [Enhanced RFQ API] Enhanced RFQ record created with ID: {rfq.id}, document_upload_id: {document_upload_id}")
+        if existing_rfq:
+            # Update existing RFQ (preserves RFQ ID and concept files)
+            existing_rfq.title = legacy_fields["title"]
+            existing_rfq.description = legacy_fields["description"]
+            existing_rfq.product_category = legacy_fields["product_category"]
+            existing_rfq.target_segment = legacy_fields["target_segment"]
+            existing_rfq.research_goal = legacy_fields["research_goal"]
+            existing_rfq.enhanced_rfq_data = validated_rfq_dict
+            if document_upload_id:
+                existing_rfq.document_upload_id = document_upload_id
+            db.commit()
+            db.refresh(existing_rfq)
+            rfq = existing_rfq
+            logger.info(f"✅ [Enhanced RFQ API] Enhanced RFQ record updated: {rfq.id} (concept files preserved)")
+        else:
+            # Create new RFQ
+            rfq = RFQ(
+                title=legacy_fields["title"],
+                description=legacy_fields["description"],
+                product_category=legacy_fields["product_category"],
+                target_segment=legacy_fields["target_segment"],
+                research_goal=legacy_fields["research_goal"],
+                enhanced_rfq_data=validated_rfq_dict,  # Store complete enhanced data with unmapped_context
+                document_upload_id=document_upload_id  # Link to source document if available
+            )
+            db.add(rfq)
+            db.commit()
+            db.refresh(rfq)
+            logger.info(f"✅ [Enhanced RFQ API] Enhanced RFQ record created with ID: {rfq.id}, document_upload_id: {document_upload_id}")
 
         # Create initial survey record
         logger.info("💾 [Enhanced RFQ API] Creating initial Survey database record")
@@ -1053,4 +1305,304 @@ async def preview_survey_generation_prompt(
         raise HTTPException(
             status_code=500, 
             detail=f"Failed to generate prompt preview: {str(e)}"
+        )
+
+
+# Concept File Upload Models
+class ConceptFileUploadResponse(BaseModel):
+    id: str
+    filename: str
+    original_filename: str
+    file_size: int
+    content_type: str
+    concept_stimulus_id: Optional[str] = None
+    display_order: int
+    upload_timestamp: str
+
+
+class ConceptFileListResponse(BaseModel):
+    concept_files: List[ConceptFileUploadResponse]
+
+
+# Allowed file types for concept uploads
+ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp']
+ALLOWED_DOCUMENT_TYPES = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+ALLOWED_CONTENT_TYPES = ALLOWED_IMAGE_TYPES + ALLOWED_DOCUMENT_TYPES
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
+
+@router.post("/concept/upload", response_model=ConceptFileUploadResponse)
+async def upload_concept_file(
+    file: UploadFile = File(...),
+    rfq_id: str = Form(...),
+    concept_stimulus_id: Optional[str] = Form(None),
+    display_order: int = Form(0),
+    db: Session = Depends(get_db)
+) -> ConceptFileUploadResponse:
+    """
+    Upload a concept file (image or document) for an RFQ
+    Supports: PNG, JPG, GIF, WebP (images) and PDF, DOCX (documents)
+    Max file size: 10MB
+    """
+    logger.info(f"📎 [Concept API] Received concept file upload: filename='{file.filename}', rfq_id='{rfq_id}'")
+    
+    try:
+        # Validate RFQ exists
+        try:
+            rfq_uuid = UUID(rfq_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid RFQ ID format")
+        
+        rfq = db.query(RFQ).filter(RFQ.id == rfq_uuid).first()
+        if not rfq:
+            raise HTTPException(status_code=404, detail="RFQ not found")
+        
+        # Validate file type
+        if not file.content_type or file.content_type not in ALLOWED_CONTENT_TYPES:
+            allowed_str = ', '.join(ALLOWED_IMAGE_TYPES + ALLOWED_DOCUMENT_TYPES)
+            raise HTTPException(
+                status_code=400,
+                detail=f"File type not allowed. Allowed types: Images (PNG, JPG, GIF, WebP) and Documents (PDF, DOCX)"
+            )
+        
+        # Read file content
+        file_content = await file.read()
+        
+        if len(file_content) == 0:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty")
+        
+        if len(file_content) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File too large. Maximum size is {MAX_FILE_SIZE / (1024 * 1024)}MB"
+            )
+        
+        logger.info(f"✅ [Concept API] File validated: size={len(file_content)} bytes, type={file.content_type}")
+        
+        # Create ConceptFile record
+        from src.database.models import ConceptFile
+        
+        concept_file = ConceptFile(
+            rfq_id=rfq_uuid,
+            filename=file.filename or f"concept_{uuid4().hex[:8]}",
+            original_filename=file.filename,
+            file_size=len(file_content),
+            content_type=file.content_type,
+            file_data=file_content,
+            concept_stimulus_id=concept_stimulus_id,
+            display_order=display_order
+        )
+        
+        db.add(concept_file)
+        db.commit()
+        db.refresh(concept_file)
+        
+        logger.info(f"✅ [Concept API] Concept file uploaded successfully: id={concept_file.id}")
+        
+        return ConceptFileUploadResponse(
+            id=str(concept_file.id),
+            filename=concept_file.filename,
+            original_filename=concept_file.original_filename or concept_file.filename,
+            file_size=concept_file.file_size,
+            content_type=concept_file.content_type,
+            concept_stimulus_id=concept_file.concept_stimulus_id,
+            display_order=concept_file.display_order,
+            upload_timestamp=concept_file.upload_timestamp.isoformat() if concept_file.upload_timestamp else ""
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [Concept API] Failed to upload concept file: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to upload concept file: {str(e)}"
+        )
+
+
+@router.get("/{rfq_id}/concepts", response_model=ConceptFileListResponse)
+async def get_concept_files(
+    rfq_id: str,
+    db: Session = Depends(get_db)
+) -> ConceptFileListResponse:
+    """
+    Get all concept files for an RFQ
+    """
+    logger.info(f"📎 [Concept API] Fetching concept files for rfq_id='{rfq_id}'")
+    
+    try:
+        try:
+            rfq_uuid = UUID(rfq_id)
+            logger.info(f"🔍 [Concept API] Parsed UUID: {rfq_uuid}")
+        except ValueError as e:
+            logger.error(f"❌ [Concept API] Invalid RFQ ID format: {rfq_id}, error: {str(e)}")
+            raise HTTPException(status_code=400, detail="Invalid RFQ ID format")
+        
+        rfq = db.query(RFQ).filter(RFQ.id == rfq_uuid).first()
+        if not rfq:
+            logger.warning(f"⚠️ [Concept API] RFQ not found: {rfq_uuid}")
+            raise HTTPException(status_code=404, detail="RFQ not found")
+        
+        logger.info(f"✅ [Concept API] RFQ found: id={rfq.id}, title='{rfq.title}'")
+        
+        from src.database.models import ConceptFile
+        
+        # Diagnostic: Check total concept files in database
+        total_files = db.query(ConceptFile).count()
+        logger.info(f"🔍 [Concept API] Total concept files in database: {total_files}")
+        
+        # Query concept files for this RFQ
+        concept_files = db.query(ConceptFile).filter(
+            ConceptFile.rfq_id == rfq_uuid
+        ).order_by(ConceptFile.display_order, ConceptFile.created_at).all()
+        
+        logger.info(f"🔍 [Concept API] Found {len(concept_files)} concept files in database for rfq_id={rfq_uuid}")
+        
+        # Diagnostic: Check if there are files for other RFQs
+        if len(concept_files) == 0 and total_files > 0:
+            sample_files = db.query(ConceptFile).limit(10).all()
+            logger.info(f"🔍 [Concept API] Sample of other concept files in DB (first 10):")
+            for sf in sample_files:
+                logger.info(f"  📄 Other file: rfq_id={sf.rfq_id}, filename='{sf.filename}', created_at={sf.created_at}")
+            
+            # Also check if there are any recent files that might be for this RFQ
+            recent_files = db.query(ConceptFile).order_by(ConceptFile.created_at.desc()).limit(5).all()
+            logger.info(f"🔍 [Concept API] Most recent concept files (last 5):")
+            for rf in recent_files:
+                logger.info(f"  📄 Recent file: rfq_id={rf.rfq_id}, filename='{rf.filename}', created_at={rf.created_at}")
+            
+            # Check for orphaned files: files uploaded around the same time as this RFQ was created
+            from datetime import timedelta
+            time_window = timedelta(hours=24)  # 24 hour window
+            rfq_created_at = rfq.created_at if hasattr(rfq, 'created_at') and rfq.created_at else None
+            
+            if rfq_created_at:
+                potential_orphaned = db.query(ConceptFile).filter(
+                    ConceptFile.created_at >= rfq_created_at - time_window,
+                    ConceptFile.created_at <= rfq_created_at + time_window,
+                    ConceptFile.rfq_id != rfq_uuid
+                ).all()
+                
+                if potential_orphaned:
+                    logger.warning(f"⚠️ [Concept API] Found {len(potential_orphaned)} concept files uploaded within 24 hours of RFQ creation but associated with different RFQ IDs:")
+                    for po in potential_orphaned:
+                        other_rfq = db.query(RFQ).filter(RFQ.id == po.rfq_id).first()
+                        other_rfq_title = other_rfq.title if other_rfq else "Unknown"
+                        logger.warning(f"  📄 Orphaned candidate: rfq_id={po.rfq_id} (title: '{other_rfq_title}'), filename='{po.filename}', created_at={po.created_at}")
+        
+        # Log each file found
+        for cf in concept_files:
+            logger.info(f"  📄 File: id={cf.id}, filename='{cf.filename}', size={cf.file_size}, type={cf.content_type}")
+        
+        files_response = [
+            ConceptFileUploadResponse(
+                id=str(cf.id),
+                filename=cf.filename,
+                original_filename=cf.original_filename or cf.filename,
+                file_size=cf.file_size,
+                content_type=cf.content_type,
+                concept_stimulus_id=cf.concept_stimulus_id,
+                display_order=cf.display_order,
+                upload_timestamp=cf.upload_timestamp.isoformat() if cf.upload_timestamp else ""
+            )
+            for cf in concept_files
+        ]
+        
+        logger.info(f"✅ [Concept API] Retrieved {len(files_response)} concept files, returning response")
+        
+        # Ensure we always return a valid response, even if empty
+        response = ConceptFileListResponse(concept_files=files_response)
+        logger.info(f"📤 [Concept API] Response object created: {len(response.concept_files)} files")
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [Concept API] Failed to fetch concept files: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch concept files: {str(e)}"
+        )
+
+
+@router.get("/concept/{concept_file_id}")
+async def download_concept_file(
+    concept_file_id: str,
+    db: Session = Depends(get_db)
+) -> Response:
+    """
+    Download/view a concept file by ID
+    """
+    logger.info(f"📎 [Concept API] Downloading concept file: id='{concept_file_id}'")
+    
+    try:
+        try:
+            file_uuid = UUID(concept_file_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid concept file ID format")
+        
+        from src.database.models import ConceptFile
+        
+        concept_file = db.query(ConceptFile).filter(ConceptFile.id == file_uuid).first()
+        if not concept_file:
+            raise HTTPException(status_code=404, detail="Concept file not found")
+        
+        logger.info(f"✅ [Concept API] Serving concept file: {concept_file.filename}")
+        
+        return Response(
+            content=bytes(concept_file.file_data),
+            media_type=concept_file.content_type,
+            headers={
+                "Content-Disposition": f'inline; filename="{concept_file.original_filename or concept_file.filename}"'
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [Concept API] Failed to download concept file: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to download concept file: {str(e)}"
+        )
+
+
+@router.delete("/concept/{concept_file_id}")
+async def delete_concept_file(
+    concept_file_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Delete a concept file by ID
+    """
+    logger.info(f"📎 [Concept API] Deleting concept file: id='{concept_file_id}'")
+    
+    try:
+        try:
+            file_uuid = UUID(concept_file_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid concept file ID format")
+        
+        from src.database.models import ConceptFile
+        
+        concept_file = db.query(ConceptFile).filter(ConceptFile.id == file_uuid).first()
+        if not concept_file:
+            raise HTTPException(status_code=404, detail="Concept file not found")
+        
+        db.delete(concept_file)
+        db.commit()
+        
+        logger.info(f"✅ [Concept API] Concept file deleted: {concept_file.filename}")
+        
+        return {"message": "Concept file deleted successfully", "id": concept_file_id}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [Concept API] Failed to delete concept file: {str(e)}", exc_info=True)
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete concept file: {str(e)}"
         )

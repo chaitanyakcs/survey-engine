@@ -97,6 +97,32 @@ const SurveyTextBlock: React.FC<SurveyTextBlockProps> = ({
   const icon = getTextTypeIcon(textType);
   const content = getTextContent();
 
+  // For instructions, use lean design with just blue info icon - no type labels
+  if (textType === 'instruction') {
+    return (
+      <div className={`bg-white border border-gray-200 rounded-lg shadow-sm p-5 mb-4 ${className}`}>
+        <div className="bg-blue-50 rounded-lg p-4 border-l-4 border-blue-400">
+          <div className="flex items-start gap-3">
+            {/* Icon */}
+            <div className="flex-shrink-0">
+              <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                <span className="text-white text-xs font-bold">i</span>
+              </div>
+            </div>
+            
+            {/* Instruction text */}
+            <div className="flex-1">
+              <p className="text-sm text-gray-900 leading-relaxed whitespace-pre-wrap">
+                {content}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // For other types, show full header
   return (
     <div className={`${typeStyles} border rounded-lg p-6 mb-6 ${className}`}>
       {/* Header with prominent Instructions and small purple tag */}

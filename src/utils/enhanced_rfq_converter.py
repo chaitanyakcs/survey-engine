@@ -266,11 +266,59 @@ def create_enhanced_description(rfq: Dict[str, Any]) -> str:
 
 def generate_text_requirements(rfq: Dict[str, Any]) -> str:
     """
-    Generate text introduction requirements based on methodology
+    Generate text introduction requirements based on methodology or custom text blocks
     """
     sections: List[str] = []
 
-    # Get methodologies
+    # Check if custom text blocks are defined in survey_structure
+    survey_structure = rfq.get('survey_structure', {})
+    text_blocks = survey_structure.get('text_blocks', [])
+    
+    if text_blocks:
+        # Use custom text blocks from RFQ
+        sections.append("## MANDATORY TEXT BLOCK REQUIREMENTS:")
+        sections.append("The following text blocks MUST be included in the survey with their specified content:")
+        sections.append("")
+        
+        for block in text_blocks:
+            block_id = block.get('id', '')
+            block_name = block.get('name', block_id)
+            block_type = block.get('type', 'custom')
+            content = block.get('content', '')
+            label = block.get('label', block_id)
+            mandatory = block.get('mandatory', False)
+            section_mapping = block.get('section_mapping')
+            
+            # Map section number to section name
+            section_names = {
+                1: 'Sample Plan (Section 1)',
+                2: 'Screener (Section 2)',
+                3: 'Brand/Product Awareness (Section 3)',
+                4: 'Concept Exposure (Section 4)',
+                5: 'Methodology (Section 5)',
+                6: 'Additional Questions (Section 6)',
+                7: 'Programmer Instructions (Section 7)'
+            }
+            section_name = section_names.get(section_mapping, f'Section {section_mapping}') if section_mapping else 'Not specified'
+            
+            mandatory_text = " (MANDATORY)" if mandatory else ""
+            sections.append(f"### {block_name}{mandatory_text}:")
+            sections.append(f"- **Label**: {label}")
+            sections.append(f"- **Type**: {block_type}")
+            sections.append(f"- **Section**: {section_name}")
+            sections.append(f"- **Content**: {content}")
+            sections.append("")
+        
+        sections.append("**IMPORTANT**: These text blocks must appear as standalone content blocks with the exact structure:")
+        sections.append("- Use 'introText' for section introductions")
+        sections.append("- Use 'textBlocks' array for mid-section content")
+        sections.append("- Use 'closingText' for section endings")
+        sections.append("- Include the specified 'label' field matching the requirements above")
+        sections.append("- Include the specified 'content' field with the exact text provided")
+        
+        return '\n'.join(sections)
+    
+    # Fallback to methodology-based generation (legacy behavior)
     methodology = rfq.get('methodology', {})
     methodologies = methodology.get('required_methodologies', [])
 

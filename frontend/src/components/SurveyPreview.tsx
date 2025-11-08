@@ -1,17 +1,124 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { Question, Survey, SurveySection, QuestionAnnotation, SectionAnnotation, SurveyAnnotations, SurveyLevelAnnotation } from '../types';
+import { Question, Survey, SurveySection, QuestionAnnotation, SectionAnnotation, SurveyAnnotations, SurveyLevelAnnotation, ConceptFile, SamplePlanTable } from '../types';
 import AnnotationMode from './AnnotationMode';
 import AnnotationSidePane from './AnnotationSidePane';
 import SurveyTextBlock from './SurveyTextBlock';
 import QuestionCard from './QuestionCard';
 import { useSurveyEdit } from '../hooks/useSurveyEdit';
-import { PencilIcon, ChevronDownIcon, ChevronRightIcon, TagIcon, TrashIcon, ChevronUpIcon, PlusIcon, TagIcon as LabelIcon } from '@heroicons/react/24/outline';
+import { PencilIcon, ChevronDownIcon, ChevronRightIcon, TagIcon, TrashIcon, ChevronUpIcon, PlusIcon, TagIcon as LabelIcon, PhotoIcon, DocumentIcon } from '@heroicons/react/24/outline';
 
 
 // Helper function to check if survey uses sections format
 const hasSections = (survey: Survey): boolean => {
   return !!survey.sections && survey.sections.length > 0;
+};
+
+// Sample Plan Table Renderer Component
+const SamplePlanTableRenderer: React.FC<{ data: SamplePlanTable }> = ({ data }) => {
+  // Extract concept columns from subsamples or use default structure
+  // The table format shows respondent types as rows and concepts as columns
+  const subsamples = data.subsamples || [];
+  
+  // Get unique concept names from subsamples (if they have concept information)
+  // For now, we'll use a simple structure based on subsamples
+  // If subsamples have concept info, extract it; otherwise use subsample names as concepts
+  const conceptColumns: string[] = [];
+  const respondentRows: Array<{ name: string; values: number[] }> = [];
+  
+  // Try to extract concept columns from the data structure
+  // This is a flexible approach that adapts to the data format
+  if (subsamples.length > 0) {
+    // For now, we'll create a simple table with respondent types
+    // The actual concept columns might need to be extracted differently based on backend structure
+    subsamples.forEach((subsample) => {
+      respondentRows.push({
+        name: subsample.name || 'Unknown',
+        values: [subsample.totalSize || 0] // This will need to be adjusted based on actual data structure
+      });
+    });
+  }
+  
+  // Calculate totals
+  const totalRow = {
+    name: 'TOTAL',
+    total: data.overallSample?.totalSize || respondentRows.reduce((sum, row) => sum + (row.values[0] || 0), 0),
+    values: respondentRows.reduce((acc, row) => {
+      row.values.forEach((val, idx) => {
+        acc[idx] = (acc[idx] || 0) + val;
+      });
+      return acc;
+    }, [] as number[])
+  };
+  
+  // Collect all recruiting criteria
+  const recruitingCriteria = subsamples
+    .filter(sub => sub.criteria)
+    .map(sub => sub.criteria)
+    .filter((criteria): criteria is string => !!criteria);
+  
+  // If no concept columns found, create a simple single-column table
+  const hasMultipleConcepts = conceptColumns.length > 0;
+  const displayColumns = hasMultipleConcepts ? conceptColumns : ['Count'];
+  
+  return (
+    <div className="mb-6">
+      {/* Sample Plan Table */}
+      <div className="overflow-x-auto">
+        <table className="min-w-full border border-gray-300">
+          <thead>
+            <tr className="bg-gray-100 border-b-2 border-gray-300">
+              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 border-r border-gray-300">
+                RESPONDENT TYPE
+              </th>
+              {displayColumns.map((col, idx) => (
+                <th key={idx} className="px-4 py-3 text-center text-sm font-semibold text-gray-900 border-r border-gray-300 last:border-r-0">
+                  {col}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {respondentRows.map((row, idx) => (
+              <tr key={idx} className="border-b border-gray-200 hover:bg-gray-50">
+                <td className="px-4 py-3 text-sm font-medium text-gray-900 border-r border-gray-300">
+                  {row.name}
+                </td>
+                {row.values.map((val, valIdx) => (
+                  <td key={valIdx} className="px-4 py-3 text-sm text-center text-gray-700 border-r border-gray-300 last:border-r-0">
+                    {val}
+                  </td>
+                ))}
+              </tr>
+            ))}
+            {/* Total Row */}
+            <tr className="border-t-2 border-gray-400 bg-gray-50 font-semibold">
+              <td className="px-4 py-3 text-sm font-bold text-gray-900 border-r border-gray-300">
+                <span className="underline">TOTAL = {totalRow.total}</span>
+              </td>
+              {totalRow.values.map((val, idx) => (
+                <td key={idx} className="px-4 py-3 text-sm text-center font-bold text-gray-900 border-r border-gray-300 last:border-r-0">
+                  {val}
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      
+      {/* Recruiting Criteria Section */}
+      {recruitingCriteria.length > 0 && (
+        <div className="mt-6">
+          <h4 className="text-sm font-bold text-gray-900 mb-3">RECRUITING CRITERIA :-</h4>
+          <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
+            {recruitingCriteria.map((criteria, idx) => (
+              <li key={idx}>{criteria}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
 };
 
 const SectionCard: React.FC<{
@@ -34,6 +141,7 @@ const SectionCard: React.FC<{
   canMoveDown?: boolean;
   surveyId?: string;
   currentAnnotations?: SurveyAnnotations;
+  conceptFiles?: ConceptFile[];
 }> = ({
   section,
   sectionIndex,
@@ -53,7 +161,8 @@ const SectionCard: React.FC<{
   canMoveUp = false,
   canMoveDown = false,
   surveyId,
-  currentAnnotations
+  currentAnnotations,
+  conceptFiles = []
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -345,13 +454,31 @@ const SectionCard: React.FC<{
       {/* Section Questions */}
       {isExpanded && (
         <div className="p-6 space-y-4">
-          {/* Introduction Text Block */}
-          {section.introText && (
-            <SurveyTextBlock
-              textContent={section.introText}
-              className="mb-6"
-            />
-          )}
+          {/* Check if this is a Sample Plan section */}
+          {(() => {
+            const isSamplePlan = sectionIndex === 0 || 
+                                 section.title?.toLowerCase().includes('sample plan') || 
+                                 !!section.samplePlanData;
+            
+            // Render Sample Plan table if samplePlanData exists
+            if (isSamplePlan && section.samplePlanData) {
+              return (
+                <SamplePlanTableRenderer data={section.samplePlanData} />
+              );
+            }
+            
+            // Skip introText for Sample Plan sections, show it for others
+            if (!isSamplePlan && section.introText) {
+              return (
+                <SurveyTextBlock
+                  textContent={section.introText}
+                  className="mb-6"
+                />
+              );
+            }
+            
+            return null;
+          })()}
 
           {/* Additional Text Blocks (ordered) */}
           {section.textBlocks && section.textBlocks.length > 0 && (
@@ -367,8 +494,82 @@ const SectionCard: React.FC<{
             </div>
           )}
 
+          {/* Concept Files Display - Show in Section 4 (Concept Exposure) */}
+          {(() => {
+            const shouldShow = (section.title?.toLowerCase().includes('concept') || sectionIndex === 3) && conceptFiles.length > 0;
+            if (sectionIndex === 3 || section.title?.toLowerCase().includes('concept')) {
+              console.log(`🔍 [SurveyPreview] Section ${sectionIndex} (${section.title}): shouldShow=${shouldShow}, conceptFiles.length=${conceptFiles.length}`);
+            }
+            return shouldShow;
+          })() && (
+            <div className="mb-6 p-4 bg-purple-50 border border-purple-200 rounded-lg">
+              <h4 className="text-sm font-semibold text-purple-900 mb-3 flex items-center">
+                <PhotoIcon className="w-5 h-5 mr-2 text-purple-600" />
+                Concept Files
+              </h4>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {conceptFiles
+                  .sort((a: ConceptFile, b: ConceptFile) => (a.display_order || 0) - (b.display_order || 0))
+                  .map((file: ConceptFile) => {
+                    const isImage = file.content_type?.startsWith('image/');
+                    return (
+                      <div
+                        key={file.id}
+                        className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow"
+                      >
+                        {isImage ? (
+                          <a
+                            href={file.file_url || `/api/v1/rfq/concept/${file.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block"
+                          >
+                            <img
+                              src={file.file_url || `/api/v1/rfq/concept/${file.id}`}
+                              alt={file.original_filename || file.filename}
+                              className="w-full h-32 object-cover"
+                              onError={(e) => {
+                                // Fallback to icon if image fails to load
+                                e.currentTarget.style.display = 'none';
+                                e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                              }}
+                            />
+                            <div className="hidden p-8 flex items-center justify-center bg-gray-100">
+                              <PhotoIcon className="w-12 h-12 text-gray-400" />
+                            </div>
+                          </a>
+                        ) : (
+                          <a
+                            href={file.file_url || `/api/v1/rfq/concept/${file.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block p-6 flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 transition-colors"
+                          >
+                            <DocumentIcon className="w-12 h-12 text-gray-400 mb-2" />
+                            <span className="text-xs text-gray-600 text-center truncate w-full">
+                              {file.original_filename || file.filename}
+                            </span>
+                          </a>
+                        )}
+                        <div className="p-2 bg-white border-t border-gray-200">
+                          <p className="text-xs text-gray-700 truncate" title={file.original_filename || file.filename}>
+                            {file.original_filename || file.filename}
+                          </p>
+                          {file.file_size && (
+                            <p className="text-xs text-gray-500">
+                              {(file.file_size / 1024).toFixed(1)} KB
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+
           {/* Questions */}
-          {section.questions.map((question, index) => {
+          {(section.questions || []).map((question, index) => {
             // Find the annotation for this question (store now handles deduplication)
             const questionAnnotation = currentAnnotations?.questionAnnotations?.find(
               (qa: QuestionAnnotation) => qa.questionId === question.id
@@ -394,7 +595,7 @@ const SectionCard: React.FC<{
                 onDelete={() => onQuestionDelete(question.id)}
                 onMove={onQuestionMove}
                 canMoveUp={index > 0}
-                canMoveDown={index < section.questions.length - 1}
+                canMoveDown={index < (section.questions?.length || 0) - 1}
                 isEditingSurvey={isEditingSurvey}
                 isAnnotationMode={isAnnotationMode}
                 onOpenAnnotation={handleQuestionAnnotation}
@@ -402,7 +603,8 @@ const SectionCard: React.FC<{
               />
             );
           })}
-          {section.questions.length === 0 && (
+          {(!section.questions || section.questions.length === 0) && 
+           !(sectionIndex === 0 || section.title?.toLowerCase().includes('sample plan') || section.samplePlanData) && (
             <div className="text-center py-8 text-gray-500">
               <p>No questions in this section yet.</p>
             </div>
@@ -461,11 +663,15 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
   hideRightPanel = false,
   onSaveTrigger
 }) => {
-  const { currentSurvey, isAnnotationMode, setAnnotationMode, currentAnnotations, saveAnnotations, loadAnnotations, triggerEvaluationAsync, evaluationInProgress } = useAppStore();
+  const { currentSurvey, isAnnotationMode, setAnnotationMode, currentAnnotations, saveAnnotations, loadAnnotations, triggerEvaluationAsync, evaluationInProgress, fetchConceptFiles, loadPillarScoresAsync } = useAppStore();
   const survey = propSurvey || currentSurvey;
   const [editedSurvey, setEditedSurvey] = useState<Survey | null>(null);
   const [isEditModeActive, setIsEditModeActive] = useState(isInEditMode);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [conceptFiles, setConceptFiles] = useState<ConceptFile[]>([]);
+  
+  // Track previous evaluation state to detect completion (must be at top level)
+  const prevEvaluationStateRef = useRef<Record<string, boolean>>({});
   
   // Initialize survey edit hook
   const { updateQuestion, updateSection, createSection, deleteSection, reorderSections, reorderQuestions } = useSurveyEdit({
@@ -764,7 +970,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
         // Update in sections format
         updatedSurvey.sections = updatedSurvey.sections.map(section => ({
           ...section,
-          questions: section.questions.map(q =>
+          questions: (section.questions || []).map(q =>
             q.id === updatedQuestion.id ? updatedQuestion : q
           )
         }));
@@ -816,7 +1022,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
     if (editedSurvey.sections && editedSurvey.sections.length > 0) {
       // Handle questions within sections
       const updatedSections = editedSurvey.sections.map(section => {
-        const questions = [...section.questions];
+        const questions = [...(section.questions || [])];
         const currentIndex = questions.findIndex(q => q.id === questionId);
         
         if (currentIndex === -1) return section; // Question not in this section
@@ -848,7 +1054,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
       
       // Save the question reorder immediately to the backend
       console.log('💾 [Question Move] Saving question reorder to backend');
-      const questionOrder = updatedSections.flatMap(s => s.questions).map(q => q.id);
+      const questionOrder = updatedSections.flatMap(s => s.questions || []).map(q => q.id);
       await reorderQuestions(questionOrder);
       console.log('✅ [Question Move] Question reorder saved successfully');
       
@@ -1029,7 +1235,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
           if (section.id === sectionId) {
             return {
               ...section,
-              questions: [...section.questions, newQuestion]
+              questions: [...(section.questions || []), newQuestion]
             };
           }
           return section;
@@ -1232,9 +1438,104 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
     }
   }, [survey, editedSurvey]);
 
+  // Watch for evaluation completion and refresh pillar scores
+  useEffect(() => {
+    const surveyId = survey?.survey_id;
+    if (!surveyId || !loadPillarScoresAsync) return;
+
+    const isEvaluating = evaluationInProgress[surveyId] || false;
+    const wasEvaluating = prevEvaluationStateRef.current[surveyId] || false;
+    
+    // When evaluation completes (was evaluating, now not), reload pillar scores
+    if (wasEvaluating && !isEvaluating) {
+      // Evaluation just completed - reload pillar scores
+      console.log('🔄 [SurveyPreview] Evaluation completed, reloading pillar scores for survey:', surveyId);
+      loadPillarScoresAsync(surveyId).catch((error) => {
+        console.error('❌ [SurveyPreview] Failed to reload pillar scores after evaluation:', error);
+      });
+    }
+    
+    // Update ref with current state
+    prevEvaluationStateRef.current[surveyId] = isEvaluating;
+  }, [evaluationInProgress, survey?.survey_id, loadPillarScoresAsync]);
+
   // Handle survey data structure
   const surveyToDisplay = editedSurvey || survey;
   const isCurrentlyEditing = isEditable || isEditModeActive;
+  
+  // Fetch concept files when survey has rfq_id
+  useEffect(() => {
+    const loadConceptFiles = async () => {
+      // Check multiple sources for rfq_id
+      // Also try to extract from rfq_data if available
+      let rfqId = surveyToDisplay?.rfq_id || propSurvey?.rfq_id || survey?.rfq_id;
+      
+      // Fallback: Try to get rfq_id from rfq_data if it exists
+      if (!rfqId) {
+        const rfqData = surveyToDisplay?.rfq_data || propSurvey?.rfq_data || survey?.rfq_data;
+        if (rfqData && (rfqData as any).rfq_id) {
+          rfqId = (rfqData as any).rfq_id;
+          console.log('🔍 [SurveyPreview] Found rfq_id in rfq_data:', rfqId);
+        }
+      }
+      
+      console.log('🔍 [SurveyPreview] Checking for rfq_id:', {
+        surveyToDisplay_rfq_id: surveyToDisplay?.rfq_id,
+        propSurvey_rfq_id: propSurvey?.rfq_id,
+        survey_rfq_id: survey?.rfq_id,
+        final_rfq_id: rfqId,
+        surveyToDisplay_keys: surveyToDisplay ? Object.keys(surveyToDisplay) : [],
+        hasFetchConceptFiles: !!fetchConceptFiles
+      });
+      
+      if (rfqId && fetchConceptFiles) {
+        try {
+          console.log('🔍 [SurveyPreview] Fetching concept files for rfq_id:', rfqId);
+          console.log('🔍 [SurveyPreview] Survey ID:', surveyToDisplay?.survey_id);
+          const files = await fetchConceptFiles(rfqId);
+          console.log('✅ [SurveyPreview] Loaded concept files:', files.length);
+          if (files.length > 0) {
+            console.log('📸 [SurveyPreview] Concept files details:', files.map(f => ({
+              id: f.id,
+              filename: f.filename,
+              content_type: f.content_type,
+              file_url: f.file_url
+            })));
+          } else {
+            console.warn('⚠️ [SurveyPreview] No concept files found for rfq_id:', rfqId);
+            console.warn('⚠️ [SurveyPreview] This could mean:');
+            console.warn('  1. No concept files were uploaded for this RFQ');
+            console.warn('  2. Concept files were uploaded but are associated with a different RFQ ID');
+            console.warn('     (This can happen if the RFQ was edited/re-saved and got a new ID)');
+            console.warn('  3. Concept files were uploaded before the RFQ was saved');
+            console.warn('⚠️ [SurveyPreview] Solution: Re-upload concept files in the RFQ editor');
+            console.warn('⚠️ [SurveyPreview] The backend logs show concept files exist but for different RFQ IDs');
+          }
+          setConceptFiles(files);
+        } catch (error) {
+          console.error('❌ [SurveyPreview] Failed to load concept files:', error);
+          console.error('❌ [SurveyPreview] Error details:', error instanceof Error ? error.message : String(error));
+          setConceptFiles([]);
+        }
+      } else {
+        if (!rfqId) {
+          console.log('⚠️ [SurveyPreview] No rfq_id available, clearing concept files.');
+          console.log('⚠️ [SurveyPreview] Survey object:', surveyToDisplay ? {
+            survey_id: surveyToDisplay.survey_id,
+            title: surveyToDisplay.title,
+            has_rfq_id: 'rfq_id' in (surveyToDisplay || {}),
+            rfq_id_value: surveyToDisplay?.rfq_id,
+            all_keys: Object.keys(surveyToDisplay)
+          } : 'null');
+        }
+        if (!fetchConceptFiles) {
+          console.warn('⚠️ [SurveyPreview] fetchConceptFiles function not available');
+        }
+        setConceptFiles([]);
+      }
+    };
+    loadConceptFiles();
+  }, [surveyToDisplay, propSurvey?.rfq_id, propSurvey?.rfq_data, survey?.rfq_id, survey?.rfq_data, fetchConceptFiles]);
 
   if (!survey) {
     console.log('❌ [SurveyPreview] No survey available');
@@ -1399,6 +1700,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
                       canMoveDown={canMoveDown}
                       surveyId={survey?.survey_id}
                       currentAnnotations={currentAnnotations}
+                      conceptFiles={conceptFiles}
                     />
                   );
                 })

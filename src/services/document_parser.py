@@ -1931,6 +1931,28 @@ BRAND_USAGE_REQUIREMENTS (Medium):
 - usage_frequency_tracking: Keywords: "how often", "frequency", "usage", "habits", "occasions"
 - Strategy: Detect brand/product research focus
 
+BRAND_LIST (Medium Priority):
+- Keywords: "brands", "brand names", "competitors", "brand evaluation", "brand comparison", "brand awareness", "brands to test"
+- Patterns: Lists of brand names, brand comparisons, competitor analysis, brand evaluation studies
+- Strategy: Extract all brand names mentioned in the document. Look for:
+  * Explicit brand lists: "Brands: Nike, Adidas, Puma"
+  * Brand comparisons: "Compare Nike vs Adidas vs Puma"
+  * Competitor mentions: "Include competitors: Brand A, Brand B, Brand C"
+  * Brand evaluation contexts: "Evaluate these brands: [list]"
+- Format: Array of objects with "name" (required) and "description" (optional) fields
+- Example: [{{"name": "Nike", "description": "Market leader in athletic footwear"}}, {{"name": "Adidas", "description": "Major competitor"}}]
+
+PRODUCT_LIST (Medium Priority):
+- Keywords: "products", "product variants", "product options", "SKUs", "product evaluation", "product testing", "product line"
+- Patterns: Lists of products, product variants, product comparisons, product evaluation studies
+- Strategy: Extract all product names/variants mentioned in the document. Look for:
+  * Explicit product lists: "Products: Model X, Model Y, Model Z"
+  * Product variants: "Test these variants: Premium, Standard, Basic"
+  * Product comparisons: "Compare Product A vs Product B"
+  * Product evaluation contexts: "Evaluate these products: [list]"
+- Format: Array of objects with "name" (required) and "description" (optional) fields
+- Example: [{{"name": "Product X", "description": "Premium variant with advanced features"}}, {{"name": "Product Y", "description": "Standard variant"}}]
+
 SIMPLIFIED BUSINESS CONTEXT (Medium):
 - sample_requirements: Keywords: "consumer", "sample", "respondent", "demographics", "target", "qualifications", "quotas", "segments"
 - budget_range: Keywords: "budget", "cost", "investment", "under", "over", "$", "k", "million"
@@ -2274,6 +2296,22 @@ EXPECTED JSON STRUCTURE:
       "source": "Conjoint analysis methodology mentioned in document",
       "reasoning": "Conjoint analysis and choice modeling methodologies detected",
       "priority": "high"
+    }},
+    {{
+      "field": "brand_list",
+      "value": [{{"name": "Brand A", "description": "Leading brand in the category"}}, {{"name": "Brand B", "description": "Competitor brand"}}],
+      "confidence": 0.80,
+      "source": "Brands mentioned: Brand A, Brand B, Brand C",
+      "reasoning": "Multiple brands explicitly mentioned for brand awareness research",
+      "priority": "medium"
+    }},
+    {{
+      "field": "product_list",
+      "value": [{{"name": "Product X", "description": "Premium product variant"}}, {{"name": "Product Y", "description": "Standard product variant"}}],
+      "confidence": 0.75,
+      "source": "Products to evaluate: Product X, Product Y",
+      "reasoning": "Products explicitly listed for evaluation",
+      "priority": "medium"
     }}
   ]
 }}

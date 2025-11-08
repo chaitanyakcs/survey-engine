@@ -272,6 +272,7 @@ async def migrate_all(db: Session = Depends(get_db)):
                 "013_add_golden_content_usage_tracking.sql",
                 "014_create_qnr_taxonomy_tables.sql",
                 "016_add_section_id_to_golden_questions.sql",
+                "027_add_concept_files_table.sql",
                 "051_fix_annotation_unique_constraints.sql"
             ]
             
@@ -1061,7 +1062,7 @@ async def check_migration_status(db: Session = Depends(get_db)):
         
         # Check if tables exist
         tables_check = {}
-        tables = ['question_annotations', 'section_annotations', 'survey_annotations', 'llm_audit', 'llm_hyperparameter_configs', 'llm_prompt_templates']
+        tables = ['question_annotations', 'section_annotations', 'survey_annotations', 'llm_audit', 'llm_hyperparameter_configs', 'llm_prompt_templates', 'concept_files']
         
         for table in tables:
             try:
@@ -2239,6 +2240,8 @@ async def seed_core_generation_rules(db: Session = Depends(get_db)):
                 "settings",
                 # Document management
                 "document_uploads", "document_rfq_mappings",
+                # Concept files
+                "concept_files",
                 # LLM audit
                 "llm_audit", "llm_hyperparameter_configs", "llm_prompt_templates",
                 # QNR taxonomy

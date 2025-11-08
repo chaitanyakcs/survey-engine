@@ -77,7 +77,6 @@ class SettingsService:
             "enable_prompt_review": False,
             "prompt_review_mode": "disabled",
             "prompt_review_timeout_hours": 24,
-            "enable_llm_evaluation": True,  # New setting to make LLM evaluation optional
             "quick_mode_enabled": False,  # Enable Quick mode toggle in UI (default to Enhanced mode)
             # Model configuration (overridable via UI)
             "generation_model": app_settings.generation_model,

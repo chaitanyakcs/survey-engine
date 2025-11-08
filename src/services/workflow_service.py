@@ -831,8 +831,26 @@ class WorkflowService:
                             survey.raw_output = generation_result.get("raw_survey")
                             logger.warning("⚠️ [WorkflowService] Raw response not found in generation_metadata, using parsed survey as fallback")
                     
+                    # CRITICAL: Validate survey is not empty before saving
+                    generated_survey = generation_result.get("generated_survey", {})
+                    if not generated_survey:
+                        logger.error(f"❌ [WorkflowService] CRITICAL: Cannot save empty survey - no survey data in generation_result")
+                        raise ValueError("Cannot save survey: generation result contains no survey data")
+                    
+                    from src.utils.survey_utils import get_questions_count
+                    question_count = get_questions_count(generated_survey)
+                    if question_count == 0:
+                        logger.error(f"❌ [WorkflowService] CRITICAL: Cannot save empty survey - 0 questions found")
+                        logger.error(f"❌ [WorkflowService] Survey structure: sections={len(generated_survey.get('sections', []))}")
+                        for i, section in enumerate(generated_survey.get("sections", [])):
+                            section_questions = len(section.get("questions", []))
+                            logger.error(f"❌ [WorkflowService] Section {i+1} ({section.get('title', 'No title')}): {section_questions} questions")
+                        raise ValueError("Cannot save survey: generated survey is empty (0 questions). This indicates a generation failure.")
+                    
+                    logger.info(f"✅ [WorkflowService] Survey validation passed: {question_count} questions found")
+                    
                     # Save parsed/processed survey as final_output
-                    survey.final_output = generation_result.get("generated_survey")
+                    survey.final_output = generated_survey
                     # Convert state UUID lists to survey arrays
                     from uuid import UUID
                     survey.used_golden_examples = initial_state.used_golden_examples
@@ -844,7 +862,6 @@ class WorkflowService:
                     survey.used_golden_sections = initial_state.used_golden_sections
                     
                     # Check if this is a failed survey (minimal fallback due to LLM failure)
-                    generated_survey = generation_result.get("generated_survey", {})
                     is_failed_survey = generated_survey.get('metadata', {}).get('generation_failed', False)
 
                     if is_failed_survey:
@@ -891,9 +908,21 @@ class WorkflowService:
                     # Refresh to get latest data
                     self.db.refresh(survey)
 
+                    # CRITICAL: Validate survey is not empty before saving (second save point)
+                    final_survey = generation_result.get("generated_survey", {})
+                    if not final_survey:
+                        logger.error(f"❌ [WorkflowService] CRITICAL: Cannot save empty survey at final update - no survey data")
+                        raise ValueError("Cannot save survey: generation result contains no survey data")
+                    
+                    from src.utils.survey_utils import get_questions_count
+                    final_question_count = get_questions_count(final_survey)
+                    if final_question_count == 0:
+                        logger.error(f"❌ [WorkflowService] CRITICAL: Cannot save empty survey at final update - 0 questions")
+                        raise ValueError("Cannot save survey: generated survey is empty (0 questions). This indicates a generation failure.")
+                    
                     # Use the same update logic as the main workflow
                     survey.raw_output = generation_result.get("raw_survey")
-                    survey.final_output = generation_result.get("generated_survey")
+                    survey.final_output = final_survey
                     survey.golden_similarity_score = validation_result.get("golden_similarity_score")
                     # Convert state UUID lists to survey arrays
                     from uuid import UUID

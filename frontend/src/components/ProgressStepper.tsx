@@ -892,8 +892,8 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                                 <div className="space-y-3">
                                   {workflow.streamingStats.latestQuestions.slice(-3).map((question, idx) => (
                                     <div key={idx} className="flex items-start space-x-3 p-2 bg-green-50 rounded border-l-4 border-green-400">
-                                      <div className="flex-shrink-0 w-6 h-6 bg-green-100 rounded-full flex items-center justify-center text-xs font-medium text-green-700">
-                                        {workflow.streamingStats ? workflow.streamingStats.questionCount - workflow.streamingStats.latestQuestions.length + idx + 1 : idx + 1}
+                                      <div className="flex-shrink-0 w-6 h-6 bg-green-100 rounded-full flex items-center justify-center text-xs font-medium text-green-700 font-mono">
+                                        {(question as any).id || (workflow.streamingStats ? workflow.streamingStats.questionCount - workflow.streamingStats.latestQuestions.length + idx + 1 : idx + 1)}
                                       </div>
                                       <div className="flex-1 min-w-0">
                                         <p className="text-sm text-gray-800 leading-relaxed">{question.text || 'Question text not available'}</p>
@@ -993,37 +993,51 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                             </div>
                           )}
 
-                          {/* Quality Assessment Results */}
-                          {currentSurvey?.pillar_scores && !(currentSurvey.pillar_scores as any).evaluation_failed && (
-                            <div className="mb-8">
-                              <h4 className="text-lg font-semibold text-slate-800 mb-4 flex items-center">
-                                <div className="w-8 h-8 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center mr-3">
-                                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                  </svg>
-                                </div>
-                                Quality Assessment
-                              </h4>
-                              
-                              <div className="bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 border border-emerald-200 rounded-2xl p-6 shadow-sm">
-                                <div className="flex items-center justify-between mb-6">
-                                  <div className="flex items-center space-x-3">
-                                    <div className="text-4xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
-                                      {currentSurvey.pillar_scores.overall_grade || 'B'}
+                          {/* Quality Assessment Results - only show if evaluation was performed and has valid scores */}
+                          {(() => {
+                            const pillarScores = currentSurvey?.pillar_scores;
+                            if (!pillarScores) return null;
+                            
+                            // Check if evaluation was actually performed (not skipped, not failed, has valid scores)
+                            const hasValidScores = pillarScores.weighted_score !== undefined && pillarScores.weighted_score > 0;
+                            const isSkipped = pillarScores.summary && pillarScores.summary.includes('skipped');
+                            const evaluationFailed = (pillarScores as any).evaluation_failed;
+                            
+                            // Only show if evaluation was performed and has valid scores
+                            if (evaluationFailed || isSkipped || !hasValidScores) {
+                              return null;
+                            }
+                            
+                            return (
+                              <div className="mb-8">
+                                <h4 className="text-lg font-semibold text-slate-800 mb-4 flex items-center">
+                                  <div className="w-8 h-8 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center mr-3">
+                                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                  </div>
+                                  Quality Assessment
+                                </h4>
+                                
+                                <div className="bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 border border-emerald-200 rounded-2xl p-6 shadow-sm">
+                                  <div className="flex items-center justify-between mb-6">
+                                    <div className="flex items-center space-x-3">
+                                      <div className="text-4xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
+                                        {pillarScores.overall_grade || 'B'}
+                                      </div>
+                                      <div className="text-lg text-slate-600 font-medium">
+                                        ({Math.round((pillarScores.weighted_score || 0.8) * 100)}%)
+                                      </div>
                                     </div>
-                                    <div className="text-lg text-slate-600 font-medium">
-                                      ({Math.round((currentSurvey.pillar_scores.weighted_score || 0.8) * 100)}%)
+                                    <div className="text-sm text-emerald-700 bg-emerald-100 px-3 py-1.5 rounded-full font-medium">
+                                      AI Quality Score
                                     </div>
                                   </div>
-                                  <div className="text-sm text-emerald-700 bg-emerald-100 px-3 py-1.5 rounded-full font-medium">
-                                    AI Quality Score
-                                  </div>
-                                </div>
 
                                 {/* Pillar Breakdown */}
-                                {currentSurvey.pillar_scores.pillar_breakdown && (
+                                {pillarScores.pillar_breakdown && (
                                   <div className="space-y-3">
-                                    {currentSurvey.pillar_scores.pillar_breakdown.map((pillar) => {
+                                    {pillarScores.pillar_breakdown.map((pillar) => {
                                       const formattedPillar = pillar.display_name || pillar.pillar_name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
                                       const scoreValue = pillar.score || 0.8;
                                       const passed = scoreValue >= 0.75;
@@ -1057,7 +1071,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                                 )}
 
                                 {/* Quality Message */}
-                                {currentSurvey.pillar_scores.weighted_score && currentSurvey.pillar_scores.weighted_score < 0.75 && (
+                                {pillarScores.weighted_score && pillarScores.weighted_score < 0.75 && (
                                   <div className="mt-4 text-sm text-amber-700 bg-amber-50 p-3 rounded-lg border border-amber-200 flex items-center">
                                     <svg className="w-4 h-4 mr-2 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
@@ -1067,7 +1081,8 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                                 )}
                               </div>
                             </div>
-                          )}
+                            );
+                          })()}
 
                           {/* Action Buttons */}
                           <h4 className="text-xl font-semibold text-slate-800 mb-6">What would you like to do next?</h4>
@@ -1189,8 +1204,8 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                                     {section.questions?.map((question, questionIndex) => (
                                       <div key={question.id} className="pl-4">
                                         <div className="flex items-start space-x-2">
-                                          <span className="text-sm font-medium text-gray-500 mt-1">
-                                            {sectionIndex + 1}.{questionIndex + 1}
+                                          <span className="text-sm font-medium text-gray-500 font-mono mt-1">
+                                            {question.id || `${sectionIndex + 1}.${questionIndex + 1}`}
                                           </span>
                                           <div className="flex-1">
                                             <p className="text-sm text-gray-700">{question.text || 'Question text not available'}</p>
@@ -1222,11 +1237,16 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                                   {currentSurvey.questions.map((question, questionIndex) => (
                                     <div key={question.id || questionIndex} className="pl-4">
                                       <div className="flex items-start space-x-2">
-                                        <span className="text-sm font-medium text-gray-500 mt-1">
-                                          {questionIndex + 1}.
+                                        <span className="text-sm font-medium text-gray-500 font-mono mt-1">
+                                          {question.id || `${questionIndex + 1}.`}
                                         </span>
                                         <div className="flex-1">
                                           <p className="text-sm text-gray-700">{question.text || 'Question text not available'}</p>
+                                          {question.id && (
+                                            <div className="text-xs text-gray-500 font-mono mt-1">
+                                              ID: {question.id}
+                                            </div>
+                                          )}
                                           {/* Always show question type for clarity */}
                                           <div className="text-xs text-gray-500 mt-1">
                                             Type: {question.type.replace('_', ' ')}

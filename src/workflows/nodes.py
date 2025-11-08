@@ -237,6 +237,35 @@ class ContextBuilderNode:
             logger.info(f"🔍 [ContextBuilderNode] Survey ID type: {type(state.survey_id)}")
             logger.info(f"🔍 [ContextBuilderNode] RFQ ID: {state.rfq_id}")
             
+            # Fetch concept files for this RFQ if rfq_id is available
+            concept_files = []
+            if state.rfq_id:
+                try:
+                    from src.database.models import ConceptFile
+                    from uuid import UUID
+                    rfq_uuid = UUID(str(state.rfq_id)) if not isinstance(state.rfq_id, UUID) else state.rfq_id
+                    concept_files_query = self.db.query(ConceptFile).filter(
+                        ConceptFile.rfq_id == rfq_uuid
+                    ).order_by(ConceptFile.display_order, ConceptFile.created_at).all()
+                    
+                    concept_files = [
+                        {
+                            "id": str(cf.id),
+                            "filename": cf.filename,
+                            "original_filename": cf.original_filename or cf.filename,
+                            "content_type": cf.content_type,
+                            "file_size": cf.file_size,
+                            "concept_stimulus_id": cf.concept_stimulus_id,
+                            "display_order": cf.display_order,
+                            "file_url": f"/api/v1/rfq/concept/{cf.id}"  # URL for accessing the file
+                        }
+                        for cf in concept_files_query
+                    ]
+                    logger.info(f"📎 [ContextBuilderNode] Found {len(concept_files)} concept files for RFQ {state.rfq_id}")
+                except Exception as e:
+                    logger.warning(f"⚠️ [ContextBuilderNode] Failed to fetch concept files: {str(e)}")
+                    concept_files = []
+            
             # Extract generation_config from enhanced_rfq_data if available
             generation_config = {}
             if state.enhanced_rfq_data and isinstance(state.enhanced_rfq_data, dict):
@@ -268,7 +297,9 @@ class ContextBuilderNode:
                 # Unmapped context from RFQ parsing for additional survey generation context
                 "unmapped_context": state.unmapped_context or "",
                 # Generation configuration for prompt optimization
-                "generation_config": generation_config
+                "generation_config": generation_config,
+                # Concept files for inclusion in Section 4 (Concept Exposure)
+                "concept_files": concept_files
             }
             
             logger.info(f"🔍 [ContextBuilderNode] Final context audit_survey_id: {context.get('audit_survey_id')}")
@@ -405,9 +436,18 @@ class GeneratorAgent:
                 question_count = get_questions_count(generated_survey)
                 self.logger.info(f"📝 [GeneratorAgent] Generated {question_count} questions")
                 if question_count == 0:
-                    self.logger.warning("⚠️ [GeneratorAgent] No questions found in generated survey")
+                    self.logger.error("❌ [GeneratorAgent] CRITICAL: No questions found in generated survey - this is a generation failure")
+                    # Log detailed structure for debugging
+                    sections = generated_survey.get("sections", [])
+                    self.logger.error(f"❌ [GeneratorAgent] Survey structure: {len(sections)} sections")
+                    for i, section in enumerate(sections):
+                        section_questions = len(section.get("questions", []))
+                        self.logger.error(f"❌ [GeneratorAgent] Section {i+1} ({section.get('title', 'No title')}): {section_questions} questions")
+                    # Raise error to prevent empty survey from being saved
+                    raise ValueError("Generated survey is empty - no questions found. This indicates a generation failure. Please check the LLM response and prompt.")
             else:
-                self.logger.warning("⚠️ [GeneratorAgent] No survey data generated")
+                self.logger.error("❌ [GeneratorAgent] CRITICAL: No survey data generated at all")
+                raise ValueError("Survey generation failed - no survey data was returned. Please check the LLM response and prompt.")
 
             # Update the state with the generated data
             state.raw_survey = generated_survey

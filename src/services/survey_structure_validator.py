@@ -171,6 +171,17 @@ class SurveyStructureValidator:
                 else:
                     section_scores[5] = gg_score
             
+            # Validate satisfaction scale format and positioning exclusion
+            satisfaction_issues = self._validate_satisfaction_scales(survey_json)
+            issues.extend(satisfaction_issues)
+            
+            positioning_issues = self._validate_positioning_exclusion(survey_json)
+            issues.extend(positioning_issues)
+            
+            # Validate Brand_Awareness_Funnel format
+            funnel_issues = self._validate_brand_awareness_funnel(survey_json)
+            issues.extend(funnel_issues)
+            
             # Calculate overall score
             overall_score = self._calculate_overall_score(section_scores, issues)
             
@@ -207,6 +218,42 @@ class SurveyStructureValidator:
         issues = []
         section_id = section.get('id')
         
+        # Special handling for Section 1 (Sample Plan) - should have samplePlanData, not questions
+        if section_id == 1:
+            if 'questions' in section:
+                # Flag even empty questions array - Section 1 should not have questions field at all
+                if section.get('questions'):
+                    issues.append(ValidationIssue(
+                        severity=IssueSeverity.ERROR,
+                        section_id=1,
+                        label='Sample_Plan_Structure',
+                        message="Section 1 (Sample Plan) should have samplePlanData, not questions array",
+                        suggestion="Remove questions array and use samplePlanData tabular structure"
+                    ))
+                else:
+                    # Empty array is also wrong - should not have the field at all
+                    issues.append(ValidationIssue(
+                        severity=IssueSeverity.WARNING,
+                        section_id=1,
+                        label='Sample_Plan_Empty_Questions',
+                        message="Section 1 (Sample Plan) should not have a 'questions' field at all (even if empty)",
+                        suggestion="Remove the empty 'questions' field from Section 1"
+                    ))
+            if 'samplePlanData' not in section:
+                issues.append(ValidationIssue(
+                    severity=IssueSeverity.ERROR,
+                    section_id=1,
+                    label='Sample_Plan_Missing',
+                    message="Section 1 (Sample Plan) is missing samplePlanData table",
+                    suggestion="Add samplePlanData with overallSample, subsamples, and quotas"
+                ))
+            else:
+                # Validate samplePlanData structure
+                sample_plan_issues = self._validate_sample_plan_data(section.get('samplePlanData', {}))
+                issues.extend(sample_plan_issues)
+            # Section 1 doesn't use question labels - return early
+            return issues, 1.0 if not issues else 0.7, []
+        
         # Get required labels for this section (deterministic filtering for validation)
         if not self.qnr_service:
             logger.warning("QNR service not available, skipping validation")
@@ -228,7 +275,9 @@ class SurveyStructureValidator:
                     severity = IssueSeverity.CRITICAL
                 elif label_name.startswith('VW_Price_'):
                     severity = IssueSeverity.ERROR
-                elif label_name in ['Brand_Awareness_Funnel', 'Product_Satisfaction']:
+                elif label_name in ['Brand_Awareness_Funnel', 'Brand_Product_Satisfaction']:
+                    severity = IssueSeverity.ERROR  # Changed to ERROR - these are mandatory
+                elif label_name == 'Product_Satisfaction':
                     severity = IssueSeverity.WARNING
                 else:
                     severity = IssueSeverity.WARNING
@@ -255,6 +304,7 @@ class SurveyStructureValidator:
             'Recent_Participation',
             'CoI_Check',
             'Category_Usage_Frequency',
+            'Category_Usage_Financial',  # Added: Financial spending question is mandatory
             'Demog_Basic'
         ]
         return label_name in critical_labels
@@ -350,6 +400,120 @@ class SurveyStructureValidator:
         else:
             return "poor"
     
+    def _validate_satisfaction_scales(self, survey_json: Dict) -> List[ValidationIssue]:
+        """Validate that Brand_Product_Satisfaction questions use 1-5 scale with text labels"""
+        issues = []
+        
+        for section in survey_json.get('sections', []):
+            section_id = section.get('id')
+            if section_id != 3:  # Only check Brand/Product Awareness section
+                continue
+                
+            for question in section.get('questions', []):
+                # Check if this is a satisfaction question
+                question_text = question.get('text', '').lower()
+                if 'satisfaction' in question_text or 'satisfied' in question_text:
+                    question_type = question.get('type', '')
+                    options = question.get('options', [])
+                    scale_labels = question.get('scale_labels', {})
+                    
+                    # Check if it's a scale question
+                    if question_type == 'scale':
+                        # Validate 1-5 scale
+                        if options != ['1', '2', '3', '4', '5']:
+                            issues.append(ValidationIssue(
+                                severity=IssueSeverity.ERROR,
+                                section_id=section_id,
+                                label='Satisfaction_Scale_Format',
+                                message=f"Satisfaction question should use 1-5 scale, found: {options}",
+                                suggestion="Use options: ['1', '2', '3', '4', '5'] with scale_labels"
+                            ))
+                        
+                        # Validate scale_labels
+                        expected_labels = {
+                            '1': 'Very Dissatisfied',
+                            '2': 'Dissatisfied',
+                            '3': 'Neutral',
+                            '4': 'Satisfied',
+                            '5': 'Very Satisfied'
+                        }
+                        if scale_labels != expected_labels:
+                            issues.append(ValidationIssue(
+                                severity=IssueSeverity.ERROR,
+                                section_id=section_id,
+                                label='Satisfaction_Scale_Labels',
+                                message=f"Satisfaction question missing correct scale_labels",
+                                suggestion=f"Add scale_labels: {expected_labels}"
+                            ))
+        
+        return issues
+    
+    def _validate_positioning_exclusion(self, survey_json: Dict) -> List[ValidationIssue]:
+        """Validate that positioning questions are NOT in Section 5 (Methodology)"""
+        issues = []
+        
+        for section in survey_json.get('sections', []):
+            section_id = section.get('id')
+            if section_id != 5:  # Only check Methodology section
+                continue
+                
+            for question in section.get('questions', []):
+                question_text = question.get('text', '').lower()
+                # Check for positioning-related keywords
+                positioning_keywords = ['positioning', 'position', 'position statement', 'brand position']
+                if any(keyword in question_text for keyword in positioning_keywords):
+                    issues.append(ValidationIssue(
+                        severity=IssueSeverity.WARNING,
+                        section_id=section_id,
+                        label='Positioning_In_Methodology',
+                        message="Positioning question found in Section 5 (Methodology) - should not be system-generated",
+                        suggestion="Remove positioning questions from Methodology section. Positioning should only come from user-provided content in Concept Reaction (Section 4)"
+                    ))
+        
+        return issues
+    
+    def _validate_brand_awareness_funnel(self, survey_json: Dict) -> List[ValidationIssue]:
+        """Validate that Brand_Awareness_Funnel is a matrix_likert question with proper stages"""
+        issues = []
+        
+        for section in survey_json.get('sections', []):
+            section_id = section.get('id')
+            if section_id != 3:  # Only check Brand/Product Awareness section
+                continue
+                
+            for question in section.get('questions', []):
+                question_text = question.get('text', '').lower()
+                # Check if this is a brand awareness funnel question
+                if any(keyword in question_text for keyword in ['aware', 'considered', 'purchased', 'continue', 'prefer']):
+                    question_type = question.get('type', '')
+                    
+                    # Should be matrix_likert
+                    if question_type != 'matrix_likert':
+                        issues.append(ValidationIssue(
+                            severity=IssueSeverity.ERROR,
+                            section_id=section_id,
+                            label='Brand_Awareness_Funnel_Format',
+                            message=f"Brand_Awareness_Funnel should be matrix_likert type, found: {question_type}",
+                            suggestion="Change question type to 'matrix_likert' with brands as rows and funnel stages (Aware, Considered, Purchased, Continue, Preferred) as options"
+                        ))
+                    else:
+                        # Check for proper stages
+                        options = question.get('options', [])
+                        required_stages = ['aware', 'considered', 'purchased']
+                        options_lower = [opt.lower() for opt in options]
+                        missing_stages = [stage for stage in required_stages if not any(stage in opt for opt in options_lower)]
+                        
+                        if missing_stages:
+                            issues.append(ValidationIssue(
+                                severity=IssueSeverity.WARNING,
+                                section_id=section_id,
+                                label='Brand_Awareness_Funnel_Stages',
+                                message=f"Brand_Awareness_Funnel missing stages: {', '.join(missing_stages)}",
+                                suggestion="Include all funnel stages: Aware → Considered → Purchased → Continue → Preferred"
+                            ))
+        
+        return issues
+    
     def validate_single_question(self, question: Dict, section_id: int) -> List[ValidationIssue]:
         """Validate a single question for label compliance"""
         issues = []
@@ -371,6 +535,77 @@ class SurveyStructureValidator:
                     label=label_name,
                     message=f"Question may be missing required label: {label_name}",
                     suggestion=f"Consider adding: {label_dict.get('description', '')}"
+                ))
+        
+        return issues
+    
+    def _validate_sample_plan_data(self, sample_plan_data: Dict) -> List[ValidationIssue]:
+        """Validate samplePlanData structure"""
+        issues = []
+        
+        if not sample_plan_data:
+            return [ValidationIssue(
+                severity=IssueSeverity.ERROR,
+                section_id=1,
+                label='Sample_Plan_Empty',
+                message="samplePlanData is empty",
+                suggestion="Add overallSample with totalSize and demographic breakdowns"
+            )]
+        
+        # Check overallSample
+        overall_sample = sample_plan_data.get('overallSample', {})
+        if not overall_sample:
+            issues.append(ValidationIssue(
+                severity=IssueSeverity.ERROR,
+                section_id=1,
+                label='Overall_Sample_Missing',
+                message="samplePlanData missing overallSample",
+                suggestion="Add overallSample with totalSize and demographic breakdowns"
+            ))
+        else:
+            if 'totalSize' not in overall_sample:
+                issues.append(ValidationIssue(
+                    severity=IssueSeverity.WARNING,
+                    section_id=1,
+                    label='Total_Size_Missing',
+                    message="overallSample missing totalSize",
+                    suggestion="Add totalSize field with overall sample size"
+                ))
+            
+            # Check for demographic breakdowns
+            has_demographics = any([
+                overall_sample.get('ageGroups'),
+                overall_sample.get('gender'),
+                overall_sample.get('income'),
+                overall_sample.get('otherDemographics')
+            ])
+            if not has_demographics:
+                issues.append(ValidationIssue(
+                    severity=IssueSeverity.WARNING,
+                    section_id=1,
+                    label='Demographics_Missing',
+                    message="overallSample missing demographic breakdowns",
+                    suggestion="Add ageGroups, gender, income, or otherDemographics"
+                ))
+        
+        # Validate subsamples if present
+        subsamples = sample_plan_data.get('subsamples', [])
+        for idx, subsample in enumerate(subsamples):
+            if 'name' not in subsample:
+                issues.append(ValidationIssue(
+                    severity=IssueSeverity.WARNING,
+                    section_id=1,
+                    label=f'Subsample_{idx}_Name_Missing',
+                    message=f"Subsample {idx+1} missing name",
+                    suggestion="Add name field for subsample"
+                ))
+            if 'totalSize' not in subsample:
+                issues.append(ValidationIssue(
+                    severity=IssueSeverity.WARNING,
+                    section_id=1,
+                    label=f'Subsample_{idx}_Size_Missing',
+                    message=f"Subsample {idx+1} missing totalSize",
+                    suggestion="Add totalSize field for subsample"
                 ))
         
         return issues

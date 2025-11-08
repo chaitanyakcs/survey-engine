@@ -91,10 +91,38 @@ export const getQuestionCount = (survey: Survey): number => {
 };
 
 // Enhanced RFQ Types
+export interface ConceptFile {
+  id: string;
+  filename: string;
+  original_filename: string;
+  file_size: number;
+  content_type: string;
+  file_url?: string; // For display - constructed from API endpoint
+  display_order?: number;
+  concept_stimulus_id?: string;
+  upload_timestamp?: string;
+}
+
 export interface ConceptStimulus {
   id: string;
   title: string;
   description: string;
+  display_order?: number;
+  files?: ConceptFile[]; // NEW: Associated concept files
+}
+
+export interface BrandItem {
+  id: string;
+  name: string;
+  description?: string;
+  display_order?: number;
+}
+
+export interface ProductItem {
+  id: string;
+  name: string;
+  description?: string;
+  brand_id?: string; // Optional link to brand
   display_order?: number;
 }
 
@@ -210,11 +238,16 @@ export interface EnhancedRFQRequest {
   // ========== SURVEY STRUCTURE PREFERENCES ==========
   survey_structure?: {
     qnr_sections?: string[];              // Selected QNR sections
-    text_requirements?: string[];         // Required text introduction types
+    text_requirements?: string[];         // Required text introduction types (legacy - for backward compatibility)
+    text_blocks?: EditableTextBlock[];    // Editable text block definitions
   };
 
   // ========== CONCEPT STIMULI (NEW) ==========
   concept_stimuli?: ConceptStimulus[];
+
+  // ========== BRAND & PRODUCT LISTS (NEW) ==========
+  brand_list?: BrandItem[];
+  product_list?: ProductItem[];
 
   // ========== ADDITIONAL INFORMATION (NEW) ==========
   additional_info?: string;               // Unmapped context and removed fields (maps to backend unmapped_context)
@@ -291,11 +324,47 @@ export interface SurveyTextContent {
   order?: number; // Position within section content
 }
 
+// Text block definition that can be edited in RFQ
+export interface EditableTextBlock {
+  id: string; // Unique identifier (e.g., 'study_intro', 'concept_intro', or custom ID)
+  name: string; // Display name
+  type: 'study_intro' | 'concept_intro' | 'product_usage' | 'confidentiality_agreement' | 'methodology_instructions' | 'closing_thank_you' | 'custom';
+  content: string; // The actual text content
+  label: string; // Label for AiRA (e.g., "Study_Intro", "Concept_Intro")
+  mandatory: boolean; // Whether this text block is required
+  description?: string; // User-friendly description
+  section_mapping?: number; // Which QNR section this should appear in (1-7)
+}
+
+export interface SamplePlanTable {
+  overallSample: {
+    totalSize: number;
+    ageGroups?: Array<{range: string, count: number, percentage: number}>;
+    gender?: Array<{label: string, count: number, percentage: number}>;
+    income?: Array<{range: string, count: number, percentage: number}>;
+    otherDemographics?: Array<{category: string, breakdown: Array<{label: string, count: number, percentage: number}>}>;
+  };
+  subsamples?: Array<{
+    name: string;
+    totalSize: number;
+    ageGroups?: Array<{range: string, count: number, percentage: number}>;
+    gender?: Array<{label: string, count: number, percentage: number}>;
+    income?: Array<{range: string, count: number, percentage: number}>;
+    otherDemographics?: Array<{category: string, breakdown: Array<{label: string, count: number, percentage: number}>}>;
+    criteria?: string; // Description of qualification criteria
+  }>;
+  quotas?: {
+    minCellSize?: number;
+    targetQuotas?: Array<{segment: string, target: number}>;
+  };
+}
+
 export interface SurveySection {
   id: number;
   title: string;
   description: string;
-  questions: Question[];
+  questions?: Question[]; // Optional - Section 1 uses samplePlanData instead
+  samplePlanData?: SamplePlanTable; // For Section 1 only - tabular structure
   order: number;
 
   // NEW: Optional text content before and after questions
@@ -441,6 +510,7 @@ export interface WorkflowState {
   status: 'idle' | 'started' | 'in_progress' | 'completed' | 'failed' | 'paused' | 'degraded';
   workflow_id?: string;
   survey_id?: string;
+  rfq_id?: string; // RFQ ID for concept file uploads and other RFQ-specific operations
   current_step?: string;
   current_substep?: string; // Current substep for detailed progress tracking
   progress?: number;
@@ -1120,6 +1190,7 @@ export interface AppStore {
   
   
   // Actions
+  saveRfqDraft: (rfq: EnhancedRFQRequest) => Promise<void>; // Auto-save RFQ as draft (enables file uploads)
   submitEnhancedRFQ: (rfq: EnhancedRFQRequest, customPrompt?: string) => Promise<void>;
   fetchSurvey: (surveyId: string) => Promise<void>;
   loadPillarScoresAsync: (surveyId: string) => Promise<any>;
@@ -1186,6 +1257,21 @@ export interface AppStore {
   clearDocumentData: () => void;
   applyDocumentMappings: () => void;
   buildRFQUpdatesFromMappings: (mappings: RFQFieldMapping[]) => Partial<EnhancedRFQRequest>;
+
+  // Concept File Actions
+  uploadConceptFile: (rfqId: string, file: File, conceptStimulusId?: string) => Promise<ConceptFile>;
+  fetchConceptFiles: (rfqId: string) => Promise<ConceptFile[]>;
+  deleteConceptFile: (conceptFileId: string) => Promise<void>;
+
+  // Brand Actions
+  addBrand: (brand: Omit<BrandItem, 'id'>) => void;
+  removeBrand: (brandId: string) => void;
+  updateBrand: (brandId: string, updates: Partial<BrandItem>) => void;
+
+  // Product Actions
+  addProduct: (product: Omit<ProductItem, 'id'>) => void;
+  removeProduct: (productId: string) => void;
+  updateProduct: (productId: string, updates: Partial<ProductItem>) => void;
 
   // Edit Tracking Actions
   trackFieldEdit: (fieldPath: string, newValue: any) => void;

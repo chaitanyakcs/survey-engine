@@ -237,6 +237,58 @@ class TestGeneratorAgentCritical:
         assert "generated_survey" in result
         assert result["error_message"] is None
 
+    @pytest.mark.critical
+    @pytest.mark.asyncio
+    async def test_generator_agent_rejects_empty_survey(self, sample_state_ready_for_generation):
+        """
+        CRITICAL: Test that GeneratorAgent rejects empty surveys
+        """
+        from src.workflows.nodes import GeneratorAgent
+        from unittest.mock import MagicMock, AsyncMock
+        
+        # Create GeneratorAgent instance
+        generator_agent = GeneratorAgent(db=MagicMock(), connection_manager=None)
+        
+        # Mock generation service to return empty survey
+        mock_generation_service = MagicMock()
+        empty_survey_result = {
+            "survey": {
+                "title": "Empty Survey",
+                "description": "This survey has no questions",
+                "sections": []  # Empty sections
+            }
+        }
+        mock_generation_service.generate_survey = AsyncMock(return_value=empty_survey_result)
+        generator_agent.generation_service = mock_generation_service
+        
+        # Execute - should raise ValueError
+        with pytest.raises(ValueError, match="Generated survey is empty"):
+            await generator_agent(sample_state_ready_for_generation)
+
+    @pytest.mark.critical
+    @pytest.mark.asyncio
+    async def test_generator_agent_rejects_survey_with_no_data(self, sample_state_ready_for_generation):
+        """
+        CRITICAL: Test that GeneratorAgent rejects when no survey data is returned
+        """
+        from src.workflows.nodes import GeneratorAgent
+        from unittest.mock import MagicMock, AsyncMock
+        
+        # Create GeneratorAgent instance
+        generator_agent = GeneratorAgent(db=MagicMock(), connection_manager=None)
+        
+        # Mock generation service to return None/empty result
+        mock_generation_service = MagicMock()
+        empty_result = {
+            "survey": None  # No survey data
+        }
+        mock_generation_service.generate_survey = AsyncMock(return_value=empty_result)
+        generator_agent.generation_service = mock_generation_service
+        
+        # Execute - should raise ValueError
+        with pytest.raises(ValueError, match="Survey generation failed - no survey data"):
+            await generator_agent(sample_state_ready_for_generation)
+
 
 class TestValidatorAgentCritical:
     """Critical tests for ValidatorAgent"""

@@ -1,5 +1,7 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from src.api import rfq_router, survey_router, golden_router, golden_content_router, analytics_router, rules_router, utils_router, field_extraction_router, pillar_scores_router, human_reviews_router, annotation_insights_router, annotations, settings as settings_router, llm_audit, export, admin, retrieval_weights, qnr_labels
 from src.api import survey_quality
 from src.config import settings
@@ -28,6 +30,22 @@ app = FastAPI(
     version="0.1.0",
     debug=settings.debug
 )
+
+# Add exception handler for validation errors to see details
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    body = await request.body()
+    logger.error(f"❌ [FastAPI] Validation error on {request.url.path}")
+    logger.error(f"❌ [FastAPI] Validation errors: {exc.errors()}")
+    try:
+        body_str = body[:1000].decode('utf-8', errors='ignore')
+        logger.error(f"❌ [FastAPI] Request body (first 1000 chars): {body_str}")
+    except:
+        logger.error(f"❌ [FastAPI] Request body (raw bytes): {body[:200]}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors(), "body_preview": body[:500].decode('utf-8', errors='ignore') if len(body) > 0 else ""}
+    )
 
 # Add CORS middleware
 app.add_middleware(

@@ -145,7 +145,20 @@ class APIService {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to trigger evaluation: ${response.statusText}`);
+        // Try to extract error detail from response body (FastAPI returns errors as JSON with 'detail' field)
+        let errorMessage = `Failed to trigger evaluation: ${response.statusText}`;
+        try {
+          const errorBody = await response.json();
+          if (errorBody.detail) {
+            errorMessage = errorBody.detail;
+          } else if (errorBody.message) {
+            errorMessage = errorBody.message;
+          }
+        } catch (parseError) {
+          // If response body is not JSON, use statusText
+          console.warn('⚠️ [API] Could not parse error response body:', parseError);
+        }
+        throw new Error(errorMessage);
       }
 
       const result = await response.json();

@@ -1481,6 +1481,17 @@ class GenerationService:
             survey["golden_examples"] = []
         if "metadata" not in survey:
             survey["metadata"] = {"target_responses": 100, "methodology": ["survey"]}
+        
+        # CRITICAL: Validate that survey is not empty after structure fixing
+        from src.utils.survey_utils import get_questions_count
+        question_count = get_questions_count(survey)
+        if question_count == 0:
+            logger.error("❌ [GenerationService] Survey validation failed: Survey is empty (0 questions)")
+            logger.error(f"❌ [GenerationService] Survey structure: sections={len(survey.get('sections', []))}")
+            for i, section in enumerate(survey.get("sections", [])):
+                section_questions = len(section.get("questions", []))
+                logger.error(f"❌ [GenerationService] Section {i+1} ({section.get('title', 'No title')}): {section_questions} questions")
+            raise ValueError("Generated survey is empty - no questions found. This indicates a generation failure.")
 
     def _consolidate_sections(self, sections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """

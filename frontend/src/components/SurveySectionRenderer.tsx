@@ -56,10 +56,15 @@ const QuestionRenderer: React.FC<QuestionRendererProps> = ({ question, onRespons
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-6 mb-4">
       <div className="mb-4">
-        <h3 className="text-lg font-medium text-gray-900 mb-2">
+        <h3 className="text-lg font-medium text-gray-900 mb-1">
           {getQuestionText()}
           {question.required && <span className="text-red-500 ml-1">*</span>}
         </h3>
+        {question.id && (
+          <div className="text-xs text-gray-500 font-mono mb-2">
+            ID: {question.id}
+          </div>
+        )}
         {/* Always show question type for clarity */}
         <div className="text-sm text-gray-500 mb-2">
           Type: {question.type.replace('_', ' ')}
@@ -277,29 +282,24 @@ const QuestionRenderer: React.FC<QuestionRendererProps> = ({ question, onRespons
       )}
 
       {question.type === 'instruction' && (
-        <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-lg">
-          <div className="mb-2">
-            {/* Always show "Instructions" as the main heading */}
-            <div className="flex items-center space-x-2 mb-2">
-              <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
-                <span className="text-white text-sm font-bold">i</span>
+        <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-5 mb-4">
+          {/* Instruction content area - lean design */}
+          <div className="bg-blue-50 rounded-lg p-4 border-l-4 border-blue-400">
+            <div className="flex items-start gap-3">
+              {/* Icon */}
+              <div className="flex-shrink-0">
+                <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                  <span className="text-white text-xs font-bold">i</span>
+                </div>
               </div>
-              <h4 className="text-lg font-bold text-blue-900">Instructions</h4>
+              
+              {/* Instruction text */}
+              <div className="flex-1">
+                <p className="text-sm text-gray-900 leading-relaxed whitespace-pre-wrap">
+                  {question.text || 'No instruction text provided'}
+                </p>
+              </div>
             </div>
-            
-            {/* Display the instruction content */}
-            <div className="text-sm text-blue-800 leading-relaxed whitespace-pre-wrap ml-8">
-              {question.text || 'No instruction text provided'}
-            </div>
-          </div>
-          
-          <div className="mt-3 flex items-center justify-between">
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-              Instruction Block
-            </span>
-            <span className="text-xs text-blue-600">
-              No response required
-            </span>
           </div>
         </div>
       )}

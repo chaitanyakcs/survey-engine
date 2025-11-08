@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, Integer, DateTime, DECIMAL, ARRAY, ForeignKey, CheckConstraint, Boolean, Index
+from sqlalchemy import Column, String, Text, Integer, DateTime, DECIMAL, ARRAY, ForeignKey, CheckConstraint, Boolean, Index, LargeBinary
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -145,6 +145,7 @@ class RFQ(Base):
 
     surveys = relationship("Survey", back_populates="rfq")
     document_upload = relationship("DocumentUpload", back_populates="rfqs")
+    concept_files = relationship("ConceptFile", back_populates="rfq", cascade="all, delete-orphan")
 
 
 class Survey(Base):
@@ -541,6 +542,35 @@ class DocumentRFQMapping(Base):
         Index('idx_document_rfq_mappings_confidence', 'confidence_score'),
         # Ensure each document can only be mapped to an RFQ once
         Index('idx_document_rfq_mappings_unique', 'document_id', 'rfq_id', unique=True),
+    )
+
+
+class ConceptFile(Base):
+    """Model for storing concept files (images and documents) uploaded for RFQ concept exposure"""
+    __tablename__ = "concept_files"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    rfq_id = Column(UUID(as_uuid=True), ForeignKey("rfqs.id", ondelete="CASCADE"), nullable=False)
+    filename = Column(String(255), nullable=False)
+    original_filename = Column(String(255), nullable=True)
+    file_size = Column(Integer, nullable=False)
+    content_type = Column(String(100), nullable=False)
+    file_data = Column(LargeBinary, nullable=False)  # Store file binary data
+    concept_stimulus_id = Column(String(100), nullable=True)  # Optional link to concept_stimuli (stored as string ID in enhanced_rfq_data)
+    display_order = Column(Integer, default=0)
+    upload_timestamp = Column(DateTime(timezone=True), default=func.now())
+    created_at = Column(DateTime(timezone=True), default=func.now())
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
+
+    # Relationships
+    rfq = relationship("RFQ", back_populates="concept_files")
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_concept_files_rfq_id', 'rfq_id'),
+        Index('idx_concept_files_display_order', 'display_order'),
+        Index('idx_concept_files_concept_stimulus_id', 'concept_stimulus_id'),
+        Index('idx_concept_files_created_at', 'created_at'),
     )
 
 

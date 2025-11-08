@@ -11,8 +11,7 @@ export const SurveyPreviewPage: React.FC = () => {
     setWorkflowState,
     connectWebSocket,
     fetchReviewByWorkflow,
-    setActiveReview,
-    loadPillarScoresAsync
+    setActiveReview
   } = useAppStore();
   const [isPending, setIsPending] = useState(false);
   const [pendingType, setPendingType] = useState<'generation' | 'review' | null>(null);
@@ -105,16 +104,8 @@ export const SurveyPreviewPage: React.FC = () => {
     }
   }, [workflow.status, isPending]);
 
-  // Load pillar scores asynchronously when survey is available (non-blocking)
-  useEffect(() => {
-    if (currentSurvey && !currentSurvey.pillar_scores) {
-      console.log('🏛️ [SurveyPreviewPage] Loading pillar scores in background');
-      loadPillarScoresAsync(currentSurvey.survey_id).catch((error) => {
-        console.warn('⚠️ [SurveyPreviewPage] Background pillar scores loading failed:', error);
-        // Don't show error to user - this is a background operation
-      });
-    }
-  }, [currentSurvey, loadPillarScoresAsync]);
+  // Note: Pillar scores are no longer automatically loaded
+  // Users must manually trigger evaluation via the "Run Evaluation" button
 
   const getPageTitle = () => {
     if (pendingType === 'review') return 'Survey Review';

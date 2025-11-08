@@ -48,12 +48,14 @@ class QuestionLabelDetector:
                 {'context': ['medical condition', 'health condition']},
             ],
             'Category_Usage_Frequency': [
-                {'keywords': ['how often', 'frequency', 'regularly', 'daily', 'weekly', 'monthly', 'use']},
+                {'keywords': ['how often', 'frequency', 'regularly', 'daily', 'weekly', 'monthly', 'use', 'how often do you use', 'frequency of usage', 'category usage frequency']},
                 {'context': ['product', 'category', 'brand']},
+                {'question_type': ['single_choice', 'multiple_choice', 'scale']},
             ],
             'Category_Usage_Financial': [
-                {'keywords': ['spend', 'spending', 'cost', 'price', 'budget', 'money', 'financial']},
+                {'keywords': ['spend', 'spending', 'cost', 'price', 'budget', 'money', 'financial', 'how much do you spend', 'spending on category', 'financial spending']},
                 {'context': ['product', 'category', 'monthly', 'annually']},
+                {'question_type': ['single_choice', 'multiple_choice', 'numeric_open', 'scale']},
             ],
             'Category_Usage_Additional': [
                 {'keywords': ['where', 'how', 'additional', 'other', 'else', 'besides']},
@@ -93,10 +95,11 @@ class QuestionLabelDetector:
                 {'question_type': 'text'},
             ],
             'Brand_Awareness_Funnel': [
-                {'keywords': ['aware', 'considered', 'purchased', 'continue', 'prefer', 'familiar with']},
-                {'question_type': 'matrix_likert'},
-                {'min_options': 4},  # Must have multiple stages
+                {'keywords': ['aware', 'considered', 'purchased', 'continue', 'prefer', 'familiar with', 'awareness funnel', 'brand funnel']},
+                {'question_type': 'matrix_likert'},  # CRITICAL: Must be matrix_likert type
+                {'min_options': 4},  # Must have multiple stages (Aware → Considered → Purchased → Continue → Preferred)
                 {'context': ['brand', 'product']},
+                {'required_stages': ['aware', 'considered', 'purchased']},  # Should contain these stages
             ],
             'Product_Satisfaction': [
                 {'keywords': ['satisfied', 'satisfaction', 'rate', 'evaluate', 'experience', 'opinion']},

@@ -122,6 +122,52 @@ class SingleCallEvaluator:
         questions = extract_all_questions(survey)
         questions_text = "\n".join([f"{i+1}. {q.get('text', '')} (Type: {q.get('type', 'unknown')})" for i, q in enumerate(questions)])
         
+        # Get pillar rules from ConsolidatedRulesService (same as generation prompt uses)
+        pillar_rules_context = ""
+        rules_loaded = False
+        rule_count = 0
+        
+        if self.pillar_rules_service:
+            try:
+                pillar_rules_context = self.pillar_rules_service.get_comprehensive_evaluation_context()
+                if pillar_rules_context and pillar_rules_context.strip():
+                    rules_loaded = True
+                    # Count rules by counting lines that start with numbered items or priority indicators
+                    rule_count = sum(1 for line in pillar_rules_context.split('\n') 
+                                   if line.strip().startswith(('🔴', '🟡', '🔵')) or 
+                                   (line.strip() and line.strip()[0].isdigit() and '.' in line[:3]))
+                    logger.info(f"✅ [SingleCallEvaluator] Loaded pillar rules from ConsolidatedRulesService ({rule_count} rules detected)")
+                else:
+                    logger.warning("⚠️ [SingleCallEvaluator] ConsolidatedRulesService returned empty context, using fallback")
+            except Exception as e:
+                logger.warning(f"⚠️ [SingleCallEvaluator] Failed to load pillar rules from ConsolidatedRulesService: {e}, using fallback")
+        
+        if not rules_loaded:
+            logger.info("ℹ️ [SingleCallEvaluator] Using fallback pillar descriptions (ConsolidatedRulesService unavailable)")
+        
+        # Build pillar section - use dynamic rules if available, otherwise fallback to hardcoded
+        if rules_loaded:
+            pillars_section = f"""
+EVALUATION PILLARS (with weights):
+1. CONTENT VALIDITY (20%) - Does the survey address research objectives?
+2. METHODOLOGICAL RIGOR (25%) - Is the methodology sound and unbiased?
+3. CLARITY & COMPREHENSIBILITY (25%) - Are questions clear and understandable?
+4. STRUCTURAL COHERENCE (20%) - Is the structure logical and well-organized?
+5. DEPLOYMENT READINESS (10%) - Is the survey ready to deploy?
+
+PILLAR EVALUATION RULES:
+{pillar_rules_context}
+"""
+        else:
+            pillars_section = """
+EVALUATION PILLARS (with weights):
+1. CONTENT VALIDITY (20%) - Does the survey address research objectives?
+2. METHODOLOGICAL RIGOR (25%) - Is the methodology sound and unbiased?
+3. CLARITY & COMPREHENSIBILITY (25%) - Are questions clear and understandable?
+4. STRUCTURAL COHERENCE (20%) - Is the structure logical and well-organized?
+5. DEPLOYMENT READINESS (10%) - Is the survey ready to deploy?
+"""
+        
         prompt = f"""
 You are an expert survey methodologist with 15+ years of experience. Perform a comprehensive 5-pillar evaluation of this survey in one analysis.
 
@@ -133,14 +179,7 @@ RFQ CONTEXT:
 
 SURVEY QUESTIONS:
 {questions_text}
-
-EVALUATION PILLARS (with weights):
-1. CONTENT VALIDITY (20%) - Does the survey address research objectives?
-2. METHODOLOGICAL RIGOR (25%) - Is the methodology sound and unbiased?
-3. CLARITY & COMPREHENSIBILITY (25%) - Are questions clear and understandable?
-4. STRUCTURAL COHERENCE (20%) - Is the structure logical and well-organized?
-5. DEPLOYMENT READINESS (10%) - Is the survey ready to deploy?
-
+{pillars_section}
 EVALUATION PROCESS:
 - Score each pillar 0.0-1.0 (1.0 = perfect adherence)
 - Provide specific examples of compliance/non-compliance
@@ -272,7 +311,9 @@ RESPOND WITH JSON:
         "sections_analyzed": {len(survey.get('sections', []))},
         "ai_annotations_generated": true,
         "total_annotations": {len(questions) + len(survey.get('sections', []))},
-        "rfq_text_length": {len(rfq_text)}
+        "rfq_text_length": {len(rfq_text)},
+        "pillar_rules_loaded": {str(rules_loaded).lower()},
+        "pillar_rules_count": {rule_count}
     }}
 }}
 """

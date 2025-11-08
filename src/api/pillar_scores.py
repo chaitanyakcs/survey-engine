@@ -209,9 +209,7 @@ async def _evaluate_with_advanced_system(survey_data: Dict[str, Any], rfq_text: 
             overall_grade = "F"
         
         # Create enhanced summary with evaluation info
-        cost_savings = getattr(result, 'cost_savings', {})
-        cost_info = f"Cost Savings: {cost_savings.get('cost_reduction_percent', 0):.0f}% (${cost_savings.get('estimated_cost_saved', 0):.2f} saved)"
-        advanced_info = f"Single-Call Comprehensive Analysis | {cost_info}"
+        advanced_info = "Single-Call Comprehensive Analysis"
         
         # Get recommendations
         recommendations = []
@@ -356,24 +354,6 @@ async def get_pillar_scores(
                     )
             
             try:
-                # Check if LLM evaluation is enabled in settings
-                from src.services.settings_service import SettingsService
-                settings_service = SettingsService(db)
-                evaluation_settings = settings_service.get_evaluation_settings()
-                enable_llm_evaluation = evaluation_settings.get('enable_llm_evaluation', True)
-                
-                if not enable_llm_evaluation:
-                    # LLM evaluation is disabled - return empty response
-                    logger.info(f"⚠️ [Pillar Scores API] LLM evaluation is disabled for survey {survey_id}")
-                    return OverallPillarScoreResponse(
-                        overall_grade="N/A",
-                        weighted_score=0.0,
-                        total_score=0.0,
-                        summary="LLM evaluation is disabled. Enable it in settings to get AI-powered quality assessment.",
-                        pillar_breakdown=[],
-                        recommendations=[]
-                    )
-                
                 # Extract RFQ text for advanced evaluation (fallback if not available)
                 rfq_text = getattr(survey, 'original_rfq', survey.rfq.description if survey.rfq else '')
                 if not rfq_text:
@@ -627,19 +607,6 @@ async def run_evaluation(
         
         if not survey.final_output:
             raise HTTPException(status_code=400, detail="Survey has not been generated yet")
-        
-        # Check if LLM evaluation is enabled in settings
-        from src.services.settings_service import SettingsService
-        settings_service = SettingsService(db)
-        evaluation_settings = settings_service.get_evaluation_settings()
-        enable_llm_evaluation = evaluation_settings.get('enable_llm_evaluation', True)
-        
-        if not enable_llm_evaluation:
-            logger.info(f"⚠️ [Run Evaluation] LLM evaluation is disabled for survey {survey_id_str}")
-            raise HTTPException(
-                status_code=403,
-                detail="LLM evaluation is disabled. Enable it in settings to run AI-powered quality assessment."
-            )
         
         # Check if evaluation is already in progress
         evaluation_lock = _get_evaluation_lock(survey_id_str)

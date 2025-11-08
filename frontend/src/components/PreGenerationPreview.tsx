@@ -1,22 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { EnhancedRFQRequest } from '../types';
+import { EnhancedRFQRequest, ConceptFile } from '../types';
 import { PromptPreview } from './PromptPreview';
+import { PhotoIcon } from '@heroicons/react/24/outline';
 
 interface PreGenerationPreviewProps {
   rfq: EnhancedRFQRequest;
   onGenerate?: (customPrompt?: string) => void;
   onEdit?: () => void;
+  rfqId?: string; // Optional rfq_id for fetching concept files when workflow.rfq_id is not available
 }
 
 export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
   rfq,
   onGenerate,
-  onEdit
+  onEdit,
+  rfqId
 }) => {
-  const { submitEnhancedRFQ, workflow } = useAppStore();
+  const { submitEnhancedRFQ, workflow, fetchConceptFiles } = useAppStore();
   const [activeTab, setActiveTab] = useState<'overview' | 'prompt'>('overview');
   const [customPrompt, setCustomPrompt] = useState<string | null>(null);
+  const [conceptFiles, setConceptFiles] = useState<ConceptFile[]>([]);
   
   // Generation configuration state
   const [jsonExamplesMode, setJsonExamplesMode] = useState<'rag_reference' | 'consolidated'>(
@@ -49,6 +53,40 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
   };
 
   const isLoading = workflow.status === 'started' || workflow.status === 'in_progress';
+
+  // Fetch concept files when preview is shown
+  useEffect(() => {
+    const loadConceptFiles = async () => {
+      // Try multiple sources for rfq_id: prop > workflow > rfq metadata
+      const effectiveRfqId = rfqId || workflow.rfq_id || (rfq as any).rfq_id;
+      
+      if (effectiveRfqId && fetchConceptFiles) {
+        try {
+          console.log('🔍 [PreGenerationPreview] Fetching concept files for rfq_id:', effectiveRfqId);
+          console.log('🔍 [PreGenerationPreview] rfq_id sources:', {
+            prop: rfqId,
+            workflow: workflow.rfq_id,
+            rfq_metadata: (rfq as any).rfq_id,
+            effective: effectiveRfqId
+          });
+          const files = await fetchConceptFiles(effectiveRfqId);
+          console.log('✅ [PreGenerationPreview] Loaded concept files:', files.length);
+          setConceptFiles(files);
+        } catch (error) {
+          console.error('❌ [PreGenerationPreview] Failed to load concept files:', error);
+          setConceptFiles([]);
+        }
+      } else {
+        console.log('⚠️ [PreGenerationPreview] No rfq_id available for concept files. Sources:', {
+          prop: rfqId,
+          workflow: workflow.rfq_id,
+          rfq_metadata: (rfq as any).rfq_id
+        });
+        setConceptFiles([]);
+      }
+    };
+    loadConceptFiles();
+  }, [rfqId, workflow.rfq_id, fetchConceptFiles, rfq]);
 
   return (
     <div className="min-h-screen bg-white">
@@ -763,6 +801,57 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                 </div>
             </div>
           )}
+
+            {/* Concept Files */}
+            {conceptFiles.length > 0 && (
+              <div className="bg-white/70 backdrop-blur-lg rounded-3xl shadow-2xl border border-white/20 p-8">
+                <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center">
+                  <PhotoIcon className="w-8 h-8 mr-3 text-purple-600" />
+                  Concept Files
+                </h2>
+                <p className="text-gray-600 mb-4">
+                  These files will be included in Section 4 (Concept Exposure) of the generated survey.
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {conceptFiles
+                    .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+                    .map((file) => {
+                      const isImage = file.content_type?.startsWith('image/');
+                      return (
+                        <div
+                          key={file.id}
+                          className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow"
+                        >
+                          {isImage ? (
+                            <img
+                              src={file.file_url}
+                              alt={file.original_filename || file.filename}
+                              className="w-full h-32 object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = '/placeholder-image.png';
+                              }}
+                            />
+                          ) : (
+                            <div className="w-full h-32 bg-gray-100 flex items-center justify-center">
+                              <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            </div>
+                          )}
+                          <div className="p-2">
+                            <p className="text-xs font-medium text-gray-900 truncate" title={file.original_filename || file.filename}>
+                              {file.original_filename || file.filename}
+                            </p>
+                            {file.content_type && (
+                              <p className="text-xs text-gray-500 mt-1">{file.content_type}</p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
 
             </div>
           )}

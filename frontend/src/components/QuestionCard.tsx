@@ -225,54 +225,14 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       {/* Question Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center space-x-2">
-          {question.type !== 'instruction' && (
-            <span className="text-sm font-medium text-gray-500">Q{index + 1}</span>
+          {/* Question ID - only show if not instruction */}
+          {question.type !== 'instruction' && question.id && (
+            <span className="text-xs text-gray-500 font-mono">{question.id}</span>
           )}
-          {question.methodology && question.type !== 'instruction' && (
-            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-              {question.methodology}
-            </span>
+          {/* Fallback to number if no ID */}
+          {question.type !== 'instruction' && !question.id && (
+            <span className="text-xs text-gray-400">{index + 1}.</span>
           )}
-          <span className={`
-            inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
-            ${question.category === 'screening' ? 'bg-yellow-100 text-yellow-800' :
-              question.category === 'pricing' ? 'bg-green-100 text-green-800' :
-              question.category === 'features' ? 'bg-blue-100 text-blue-800' :
-              'bg-gray-100 text-gray-800'}
-          `}>
-            {question.category}
-          </span>
-          {annotation && (
-            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-              <TagIcon className="w-3 h-3" />
-            </span>
-          )}
-          {/* Display labels from annotations (single source of truth) */}
-          {(() => {
-            // Use annotation labels if available, otherwise show nothing
-            const labels = annotation?.labels;
-            const removedLabels = new Set(annotation?.removedLabels || []);
-            
-            if (labels && Array.isArray(labels) && labels.length > 0) {
-              const visibleLabels = labels.filter(label => !removedLabels.has(label));
-              
-              if (visibleLabels.length > 0) {
-                return (
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {visibleLabels.map((label, index) => (
-                      <span 
-                        key={index}
-                        className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
-                      >
-                        {label}
-                      </span>
-                    ))}
-                  </div>
-                );
-              }
-            }
-            return null;
-          })()}
         </div>
         
         <div className="flex items-center space-x-2">
@@ -358,18 +318,20 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   </div>
                 </div>
               ) : (
-                <h3 
-                  className={`text-lg font-medium text-gray-900 mb-2 ${isEditingSurvey ? 'cursor-pointer hover:bg-gray-100 px-2 py-1 rounded' : ''}`}
-                  onClick={(e) => {
-                    if (isEditingSurvey) {
-                      e.stopPropagation();
-                      setIsEditingText(true);
-                    }
-                  }}
-                  title={isEditingSurvey ? "Click to edit question text" : ""}
-                >
-                  {getQuestionText}
-                </h3>
+                <div>
+                  <h3 
+                    className={`text-lg font-medium text-gray-900 mb-1 ${isEditingSurvey ? 'cursor-pointer hover:bg-gray-100 px-2 py-1 rounded' : ''}`}
+                    onClick={(e) => {
+                      if (isEditingSurvey) {
+                        e.stopPropagation();
+                        setIsEditingText(true);
+                      }
+                    }}
+                    title={isEditingSurvey ? "Click to edit question text" : ""}
+                  >
+                    {getQuestionText}
+                  </h3>
+                </div>
               )}
             </div>
           )}
@@ -421,8 +383,8 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   <div className="text-blue-600">{annotation.pillars.businessImpact}/5</div>
                 </div>
               </div>
-              {/* Debug logging for q1 */}
-              {question.id === 'q1' && (
+              {/* Debug logging for questions with generic IDs */}
+              {(question.id === 'q1' || question.id?.startsWith('q')) && (
                 <div className="text-xs text-red-600 mt-1">
                   Debug: AI Generated: {annotation.aiGenerated ? 'Yes' : 'No'}, 
                   Confidence: {annotation.aiConfidence}, 
@@ -915,70 +877,89 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                         )}
                       </div>
                     ) : (
-                      // Regular respondent-facing instruction - friendly styling
-                      <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-lg">
-                        <div className="flex items-center gap-2 mb-2">
-                          <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd"/>
-                          </svg>
-                          <h4 className="text-sm font-semibold text-blue-800">Instruction</h4>
-                        </div>
-                        {isEditingSurvey && isEditingText ? (
-                          <div className="flex items-start space-x-2">
-                            <textarea
-                              value={editedText}
-                              onChange={(e) => setEditedText(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' && e.ctrlKey) {
-                                  handleTextSave();
-                                } else if (e.key === 'Escape') {
-                                  handleTextCancel();
-                                }
-                              }}
-                              className="flex-1 text-sm text-blue-700 bg-white border border-blue-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                              rows={3}
-                              autoFocus
-                              disabled={isSaving}
-                            />
-                            <div className="flex flex-col space-y-1">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleTextSave();
-                                }}
-                                disabled={isSaving}
-                                className="text-green-600 hover:text-green-800 disabled:opacity-50"
-                                title="Save"
-                              >
-                                ✓
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleTextCancel();
-                                }}
-                                disabled={isSaving}
-                                className="text-red-600 hover:text-red-800 disabled:opacity-50"
-                                title="Cancel"
-                              >
-                                ✕
-                              </button>
+                      // Regular respondent-facing instruction - lean design
+                      <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-5">
+                        {/* Instruction content area - no type label */}
+                        <div className="bg-blue-50 rounded-lg p-4 border-l-4 border-blue-400">
+                          {isEditingSurvey && isEditingText ? (
+                            <div className="flex items-start gap-3">
+                              {/* Icon */}
+                              <div className="flex-shrink-0">
+                                <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                                  <span className="text-white text-sm font-bold">i</span>
+                                </div>
+                              </div>
+                              
+                              {/* Editable textarea */}
+                              <div className="flex-1 flex items-start gap-2">
+                                <textarea
+                                  value={editedText}
+                                  onChange={(e) => setEditedText(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && e.ctrlKey) {
+                                      handleTextSave();
+                                    } else if (e.key === 'Escape') {
+                                      handleTextCancel();
+                                    }
+                                  }}
+                                  className="flex-1 text-sm text-gray-900 bg-white border border-blue-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                                  rows={3}
+                                  autoFocus
+                                  disabled={isSaving}
+                                />
+                                <div className="flex flex-col space-y-1">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleTextSave();
+                                    }}
+                                    disabled={isSaving}
+                                    className="text-green-600 hover:text-green-800 disabled:opacity-50"
+                                    title="Save"
+                                  >
+                                    ✓
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleTextCancel();
+                                    }}
+                                    disabled={isSaving}
+                                    className="text-red-600 hover:text-red-800 disabled:opacity-50"
+                                    title="Cancel"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                        ) : (
-                          <p 
-                            className={`text-sm text-blue-700 ${isEditingSurvey ? 'cursor-pointer hover:bg-blue-100 px-2 py-1 rounded' : ''}`}
-                            onClick={(e) => {
-                              if (isEditingSurvey) {
-                                e.stopPropagation();
-                                setIsEditingText(true);
-                              }
-                            }}
-                            title={isEditingSurvey ? "Click to edit instruction text" : ""}
-                          >
-                            {question.text}
-                          </p>
-                        )}
+                          ) : (
+                            <div className="flex items-start gap-3">
+                              {/* Icon */}
+                              <div className="flex-shrink-0">
+                                <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                                  <span className="text-white text-sm font-bold">i</span>
+                                </div>
+                              </div>
+                              
+                              {/* Instruction text */}
+                              <div className="flex-1">
+                                <p 
+                                  className={`text-sm text-gray-900 leading-relaxed whitespace-pre-wrap ${isEditingSurvey ? 'cursor-pointer hover:bg-blue-100 px-2 py-1 rounded -mx-2 -my-1' : ''}`}
+                                  onClick={(e) => {
+                                    if (isEditingSurvey) {
+                                      e.stopPropagation();
+                                      setIsEditingText(true);
+                                    }
+                                  }}
+                                  title={isEditingSurvey ? "Click to edit instruction text" : ""}
+                                >
+                                  {question.text}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
                   </>

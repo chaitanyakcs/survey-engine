@@ -1,5 +1,5 @@
 import React from 'react';
-import { InformationCircleIcon } from '@heroicons/react/24/outline';
+import { InformationCircleIcon } from '@heroicons/react/24/solid';
 
 interface PillarTooltipProps {
   pillarName: string;
@@ -21,13 +21,13 @@ const PillarTooltip: React.FC<PillarTooltipProps> = ({
     <div className="relative inline-block">
       <button
         type="button"
-        className="text-gray-400 hover:text-gray-600 transition-colors"
+        className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center hover:bg-blue-600 transition-colors"
         onMouseEnter={() => setIsOpen(true)}
         onMouseLeave={() => setIsOpen(false)}
         onFocus={() => setIsOpen(true)}
         onBlur={() => setIsOpen(false)}
       >
-        <InformationCircleIcon className="w-4 h-4" />
+        <InformationCircleIcon className="w-3 h-3 text-white" />
       </button>
       
       {isOpen && (

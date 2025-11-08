@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { DocumentUpload } from './DocumentUpload';
+import { ConceptFileUpload } from './ConceptFileUpload';
+import { ConceptFile } from '../types';
+import { TextBlockEditor } from './TextBlockEditor';
+import { EditableTextBlock } from '../types';
 
 // Animated sprinkle component
 const AnimatedSprinkle: React.FC<{ className?: string }> = ({ className = "" }) => (
@@ -112,8 +116,14 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
     // Edit tracking
     trackFieldEdit,
     // Generate functionality
-    submitEnhancedRFQ
+    submitEnhancedRFQ,
+    // Auto-save
+    saveRfqDraft,
+    // Concept files
+    fetchConceptFiles
   } = useAppStore();
+  
+  const [generalConceptFiles, setGeneralConceptFiles] = React.useState<ConceptFile[]>([]);
 
   console.log('🔍 [EnhancedRFQEditor] Current state:', { 
     enhancedRfq, 
@@ -243,6 +253,89 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
     }
   }, [fieldMappings, addToast]);
 
+  // Auto-save RFQ draft (debounced) - enables file uploads
+  React.useEffect(() => {
+    // Only auto-save if there's content and no rfq_id yet
+    if (!workflow.rfq_id && (enhancedRfq.title?.trim() || enhancedRfq.description?.trim())) {
+      const timeoutId = setTimeout(() => {
+        saveRfqDraft(enhancedRfq);
+      }, 2000); // 2 second debounce after user stops typing
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [enhancedRfq, workflow.rfq_id, saveRfqDraft]);
+
+  // Fetch concept files when rfq_id is available
+  // Also restore rfq_id from localStorage if workflow doesn't have it
+  React.useEffect(() => {
+    const loadConceptFiles = async () => {
+      // Try to get rfq_id from workflow state first
+      let rfqId = workflow.rfq_id;
+      
+      // If not in workflow state, try to restore from localStorage
+      if (!rfqId) {
+        try {
+          const draftState = localStorage.getItem('draft_rfq_state');
+          if (draftState) {
+            const parsed = JSON.parse(draftState);
+            if (parsed.rfq_id) {
+              rfqId = parsed.rfq_id;
+              console.log('🔍 [EnhancedRFQEditor] Restored rfq_id from localStorage:', rfqId);
+              // Update workflow state with restored rfq_id
+              useAppStore.setState((state) => ({
+                workflow: {
+                  ...state.workflow,
+                  rfq_id: rfqId
+                }
+              }));
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ [EnhancedRFQEditor] Failed to restore rfq_id from localStorage:', error);
+        }
+      }
+      
+      if (rfqId && fetchConceptFiles) {
+        try {
+          console.log('🔍 [EnhancedRFQEditor] Fetching concept files for rfq_id:', rfqId);
+          const files = await fetchConceptFiles(rfqId);
+          console.log('✅ [EnhancedRFQEditor] Loaded concept files:', files.length);
+          
+          // Separate general files (no concept_stimulus_id) from stimulus-specific files
+          setGeneralConceptFiles(files.filter((f: ConceptFile) => !f.concept_stimulus_id));
+          
+          // Update stimulus files
+          const stimulusFilesMap = new Map<string, ConceptFile[]>();
+          files.forEach((file: ConceptFile) => {
+            if (file.concept_stimulus_id) {
+              if (!stimulusFilesMap.has(file.concept_stimulus_id)) {
+                stimulusFilesMap.set(file.concept_stimulus_id, []);
+              }
+              stimulusFilesMap.get(file.concept_stimulus_id)!.push(file);
+            }
+          });
+          
+          // Update enhancedRfq with fetched files for each stimulus (only if stimulus exists)
+          if (stimulusFilesMap.size > 0) {
+            const currentRfq = useAppStore.getState().enhancedRfq;
+            setEnhancedRfq({
+              ...currentRfq,
+              concept_stimuli: (currentRfq.concept_stimuli || []).map(stimulus => ({
+                ...stimulus,
+                files: stimulusFilesMap.get(stimulus.id) || stimulus.files || []
+              }))
+            });
+          }
+        } catch (error) {
+          console.error('❌ [EnhancedRFQEditor] Failed to load concept files:', error);
+        }
+      } else {
+        setGeneralConceptFiles([]);
+      }
+    };
+    loadConceptFiles();
+  }, [workflow.rfq_id, fetchConceptFiles, setEnhancedRfq]);
+
   // Initialize the component once
   React.useEffect(() => {
     // Skip initialization if already initialized or has user data
@@ -315,6 +408,8 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
           primary_method: 'basic_survey'
         },
         concept_stimuli: [],
+        brand_list: [],
+        product_list: [],
         additional_info: '',
         survey_requirements: {
           sample_plan: ''
@@ -1402,39 +1497,157 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                       Research Methodology
                     </h2>
 
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-800 mb-3">
-                        Primary Methodology
-                      </label>
-                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                        {(['basic_survey', 'van_westendorp', 'gabor_granger', 'conjoint'] as const).map((method) => (
-                          <button
-                            key={method}
-                            onClick={() => setEnhancedRfq({
-                              ...enhancedRfq,
-                              methodology: {
-                                ...enhancedRfq.methodology,
-                                primary_method: method
-                              }
-                            })}
-                            className={`p-4 rounded-xl border-2 transition-all duration-200 text-left ${
-                              enhancedRfq.methodology?.primary_method === method
-                                ? 'border-yellow-500 bg-yellow-50 text-yellow-700'
-                                : 'border-gray-200 hover:border-gray-300 text-gray-700'
-                            }`}
-                          >
-                            <div className="font-medium capitalize">
-                              {method.replace('_', ' ')}
-                            </div>
-                            <div className="text-xs mt-1 text-gray-500">
-                              {method === 'basic_survey' && 'Standard survey'}
-                              {method === 'van_westendorp' && 'Price sensitivity'}
-                              {method === 'gabor_granger' && 'Price acceptance'}
-                              {method === 'conjoint' && 'Trade-off analysis'}
-                            </div>
-                          </button>
-                        ))}
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-800 mb-3">
+                          Primary Methodology
+                          {enhancedRfq.methodology?.primary_method && (
+                            <span className="ml-2 text-xs font-normal text-green-600">
+                              ✓ Auto-detected
+                            </span>
+                          )}
+                        </label>
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                          {(['basic_survey', 'van_westendorp', 'gabor_granger', 'conjoint'] as const).map((method) => (
+                            <button
+                              key={method}
+                              onClick={() => setEnhancedRfq({
+                                ...enhancedRfq,
+                                methodology: {
+                                  ...enhancedRfq.methodology,
+                                  primary_method: method
+                                }
+                              })}
+                              className={`p-4 rounded-xl border-2 transition-all duration-200 text-left ${
+                                enhancedRfq.methodology?.primary_method === method
+                                  ? 'border-yellow-500 bg-yellow-50 text-yellow-700 shadow-md'
+                                  : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                              }`}
+                            >
+                              <div className="font-medium capitalize">
+                                {method.replace('_', ' ')}
+                              </div>
+                              <div className="text-xs mt-1 text-gray-500">
+                                {method === 'basic_survey' && 'Standard survey'}
+                                {method === 'van_westendorp' && 'Price sensitivity'}
+                                {method === 'gabor_granger' && 'Price acceptance'}
+                                {method === 'conjoint' && 'Trade-off analysis'}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
                       </div>
+
+                      {/* Additional Methodologies - shown once primary is selected */}
+                      {enhancedRfq.methodology?.primary_method && (
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-800 mb-3">
+                            Additional Methodologies
+                            <span className="ml-2 text-xs font-normal text-gray-500">
+                              (Optional - can combine with primary)
+                            </span>
+                          </label>
+                          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                            {(['basic_survey', 'van_westendorp', 'gabor_granger', 'conjoint'] as const)
+                              .filter(method => method !== enhancedRfq.methodology?.primary_method)
+                              .map((method) => {
+                                const isRelated = (
+                                  (enhancedRfq.methodology?.primary_method === 'van_westendorp' && method === 'gabor_granger') ||
+                                  (enhancedRfq.methodology?.primary_method === 'gabor_granger' && method === 'van_westendorp') ||
+                                  (enhancedRfq.methodology?.primary_method === 'conjoint' && method === 'basic_survey')
+                                );
+                                
+                                // Check if this methodology is already added
+                                const currentTags = enhancedRfq.advanced_classification?.methodology_tags || [];
+                                const methodTag = method.replace(/_/g, ' ').toLowerCase();
+                                const normalizedTags = currentTags.map(t => t.replace(/_/g, ' ').toLowerCase());
+                                const isAlreadyAdded = normalizedTags.includes(methodTag);
+                                
+                                return (
+                                  <button
+                                    key={method}
+                                    onClick={() => {
+                                      // Add to methodology_tags in advanced_classification
+                                      if (!isAlreadyAdded) {
+                                        setEnhancedRfq({
+                                          ...enhancedRfq,
+                                          advanced_classification: {
+                                            ...enhancedRfq.advanced_classification,
+                                            industry_classification: enhancedRfq.advanced_classification?.industry_classification || '',
+                                            respondent_classification: enhancedRfq.advanced_classification?.respondent_classification || '',
+                                            methodology_tags: [...currentTags, methodTag]
+                                          }
+                                        });
+                                      }
+                                    }}
+                                    disabled={isAlreadyAdded}
+                                    className={`p-3 rounded-lg border transition-all duration-200 text-left ${
+                                      isAlreadyAdded
+                                        ? 'border-green-300 bg-green-50 text-green-700 cursor-not-allowed opacity-75'
+                                        : isRelated
+                                        ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                                        : 'border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100'
+                                    }`}
+                                  >
+                                    <div className="font-medium text-sm capitalize flex items-center justify-between">
+                                      <span>
+                                        {method.replace('_', ' ')}
+                                        {isRelated && !isAlreadyAdded && (
+                                          <span className="ml-2 text-xs text-blue-600">(Related)</span>
+                                        )}
+                                        {isAlreadyAdded && (
+                                          <span className="ml-2 text-xs text-green-600">✓ Added</span>
+                                        )}
+                                      </span>
+                                    </div>
+                                    <div className="text-xs mt-1 text-gray-500">
+                                      {method === 'basic_survey' && 'Standard survey'}
+                                      {method === 'van_westendorp' && 'Price sensitivity'}
+                                      {method === 'gabor_granger' && 'Price acceptance'}
+                                      {method === 'conjoint' && 'Trade-off analysis'}
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                          </div>
+                          {enhancedRfq.advanced_classification?.methodology_tags && enhancedRfq.advanced_classification.methodology_tags.length > 0 && (
+                            <div className="mt-3">
+                              <p className="text-xs text-gray-600 mb-2">Additional methodologies added:</p>
+                              <div className="flex flex-wrap gap-2">
+                                {enhancedRfq.advanced_classification.methodology_tags
+                                  .filter(tag => {
+                                    const primaryTag = enhancedRfq.methodology?.primary_method?.replace(/_/g, ' ').toLowerCase();
+                                    const normalizedTag = tag.replace(/_/g, ' ').toLowerCase();
+                                    return normalizedTag !== primaryTag;
+                                  })
+                                  .map((tag) => (
+                                    <span
+                                      key={tag}
+                                      className="px-3 py-1 text-sm rounded-full bg-blue-100 text-blue-700 border border-blue-300"
+                                    >
+                                      {tag}
+                                      <button
+                                        onClick={() => {
+                                          const tags = enhancedRfq.advanced_classification?.methodology_tags || [];
+                                          setEnhancedRfq({
+                                            ...enhancedRfq,
+                                            advanced_classification: {
+                                              ...enhancedRfq.advanced_classification,
+                                              methodology_tags: tags.filter(t => t !== tag)
+                                            }
+                                          });
+                                        }}
+                                        className="ml-2 text-blue-600 hover:text-blue-800"
+                                      >
+                                        ×
+                                      </button>
+                                    </span>
+                                  ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <FormField
@@ -1665,6 +1878,174 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                             </div>
                           ))}
                         </div>
+
+                        {/* Concept Exposure - Concept Stimuli & File Upload */}
+                        {(enhancedRfq.survey_structure?.qnr_sections || []).includes('concept_exposure') && (
+                          <div className="mt-6 p-4 bg-purple-50 border border-purple-200 rounded-lg">
+                            <h3 className="text-lg font-semibold text-purple-900 mb-3 flex items-center">
+                              <span className="text-purple-600 mr-2">🎨</span>
+                              Concept Stimuli & Files
+                            </h3>
+                            <p className="text-sm text-purple-800 mb-4">
+                              Upload concept files (images or documents) and define concept stimuli that will be shown to respondents in Section 4 (Concept Exposure).
+                            </p>
+
+                            {/* Concept Stimuli List */}
+                            <div className="mb-4">
+                              <div className="flex items-center justify-between mb-2">
+                                <h4 className="text-sm font-medium text-gray-900">Concept Stimuli</h4>
+                                <button
+                                  onClick={() => {
+                                    const newStimulus = {
+                                      id: Math.random().toString(36).substr(2, 9),
+                                      title: '',
+                                      description: '',
+                                      display_order: enhancedRfq.concept_stimuli?.length || 0
+                                    };
+                                    setEnhancedRfq({
+                                      ...enhancedRfq,
+                                      concept_stimuli: [...(enhancedRfq.concept_stimuli || []), newStimulus]
+                                    });
+                                  }}
+                                  className="px-2 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
+                                >
+                                  + Add Concept
+                                </button>
+                              </div>
+                              <div className="space-y-2">
+                                {(enhancedRfq.concept_stimuli || []).map((stimulus) => (
+                                  <div key={stimulus.id} className="p-3 bg-white border border-gray-200 rounded">
+                                    <div className="space-y-2">
+                                      <input
+                                        type="text"
+                                        value={stimulus.title}
+                                        onChange={(e) => {
+                                          setEnhancedRfq({
+                                            ...enhancedRfq,
+                                            concept_stimuli: (enhancedRfq.concept_stimuli || []).map(s =>
+                                              s.id === stimulus.id ? { ...s, title: e.target.value } : s
+                                            )
+                                          });
+                                        }}
+                                        placeholder="Concept title"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                                      />
+                                      <textarea
+                                        value={stimulus.description}
+                                        onChange={(e) => {
+                                          setEnhancedRfq({
+                                            ...enhancedRfq,
+                                            concept_stimuli: (enhancedRfq.concept_stimuli || []).map(s =>
+                                              s.id === stimulus.id ? { ...s, description: e.target.value } : s
+                                            )
+                                          });
+                                        }}
+                                        placeholder="Concept description"
+                                        rows={2}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                                      />
+                                      {/* Concept File Upload for this stimulus */}
+                                      <div className="mt-2">
+                                        {workflow.rfq_id ? (
+                                          <ConceptFileUpload
+                                            rfqId={workflow.rfq_id}
+                                            conceptStimulusId={stimulus.id}
+                                            onFileUploaded={async (file) => {
+                                              // Update stimulus with file reference
+                                              setEnhancedRfq({
+                                                ...enhancedRfq,
+                                                concept_stimuli: (enhancedRfq.concept_stimuli || []).map(s =>
+                                                  s.id === stimulus.id
+                                                    ? { ...s, files: [...(s.files || []), file] }
+                                                    : s
+                                                )
+                                              });
+                                              // Fetch updated file list to ensure UI is in sync
+                                              if (workflow.rfq_id) {
+                                                const { fetchConceptFiles } = useAppStore.getState();
+                                                await fetchConceptFiles(workflow.rfq_id);
+                                              }
+                                            }}
+                                            onFileDeleted={async (fileId) => {
+                                              setEnhancedRfq({
+                                                ...enhancedRfq,
+                                                concept_stimuli: (enhancedRfq.concept_stimuli || []).map(s =>
+                                                  s.id === stimulus.id
+                                                    ? { ...s, files: (s.files || []).filter(f => f.id !== fileId) }
+                                                    : s
+                                                )
+                                              });
+                                              // Fetch updated file list to ensure UI is in sync
+                                              if (workflow.rfq_id) {
+                                                const { fetchConceptFiles } = useAppStore.getState();
+                                                await fetchConceptFiles(workflow.rfq_id);
+                                              }
+                                            }}
+                                            existingFiles={stimulus.files || []}
+                                          />
+                                        ) : (
+                                          <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
+                                            <p className="font-medium mb-1">💡 Concept File Upload</p>
+                                            <p>Your RFQ will be auto-saved as you fill it out. File uploads will be enabled automatically once saved.</p>
+                                          </div>
+                                        )}
+                                      </div>
+                                      <button
+                                        onClick={() => {
+                                          setEnhancedRfq({
+                                            ...enhancedRfq,
+                                            concept_stimuli: (enhancedRfq.concept_stimuli || []).filter(s => s.id !== stimulus.id)
+                                          });
+                                        }}
+                                        className="mt-1 px-2 py-1 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
+                                      >
+                                        Remove Concept
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                                {(!enhancedRfq.concept_stimuli || enhancedRfq.concept_stimuli.length === 0) && (
+                                  <p className="text-sm text-gray-500 italic">No concept stimuli added yet</p>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* General Concept Files (not tied to specific stimulus) */}
+                            <div>
+                              <h4 className="text-sm font-medium text-gray-900 mb-2">General Concept Files</h4>
+                              {workflow.rfq_id ? (
+                                <ConceptFileUpload
+                                  rfqId={workflow.rfq_id}
+                                  onFileUploaded={async (file) => {
+                                    // Fetch updated file list to show in UI
+                                    if (workflow.rfq_id) {
+                                      const files = await fetchConceptFiles(workflow.rfq_id);
+                                      setGeneralConceptFiles(files.filter((f: ConceptFile) => !f.concept_stimulus_id));
+                                      addToast({
+                                        type: 'success',
+                                        title: 'File Uploaded',
+                                        message: `"${file.original_filename || file.filename}" uploaded successfully`,
+                                        duration: 3000
+                                      });
+                                    }
+                                  }}
+                                  onFileDeleted={async (fileId) => {
+                                    if (workflow.rfq_id) {
+                                      const files = await fetchConceptFiles(workflow.rfq_id);
+                                      setGeneralConceptFiles(files.filter(f => !f.concept_stimulus_id));
+                                    }
+                                  }}
+                                  existingFiles={generalConceptFiles}
+                                />
+                              ) : (
+                                <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
+                                  <p className="font-medium mb-1">💡 Concept File Upload</p>
+                                  <p>Your RFQ will be auto-saved as you fill it out. File uploads will be enabled automatically once saved.</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -1844,66 +2225,32 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                           <div className="flex items-start space-x-3">
                             <div className="text-yellow-600 text-lg">⚠️</div>
                             <div>
-                              <h4 className="font-semibold text-yellow-900 mb-1">Text Introduction Requirements</h4>
+                              <h4 className="font-semibold text-yellow-900 mb-1">Text Block Management</h4>
                               <p className="text-yellow-800 text-sm">
-                                Select text blocks to include in your survey for compliance and best practices.
+                                Create, edit, and manage text blocks that will be included in your survey. You can customize the content, labels, and section placement for each text block.
                               </p>
                             </div>
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                          {[
-                            { id: 'study_intro', name: 'Study Introduction', description: 'Participant welcome and study overview', mandatory: true },
-                            { id: 'concept_intro', name: 'Concept Introduction', description: 'Before concept evaluation sections', mandatory: false },
-                            { id: 'product_usage', name: 'Product Usage Introduction', description: 'Before brand/usage awareness questions', mandatory: false },
-                            { id: 'confidentiality_agreement', name: 'Confidentiality Agreement', description: 'For sensitive research topics', mandatory: false },
-                            { id: 'methodology_instructions', name: 'Methodology Instructions', description: 'Method-specific instructions', mandatory: false },
-                            { id: 'closing_thank_you', name: 'Closing Thank You', description: 'Final section thank you and next steps', mandatory: false }
-                          ].map((textBlock) => (
-                            <label key={textBlock.id} className={`flex items-start space-x-3 p-3 border rounded-lg cursor-pointer transition-colors ${
-                              textBlock.mandatory
-                                ? 'border-green-200 bg-green-50 cursor-not-allowed'
-                                : 'border-gray-200 hover:bg-gray-50'
-                            }`}>
-                              <input
-                                type="checkbox"
-                                checked={textBlock.mandatory || (enhancedRfq.survey_structure?.text_requirements || []).includes(textBlock.id)}
-                                disabled={textBlock.mandatory}
-                                onChange={(e) => {
-                                  if (!textBlock.mandatory) {
-                                    const requirements = [...(enhancedRfq.survey_structure?.text_requirements || [])];
-                                    if (e.target.checked) {
-                                      requirements.push(textBlock.id);
-                                    } else {
-                                      const index = requirements.indexOf(textBlock.id);
-                                      if (index > -1) requirements.splice(index, 1);
-                                    }
-                                    setEnhancedRfq({
-                                      ...enhancedRfq,
-                                      survey_structure: {
-                                        ...enhancedRfq.survey_structure,
-                                        text_requirements: requirements
-                                      }
-                                    });
-                                  }
-                                }}
-                                className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500 mt-1"
-                              />
-                              <div className="flex-1">
-                                <div className="flex items-center space-x-2">
-                                  <span className="font-medium text-gray-900">{textBlock.name}</span>
-                                  {textBlock.mandatory && (
-                                    <span className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full font-medium">
-                                      Required
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="text-sm text-gray-600 mt-1">{textBlock.description}</div>
-                              </div>
-                            </label>
-                          ))}
-                        </div>
+                        <TextBlockEditor
+                          textBlocks={enhancedRfq.survey_structure?.text_blocks || []}
+                          onTextBlocksChange={(blocks: EditableTextBlock[]) => {
+                            // Update text_requirements to match selected text blocks
+                            const requirements = blocks
+                              .filter(block => block.mandatory || blocks.includes(block))
+                              .map(block => block.id);
+                            
+                            setEnhancedRfq({
+                              ...enhancedRfq,
+                              survey_structure: {
+                                ...enhancedRfq.survey_structure,
+                                text_blocks: blocks,
+                                text_requirements: requirements // Keep for backward compatibility
+                              }
+                            });
+                          }}
+                        />
                       </div>
                     )}
 
@@ -2076,6 +2423,146 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                                 <div className="text-sm text-gray-600">Frequency, occasion, and context tracking</div>
                               </div>
                             </label>
+                          </div>
+                        </div>
+
+                        {/* Brand & Product Lists Section */}
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <span className="text-blue-600 mr-2">📋</span>
+                            Brand & Product Lists
+                          </h3>
+                          <p className="text-sm text-gray-600 mb-4">
+                            Define the brands and products to be included in brand awareness and product evaluation questions.
+                          </p>
+
+                          {/* Brand List */}
+                          <div className="mb-6">
+                            <div className="flex items-center justify-between mb-3">
+                              <h4 className="text-md font-medium text-gray-900">Brands</h4>
+                              <button
+                                onClick={() => {
+                                  const { addBrand } = useAppStore.getState();
+                                  addBrand({ name: '', description: '' });
+                                }}
+                                className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                              >
+                                + Add Brand
+                              </button>
+                            </div>
+                            <div className="space-y-2">
+                              {(enhancedRfq.brand_list || []).map((brand, index) => (
+                                <div key={brand.id} className="flex items-start space-x-3 p-3 border border-gray-200 rounded-lg bg-white">
+                                  <div className="flex-1 space-y-2">
+                                    <input
+                                      type="text"
+                                      value={brand.name}
+                                      onChange={(e) => {
+                                        const { updateBrand } = useAppStore.getState();
+                                        updateBrand(brand.id, { name: e.target.value });
+                                      }}
+                                      placeholder="Brand name"
+                                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={brand.description || ''}
+                                      onChange={(e) => {
+                                        const { updateBrand } = useAppStore.getState();
+                                        updateBrand(brand.id, { description: e.target.value });
+                                      }}
+                                      placeholder="Description (optional)"
+                                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                                    />
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      const { removeBrand } = useAppStore.getState();
+                                      removeBrand(brand.id);
+                                    }}
+                                    className="px-2 py-1 text-red-600 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
+                                    title="Remove brand"
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              ))}
+                              {(!enhancedRfq.brand_list || enhancedRfq.brand_list.length === 0) && (
+                                <p className="text-sm text-gray-500 italic">No brands added yet</p>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Product List */}
+                          <div>
+                            <div className="flex items-center justify-between mb-3">
+                              <h4 className="text-md font-medium text-gray-900">Products</h4>
+                              <button
+                                onClick={() => {
+                                  const { addProduct } = useAppStore.getState();
+                                  addProduct({ name: '', description: '', brand_id: undefined });
+                                }}
+                                className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                              >
+                                + Add Product
+                              </button>
+                            </div>
+                            <div className="space-y-2">
+                              {(enhancedRfq.product_list || []).map((product, index) => (
+                                <div key={product.id} className="flex items-start space-x-3 p-3 border border-gray-200 rounded-lg bg-white">
+                                  <div className="flex-1 space-y-2">
+                                    <input
+                                      type="text"
+                                      value={product.name}
+                                      onChange={(e) => {
+                                        const { updateProduct } = useAppStore.getState();
+                                        updateProduct(product.id, { name: e.target.value });
+                                      }}
+                                      placeholder="Product name"
+                                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    />
+                                    <select
+                                      value={product.brand_id || ''}
+                                      onChange={(e) => {
+                                        const { updateProduct } = useAppStore.getState();
+                                        updateProduct(product.id, { brand_id: e.target.value || undefined });
+                                      }}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                                    >
+                                      <option value="">No brand (standalone product)</option>
+                                      {(enhancedRfq.brand_list || []).map((brand) => (
+                                        <option key={brand.id} value={brand.id}>
+                                          {brand.name || 'Unnamed brand'}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <input
+                                      type="text"
+                                      value={product.description || ''}
+                                      onChange={(e) => {
+                                        const { updateProduct } = useAppStore.getState();
+                                        updateProduct(product.id, { description: e.target.value });
+                                      }}
+                                      placeholder="Description (optional)"
+                                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                                    />
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      const { removeProduct } = useAppStore.getState();
+                                      removeProduct(product.id);
+                                    }}
+                                    className="px-2 py-1 text-red-600 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
+                                    title="Remove product"
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              ))}
+                              {(!enhancedRfq.product_list || enhancedRfq.product_list.length === 0) && (
+                                <p className="text-sm text-gray-500 italic">No products added yet</p>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>

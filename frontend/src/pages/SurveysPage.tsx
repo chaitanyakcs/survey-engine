@@ -184,7 +184,8 @@ export const SurveysPage: React.FC = () => {
           quality_score: survey.quality_score,
           methodology_tags: survey.methodology_tags
         },
-        pillar_scores: surveyData.pillar_scores // Include pillar scores from API response
+        pillar_scores: surveyData.pillar_scores, // Include pillar scores from API response
+        rfq_id: surveyData.rfq_id // Include rfq_id for concept file loading
       };
 
       console.log('🎯 [Survey View] Converted survey for preview:', surveyForPreview);

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { AppStore, RFQRequest, EnhancedRFQRequest, WorkflowState, ProgressMessage, GoldenExampleRequest, GoldenExampleFormState, ToastMessage, SurveyAnnotations, getQuestionCount, PendingReview, ReviewDecision, RFQFieldMapping, DocumentAnalysisResponse, Survey, SurveyTextContent, TextComplianceReport, AiRATextLabel, METHODOLOGY_TEXT_REQUIREMENTS, AIRA_LABEL_TO_TYPE_MAP, GoldenSection, GoldenQuestion } from '../types';
+import { AppStore, RFQRequest, EnhancedRFQRequest, WorkflowState, ProgressMessage, GoldenExampleRequest, GoldenExampleFormState, ToastMessage, SurveyAnnotations, getQuestionCount, PendingReview, ReviewDecision, RFQFieldMapping, DocumentAnalysisResponse, Survey, SurveyTextContent, TextComplianceReport, AiRATextLabel, METHODOLOGY_TEXT_REQUIREMENTS, AIRA_LABEL_TO_TYPE_MAP, GoldenSection, GoldenQuestion, ConceptFile, BrandItem, ProductItem } from '../types';
 import { ErrorClassifier } from '../types/errors';
 import { apiService } from '../services/api';
 import { rfqTemplateService } from '../services/RFQTemplateService';
@@ -74,6 +74,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
     },
     // NEW: Concept Stimuli
     concept_stimuli: [],
+    // NEW: Brand & Product Lists
+    brand_list: [],
+    product_list: [],
     // NEW: Additional Info (for unmapped context)
     additional_info: '',
     // Smart defaults for survey structure
@@ -221,6 +224,24 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
 
     
+    // Check if status is becoming 'completed' or 'failed' - clear rfq_id if so
+    const newStatus = workflowState.status;
+    const shouldClearRfqId = newStatus === 'completed' || newStatus === 'failed';
+    const currentRfqId = get().workflow.rfq_id;
+    
+    if (shouldClearRfqId && currentRfqId) {
+      console.log(`🧹 [Store] Clearing rfq_id on workflow ${newStatus}: ${currentRfqId}`);
+      // Clear rfq_id from workflow state
+      workflowState.rfq_id = undefined;
+      // Clear rfq_id from localStorage
+      try {
+        localStorage.removeItem('draft_rfq_state');
+        console.log('🧹 [Store] Cleared draft_rfq_state from localStorage');
+      } catch (error) {
+        console.warn('⚠️ [Store] Failed to clear draft_rfq_state:', error);
+      }
+    }
+
     set((state) => ({
       workflow: {
         ...state.workflow,
@@ -555,6 +576,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
     } catch (error) {
       console.error('❌ [Store] Failed to trigger evaluation:', error);
       
+      // Extract error message
+      const errorMessage = error instanceof Error ? error.message : 'Failed to trigger evaluation. Please try again.';
+      
+      // Show error toast to user
+      get().addToast({
+        type: 'error',
+        title: 'Evaluation Failed',
+        message: errorMessage,
+        duration: 8000
+      });
+      
       // Remove from in-progress state
       const currentState = get();
       const newInProgress = { ...currentState.evaluationInProgress };
@@ -644,18 +676,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
             if (currentWorkflow.survey_id) {
               console.log('📥 [WebSocket] Fetching survey after progress completion');
               get().fetchSurvey(currentWorkflow.survey_id).then(() => {
-                // After successfully fetching the survey, load pillar scores with a small delay
-                console.log('🏛️ [WebSocket] Survey fetched after progress completion, loading pillar scores');
-                if (currentWorkflow.survey_id) {
-                  // Add a small delay to prevent API call conflicts
-                  setTimeout(() => {
-                    if (currentWorkflow.survey_id) {
-                      get().loadPillarScoresAsync(currentWorkflow.survey_id).catch((error) => {
-                        console.warn('⚠️ [WebSocket] Failed to load pillar scores after progress completion:', error);
-                      });
-                    }
-                  }, 2000); // Increased delay to 2 seconds to prevent overwhelming backend
-                }
+                // Survey fetched - evaluation will be manually triggered by user if needed
+                console.log('✅ [WebSocket] Survey fetched after progress completion');
+                // Note: Evaluation is no longer automatically triggered after survey generation
               }).catch((error) => {
                 console.warn('⚠️ [WebSocket] Failed to fetch survey after progress completion:', error);
               });
@@ -824,17 +847,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
           fetchWithRetry(message.survey_id).then(() => {
             // After successfully fetching the survey, load pillar scores with a small delay
-            console.log('🏛️ [WebSocket] Survey fetched, loading pillar scores');
-            if (message.survey_id) {
-              // Add a small delay to prevent API call conflicts
-              setTimeout(() => {
-                if (message.survey_id) {
-                  get().loadPillarScoresAsync(message.survey_id).catch((error) => {
-                    console.warn('⚠️ [WebSocket] Failed to load pillar scores after survey completion:', error);
-                  });
-                }
-              }, 2000); // Increased delay to 2 seconds to prevent overwhelming backend
-            }
+            console.log('✅ [WebSocket] Survey fetched successfully');
+            // Note: Evaluation is no longer automatically triggered after survey generation
+            // Users must manually trigger evaluation via the "Run Evaluation" button
           }).catch((error) => {
             console.error('❌ [WebSocket] Failed to fetch survey after retries:', error);
             get().addToast({
@@ -1712,9 +1727,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   persistWorkflowState: (workflowId: string, state: any) => {
     // Persist critical workflow state to localStorage for recovery
+    // CRITICAL: Include rfq_id to preserve concept file associations
     const persistState = {
       workflow_id: workflowId,
       survey_id: state.survey_id,
+      rfq_id: state.rfq_id, // Preserve RFQ ID for concept files
       status: state.status,
       current_step: state.current_step,
       progress: state.progress,
@@ -1730,6 +1747,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   resetWorkflow: async () => {
+    // Clear draft RFQ state when resetting workflow
+    try {
+      localStorage.removeItem('draft_rfq_state');
+      console.log('🧹 [Store] Cleared draft_rfq_state when resetting workflow');
+    } catch (error) {
+      console.warn('⚠️ [Store] Failed to clear draft_rfq_state:', error);
+    }
     console.log('🔄 [Store] Resetting workflow to idle state');
 
     // Clear any pending timeout
@@ -1770,9 +1794,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
       }
     }
 
-    // Clear workflow state
+    // Clear workflow state (explicitly clear rfq_id)
     set((state) => ({
-      workflow: { status: 'idle' },
+      workflow: { 
+        status: 'idle',
+        rfq_id: undefined // Explicitly clear rfq_id on reset
+      },
       workflowTimeoutId: undefined,
       currentSurvey: undefined,
       rfqInput: {
@@ -1882,6 +1909,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
           });
 
           if (shouldRestoreWorkflow) {
+            // Clear rfq_id from restored state if workflow is completed or failed
+            // This handles page refresh after completion scenario
+            if ((state.status === 'completed' || state.status === 'failed') && state.rfq_id) {
+              console.log(`🧹 [Store] Clearing rfq_id from restored ${state.status} workflow: ${state.rfq_id}`);
+              state.rfq_id = undefined;
+            }
             console.log('✅ [Store] Restoring workflow state:', state);
             get().setWorkflowState(state);
 
@@ -2046,6 +2079,122 @@ export const useAppStore = create<AppStore>((set, get) => ({
     return enhancedRfq;
   },
 
+  // Auto-save RFQ as draft (for enabling file uploads)
+  saveRfqDraft: async (rfq: EnhancedRFQRequest): Promise<void> => {
+    try {
+      // Only save if there's meaningful content
+      const hasContent = rfq.title?.trim() || 
+                        rfq.description?.trim() || 
+                        rfq.business_context?.company_product_background?.trim() ||
+                        rfq.research_objectives?.research_audience?.trim();
+      
+      if (!hasContent) {
+        console.log('💾 [Store] Skipping auto-save - no content yet');
+        return;
+      }
+
+      // Check for existing rfq_id in workflow state first
+      let currentRfqId = get().workflow.rfq_id;
+      
+      // If not in workflow state, check localStorage (handles navigation away/back scenario)
+      // This prevents race condition where auto-save creates new rfq_id before restoration
+      if (!currentRfqId) {
+        try {
+          const draftState = localStorage.getItem('draft_rfq_state');
+          if (draftState) {
+            const parsed = JSON.parse(draftState);
+            if (parsed.rfq_id) {
+              currentRfqId = parsed.rfq_id;
+              console.log('🔍 [Store] Found existing rfq_id in localStorage, restoring to workflow state:', currentRfqId);
+              // Restore rfq_id to workflow state
+              set((state) => ({
+                workflow: {
+                  ...state.workflow,
+                  rfq_id: currentRfqId
+                }
+              }));
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ [Store] Failed to check localStorage for rfq_id:', error);
+        }
+      }
+      
+      // Don't save if already saved (either in workflow state or localStorage)
+      if (currentRfqId) {
+        console.log('💾 [Store] RFQ already saved (rfq_id:', currentRfqId, '), skipping auto-save');
+        return;
+      }
+
+      console.log('💾 [Store] Auto-saving RFQ draft...');
+      
+      // CRITICAL: Include existing rfq_id if available to preserve concept file associations
+      const existingRfqId = get().workflow.rfq_id;
+      const rfqWithId = existingRfqId ? { ...rfq, rfq_id: existingRfqId } : rfq;
+      
+      if (existingRfqId) {
+        console.log('♻️ [Store] Including existing rfq_id in draft save:', existingRfqId, '(preserves concept files)');
+      } else {
+        console.log('🆕 [Store] No existing rfq_id - will create new RFQ');
+      }
+      
+      console.log('💾 [Store] RFQ data being sent:', JSON.stringify(rfqWithId, null, 2));
+      console.log('💾 [Store] Using DRAFT endpoint - NO generation will be started');
+
+      const response = await fetch('/api/v1/rfq/enhanced/draft', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(rfqWithId),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('❌ [Store] Auto-save failed:', errorData);
+        throw new Error(errorData.detail || `Failed to save draft: ${response.statusText}`);
+      }
+
+      const responseData = await response.json();
+
+      // Log new RFQ ID generation
+      console.log('🆕 [Store] New RFQ ID generated:', responseData.rfq_id);
+
+      // Update workflow state with rfq_id so file uploads work
+      // Note: survey_id may be None for drafts (surveys only created when generation starts)
+      const updatedWorkflow = {
+        rfq_id: responseData.rfq_id,
+        survey_id: responseData.survey_id || undefined, // Handle None from backend
+        status: get().workflow.status || 'idle' // Don't change status if workflow is running
+      };
+      
+      set((state) => ({
+        workflow: {
+          ...state.workflow,
+          ...updatedWorkflow
+        }
+      }));
+
+      // Persist rfq_id to localStorage so it survives navigation
+      // This ensures concept files can be reloaded when user returns
+      try {
+        // Use a separate key for draft RFQ state (not workflow state)
+        localStorage.setItem('draft_rfq_state', JSON.stringify({
+          rfq_id: responseData.rfq_id,
+          timestamp: Date.now()
+        }));
+        console.log('💾 [Store] Draft RFQ state persisted to localStorage:', responseData.rfq_id);
+      } catch (error) {
+        console.warn('⚠️ [Store] Failed to persist draft RFQ state:', error);
+      }
+
+      console.log('✅ [Store] RFQ draft saved successfully:', responseData.rfq_id);
+    } catch (error) {
+      // Silently fail for auto-save - don't interrupt user
+      console.warn('⚠️ [Store] Auto-save failed (non-blocking):', error);
+    }
+  },
+
   // Enhanced RFQ Actions
   submitEnhancedRFQ: async (rfq: EnhancedRFQRequest, customPrompt?: string) => {
     try {
@@ -2062,11 +2211,37 @@ export const useAppStore = create<AppStore>((set, get) => ({
         return;
       }
 
+      // CRITICAL: Get rfq_id BEFORE clearing workflow state (to preserve concept files)
+      const existingRfqId = get().workflow.rfq_id;
+      console.log('🔍 [Store] Preserved rfq_id before clearing workflow state:', existingRfqId);
+      
+      // Also check localStorage as fallback (handles navigation scenarios)
+      let rfqIdFromStorage = existingRfqId;
+      if (!rfqIdFromStorage) {
+        try {
+          const draftState = localStorage.getItem('draft_rfq_state');
+          if (draftState) {
+            const parsed = JSON.parse(draftState);
+            if (parsed.rfq_id) {
+              rfqIdFromStorage = parsed.rfq_id;
+              console.log('🔍 [Store] Found rfq_id in localStorage fallback:', rfqIdFromStorage);
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ [Store] Failed to check localStorage for rfq_id:', error);
+        }
+      }
+      
+      // Use the preserved rfq_id (from workflow state or localStorage)
+      const preservedRfqId = existingRfqId || rfqIdFromStorage;
+
       // Clear any existing survey data and stale workflow state
+      // BUT preserve rfq_id if it exists (for concept file associations)
       set({
         currentSurvey: undefined,
         workflow: {
-          status: 'idle'
+          status: 'idle',
+          rfq_id: preservedRfqId || undefined // Preserve rfq_id if it exists
         }
       });
 
@@ -2074,6 +2249,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       localStorage.removeItem('survey_workflow_state');
 
       console.log('🚀 [Store] Starting enhanced RFQ workflow submission');
+      console.warn('⚠️ [Store] This will START survey generation immediately - using /api/v1/rfq/ endpoint');
 
       // Import the enhanced text converter
       const { createEnhancedDescription } = await import('../utils/enhancedRfqConverter');
@@ -2084,6 +2260,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
       // Get edited fields summary for generation context
       const editedFieldsSummary = get().getEditedFieldsSummary();
       
+      // Use the preserved rfq_id
+      const finalRfqId = preservedRfqId;
+      
+      console.log('🔍 [Store] Checking for existing RFQ ID before submission:', {
+        workflow_rfq_id: existingRfqId,
+        workflow_state: get().workflow,
+        has_rfq_id: !!existingRfqId
+      });
+      
       // Convert enhanced RFQ to format that includes both enriched text and structured data
       const enhancedRfqPayload = {
         title: rfq.title,
@@ -2091,8 +2276,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
         target_segment: rfq.research_objectives?.research_audience || '',
         enhanced_rfq_data: rfq, // 🎯 Send the full structured data for storage and analytics
         edited_fields: editedFieldsSummary, // 🎯 Send edited fields for generation context
-        custom_prompt: customPrompt // 🎯 Send custom prompt if provided
+        custom_prompt: customPrompt, // 🎯 Send custom prompt if provided
+        rfq_id: finalRfqId || undefined // 🎯 Send preserved rfq_id to preserve concept files
       };
+      
+      if (finalRfqId) {
+        console.log('♻️ [Store] Reusing existing draft RFQ:', finalRfqId, '- this will preserve concept files');
+        console.log('📌 [Store] RFQ ID set (reused):', finalRfqId);
+        console.log('📦 [Store] Payload includes rfq_id:', enhancedRfqPayload.rfq_id);
+        console.log('🔍 [Store] RFQ ID source:', {
+          from_workflow: !!existingRfqId,
+          from_storage: !!rfqIdFromStorage && !existingRfqId
+        });
+      } else {
+        console.log('📌 [Store] No existing RFQ ID - new ID will be generated on submission');
+        console.log('⚠️ [Store] This means concept files uploaded to draft will NOT be preserved');
+      }
 
       console.log('🎨 [Store] Custom prompt included:', !!customPrompt, customPrompt ? `${customPrompt.length} chars` : '');
 
@@ -2122,12 +2321,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
       const responseData = await response.json();
 
+      // Log RFQ ID from response (could be new or reused)
+      if (responseData.rfq_id) {
+        if (responseData.rfq_id === existingRfqId) {
+          console.log('📌 [Store] RFQ ID confirmed (reused):', responseData.rfq_id);
+        } else {
+          console.log('🆕 [Store] RFQ ID set (new from backend):', responseData.rfq_id);
+        }
+      }
+
       // Update workflow state with response
       set((state) => ({
         workflow: {
           ...state.workflow,
           workflow_id: responseData.workflow_id,
           survey_id: responseData.survey_id,
+          rfq_id: responseData.rfq_id, // Store RFQ ID for concept file uploads
           status: 'in_progress',
           progress: 0,
           current_step: 'initializing_workflow',
@@ -2487,6 +2696,176 @@ export const useAppStore = create<AppStore>((set, get) => ({
     localStorage.removeItem('document_processing_state');
   },
 
+  // Concept File Actions
+  uploadConceptFile: async (rfqId: string, file: File, conceptStimulusId?: string): Promise<ConceptFile> => {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('rfq_id', rfqId);
+      if (conceptStimulusId) {
+        formData.append('concept_stimulus_id', conceptStimulusId);
+      }
+
+      const response = await fetch('/api/v1/rfq/concept/upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `Upload failed: ${response.statusText}`);
+      }
+
+      const result: ConceptFile = await response.json();
+      result.file_url = `/api/v1/rfq/concept/${result.id}`;
+      
+      return result;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to upload concept file';
+      get().addToast({
+        type: 'error',
+        title: 'Upload Failed',
+        message: errorMessage
+      });
+      throw error;
+    }
+  },
+
+  fetchConceptFiles: async (rfqId: string): Promise<ConceptFile[]> => {
+    try {
+      console.log(`🔍 [Store] Fetching concept files for rfqId: ${rfqId}`);
+      const response = await fetch(`/api/v1/rfq/${rfqId}/concepts`);
+      
+      console.log(`📡 [Store] Response status: ${response.status}, ok: ${response.ok}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error(`❌ [Store] Error response:`, errorData);
+        throw new Error(errorData.detail || `Failed to fetch concept files: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      console.log(`✅ [Store] Received response:`, result);
+      console.log(`📦 [Store] concept_files array length: ${result.concept_files?.length || 0}`);
+      
+      const files = (result.concept_files || []).map((file: ConceptFile) => ({
+        ...file,
+        file_url: `/api/v1/rfq/concept/${file.id}`
+      }));
+      
+      console.log(`📋 [Store] Mapped ${files.length} concept files`);
+      return files;
+    } catch (error) {
+      console.error(`❌ [Store] fetchConceptFiles error:`, error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch concept files';
+      get().addToast({
+        type: 'error',
+        title: 'Fetch Failed',
+        message: errorMessage
+      });
+      return [];
+    }
+  },
+
+  deleteConceptFile: async (conceptFileId: string): Promise<void> => {
+    try {
+      const response = await fetch(`/api/v1/rfq/concept/${conceptFileId}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to delete concept file');
+      }
+
+      get().addToast({
+        type: 'success',
+        title: 'File Deleted',
+        message: 'Concept file deleted successfully'
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to delete concept file';
+      get().addToast({
+        type: 'error',
+        title: 'Delete Failed',
+        message: errorMessage
+      });
+      throw error;
+    }
+  },
+
+  // Brand Actions
+  addBrand: (brand: Omit<BrandItem, 'id'>) => {
+    const newBrand: BrandItem = {
+      ...brand,
+      id: generateId(),
+      display_order: brand.display_order ?? (get().enhancedRfq.brand_list?.length || 0)
+    };
+    
+    set((state) => ({
+      enhancedRfq: {
+        ...state.enhancedRfq,
+        brand_list: [...(state.enhancedRfq.brand_list || []), newBrand]
+      }
+    }));
+  },
+
+  removeBrand: (brandId: string) => {
+    set((state) => ({
+      enhancedRfq: {
+        ...state.enhancedRfq,
+        brand_list: (state.enhancedRfq.brand_list || []).filter(b => b.id !== brandId)
+      }
+    }));
+  },
+
+  updateBrand: (brandId: string, updates: Partial<BrandItem>) => {
+    set((state) => ({
+      enhancedRfq: {
+        ...state.enhancedRfq,
+        brand_list: (state.enhancedRfq.brand_list || []).map(b =>
+          b.id === brandId ? { ...b, ...updates } : b
+        )
+      }
+    }));
+  },
+
+  // Product Actions
+  addProduct: (product: Omit<ProductItem, 'id'>) => {
+    const newProduct: ProductItem = {
+      ...product,
+      id: generateId(),
+      display_order: product.display_order ?? (get().enhancedRfq.product_list?.length || 0)
+    };
+    
+    set((state) => ({
+      enhancedRfq: {
+        ...state.enhancedRfq,
+        product_list: [...(state.enhancedRfq.product_list || []), newProduct]
+      }
+    }));
+  },
+
+  removeProduct: (productId: string) => {
+    set((state) => ({
+      enhancedRfq: {
+        ...state.enhancedRfq,
+        product_list: (state.enhancedRfq.product_list || []).filter(p => p.id !== productId)
+      }
+    }));
+  },
+
+  updateProduct: (productId: string, updates: Partial<ProductItem>) => {
+    set((state) => ({
+      enhancedRfq: {
+        ...state.enhancedRfq,
+        product_list: (state.enhancedRfq.product_list || []).map(p =>
+          p.id === productId ? { ...p, ...updates } : p
+        )
+      }
+    }));
+  },
+
   // Helper function to build RFQ updates from field mappings (simplified schema)
   buildRFQUpdatesFromMappings: (mappings: RFQFieldMapping[]): Partial<EnhancedRFQRequest> => {
     const rfqUpdates: Partial<EnhancedRFQRequest> = {};
@@ -2580,6 +2959,43 @@ export const useAppStore = create<AppStore>((set, get) => ({
         case 'key_research_questions':
           if (!rfqUpdates.research_objectives) rfqUpdates.research_objectives = { research_audience: '', success_criteria: '', key_research_questions: [] };
           rfqUpdates.research_objectives.key_research_questions = Array.isArray(value) ? value : (value || '').split('\n').filter((q: string) => q.trim());
+          break;
+        case 'primary_method':
+          if (!rfqUpdates.methodology) rfqUpdates.methodology = { primary_method: 'basic_survey' };
+          // Validate and map methodology value
+          const validMethods = ['basic_survey', 'van_westendorp', 'gabor_granger', 'conjoint'];
+          const methodValue = String(value).toLowerCase().trim();
+          
+          // Try exact match first
+          if (validMethods.includes(methodValue)) {
+            rfqUpdates.methodology.primary_method = methodValue as 'basic_survey' | 'van_westendorp' | 'gabor_granger' | 'conjoint';
+          } else {
+            // Try partial matches for common variations
+            const methodMappings: Record<string, string> = {
+              'van westendorp': 'van_westendorp',
+              'van-westendorp': 'van_westendorp',
+              'vw': 'van_westendorp',
+              'gabor granger': 'gabor_granger',
+              'gabor-granger': 'gabor_granger',
+              'gg': 'gabor_granger',
+              'conjoint analysis': 'conjoint',
+              'choice modeling': 'conjoint',
+              'cbc': 'conjoint',
+              'basic': 'basic_survey',
+              'standard': 'basic_survey',
+              'survey': 'basic_survey'
+            };
+            
+            const normalizedMethod = methodMappings[methodValue] || 
+              validMethods.find(m => methodValue.includes(m) || m.includes(methodValue)) ||
+              'basic_survey';
+            
+            rfqUpdates.methodology.primary_method = normalizedMethod as 'basic_survey' | 'van_westendorp' | 'gabor_granger' | 'conjoint';
+            
+            if (normalizedMethod !== methodValue) {
+              validationErrors.push(`Mapped methodology '${value}' to '${normalizedMethod}'`);
+            }
+          }
           break;
         case 'stimuli_details':
           if (!rfqUpdates.methodology) rfqUpdates.methodology = { primary_method: 'basic_survey' };
@@ -2798,6 +3214,42 @@ export const useAppStore = create<AppStore>((set, get) => ({
         // Rules and Definitions field
         case 'rules_and_definitions':
           rfqUpdates.rules_and_definitions = value;
+          break;
+
+        // Brand and Product Lists
+        case 'brand_list':
+          // Ensure value is an array of BrandItem objects
+          if (Array.isArray(value)) {
+            rfqUpdates.brand_list = value.map((item: any, index: number) => ({
+              id: item.id || generateId(),
+              name: item.name || item || '',
+              description: item.description || ''
+            })).filter((item: any) => item.name); // Filter out empty items
+          } else if (typeof value === 'string') {
+            // If it's a string, split by comma and create brand items
+            rfqUpdates.brand_list = value.split(',').map((name: string) => ({
+              id: generateId(),
+              name: name.trim(),
+              description: ''
+            })).filter((item: any) => item.name);
+          }
+          break;
+        case 'product_list':
+          // Ensure value is an array of ProductItem objects
+          if (Array.isArray(value)) {
+            rfqUpdates.product_list = value.map((item: any, index: number) => ({
+              id: item.id || generateId(),
+              name: item.name || item || '',
+              description: item.description || ''
+            })).filter((item: any) => item.name); // Filter out empty items
+          } else if (typeof value === 'string') {
+            // If it's a string, split by comma and create product items
+            rfqUpdates.product_list = value.split(',').map((name: string) => ({
+              id: generateId(),
+              name: name.trim(),
+              description: ''
+            })).filter((item: any) => item.name);
+          }
           break;
 
         // Legacy field mapping for backward compatibility
@@ -3156,6 +3608,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
             console.log('🔍 [Store] Applied default survey_structure to restored RFQ');
           }
           
+          // Ensure brand_list and product_list are initialized if missing
+          if (!parsed.brand_list) {
+            parsed.brand_list = [];
+            console.log('🔍 [Store] Initialized brand_list in restored RFQ');
+          }
+          if (!parsed.product_list) {
+            parsed.product_list = [];
+            console.log('🔍 [Store] Initialized product_list in restored RFQ');
+          }
+          
           set({ enhancedRfq: parsed });
           return true;
         } else {
@@ -3173,6 +3635,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   clearEnhancedRfqState: () => {
     console.log('🧹 [Store] clearEnhancedRfqState called - clearing Enhanced RFQ state');
+    // Also clear draft RFQ state from localStorage
+    try {
+      localStorage.removeItem('draft_rfq_state');
+      console.log('🧹 [Store] Cleared draft_rfq_state from localStorage');
+    } catch (error) {
+      console.warn('⚠️ [Store] Failed to clear draft_rfq_state:', error);
+    }
     // Reset Enhanced RFQ to default state (SIMPLIFIED)
     set({
       enhancedRfq: {

@@ -175,6 +175,9 @@ async def get_survey(
         # Query the related RFQ
         rfq = survey.rfq if survey else None
         logger.info(f"🔍 [Survey API] RFQ found: {rfq is not None}")
+        logger.info(f"🔍 [Survey API] Survey rfq_id: {survey.rfq_id}")
+        if rfq:
+            logger.info(f"🔍 [Survey API] RFQ id: {rfq.id}")
         
         logger.info(f"✅ [Survey API] Survey found: id={survey.id}, status={survey.status}")
         logger.info(f"🔍 [Survey API] Survey data keys: {list(survey.__dict__.keys()) if survey else 'None'}")
@@ -188,6 +191,14 @@ async def get_survey(
         logger.info(f"🔍 [Survey API] Edit suggestions: {edit_suggestions is not None}")
         
         logger.info(f"🔍 [Survey API] Building response object...")
+        # Get rfq_id from survey.rfq_id or from rfq relationship if available
+        rfq_id_value = survey.rfq_id
+        if not rfq_id_value and rfq:
+            rfq_id_value = rfq.id
+            logger.info(f"🔍 [Survey API] Using RFQ id from relationship: {rfq_id_value}")
+        
+        logger.info(f"🔍 [Survey API] Final rfq_id for response: {rfq_id_value}")
+        
         response = SurveyResponse(
             id=str(survey.id),
             status=survey.status,  # type: ignore
@@ -197,7 +208,7 @@ async def get_survey(
             validation_results=validation_results,
             edit_suggestions=edit_suggestions,
             pillar_scores=survey.pillar_scores,  # type: ignore
-            rfq_id=str(survey.rfq_id) if survey.rfq_id else None,
+            rfq_id=str(rfq_id_value) if rfq_id_value else None,
             rfq_data=rfq.enhanced_rfq_data if rfq else None,
             used_golden_examples=[str(example_id) for example_id in survey.used_golden_examples] if survey.used_golden_examples else [],  # NEW
             used_golden_questions=[str(question_id) for question_id in survey.used_golden_questions] if survey.used_golden_questions else [],  # NEW

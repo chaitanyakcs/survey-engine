@@ -195,6 +195,7 @@ export const SurveyInsightsPage: React.FC = () => {
             {survey?.rfq_data ? (
               <PreGenerationPreview 
                 rfq={survey.rfq_data}
+                rfqId={survey.rfq_id}
               />
             ) : (
               <div className="text-center py-12">

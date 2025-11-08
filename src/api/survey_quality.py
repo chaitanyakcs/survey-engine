@@ -93,12 +93,8 @@ async def get_quality_analysis(
             not force_refresh
         )
         
-        # Get evaluation settings
-        settings_service = SettingsService(db)
-        evaluation_settings = settings_service.get_evaluation_settings()
-        enable_llm_evaluation = evaluation_settings.get('enable_llm_evaluation', True)
-        
-        evaluation_mode = "ai" if enable_llm_evaluation else "non_ai"
+        # Always use AI evaluation mode
+        evaluation_mode = "ai"
         
         # Get golden similarity analysis
         if has_existing_analysis:
