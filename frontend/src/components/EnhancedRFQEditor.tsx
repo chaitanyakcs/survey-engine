@@ -405,7 +405,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
           key_research_questions: []
         },
         methodology: {
-          primary_method: 'basic_survey'
+          selected_methodologies: ['basic_survey']
         },
         concept_stimuli: [],
         brand_list: [],
@@ -1500,105 +1500,50 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                     <div className="space-y-4">
                       <div>
                         <label className="block text-sm font-semibold text-gray-800 mb-3">
-                          Primary Methodology
-                          {enhancedRfq.methodology?.primary_method && (
-                            <span className="ml-2 text-xs font-normal text-green-600">
-                              ✓ Auto-detected
-                            </span>
-                          )}
+                          Select Methodologies
+                          <span className="ml-2 text-xs font-normal text-gray-500">
+                            (Select all that apply - only context relevant to selected ones will be included)
+                          </span>
                         </label>
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                          {(['basic_survey', 'van_westendorp', 'gabor_granger', 'conjoint'] as const).map((method) => (
-                            <button
-                              key={method}
-                              onClick={() => setEnhancedRfq({
-                                ...enhancedRfq,
-                                methodology: {
-                                  ...enhancedRfq.methodology,
-                                  primary_method: method
-                                }
-                              })}
-                              className={`p-4 rounded-xl border-2 transition-all duration-200 text-left ${
-                                enhancedRfq.methodology?.primary_method === method
-                                  ? 'border-yellow-500 bg-yellow-50 text-yellow-700 shadow-md'
-                                  : 'border-gray-200 hover:border-gray-300 text-gray-700'
-                              }`}
-                            >
-                              <div className="font-medium capitalize">
-                                {method.replace('_', ' ')}
-                              </div>
-                              <div className="text-xs mt-1 text-gray-500">
-                                {method === 'basic_survey' && 'Standard survey'}
-                                {method === 'van_westendorp' && 'Price sensitivity'}
-                                {method === 'gabor_granger' && 'Price acceptance'}
-                                {method === 'conjoint' && 'Trade-off analysis'}
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Additional Methodologies - shown once primary is selected */}
-                      {enhancedRfq.methodology?.primary_method && (
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-800 mb-3">
-                            Additional Methodologies
-                            <span className="ml-2 text-xs font-normal text-gray-500">
-                              (Optional - can combine with primary)
-                            </span>
-                          </label>
-                          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-                            {(['basic_survey', 'van_westendorp', 'gabor_granger', 'conjoint'] as const)
-                              .filter(method => method !== enhancedRfq.methodology?.primary_method)
-                              .map((method) => {
-                                const isRelated = (
-                                  (enhancedRfq.methodology?.primary_method === 'van_westendorp' && method === 'gabor_granger') ||
-                                  (enhancedRfq.methodology?.primary_method === 'gabor_granger' && method === 'van_westendorp') ||
-                                  (enhancedRfq.methodology?.primary_method === 'conjoint' && method === 'basic_survey')
-                                );
-                                
-                                // Check if this methodology is already added
-                                const currentTags = enhancedRfq.advanced_classification?.methodology_tags || [];
-                                const methodTag = method.replace(/_/g, ' ').toLowerCase();
-                                const normalizedTags = currentTags.map(t => t.replace(/_/g, ' ').toLowerCase());
-                                const isAlreadyAdded = normalizedTags.includes(methodTag);
-                                
-                                return (
-                                  <button
-                                    key={method}
-                                    onClick={() => {
-                                      // Add to methodology_tags in advanced_classification
-                                      if (!isAlreadyAdded) {
-                                        setEnhancedRfq({
-                                          ...enhancedRfq,
-                                          advanced_classification: {
-                                            ...enhancedRfq.advanced_classification,
-                                            industry_classification: enhancedRfq.advanced_classification?.industry_classification || '',
-                                            respondent_classification: enhancedRfq.advanced_classification?.respondent_classification || '',
-                                            methodology_tags: [...currentTags, methodTag]
-                                          }
-                                        });
-                                      }
+                          {(['basic_survey', 'van_westendorp', 'gabor_granger', 'conjoint'] as const).map((method) => {
+                            const selectedMethods = enhancedRfq.methodology?.selected_methodologies || [];
+                            const isSelected = selectedMethods.includes(method);
+                            
+                            return (
+                              <label
+                                key={method}
+                                className={`p-4 rounded-xl border-2 transition-all duration-200 cursor-pointer ${
+                                  isSelected
+                                    ? 'border-yellow-500 bg-yellow-50 text-yellow-700 shadow-md'
+                                    : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                                }`}
+                              >
+                                <div className="flex items-start space-x-3">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={(e) => {
+                                      const currentMethods = enhancedRfq.methodology?.selected_methodologies || [];
+                                      const newMethods = e.target.checked
+                                        ? [...currentMethods, method]
+                                        : currentMethods.filter(m => m !== method);
+                                      
+                                      setEnhancedRfq({
+                                        ...enhancedRfq,
+                                        methodology: {
+                                          ...enhancedRfq.methodology,
+                                          selected_methodologies: newMethods,
+                                          // Keep primary_method for backward compatibility if only one selected
+                                          primary_method: newMethods.length === 1 ? newMethods[0] : undefined
+                                        }
+                                      });
                                     }}
-                                    disabled={isAlreadyAdded}
-                                    className={`p-3 rounded-lg border transition-all duration-200 text-left ${
-                                      isAlreadyAdded
-                                        ? 'border-green-300 bg-green-50 text-green-700 cursor-not-allowed opacity-75'
-                                        : isRelated
-                                        ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                                        : 'border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100'
-                                    }`}
-                                  >
-                                    <div className="font-medium text-sm capitalize flex items-center justify-between">
-                                      <span>
-                                        {method.replace('_', ' ')}
-                                        {isRelated && !isAlreadyAdded && (
-                                          <span className="ml-2 text-xs text-blue-600">(Related)</span>
-                                        )}
-                                        {isAlreadyAdded && (
-                                          <span className="ml-2 text-xs text-green-600">✓ Added</span>
-                                        )}
-                                      </span>
+                                    className="mt-1 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+                                  />
+                                  <div className="flex-1">
+                                    <div className="font-medium capitalize">
+                                      {method.replace('_', ' ')}
                                     </div>
                                     <div className="text-xs mt-1 text-gray-500">
                                       {method === 'basic_survey' && 'Standard survey'}
@@ -1606,48 +1551,13 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                                       {method === 'gabor_granger' && 'Price acceptance'}
                                       {method === 'conjoint' && 'Trade-off analysis'}
                                     </div>
-                                  </button>
-                                );
-                              })}
-                          </div>
-                          {enhancedRfq.advanced_classification?.methodology_tags && enhancedRfq.advanced_classification.methodology_tags.length > 0 && (
-                            <div className="mt-3">
-                              <p className="text-xs text-gray-600 mb-2">Additional methodologies added:</p>
-                              <div className="flex flex-wrap gap-2">
-                                {enhancedRfq.advanced_classification.methodology_tags
-                                  .filter(tag => {
-                                    const primaryTag = enhancedRfq.methodology?.primary_method?.replace(/_/g, ' ').toLowerCase();
-                                    const normalizedTag = tag.replace(/_/g, ' ').toLowerCase();
-                                    return normalizedTag !== primaryTag;
-                                  })
-                                  .map((tag) => (
-                                    <span
-                                      key={tag}
-                                      className="px-3 py-1 text-sm rounded-full bg-blue-100 text-blue-700 border border-blue-300"
-                                    >
-                                      {tag}
-                                      <button
-                                        onClick={() => {
-                                          const tags = enhancedRfq.advanced_classification?.methodology_tags || [];
-                                          setEnhancedRfq({
-                                            ...enhancedRfq,
-                                            advanced_classification: {
-                                              ...enhancedRfq.advanced_classification,
-                                              methodology_tags: tags.filter(t => t !== tag)
-                                            }
-                                          });
-                                        }}
-                                        className="ml-2 text-blue-600 hover:text-blue-800"
-                                      >
-                                        ×
-                                      </button>
-                                    </span>
-                                  ))}
-                              </div>
-                            </div>
-                          )}
+                                  </div>
+                                </div>
+                              </label>
+                            );
+                          })}
                         </div>
-                      )}
+                      </div>
                     </div>
 
                     <FormField
@@ -1657,7 +1567,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                         ...enhancedRfq,
                         methodology: {
                           ...enhancedRfq.methodology,
-                          primary_method: enhancedRfq.methodology?.primary_method || 'basic_survey',
+                          selected_methodologies: enhancedRfq.methodology?.selected_methodologies || [],
                           stimuli_details: value
                         }
                       })}
@@ -2159,7 +2069,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                               )}
 
                               {/* Van Westendorp Requirements */}
-                              {(enhancedRfq.methodology?.primary_method === 'van_westendorp') && (
+                              {(enhancedRfq.methodology?.selected_methodologies?.includes('van_westendorp')) && (
                                 <>
                                   <div className="text-xs font-medium text-orange-700 mb-1 flex items-center group">
                                     Van Westendorp Pricing:
@@ -2174,7 +2084,7 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                               )}
 
                               {/* Gabor Granger Requirements */}
-                              {(enhancedRfq.methodology?.primary_method === 'gabor_granger') && (
+                              {(enhancedRfq.methodology?.selected_methodologies?.includes('gabor_granger')) && (
                                 <>
                                   <div className="text-xs font-medium text-purple-700 mb-1 flex items-center group">
                                     Gabor Granger Pricing:
@@ -2197,8 +2107,8 @@ export const EnhancedRFQEditor: React.FC<EnhancedRFQEditorProps> = ({
                                 obj.toLowerCase().includes('testing') ||
                                 obj.toLowerCase().includes('evaluation')
                               ) && !enhancedRfq.business_context?.company_product_background?.toLowerCase().includes('consumer') &&
-                              enhancedRfq.methodology?.primary_method !== 'van_westendorp' &&
-                              enhancedRfq.methodology?.primary_method !== 'gabor_granger' && (
+                              !enhancedRfq.methodology?.selected_methodologies?.includes('van_westendorp') &&
+                              !enhancedRfq.methodology?.selected_methodologies?.includes('gabor_granger') && (
                                 <div className="text-sm text-gray-600 italic">No additional requirements detected</div>
                               )}
                             </div>

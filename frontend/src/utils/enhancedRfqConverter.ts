@@ -42,10 +42,20 @@ export function buildEnhancedRFQText(rfq: EnhancedRFQRequest): string {
   }
 
   // Methodology Preferences
-  if (rfq.methodology?.primary_method) {
+  const selectedMethods = rfq.methodology?.selected_methodologies || [];
+  const primaryMethod = rfq.methodology?.primary_method; // Legacy support
+  const hasMethodologies = selectedMethods.length > 0 || primaryMethod;
+  
+  if (hasMethodologies) {
     sections.push("## Methodology Preferences:");
 
-    sections.push(`- **Primary Method**: ${rfq.methodology.primary_method}`);
+    if (selectedMethods.length > 0) {
+      const methodsList = selectedMethods.map(m => m.replace('_', ' ')).join(', ');
+      sections.push(`- **Selected Methodologies**: ${methodsList}`);
+    } else if (primaryMethod) {
+      // Legacy: use primary_method if selected_methodologies not available
+      sections.push(`- **Primary Method**: ${primaryMethod}`);
+    }
 
     if (rfq.methodology.stimuli_details) {
       sections.push(`- **Stimuli Details**: ${rfq.methodology.stimuli_details}`);
@@ -286,9 +296,12 @@ export function createEnhancedDescription(rfq: EnhancedRFQRequest): string {
 export function generateTextRequirements(rfq: EnhancedRFQRequest): string {
   const sections: string[] = [];
 
-  // Get methodologies (SIMPLIFIED: use primary_method and methodology_tags)
+  // Get methodologies (use selected_methodologies, fallback to primary_method for legacy)
   const methodologies: string[] = [];
-  if (rfq.methodology?.primary_method) {
+  if (rfq.methodology?.selected_methodologies && rfq.methodology.selected_methodologies.length > 0) {
+    methodologies.push(...rfq.methodology.selected_methodologies);
+  } else if (rfq.methodology?.primary_method) {
+    // Legacy: fallback to primary_method
     methodologies.push(rfq.methodology.primary_method);
   }
   if (rfq.advanced_classification?.methodology_tags) {

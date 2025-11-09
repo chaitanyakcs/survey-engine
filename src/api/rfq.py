@@ -71,6 +71,7 @@ class PromptPreviewResponse(BaseModel):
     golden_examples_count: int
     methodology_blocks_count: int
     enhanced_rfq_used: bool
+    reference_examples: Optional[Dict[str, Any]] = None  # Reference examples that will be used
 
 
 @router.post("/", response_model=RFQSubmissionResponse)
@@ -1219,9 +1220,20 @@ async def preview_survey_generation_prompt(
                 
                 # Extract methodology tags from enhanced RFQ (convert to dict first)
                 validated_rfq_dict = validated_rfq.model_dump()
-                if validated_rfq_dict.get('methodology') and validated_rfq_dict['methodology'].get('methodology_tags'):
-                    methodology_tags = validated_rfq_dict['methodology']['methodology_tags']
+                methodology_dict = validated_rfq_dict.get('methodology', {})
+                
+                # Use selected_methodologies (new approach)
+                if methodology_dict.get('selected_methodologies'):
+                    methodology_tags = methodology_dict['selected_methodologies']
+                    logger.info(f"📊 [RFQ API] Extracted methodology tags from selected_methodologies: {methodology_tags}")
+                # Legacy: fallback to methodology_tags field
+                elif methodology_dict.get('methodology_tags'):
+                    methodology_tags = methodology_dict['methodology_tags']
                     logger.info(f"📊 [RFQ API] Extracted methodology tags from enhanced RFQ: {methodology_tags}")
+                # Legacy: fallback to primary_method
+                elif methodology_dict.get('primary_method'):
+                    methodology_tags = [methodology_dict['primary_method']]
+                    logger.info(f"📊 [RFQ API] Extracted methodology from primary_method: {methodology_tags}")
             except Exception as e:
                 logger.warning(f"⚠️ [RFQ API] Failed to validate enhanced RFQ data: {str(e)}")
                 enhanced_rfq_used = False
@@ -1231,11 +1243,12 @@ async def preview_survey_generation_prompt(
         embedding_service = EmbeddingService()
         embedding = await embedding_service.get_embedding(request.description)
         
-        # Retrieve golden examples and methodology blocks (similar to GoldenRetrieverNode)
-        logger.info("🔍 [RFQ API] Retrieving golden examples and methodology blocks...")
+        # Retrieve golden examples, sections, and methodology blocks (similar to GoldenRetrieverNode)
+        logger.info("🔍 [RFQ API] Retrieving golden examples, sections, and methodology blocks...")
         retrieval_service = RetrievalService(db)
         
         golden_examples = []
+        golden_sections = []
         methodology_blocks = []
         
         try:
@@ -1247,6 +1260,21 @@ async def preview_survey_generation_prompt(
             )
             logger.info(f"📊 [RFQ API] Retrieved {len(golden_examples)} golden examples")
             
+            # Retrieve golden sections
+            from src.services.rule_based_multi_level_rag_service import RuleBasedMultiLevelRAGService
+            rag_service = RuleBasedMultiLevelRAGService(db)
+            industry = None
+            if request.enhanced_rfq_data and isinstance(request.enhanced_rfq_data, dict):
+                industry = request.enhanced_rfq_data.get('advanced_classification', {}).get('industry_classification')
+            
+            golden_sections = await rag_service.retrieve_golden_sections(
+                rfq_text=request.description,
+                methodology_tags=methodology_tags if methodology_tags else None,
+                industry=industry,
+                limit=5
+            )
+            logger.info(f"📊 [RFQ API] Retrieved {len(golden_sections)} golden sections")
+            
             # Retrieve methodology blocks
             methodology_blocks = await retrieval_service.retrieve_methodology_blocks(
                 research_goal=request.research_goal or "General market research",
@@ -1255,12 +1283,13 @@ async def preview_survey_generation_prompt(
             logger.info(f"📊 [RFQ API] Retrieved {len(methodology_blocks)} methodology blocks")
             
         except Exception as e:
-            logger.warning(f"⚠️ [RFQ API] Failed to retrieve examples/blocks: {str(e)}")
+            logger.warning(f"⚠️ [RFQ API] Failed to retrieve examples/sections/blocks: {str(e)}")
             # Continue without retrieval data
         
         # Add retrieved data to context
         context.update({
             "golden_examples": golden_examples,
+            "golden_sections": golden_sections,
             "methodology_guidance": methodology_blocks
         })
         
@@ -1278,6 +1307,205 @@ async def preview_survey_generation_prompt(
         
         logger.info(f"✅ [RFQ API] Generated prompt preview: {len(prompt)} characters")
         
+        # Retrieve reference examples (golden questions, feedback digest) for preview
+        reference_examples = None
+        try:
+            from src.database.models import GoldenQuestion, QuestionAnnotation
+            from src.services.rule_based_multi_level_rag_service import RuleBasedMultiLevelRAGService
+            from src.utils.database_session_manager import DatabaseSessionManager
+            from src.utils.prompt_formatters import format_golden_questions_for_prompt
+            
+            logger.info("📊 [RFQ API] Retrieving reference examples for preview...")
+            
+            # Retrieve golden questions (similar to GoldenRetrieverNode)
+            industry = None
+            if request.enhanced_rfq_data and isinstance(request.enhanced_rfq_data, dict):
+                industry = request.enhanced_rfq_data.get('advanced_classification', {}).get('industry_classification')
+            
+            golden_questions = await retrieval_service.retrieve_golden_questions(
+                embedding=embedding,
+                methodology_tags=methodology_tags if methodology_tags else None,
+                industry=industry,
+                limit=8
+            )
+            
+            # Format 8 questions for prompt
+            eight_questions = []
+            eight_questions_prompt_text = ""
+            if golden_questions:
+                question_data_for_formatting = []
+                for question in golden_questions[:8]:
+                    annotation_comment = None
+                    if question.get('annotation_id'):
+                        annotation = DatabaseSessionManager.safe_query(
+                            db,
+                            lambda: db.query(QuestionAnnotation)
+                            .filter(QuestionAnnotation.id == question['annotation_id'])
+                            .first(),
+                            fallback_value=None,
+                            operation_name="fetch annotation comment for preview"
+                        )
+                        if annotation and annotation.comment:
+                            annotation_comment = annotation.comment
+                    
+                    question_dict = {
+                        "id": question.get('id', ''),
+                        "question_text": question.get('question_text', ''),
+                        "question_type": question.get('question_type', 'unknown'),
+                        "annotation_comment": annotation_comment,
+                        "quality_score": question.get('quality_score', 0.5),
+                        "human_verified": question.get('human_verified', False)
+                    }
+                    eight_questions.append(question_dict)
+                    question_data_for_formatting.append(question_dict)
+                
+                formatted_lines = format_golden_questions_for_prompt(question_data_for_formatting)
+                eight_questions_prompt_text = "\n".join(formatted_lines)
+            
+            # Retrieve feedback digest
+            rag_service = RuleBasedMultiLevelRAGService(db)
+            feedback_digest_data = await rag_service.get_feedback_digest(
+                methodology_tags=methodology_tags if methodology_tags else None,
+                industry=industry,
+                limit=50
+            )
+            
+            manual_comment_digest_questions = []
+            manual_comment_digest_prompt_text = ""
+            if feedback_digest_data:
+                questions_with_feedback = feedback_digest_data.get('questions_with_feedback', [])
+                for feedback_item in questions_with_feedback[:50]:
+                    manual_comment_digest_questions.append({
+                        "id": feedback_item.get('id', ''),
+                        "question_text": feedback_item.get('question_text', ''),
+                        "question_type": feedback_item.get('question_type', 'unknown'),
+                        "annotation_comment": feedback_item.get('comment', ''),
+                        "quality_score": feedback_item.get('quality_score', 0.5),
+                        "human_verified": feedback_item.get('human_verified', False)
+                    })
+                manual_comment_digest_prompt_text = feedback_digest_data.get("feedback_digest", "No manual comment digest available.")
+            
+            # Format golden examples
+            golden_examples_formatted = []
+            golden_examples_prompt_text = ""
+            if golden_examples:
+                prompt_lines = [
+                    "## 📋 GOLDEN RFQ-SURVEY PAIRS:",
+                    "",
+                    "Complete examples of high-quality RFQ-to-survey transformations. Use these as reference for structure, flow, and quality standards.",
+                    ""
+                ]
+                
+                for i, example in enumerate(golden_examples, 1):
+                    example_title = example.get('title', 'Untitled Golden Example')
+                    rfq_text = example.get('rfq_text', '')
+                    survey_title = example.get('survey_title', example_title)
+                    
+                    golden_examples_formatted.append({
+                        "id": example.get('id', ''),
+                        "title": example_title,
+                        "rfq_text": rfq_text[:500] + "..." if len(rfq_text) > 500 else rfq_text,
+                        "survey_title": survey_title,
+                        "methodology_tags": example.get('methodology_tags', []),
+                        "industry_category": example.get('industry_category'),
+                        "research_goal": example.get('research_goal'),
+                        "quality_score": example.get('quality_score', 0.5),
+                        "human_verified": example.get('human_verified', False),
+                        "usage_count": example.get('usage_count', 0)
+                    })
+                    
+                    prompt_lines.extend([
+                        f"### Example {i}: {example_title}",
+                        "",
+                        f"**RFQ:**",
+                        f"{rfq_text[:300]}..." if len(rfq_text) > 300 else rfq_text,
+                        "",
+                        f"**Survey Title:** {survey_title}",
+                        f"**Methodology:** {', '.join(example.get('methodology_tags', [])) if example.get('methodology_tags') else 'N/A'}",
+                        f"**Industry:** {example.get('industry_category') or 'N/A'}",
+                        f"**Quality Score:** {example.get('quality_score', 0.5):.2f}/1.0",
+                        ""
+                    ])
+                
+                golden_examples_prompt_text = "\n".join(prompt_lines)
+            
+            # Format golden sections
+            golden_sections_formatted = []
+            golden_sections_prompt_text = ""
+            if golden_sections:
+                prompt_lines = [
+                    "# 4.2.5 EXPERT SECTION EXAMPLES",
+                    "",
+                    "High-quality sections from verified surveys - use as templates for section structure and flow:",
+                    ""
+                ]
+                
+                for i, section in enumerate(golden_sections, 1):
+                    section_title = section.get('section_title', 'Untitled Section')
+                    section_text = section.get('section_text', '')
+                    
+                    golden_sections_formatted.append({
+                        "id": section.get('id', ''),
+                        "section_id": section.get('section_id', ''),
+                        "section_title": section_title,
+                        "section_text": section_text[:500] + "..." if len(section_text) > 500 else section_text,
+                        "section_type": section.get('section_type', 'unknown'),
+                        "methodology_tags": section.get('methodology_tags', []),
+                        "industry_keywords": section.get('industry_keywords', []),
+                        "quality_score": section.get('quality_score', 0.5),
+                        "human_verified": section.get('human_verified', False)
+                    })
+                    
+                    truncated_text = section_text[:300] + "..." if len(section_text) > 300 else section_text
+                    prompt_lines.extend([
+                        f"**Section Example {i}:** {section_title}",
+                        f"**Type:** {section.get('section_type', 'unknown')} | **Quality:** {section.get('quality_score', 0.5):.2f}/1.0 | {'✅ Verified' if section.get('human_verified') else '🤖 AI'}",
+                    ])
+                    
+                    if section.get('methodology_tags'):
+                        prompt_lines.append(f"**Methodology:** {', '.join(section.get('methodology_tags', []))}")
+                    
+                    prompt_lines.extend([
+                        f"**Section Text:** {truncated_text}",
+                        ""
+                    ])
+                
+                prompt_lines.extend([
+                    "**USAGE INSTRUCTIONS:**",
+                    "- Use these sections as templates for structure, flow, and question organization",
+                    "- Pay attention to how questions are grouped and sequenced within sections",
+                    "- Adapt section titles and intro text to match your RFQ context",
+                    ""
+                ])
+                
+                golden_sections_prompt_text = "\n".join(prompt_lines)
+            
+            reference_examples = {
+                "eight_questions_tab": {
+                    "prompt_text": eight_questions_prompt_text,
+                    "questions": eight_questions
+                },
+                "manual_comment_digest_tab": {
+                    "prompt_text": manual_comment_digest_prompt_text,
+                    "questions": manual_comment_digest_questions,
+                    "is_reconstructed": False,  # Not reconstructed in preview
+                    "total_feedback_count": feedback_digest_data.get("total_feedback_count", 0) if feedback_digest_data else 0
+                },
+                "golden_examples_tab": {
+                    "prompt_text": golden_examples_prompt_text,
+                    "examples": golden_examples_formatted
+                },
+                "golden_sections_tab": {
+                    "prompt_text": golden_sections_prompt_text,
+                    "sections": golden_sections_formatted
+                }
+            }
+            
+            logger.info(f"✅ [RFQ API] Reference examples prepared: {len(eight_questions)} questions, {len(manual_comment_digest_questions)} feedback questions, {len(golden_examples_formatted)} golden examples, {len(golden_sections_formatted)} golden sections")
+        except Exception as e:
+            logger.warning(f"⚠️ [RFQ API] Failed to retrieve reference examples for preview: {str(e)}")
+            # Continue without reference examples - preview will still work
+        
         # Prepare response
         response = PromptPreviewResponse(
             rfq_id=rfq_id,
@@ -1294,7 +1522,8 @@ async def preview_survey_generation_prompt(
             methodology_tags=methodology_tags,
             golden_examples_count=len(golden_examples),
             methodology_blocks_count=len(methodology_blocks),
-            enhanced_rfq_used=enhanced_rfq_used
+            enhanced_rfq_used=enhanced_rfq_used,
+            reference_examples=reference_examples
         )
         
         logger.info(f"🎉 [RFQ API] Prompt preview completed successfully")

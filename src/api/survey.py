@@ -1279,3 +1279,296 @@ async def get_survey_llm_audits(
     except Exception as e:
         logger.error(f"❌ [Survey API] Failed to fetch LLM audits: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch LLM audits: {str(e)}")
+
+
+class ReferenceExamplesResponse(BaseModel):
+    survey_title: str
+    eight_questions_tab: Dict[str, Any]
+    manual_comment_digest_tab: Dict[str, Any]
+    golden_examples_tab: Dict[str, Any]
+    golden_sections_tab: Dict[str, Any]
+
+
+@router.get("/{survey_id}/reference-examples", response_model=ReferenceExamplesResponse)
+async def get_survey_reference_examples(
+    survey_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Get reference examples (golden questions with comments) and feedback digest used during survey generation
+    """
+    try:
+        from src.database.models import GoldenQuestion, QuestionAnnotation
+        from src.services.rule_based_multi_level_rag_service import RuleBasedMultiLevelRAGService
+        from src.utils.database_session_manager import DatabaseSessionManager
+        
+        # Get survey
+        survey = db.query(Survey).filter(Survey.id == survey_id).first()
+        if not survey:
+            raise HTTPException(status_code=404, detail="Survey not found")
+        
+        # Get survey title from final_output
+        survey_title = "Untitled Survey"
+        if survey.final_output:
+            survey_title = survey.final_output.get("title", survey_title)
+        
+        # ===== 8 QUESTIONS TAB =====
+        used_question_ids = survey.used_golden_questions or []
+        eight_questions = []
+        eight_questions_prompt_text = ""
+        
+        if used_question_ids:
+            # Fetch questions ordered the same way as retrieval service (human_verified desc, quality_score desc)
+            # This matches the order used by the prompt builder
+            # Include AI-generated questions IF human_verified == True
+            questions = DatabaseSessionManager.safe_query(
+                db,
+                lambda: db.query(GoldenQuestion)
+                .filter(GoldenQuestion.id.in_(used_question_ids))
+                .order_by(GoldenQuestion.human_verified.desc(), GoldenQuestion.quality_score.desc())
+                .limit(8)  # Limit to 8 to match what prompt builder uses (golden_questions[:8])
+                .all(),
+                fallback_value=[],
+                operation_name="get golden questions for reference examples"
+            )
+            
+            # Build question data and format for prompt
+            question_data_for_formatting = []
+            for question in questions:
+                # Fetch annotation comment if available
+                annotation_comment = None
+                quality_score = float(question.quality_score) if question.quality_score else 0.5
+                human_verified = question.human_verified
+                
+                if question.annotation_id:
+                    annotation = DatabaseSessionManager.safe_query(
+                        db,
+                        lambda: db.query(QuestionAnnotation)
+                        .filter(QuestionAnnotation.id == question.annotation_id)
+                        .first(),
+                        fallback_value=None,
+                        operation_name="fetch annotation comment"
+                    )
+                    if annotation and annotation.comment:
+                        annotation_comment = annotation.comment
+                
+                question_dict = {
+                    "id": str(question.id),
+                    "question_text": question.question_text,
+                    "question_type": question.question_type or "unknown",
+                    "annotation_comment": annotation_comment,
+                    "quality_score": quality_score,
+                    "human_verified": human_verified
+                }
+                
+                eight_questions.append(question_dict)
+                question_data_for_formatting.append(question_dict)
+            
+            # Format prompt text using shared helper
+            from src.utils.prompt_formatters import format_golden_questions_for_prompt
+            formatted_lines = format_golden_questions_for_prompt(question_data_for_formatting)
+            eight_questions_prompt_text = "\n".join(formatted_lines)
+        
+        # ===== MANUAL COMMENT DIGEST TAB =====
+        feedback_digest_data = survey.feedback_digest
+        is_reconstructed = False
+        manual_comment_digest_questions = []
+        manual_comment_digest_prompt_text = ""
+        
+        if not feedback_digest_data:
+            # Reconstruct feedback digest from used questions
+            logger.info(f"📝 [Survey API] Reconstructing feedback digest for survey {survey_id}")
+            rag_service = RuleBasedMultiLevelRAGService(db)
+            
+            # Get methodology tags and industry from RFQ if available
+            methodology_tags = None
+            industry = None
+            if survey.rfq_id:
+                from src.database.models import RFQ
+                rfq = db.query(RFQ).filter(RFQ.id == survey.rfq_id).first()
+                if rfq and rfq.enhanced_rfq_data:
+                    methodology_tags = rfq.enhanced_rfq_data.get("methodology_tags")
+                    industry = rfq.enhanced_rfq_data.get("industry_category")
+            
+            feedback_digest_data = await rag_service.get_feedback_digest(
+                methodology_tags=methodology_tags,
+                industry=industry,
+                limit=50
+            )
+            is_reconstructed = True
+        
+        # Get questions from feedback digest (human comments only)
+        if feedback_digest_data:
+            questions_with_feedback = feedback_digest_data.get('questions_with_feedback', [])
+            for feedback_item in questions_with_feedback[:50]:  # Limit to 50
+                manual_comment_digest_questions.append({
+                    "id": feedback_item.get('id', ''),
+                    "question_text": feedback_item.get('question_text', ''),
+                    "question_type": feedback_item.get('question_type', 'unknown'),
+                    "annotation_comment": feedback_item.get('comment', ''),
+                    "quality_score": feedback_item.get('quality_score', 0.5),
+                    "human_verified": feedback_item.get('human_verified', False)
+                })
+            
+            manual_comment_digest_prompt_text = feedback_digest_data.get("feedback_digest", "No manual comment digest available.")
+        
+        # ===== GOLDEN EXAMPLES (RFQ-SURVEY PAIRS) TAB =====
+        used_golden_example_ids = survey.used_golden_examples or []
+        golden_examples = []
+        golden_examples_prompt_text = ""
+        
+        if used_golden_example_ids:
+            from src.database.models import GoldenRFQSurveyPair
+            
+            # Fetch golden RFQ-survey pairs
+            golden_pairs = DatabaseSessionManager.safe_query(
+                db,
+                lambda: db.query(GoldenRFQSurveyPair)
+                .filter(GoldenRFQSurveyPair.id.in_(used_golden_example_ids))
+                .limit(3)  # Limit to 3 as used in prompt builder
+                .all(),
+                fallback_value=[],
+                operation_name="get golden RFQ-survey pairs for reference examples"
+            )
+            
+            for pair in golden_pairs:
+                # Extract survey title from survey_json
+                pair_title = pair.title or "Untitled Golden Example"
+                survey_title_from_json = pair_title
+                if pair.survey_json and isinstance(pair.survey_json, dict):
+                    if "final_output" in pair.survey_json and isinstance(pair.survey_json["final_output"], dict):
+                        survey_title_from_json = pair.survey_json["final_output"].get("title", pair_title)
+                    elif "title" in pair.survey_json:
+                        survey_title_from_json = pair.survey_json.get("title", pair_title)
+                
+                golden_examples.append({
+                    "id": str(pair.id),
+                    "title": pair_title,
+                    "rfq_text": pair.rfq_text[:500] + "..." if pair.rfq_text and len(pair.rfq_text) > 500 else (pair.rfq_text or ""),
+                    "survey_title": survey_title_from_json,
+                    "methodology_tags": pair.methodology_tags or [],
+                    "industry_category": pair.industry_category,
+                    "research_goal": pair.research_goal,
+                    "quality_score": float(pair.quality_score) if pair.quality_score else 0.5,
+                    "human_verified": pair.human_verified,
+                    "usage_count": pair.usage_count or 0
+                })
+            
+            # Format prompt text (how it appears in the prompt)
+            if golden_examples:
+                prompt_lines = [
+                    "## 📋 GOLDEN RFQ-SURVEY PAIRS:",
+                    "",
+                    "Complete examples of high-quality RFQ-to-survey transformations. Use these as reference for structure, flow, and quality standards.",
+                    ""
+                ]
+                
+                for i, example in enumerate(golden_examples, 1):
+                    prompt_lines.extend([
+                        f"### Example {i}: {example['title']}",
+                        "",
+                        f"**RFQ:**",
+                        f"{example['rfq_text'][:300]}..." if len(example['rfq_text']) > 300 else example['rfq_text'],
+                        "",
+                        f"**Survey Title:** {example['survey_title']}",
+                        f"**Methodology:** {', '.join(example['methodology_tags']) if example['methodology_tags'] else 'N/A'}",
+                        f"**Industry:** {example['industry_category'] or 'N/A'}",
+                        f"**Quality Score:** {example['quality_score']:.2f}/1.0",
+                        ""
+                    ])
+                
+                golden_examples_prompt_text = "\n".join(prompt_lines)
+        
+        # ===== GOLDEN SECTIONS TAB =====
+        used_golden_section_ids = survey.used_golden_sections or []
+        golden_sections = []
+        golden_sections_prompt_text = ""
+        
+        if used_golden_section_ids:
+            from src.database.models import GoldenSection
+            
+            # Fetch golden sections
+            sections = DatabaseSessionManager.safe_query(
+                db,
+                lambda: db.query(GoldenSection)
+                .filter(GoldenSection.id.in_(used_golden_section_ids))
+                .limit(5)  # Limit to 5 as used in prompt builder
+                .all(),
+                fallback_value=[],
+                operation_name="get golden sections for reference examples"
+            )
+            
+            for section in sections:
+                golden_sections.append({
+                    "id": str(section.id),
+                    "section_id": section.section_id,
+                    "section_title": section.section_title or "Untitled Section",
+                    "section_text": section.section_text[:500] + "..." if section.section_text and len(section.section_text) > 500 else (section.section_text or ""),
+                    "section_type": section.section_type or "unknown",
+                    "methodology_tags": section.methodology_tags or [],
+                    "industry_keywords": section.industry_keywords or [],
+                    "quality_score": float(section.quality_score) if section.quality_score else 0.5,
+                    "human_verified": section.human_verified
+                })
+            
+            # Format prompt text (how it appears in the prompt)
+            if golden_sections:
+                prompt_lines = [
+                    "# 4.2.5 EXPERT SECTION EXAMPLES",
+                    "",
+                    "High-quality sections from verified surveys - use as templates for section structure and flow:",
+                    ""
+                ]
+                
+                for i, section in enumerate(golden_sections, 1):
+                    truncated_text = section['section_text'][:300] + "..." if len(section['section_text']) > 300 else section['section_text']
+                    prompt_lines.extend([
+                        f"**Section Example {i}:** {section['section_title']}",
+                        f"**Type:** {section['section_type']} | **Quality:** {section['quality_score']:.2f}/1.0 | {'✅ Verified' if section['human_verified'] else '🤖 AI'}",
+                    ])
+                    
+                    if section['methodology_tags']:
+                        prompt_lines.append(f"**Methodology:** {', '.join(section['methodology_tags'])}")
+                    
+                    prompt_lines.extend([
+                        f"**Section Text:** {truncated_text}",
+                        ""
+                    ])
+                
+                prompt_lines.extend([
+                    "**USAGE INSTRUCTIONS:**",
+                    "- Use these sections as templates for structure, flow, and question organization",
+                    "- Pay attention to how questions are grouped and sequenced within sections",
+                    "- Adapt section titles and intro text to match your RFQ context",
+                    ""
+                ])
+                
+                golden_sections_prompt_text = "\n".join(prompt_lines)
+        
+        return ReferenceExamplesResponse(
+            survey_title=survey_title,
+            eight_questions_tab={
+                "prompt_text": eight_questions_prompt_text,
+                "questions": eight_questions
+            },
+            manual_comment_digest_tab={
+                "prompt_text": manual_comment_digest_prompt_text,
+                "questions": manual_comment_digest_questions,
+                "is_reconstructed": is_reconstructed,
+                "total_feedback_count": feedback_digest_data.get("total_feedback_count", 0) if feedback_digest_data else 0
+            },
+            golden_examples_tab={
+                "prompt_text": golden_examples_prompt_text,
+                "examples": golden_examples
+            },
+            golden_sections_tab={
+                "prompt_text": golden_sections_prompt_text,
+                "sections": golden_sections
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [Survey API] Failed to fetch reference examples: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch reference examples: {str(e)}")

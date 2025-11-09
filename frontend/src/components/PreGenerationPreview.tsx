@@ -380,13 +380,15 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                 </h2>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {rfq.methodology.primary_method && (
+                  {((rfq.methodology.selected_methodologies && rfq.methodology.selected_methodologies.length > 0) || rfq.methodology.primary_method) && (
                     <div>
-                      <h3 className="font-semibold text-gray-800 mb-3">Primary Method</h3>
+                      <h3 className="font-semibold text-gray-800 mb-3">Selected Methodologies</h3>
                       <div className="flex flex-wrap gap-2">
-                        <span className="px-4 py-2 bg-yellow-100 text-yellow-700 rounded-xl text-sm font-medium">
-                          {rfq.methodology.primary_method.replace('_', ' ').toUpperCase()}
-                        </span>
+                        {(rfq.methodology.selected_methodologies || (rfq.methodology.primary_method ? [rfq.methodology.primary_method] : [])).map((method) => (
+                          <span key={method} className="px-4 py-2 bg-yellow-100 text-yellow-700 rounded-xl text-sm font-medium">
+                            {method.replace('_', ' ').toUpperCase()}
+                          </span>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -630,7 +632,7 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                         )}
 
                         {/* Van Westendorp Requirements */}
-                        {(rfq.methodology?.primary_method === 'van_westendorp') && (
+                        {(rfq.methodology?.selected_methodologies?.includes('van_westendorp') || rfq.methodology?.primary_method === 'van_westendorp') && (
                           <>
                             <div className="text-xs font-medium text-orange-700 mb-1">Van Westendorp Pricing:</div>
                             <div className="text-sm text-orange-800">• 4 price sensitivity questions (critical)</div>
@@ -638,7 +640,7 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                         )}
 
                         {/* Gabor Granger Requirements */}
-                        {(rfq.methodology?.primary_method === 'gabor_granger') && (
+                        {(rfq.methodology?.selected_methodologies?.includes('gabor_granger') || rfq.methodology?.primary_method === 'gabor_granger') && (
                           <>
                             <div className="text-xs font-medium text-purple-700 mb-1">Gabor Granger Pricing:</div>
                             <div className="text-sm text-purple-800">• Sequential price acceptance questions</div>
@@ -654,6 +656,8 @@ export const PreGenerationPreview: React.FC<PreGenerationPreviewProps> = ({
                           obj.toLowerCase().includes('testing') ||
                           obj.toLowerCase().includes('evaluation')
                         ) && !rfq.business_context?.company_product_background?.toLowerCase().includes('consumer') &&
+                        !rfq.methodology?.selected_methodologies?.includes('van_westendorp') &&
+                        !rfq.methodology?.selected_methodologies?.includes('gabor_granger') &&
                         rfq.methodology?.primary_method !== 'van_westendorp' &&
                         rfq.methodology?.primary_method !== 'gabor_granger' && (
                           <div className="text-sm text-gray-600 italic">No additional requirements detected</div>

@@ -302,6 +302,21 @@ class APIService {
     }
   }
 
+  async fetchSurveyReferenceExamples(surveyId: string): Promise<any> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/survey/${surveyId}/reference-examples`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch reference examples: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('❌ [API] Failed to fetch reference examples:', error);
+      throw error;
+    }
+  }
+
 }
 
 export const apiService = new APIService();

@@ -305,12 +305,16 @@ class RuleBasedMultiLevelRAGService:
             
             # Build query to get all golden questions that have annotations with comments
             # Join with QuestionAnnotation to find questions with non-null comments
+            # Filter out AI-generated comments - only include human-generated comments for manual comment digest
             query = self.db.query(GoldenQuestion).join(
                 QuestionAnnotation,
                 GoldenQuestion.annotation_id == QuestionAnnotation.id
             ).filter(
                 QuestionAnnotation.comment.isnot(None),
-                QuestionAnnotation.comment != ''
+                QuestionAnnotation.comment != '',
+                # Exclude AI-generated comments (only human-generated comments)
+                QuestionAnnotation.ai_generated == False,
+                QuestionAnnotation.annotator_id != 'ai_system'
             )
             
             # Apply methodology filter if provided
@@ -479,7 +483,7 @@ class RuleBasedMultiLevelRAGService:
             
             return {
                 'feedback_digest': feedback_digest,
-                'questions_with_feedback': feedback_data[:20],  # Limit detailed list
+                'questions_with_feedback': feedback_data,  # Return all questions used (up to limit)
                 'total_feedback_count': len(feedback_data),
                 'summary_categories': summary_categories,
                 'question_ids': [str(qid) for qid in question_ids]  # Include question IDs for tracking

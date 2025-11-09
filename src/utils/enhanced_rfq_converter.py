@@ -61,29 +61,42 @@ def build_enhanced_rfq_text(rfq: Dict[str, Any]) -> str:
 
     # Methodology Preferences
     methodology = rfq.get('methodology')
-    if methodology and methodology.get('primary_method'):
-        sections.append("## Methodology Preferences:")
-        sections.append(f"- **Primary Method**: {methodology['primary_method']}")
+    if methodology:
+        selected_methodologies = methodology.get('selected_methodologies', [])
+        primary_method = methodology.get('primary_method')  # Legacy support
+        
+        # Use selected_methodologies if available, otherwise fallback to primary_method
+        has_methodologies = (selected_methodologies and len(selected_methodologies) > 0) or primary_method
+        
+        if has_methodologies:
+            sections.append("## Methodology Preferences:")
+            
+            if selected_methodologies and len(selected_methodologies) > 0:
+                methods_list = ', '.join([m.replace('_', ' ').title() for m in selected_methodologies])
+                sections.append(f"- **Selected Methodologies**: {methods_list}")
+            elif primary_method:
+                # Legacy: use primary_method if selected_methodologies not available
+                sections.append(f"- **Primary Method**: {primary_method}")
 
-        if methodology.get('stimuli_details'):
-            sections.append(f"- **Stimuli Details**: {methodology['stimuli_details']}")
+            if methodology.get('stimuli_details'):
+                sections.append(f"- **Stimuli Details**: {methodology['stimuli_details']}")
 
-        if methodology.get('methodology_requirements'):
-            sections.append(f"- **Requirements**: {methodology['methodology_requirements']}")
+            if methodology.get('methodology_requirements'):
+                sections.append(f"- **Requirements**: {methodology['methodology_requirements']}")
 
-        # Enhanced methodology fields
-        if methodology.get('complexity_level'):
-            complexity_label = methodology['complexity_level'].replace('_', ' ').title()
-            sections.append(f"- **Complexity Level**: {complexity_label}")
+            # Enhanced methodology fields
+            if methodology.get('complexity_level'):
+                complexity_label = methodology['complexity_level'].replace('_', ' ').title()
+                sections.append(f"- **Complexity Level**: {complexity_label}")
 
-        if methodology.get('required_methodologies'):
-            methodologies = [m.replace('_', ' ').title() for m in methodology['required_methodologies']]
-            sections.append(f"- **Required Methodologies**: {', '.join(methodologies)}")
+            if methodology.get('required_methodologies'):
+                methodologies = [m.replace('_', ' ').title() for m in methodology['required_methodologies']]
+                sections.append(f"- **Required Methodologies**: {', '.join(methodologies)}")
 
-        if methodology.get('sample_size_target'):
-            sections.append(f"- **Sample Size Target**: {methodology['sample_size_target']}")
+            if methodology.get('sample_size_target'):
+                sections.append(f"- **Sample Size Target**: {methodology['sample_size_target']}")
 
-        sections.append('')
+            sections.append('')
 
     # Business Context Section
     business_context = rfq.get('business_context')
@@ -322,7 +335,12 @@ def generate_text_requirements(rfq: Dict[str, Any]) -> str:
     methodology = rfq.get('methodology', {})
     methodologies = methodology.get('required_methodologies', [])
 
-    if methodology.get('primary_method'):
+    # Use selected_methodologies (new approach)
+    selected_methodologies = methodology.get('selected_methodologies', [])
+    if selected_methodologies:
+        methodologies.extend(selected_methodologies)
+    # Legacy: fallback to primary_method
+    elif methodology.get('primary_method'):
         methodologies.append(methodology['primary_method'])
 
     if not methodologies:

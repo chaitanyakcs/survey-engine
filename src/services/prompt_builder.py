@@ -254,10 +254,13 @@ class InputsModule:
                     else:
                         placement = "textBlocks"
                     blocks.append(f"{name} ({placement} - {mandatory})")
-                text_block_requirements[section_id] = ", ".join(blocks) if blocks else fallback_text_blocks.get(section_id, [""])[0]
+                # Use fallback if blocks is empty, but ensure we have a non-empty list
+                fallback_value = fallback_text_blocks.get(section_id, [""])
+                text_block_requirements[section_id] = ", ".join(blocks) if blocks else (fallback_value[0] if fallback_value else "")
             else:
-                # Fallback to hardcoded
-                text_block_requirements[section_id] = fallback_text_blocks.get(section_id, [""])[0]
+                # Fallback to hardcoded - ensure we have a non-empty list
+                fallback_value = fallback_text_blocks.get(section_id, [""])
+                text_block_requirements[section_id] = fallback_value[0] if fallback_value else ""
         
         # Special instructions per section
         special_instructions = {
@@ -1270,7 +1273,7 @@ class ExampleModule:
     
     @staticmethod
     def build(golden_examples: List[Dict[str, Any]], rag_context: Optional[RAGContext],
-              golden_questions: List[Dict[str, Any]]) -> PromptModule:
+              golden_questions: List[Dict[str, Any]], golden_sections: Optional[List[Dict[str, Any]]] = None) -> PromptModule:
         """Build example sections showing golden patterns"""
         sections = []
         
@@ -1353,6 +1356,50 @@ class ExampleModule:
                     question_content.append("")
             
             sections.append(PromptSection("golden_questions", question_content, order=4.2))
+        
+        # 4.2.5 Golden Sections (section-level examples)
+        if golden_sections:
+            section_content = [
+                "# 4.2.5 EXPERT SECTION EXAMPLES",
+                "",
+                "High-quality sections from verified surveys - use as templates for section structure and flow:",
+                ""
+            ]
+            
+            # Show up to 5 sections
+            for i, section in enumerate(golden_sections[:5], 1):
+                section_title = section.get('section_title', 'Untitled Section')
+                section_text = section.get('section_text', '')
+                section_type = section.get('section_type', 'unknown')
+                quality_score = section.get('quality_score', 0.0)
+                human_verified = section.get('human_verified', False)
+                methodology_tags = section.get('methodology_tags', [])
+                
+                # Truncate section text for prompt (keep first 300 chars)
+                truncated_text = section_text[:300] + "..." if len(section_text) > 300 else section_text
+                
+                section_content.extend([
+                    f"**Section Example {i}:** {section_title}",
+                    f"**Type:** {section_type} | **Quality:** {quality_score:.2f}/1.0 | {'✅ Verified' if human_verified else '🤖 AI'}",
+                ])
+                
+                if methodology_tags:
+                    section_content.append(f"**Methodology:** {', '.join(methodology_tags)}")
+                
+                section_content.extend([
+                    f"**Section Text:** {truncated_text}",
+                    ""
+                ])
+            
+            section_content.extend([
+                "**USAGE INSTRUCTIONS:**",
+                "- Use these sections as templates for structure, flow, and question organization",
+                "- Pay attention to how questions are grouped and sequenced within sections",
+                "- Adapt section titles and intro text to match your RFQ context",
+                ""
+            ])
+            
+            sections.append(PromptSection("golden_sections", section_content, order=4.25))
         
         # 4.3 Few-Shot Examples for Question Types
         fewshot_content = [
@@ -1789,33 +1836,10 @@ class SectionManager:
             ""
         ]
         
-        # Display up to 8 questions (increased from 5 since we removed label filtering)
-        for i, question in enumerate(golden_questions[:8], 1):
-            question_text = question.get('question_text', '')
-            question_type = question.get('question_type', 'unknown')
-            quality_score = question.get('quality_score', 0.0)
-            human_verified = question.get('human_verified', False)
-            annotation_comment = question.get('annotation_comment', '')
-            
-            content.extend([
-                f"**Example {i}:** \"{question_text}\"",
-                f"**Type:** {question_type} | **Quality:** {quality_score:.2f}/1.0 | {'✅ Human Verified' if human_verified else '🤖 AI Generated'}",
-            ])
-            
-            if annotation_comment:
-                # Truncate long comments to prevent prompt bloat (keep key guidance)
-                max_comment_length = 200  # Keep reasonable detail without bloat
-                truncated_comment = (
-                    annotation_comment[:max_comment_length] + "..."
-                    if len(annotation_comment) > max_comment_length
-                    else annotation_comment
-                )
-                content.extend([
-                    f"**Expert Guidance:** {truncated_comment}",
-                    ""
-                ])
-            else:
-                content.append("")
+        # Use shared helper to format questions (ensures consistency with API response)
+        from src.utils.prompt_formatters import format_golden_questions_for_prompt
+        formatted_question_lines = format_golden_questions_for_prompt(golden_questions)
+        content.extend(formatted_question_lines)
         
         # Add feedback digest if available
         if feedback_digest and feedback_digest.get('feedback_digest'):
@@ -2365,10 +2389,11 @@ class PromptBuilder:
         pillar_rules_detail = generation_config.get("pillar_rules_detail", "digest")
         pillar_context = self.get_pillar_rules_context(detail_level=pillar_rules_detail)
 
-        # Get golden questions if available
+        # Get golden questions, sections, and examples if available
         golden_questions = context.get("golden_questions", [])
         golden_examples = context.get("golden_examples", [])
-
+        golden_sections = context.get("golden_sections", [])
+        
         # Build all 5 modules
         logger.info("🏗️ [PromptBuilder] Building modular prompt...")
         
@@ -2396,7 +2421,7 @@ class PromptBuilder:
         instruction_module = InstructionModule.build(context, methodology_tags, pillar_context, annotation_insights, None, None)
         
         # MODULE 4: Examples - Reference Surveys and Patterns
-        example_module = ExampleModule.build(golden_examples, rag_context, golden_questions)
+        example_module = ExampleModule.build(golden_examples, rag_context, golden_questions, golden_sections)
         
         # MODULE 5: Output - Format and Validation
         output_module = OutputModule.build(json_examples_mode='consolidated')

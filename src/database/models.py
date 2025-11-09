@@ -167,6 +167,7 @@ class Survey(Base):
     cleanup_minutes_actual = Column(Integer)
     model_version = Column(Text)
     pillar_scores = Column(JSONB)  # Store 5-pillar evaluation scores
+    feedback_digest = Column(JSONB)  # Store feedback digest used during generation
     created_at = Column(DateTime, default=func.now())
 
     rfq = relationship("RFQ", back_populates="surveys")

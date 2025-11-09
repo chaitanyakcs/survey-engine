@@ -2961,14 +2961,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
           rfqUpdates.research_objectives.key_research_questions = Array.isArray(value) ? value : (value || '').split('\n').filter((q: string) => q.trim());
           break;
         case 'primary_method':
-          if (!rfqUpdates.methodology) rfqUpdates.methodology = { primary_method: 'basic_survey' };
+          // Legacy support: convert primary_method to selected_methodologies array
+          if (!rfqUpdates.methodology) rfqUpdates.methodology = { selected_methodologies: [] };
           // Validate and map methodology value
           const validMethods = ['basic_survey', 'van_westendorp', 'gabor_granger', 'conjoint'];
           const methodValue = String(value).toLowerCase().trim();
           
+          let normalizedMethod: string = 'basic_survey';
           // Try exact match first
           if (validMethods.includes(methodValue)) {
-            rfqUpdates.methodology.primary_method = methodValue as 'basic_survey' | 'van_westendorp' | 'gabor_granger' | 'conjoint';
+            normalizedMethod = methodValue;
           } else {
             // Try partial matches for common variations
             const methodMappings: Record<string, string> = {
@@ -2986,19 +2988,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
               'survey': 'basic_survey'
             };
             
-            const normalizedMethod = methodMappings[methodValue] || 
+            normalizedMethod = methodMappings[methodValue] || 
               validMethods.find(m => methodValue.includes(m) || m.includes(methodValue)) ||
               'basic_survey';
-            
-            rfqUpdates.methodology.primary_method = normalizedMethod as 'basic_survey' | 'van_westendorp' | 'gabor_granger' | 'conjoint';
             
             if (normalizedMethod !== methodValue) {
               validationErrors.push(`Mapped methodology '${value}' to '${normalizedMethod}'`);
             }
           }
+          
+          // Set selected_methodologies array with the normalized method
+          rfqUpdates.methodology.selected_methodologies = [normalizedMethod as 'basic_survey' | 'van_westendorp' | 'gabor_granger' | 'conjoint'];
+          // Keep primary_method for backward compatibility
+          rfqUpdates.methodology.primary_method = normalizedMethod as 'basic_survey' | 'van_westendorp' | 'gabor_granger' | 'conjoint';
           break;
         case 'stimuli_details':
-          if (!rfqUpdates.methodology) rfqUpdates.methodology = { primary_method: 'basic_survey' };
+          if (!rfqUpdates.methodology) rfqUpdates.methodology = { selected_methodologies: ['basic_survey'] };
           rfqUpdates.methodology.stimuli_details = value;
           break;
         case 'methodology_requirements':
@@ -3283,7 +3288,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     // Extract detected methodologies
     const methodologies: string[] = [];
-    if (enhancedUpdates.methodology?.primary_method) {
+    // Use selected_methodologies (new approach)
+    if (enhancedUpdates.methodology?.selected_methodologies) {
+      methodologies.push(...enhancedUpdates.methodology.selected_methodologies);
+    }
+    // Legacy: fallback to primary_method for backward compatibility
+    else if (enhancedUpdates.methodology?.primary_method) {
       methodologies.push(enhancedUpdates.methodology.primary_method);
     }
     // Note: required_methodologies field removed in simplification

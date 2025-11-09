@@ -273,7 +273,8 @@ async def migrate_all(db: Session = Depends(get_db)):
                 "014_create_qnr_taxonomy_tables.sql",
                 "016_add_section_id_to_golden_questions.sql",
                 "027_add_concept_files_table.sql",
-                "051_fix_annotation_unique_constraints.sql"
+                "051_fix_annotation_unique_constraints.sql",
+                "052_add_feedback_digest_to_surveys.sql"
             ]
             
             for migration_file in incremental_migrations:

@@ -614,6 +614,12 @@ class WorkflowService:
                 else:
                     survey.pillar_scores = final_state.get("pillar_scores")
                     survey.status = "validated" if final_state.get("quality_gate_passed", False) else "draft"
+                
+                # Persist feedback_digest if available
+                feedback_digest = final_state.get("feedback_digest")
+                if feedback_digest:
+                    survey.feedback_digest = feedback_digest
+                    logger.info(f"✅ [WorkflowService] Stored feedback digest for survey {survey.id}")
 
                 self.db.commit()
                 logger.info(f"✅ [WorkflowService] Survey record updated: status={survey.status}, golden_examples_used={len(survey.used_golden_examples)}")
@@ -676,7 +682,13 @@ class WorkflowService:
                         else:
                             survey.pillar_scores = final_state.get("pillar_scores")
                             survey.status = "validated" if final_state.get("quality_gate_passed", False) else "draft"
-
+                        
+                        # Persist feedback_digest if available
+                        feedback_digest = final_state.get("feedback_digest")
+                        if feedback_digest:
+                            survey.feedback_digest = feedback_digest
+                            logger.info(f"✅ [WorkflowService] Stored feedback digest for survey {survey.id} (retry)")
+                        
                         new_db.commit()
                         logger.info(f"✅ [WorkflowService] Survey record updated with new session: status={survey.status}")
                         # Update self.db to use the new session for subsequent operations
@@ -954,6 +966,12 @@ class WorkflowService:
                         # Both generation and evaluation succeeded
                         survey.pillar_scores = validation_result.get("pillar_scores") or generation_result.get("pillar_scores")
                         survey.status = "validated" if validation_result.get("quality_gate_passed", False) else "draft"
+                    
+                    # Persist feedback_digest if available
+                    feedback_digest = initial_state.feedback_digest if hasattr(initial_state, 'feedback_digest') else None
+                    if feedback_digest:
+                        survey.feedback_digest = feedback_digest
+                        logger.info(f"✅ [WorkflowService] Stored feedback digest for survey {survey.id} (prompt review path)")
 
                     self.db.commit()
                     logger.info(f"✅ [WorkflowService] Survey updated from resumed workflow: status={survey.status}")

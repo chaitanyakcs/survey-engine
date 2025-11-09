@@ -22,6 +22,61 @@ interface PromptPreviewResponse {
   golden_examples_count: number;
   methodology_blocks_count: number;
   enhanced_rfq_used: boolean;
+  reference_examples?: {
+    eight_questions_tab: {
+      prompt_text: string;
+      questions: Array<{
+        id: string;
+        question_text: string;
+        question_type: string;
+        annotation_comment?: string;
+        quality_score?: number;
+        human_verified?: boolean;
+      }>;
+    };
+    manual_comment_digest_tab: {
+      prompt_text: string;
+      questions: Array<{
+        id: string;
+        question_text: string;
+        question_type: string;
+        annotation_comment?: string;
+        quality_score?: number;
+        human_verified?: boolean;
+      }>;
+      is_reconstructed: boolean;
+      total_feedback_count: number;
+    };
+    golden_examples_tab: {
+      prompt_text: string;
+      examples: Array<{
+        id: string;
+        title: string;
+        rfq_text: string;
+        survey_title: string;
+        methodology_tags?: string[];
+        industry_category?: string;
+        research_goal?: string;
+        quality_score?: number;
+        human_verified?: boolean;
+        usage_count?: number;
+      }>;
+    };
+    golden_sections_tab: {
+      prompt_text: string;
+      sections: Array<{
+        id: string;
+        section_id: string;
+        section_title: string;
+        section_text: string;
+        section_type: string;
+        methodology_tags?: string[];
+        industry_keywords?: string[];
+        quality_score?: number;
+        human_verified?: boolean;
+      }>;
+    };
+  };
 }
 
 export const PromptPreview: React.FC<PromptPreviewProps> = ({ rfq, onPromptEdited }) => {
@@ -32,6 +87,8 @@ export const PromptPreview: React.FC<PromptPreviewProps> = ({ rfq, onPromptEdite
   const [isEditing, setIsEditing] = useState(false);
   const [editedPrompt, setEditedPrompt] = useState<string>('');
   const [activePrompt, setActivePrompt] = useState<string>(''); // Stores the current prompt being displayed
+  const [activeTab, setActiveTab] = useState<'prompt' | 'reference-examples'>('prompt');
+  const [activeSubTab, setActiveSubTab] = useState<'eight-questions' | 'manual-comment-digest' | 'golden-examples' | 'golden-sections'>('eight-questions');
 
   const fetchPromptPreview = useCallback(async () => {
     setIsLoading(true);
@@ -163,6 +220,368 @@ export const PromptPreview: React.FC<PromptPreviewProps> = ({ rfq, onPromptEdite
         </p>
       </div>
 
+      {/* Tab Navigation */}
+      <div className="mb-6 border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8">
+          <button
+            onClick={() => setActiveTab('prompt')}
+            className={`
+              py-4 px-1 border-b-2 font-medium text-sm
+              ${activeTab === 'prompt'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }
+            `}
+          >
+            Prompt
+          </button>
+          {promptData.reference_examples && (
+            <button
+              onClick={() => setActiveTab('reference-examples')}
+              className={`
+                py-4 px-1 border-b-2 font-medium text-sm
+                ${activeTab === 'reference-examples'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }
+              `}
+            >
+              Reference Examples
+            </button>
+          )}
+        </nav>
+      </div>
+
+      {/* Reference Examples Tab */}
+      {activeTab === 'reference-examples' && promptData.reference_examples && (
+        <div className="space-y-6">
+          {/* Sub-tabs */}
+          <div className="border-b border-gray-200">
+            <nav className="-mb-px flex space-x-8">
+              <button
+                onClick={() => setActiveSubTab('eight-questions')}
+                className={`
+                  py-4 px-1 border-b-2 font-medium text-sm
+                  ${activeSubTab === 'eight-questions'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }
+                `}
+              >
+                8 Questions
+              </button>
+              <button
+                onClick={() => setActiveSubTab('manual-comment-digest')}
+                className={`
+                  py-4 px-1 border-b-2 font-medium text-sm
+                  ${activeSubTab === 'manual-comment-digest'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }
+                `}
+              >
+                Manual Comment Digest
+              </button>
+              <button
+                onClick={() => setActiveSubTab('golden-examples')}
+                className={`
+                  py-4 px-1 border-b-2 font-medium text-sm
+                  ${activeSubTab === 'golden-examples'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }
+                `}
+              >
+                Golden Examples
+              </button>
+            </nav>
+          </div>
+
+          {/* 8 Questions Tab Content */}
+          {activeSubTab === 'eight-questions' && (
+            <div className="space-y-6">
+              {promptData.reference_examples.eight_questions_tab.prompt_text && (
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">What Went Into the Prompt</h3>
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <pre className="whitespace-pre-wrap text-sm text-gray-700 font-mono">
+                      {promptData.reference_examples.eight_questions_tab.prompt_text}
+                    </pre>
+                  </div>
+                </div>
+              )}
+              {promptData.reference_examples.eight_questions_tab.questions.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Questions Used</h3>
+                  <div className="space-y-4">
+                    {promptData.reference_examples.eight_questions_tab.questions.map((question, index) => (
+                      <div key={question.id || index} className="bg-white border border-gray-200 rounded-lg p-5">
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium">
+                              {question.question_type || 'Question'}
+                            </span>
+                            {question.quality_score !== undefined && (
+                              <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
+                                Quality: {question.quality_score.toFixed(2)}/1.0
+                              </span>
+                            )}
+                            {question.human_verified && (
+                              <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium">
+                                ✅ Human Verified
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-base text-gray-900 font-medium">"{question.question_text}"</p>
+                          {question.annotation_comment && (
+                            <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                              <span className="text-green-600 font-semibold text-sm">Expert Guidance:</span>
+                              <p className="text-sm text-gray-700 mt-2 whitespace-pre-wrap">
+                                {question.annotation_comment}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Manual Comment Digest Tab Content */}
+          {activeSubTab === 'manual-comment-digest' && (
+            <div className="space-y-6">
+              {promptData.reference_examples.manual_comment_digest_tab.prompt_text && (
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">What Went Into the Prompt</h3>
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <pre className="whitespace-pre-wrap text-sm text-gray-700 font-mono">
+                      {promptData.reference_examples.manual_comment_digest_tab.prompt_text}
+                    </pre>
+                  </div>
+                  {promptData.reference_examples.manual_comment_digest_tab.total_feedback_count > 0 && (
+                    <p className="text-xs text-gray-600 mt-2">
+                      Based on {promptData.reference_examples.manual_comment_digest_tab.total_feedback_count} questions with human-generated comments
+                    </p>
+                  )}
+                </div>
+              )}
+              {promptData.reference_examples.manual_comment_digest_tab.questions.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Questions Used</h3>
+                  <div className="space-y-4">
+                    {promptData.reference_examples.manual_comment_digest_tab.questions.map((question, index) => (
+                      <div key={question.id || index} className="bg-white border border-gray-200 rounded-lg p-5">
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium">
+                              {question.question_type || 'Question'}
+                            </span>
+                            {question.quality_score !== undefined && (
+                              <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
+                                Quality: {question.quality_score.toFixed(2)}/1.0
+                              </span>
+                            )}
+                            {question.human_verified && (
+                              <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium">
+                                ✅ Human Verified
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-base text-gray-900 font-medium">"{question.question_text}"</p>
+                          {question.annotation_comment && (
+                            <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                              <span className="text-green-600 font-semibold text-sm">Expert Guidance:</span>
+                              <p className="text-sm text-gray-700 mt-2 whitespace-pre-wrap">
+                                {question.annotation_comment}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Golden Examples Tab Content */}
+          {activeSubTab === 'golden-examples' && (
+            <div className="space-y-6">
+              {promptData.reference_examples.golden_examples_tab.prompt_text && (
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">What Went Into the Prompt</h3>
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <pre className="whitespace-pre-wrap text-sm text-gray-700 font-mono">
+                      {promptData.reference_examples.golden_examples_tab.prompt_text}
+                    </pre>
+                  </div>
+                </div>
+              )}
+              {promptData.reference_examples.golden_examples_tab.examples.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Golden RFQ-Survey Pairs Used</h3>
+                  <div className="space-y-6">
+                    {promptData.reference_examples.golden_examples_tab.examples.map((example, index) => (
+                      <div key={example.id || index} className="bg-white border border-gray-200 rounded-lg p-6">
+                        <div className="space-y-4">
+                          <div className="border-b border-gray-200 pb-3">
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <h4 className="text-lg font-semibold text-gray-900">{example.title}</h4>
+                                <p className="text-sm text-gray-600 mt-1">Survey: {example.survey_title}</p>
+                              </div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {example.quality_score !== undefined && (
+                                  <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
+                                    Quality: {example.quality_score.toFixed(2)}/1.0
+                                  </span>
+                                )}
+                                {example.human_verified && (
+                                  <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium">
+                                    ✅ Human Verified
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                            {example.methodology_tags && example.methodology_tags.length > 0 && (
+                              <div>
+                                <span className="font-medium text-gray-700">Methodology:</span>
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {example.methodology_tags.map((tag, tagIndex) => (
+                                    <span key={tagIndex} className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {example.industry_category && (
+                              <div>
+                                <span className="font-medium text-gray-700">Industry:</span>
+                                <p className="text-gray-600 mt-1">{example.industry_category}</p>
+                              </div>
+                            )}
+                            {example.research_goal && (
+                              <div>
+                                <span className="font-medium text-gray-700">Research Goal:</span>
+                                <p className="text-gray-600 mt-1">{example.research_goal}</p>
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <h5 className="font-medium text-gray-900 mb-2">RFQ Text:</h5>
+                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                              <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                                {example.rfq_text}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Golden Sections Tab Content */}
+          {activeSubTab === 'golden-sections' && (
+            <div className="space-y-6">
+              {promptData.reference_examples.golden_sections_tab.prompt_text && (
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">What Went Into the Prompt</h3>
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <pre className="whitespace-pre-wrap text-sm text-gray-700 font-mono">
+                      {promptData.reference_examples.golden_sections_tab.prompt_text}
+                    </pre>
+                  </div>
+                </div>
+              )}
+              {promptData.reference_examples.golden_sections_tab.sections.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Golden Sections Used</h3>
+                  <div className="space-y-6">
+                    {promptData.reference_examples.golden_sections_tab.sections.map((section, index) => (
+                      <div key={section.id || index} className="bg-white border border-gray-200 rounded-lg p-6">
+                        <div className="space-y-4">
+                          <div className="border-b border-gray-200 pb-3">
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <h4 className="text-lg font-semibold text-gray-900">{section.section_title}</h4>
+                                <p className="text-sm text-gray-600 mt-1">Section ID: {section.section_id}</p>
+                              </div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium">
+                                  {section.section_type || 'Section'}
+                                </span>
+                                {section.quality_score !== undefined && (
+                                  <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
+                                    Quality: {section.quality_score.toFixed(2)}/1.0
+                                  </span>
+                                )}
+                                {section.human_verified && (
+                                  <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium">
+                                    ✅ Human Verified
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                            {section.methodology_tags && section.methodology_tags.length > 0 && (
+                              <div>
+                                <span className="font-medium text-gray-700">Methodology:</span>
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {section.methodology_tags.map((tag, tagIndex) => (
+                                    <span key={tagIndex} className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {section.industry_keywords && section.industry_keywords.length > 0 && (
+                              <div>
+                                <span className="font-medium text-gray-700">Industry Keywords:</span>
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {section.industry_keywords.map((keyword, keywordIndex) => (
+                                    <span key={keywordIndex} className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">
+                                      {keyword}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <h5 className="font-medium text-gray-900 mb-2">Section Text:</h5>
+                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                              <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                                {section.section_text}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Prompt Tab Content */}
+      {activeTab === 'prompt' && (
+        <>
       {/* Prompt Metadata */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         <div className="p-4 bg-blue-50 rounded-xl">
@@ -317,6 +736,8 @@ export const PromptPreview: React.FC<PromptPreviewProps> = ({ rfq, onPromptEdite
           Refresh Preview
         </button>
       </div>
+        </>
+      )}
     </div>
   );
 };

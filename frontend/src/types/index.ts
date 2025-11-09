@@ -206,9 +206,11 @@ export interface EnhancedRFQRequest {
 
   // ========== METHODOLOGY (SIMPLIFIED) ==========
   methodology: {
-    primary_method: 'van_westendorp' | 'gabor_granger' | 'conjoint' | 'basic_survey';
+    selected_methodologies?: ('van_westendorp' | 'gabor_granger' | 'conjoint' | 'basic_survey')[];  // Array of selected methodologies
     stimuli_details?: string;             // Concept details, price ranges
     // Removed: methodology_requirements, complexity_level, required_methodologies, sample_size_target (moved to additional_info)
+    // Legacy: primary_method (deprecated, use selected_methodologies instead)
+    primary_method?: 'van_westendorp' | 'gabor_granger' | 'conjoint' | 'basic_survey';  // Deprecated - kept for backward compatibility
   };
 
   // ========== SURVEY REQUIREMENTS (SIMPLIFIED) ==========
@@ -1359,6 +1361,69 @@ export interface GoldenQuestion {
   created_at: string;
   updated_at: string;
   last_used_at?: string;
+}
+
+export interface ReferenceExamplesResponse {
+  survey_title: string;
+  eight_questions_tab: {
+    prompt_text: string;
+    questions: Array<{
+      id: string;
+      question_text: string;
+      question_type: string;
+      annotation_comment?: string;
+      quality_score?: number;
+      human_verified?: boolean;
+      ai_generated?: boolean;
+      annotator_id?: string;
+      human_overridden?: boolean;
+    }>;
+  };
+  manual_comment_digest_tab: {
+    prompt_text: string;
+    questions: Array<{
+      id: string;
+      question_text: string;
+      question_type: string;
+      annotation_comment?: string;
+      quality_score?: number;
+      human_verified?: boolean;
+      ai_generated?: boolean;
+      annotator_id?: string;
+      human_overridden?: boolean;
+    }>;
+    is_reconstructed: boolean;
+    total_feedback_count: number;
+  };
+  golden_examples_tab: {
+    prompt_text: string;
+    examples: Array<{
+      id: string;
+      title: string;
+      rfq_text: string;
+      survey_title: string;
+      methodology_tags?: string[];
+      industry_category?: string;
+      research_goal?: string;
+      quality_score?: number;
+      human_verified?: boolean;
+      usage_count?: number;
+    }>;
+  };
+  golden_sections_tab: {
+    prompt_text: string;
+    sections: Array<{
+      id: string;
+      section_id: string;
+      section_title: string;
+      section_text: string;
+      section_type: string;
+      methodology_tags?: string[];
+      industry_keywords?: string[];
+      quality_score?: number;
+      human_verified?: boolean;
+    }>;
+  };
 }
 
 export interface QuestionUsage {

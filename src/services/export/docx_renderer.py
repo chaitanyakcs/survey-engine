@@ -125,8 +125,12 @@ class DocxSurveyRenderer(SurveyExportRenderer):
         """Add question header with numbering and text."""
         doc = self._get_document()
         question_text = question.get("text", "")
-
-        if question_number:
+        
+        # Use question ID if available, otherwise use sequential number
+        question_id = question.get("id")
+        if question_id:
+            header_text = f"{question_id}: {question_text}"
+        elif question_number:
             header_text = f"Q{question_number}: {question_text}"
         else:
             header_text = question_text
@@ -159,9 +163,21 @@ class DocxSurveyRenderer(SurveyExportRenderer):
             desc_paragraph = doc.add_paragraph(section["description"])
             desc_paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
         
-        # Render intro text if available
-        if section.get("introText"):
-            self._render_text_block(section["introText"], "Introduction")
+        # Check if this is a Sample Plan section
+        section_id = section.get("id", 0)
+        is_sample_plan = (
+            section_id == 1 or
+            (isinstance(section_title, str) and "sample plan" in section_title.lower()) or
+            section.get("samplePlanData") is not None
+        )
+        
+        # For Sample Plan sections: skip introText and render table instead
+        if is_sample_plan and section.get("samplePlanData"):
+            self._render_sample_plan_table(section["samplePlanData"])
+        else:
+            # Render intro text if available (skip for Sample Plan)
+            if section.get("introText"):
+                self._render_text_block(section["introText"], "Introduction")
         
         # Render text blocks if available (sorted by order)
         text_blocks = section.get("textBlocks", [])
@@ -223,6 +239,84 @@ class DocxSurveyRenderer(SurveyExportRenderer):
         content_run.font.size = Pt(9)
         
         # Add some space after text block
+        doc.add_paragraph("")
+
+    def _render_sample_plan_table(self, sample_plan_data: Dict[str, Any]) -> None:
+        """Render Sample Plan table with respondent types and recruiting criteria."""
+        doc = self._get_document()
+        
+        subsamples = sample_plan_data.get("subsamples", [])
+        overall_sample = sample_plan_data.get("overallSample", {})
+        
+        if not subsamples:
+            # If no subsamples, just show overall sample info
+            doc.add_paragraph("Sample Plan data not available in expected format.")
+            return
+        
+        # Create table: RESPONDENT TYPE column + concept columns
+        # For now, we'll use a simple structure with one count column
+        # The actual concept columns will depend on the data structure
+        num_cols = 2  # RESPONDENT TYPE + Count (can be extended for multiple concepts)
+        num_rows = len(subsamples) + 2  # Header row + data rows + total row
+        
+        table = doc.add_table(rows=num_rows, cols=num_cols)
+        table.style = 'Table Grid'
+        table.alignment = WD_TABLE_ALIGNMENT.LEFT
+        
+        # Header row
+        header_cells = table.rows[0].cells
+        header_cells[0].text = "RESPONDENT TYPE"
+        header_cells[1].text = "Count"
+        
+        # Make header bold
+        for cell in header_cells:
+            for paragraph in cell.paragraphs:
+                for run in paragraph.runs:
+                    run.bold = True
+                    run.font.size = Pt(10)
+        
+        # Data rows
+        total_count = 0
+        for i, subsample in enumerate(subsamples):
+            row = table.rows[i + 1]
+            row.cells[0].text = subsample.get("name", "Unknown")
+            count = subsample.get("totalSize", 0)
+            row.cells[1].text = str(count)
+            total_count += count
+        
+        # Total row
+        total_row = table.rows[-1]
+        total_row.cells[0].text = f"TOTAL = {overall_sample.get('totalSize', total_count)}"
+        total_row.cells[1].text = str(overall_sample.get("totalSize", total_count))
+        
+        # Make total row bold and underlined
+        for cell in total_row.cells:
+            for paragraph in cell.paragraphs:
+                for run in paragraph.runs:
+                    run.bold = True
+                    run.font.size = Pt(10)
+                    run.underline = True
+        
+        doc.add_paragraph("")
+        
+        # Render Recruiting Criteria
+        recruiting_criteria = []
+        for subsample in subsamples:
+            criteria = subsample.get("criteria")
+            if criteria:
+                recruiting_criteria.append(criteria)
+        
+        if recruiting_criteria:
+            doc.add_paragraph("")
+            criteria_heading = doc.add_paragraph()
+            criteria_run = criteria_heading.add_run("RECRUITING CRITERIA :-")
+            criteria_run.bold = True
+            criteria_run.font.size = Pt(11)
+            
+            for criteria in recruiting_criteria:
+                criteria_para = doc.add_paragraph(criteria, style='List Bullet')
+                criteria_para.style = 'List Bullet'
+        
         doc.add_paragraph("")
 
     # Question type implementations
