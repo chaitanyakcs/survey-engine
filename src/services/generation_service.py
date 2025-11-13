@@ -251,6 +251,30 @@ class GenerationService:
                 extra={"context_keys": list(context.keys()) if context else []},
             )
 
+            # Check if this is a regeneration
+            regeneration_mode = context.get('regeneration_mode', False)
+            metadata = {
+                'golden_examples_count': len(golden_examples) if golden_examples else 0,
+                'methodology_blocks_count': len(methodology_blocks) if methodology_blocks else 0,
+                'custom_rules_count': len(custom_rules.get('rules', [])) if custom_rules else 0,
+                'context_keys': list(context.keys()) if context else [],
+                'custom_prompt_used': bool(system_prompt),
+                'regeneration_mode': regeneration_mode,
+            }
+            
+            # Add regeneration-specific metadata
+            if regeneration_mode:
+                metadata['parent_survey_id'] = str(context.get('parent_survey_id')) if context.get('parent_survey_id') else None
+                metadata['regeneration_type'] = context.get('regeneration_type')
+                metadata['focus_on_annotated_areas'] = context.get('focus_on_annotated_areas', True)
+                if context.get('annotation_feedback_summary'):
+                    feedback = context.get('annotation_feedback_summary', {})
+                    metadata['annotation_feedback'] = {
+                        'question_feedback_count': feedback.get('question_feedback', {}).get('total_count', 0),
+                        'section_feedback_count': feedback.get('section_feedback', {}).get('total_count', 0),
+                        'survey_feedback_count': feedback.get('survey_feedback', {}).get('total_count', 0),
+                    }
+            
             async with LLMAuditContext(
                 audit_service=audit_service,
                 interaction_id=interaction_id,
@@ -263,14 +287,8 @@ class GenerationService:
                 parent_survey_id=context.get('audit_survey_id'),
                 parent_rfq_id=context.get('rfq_id'),
                 hyperparameters=get_json_optimized_hyperparameters("survey_generation"),
-                metadata={
-                    'golden_examples_count': len(golden_examples) if golden_examples else 0,
-                    'methodology_blocks_count': len(methodology_blocks) if methodology_blocks else 0,
-                    'custom_rules_count': len(custom_rules.get('rules', [])) if custom_rules else 0,
-                    'context_keys': list(context.keys()) if context else [],
-                    'custom_prompt_used': bool(system_prompt),
-                },
-                tags=["survey", "generation", self.provider_name, "custom_prompt"],
+                metadata=metadata,
+                tags=["survey", "generation", self.provider_name, "custom_prompt"] + (["regeneration"] if regeneration_mode else []),
             ) as audit_context:
                 try:
                     generation_result = await self._generate_survey_with_streaming(
@@ -428,6 +446,28 @@ class GenerationService:
                 extra={"context_keys": list(context.keys()) if context else []},
             )
 
+            # Check if this is a regeneration
+            regeneration_mode = context.get('regeneration_mode', False)
+            metadata = {
+                'golden_examples_count': len(golden_examples) if golden_examples else 0,
+                'methodology_blocks_count': len(methodology_blocks) if methodology_blocks else 0,
+                'custom_rules_count': len(custom_rules.get('rules', [])) if custom_rules else 0,
+                'regeneration_mode': regeneration_mode,
+            }
+            
+            # Add regeneration-specific metadata
+            if regeneration_mode:
+                metadata['parent_survey_id'] = str(context.get('parent_survey_id')) if context.get('parent_survey_id') else None
+                metadata['regeneration_type'] = context.get('regeneration_type')
+                metadata['focus_on_annotated_areas'] = context.get('focus_on_annotated_areas', True)
+                if context.get('annotation_feedback_summary'):
+                    feedback = context.get('annotation_feedback_summary', {})
+                    metadata['annotation_feedback'] = {
+                        'question_feedback_count': feedback.get('question_feedback', {}).get('total_count', 0),
+                        'section_feedback_count': feedback.get('section_feedback', {}).get('total_count', 0),
+                        'survey_feedback_count': feedback.get('survey_feedback', {}).get('total_count', 0),
+                    }
+            
             async with LLMAuditContext(
                 audit_service=audit_service,
                 interaction_id=interaction_id,
@@ -440,13 +480,8 @@ class GenerationService:
                 parent_survey_id=context.get('audit_survey_id'),
                 parent_rfq_id=context.get('rfq_id'),
                 hyperparameters=get_json_optimized_hyperparameters("survey_generation"),
-                metadata={
-                    'golden_examples_count': len(golden_examples) if golden_examples else 0,
-                    'methodology_blocks_count': len(methodology_blocks) if methodology_blocks else 0,
-                    'custom_rules_count': len(custom_rules.get('rules', [])) if custom_rules else 0,
-                    'context_keys': list(context.keys()) if context else [],
-                },
-                tags=["survey", "generation", self.provider_name],
+                metadata=metadata,
+                tags=["survey", "generation", self.provider_name] + (["regeneration"] if regeneration_mode else []),
             ) as audit_context:
                 try:
                     generation_result = await self._generate_survey_with_streaming(prompt)

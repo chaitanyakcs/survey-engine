@@ -317,6 +317,90 @@ class APIService {
     }
   }
 
+  async regenerateSurvey(
+    surveyId: string,
+    options: {
+      includeAnnotations?: boolean;
+      versionNotes?: string;
+      targetSections?: string[];
+      focusOnAnnotatedAreas?: boolean;
+      regenerationMode?: string;
+    } = {}
+  ): Promise<{ survey_id: string; workflow_id: string; version: number; message: string }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/survey/${surveyId}/regenerate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          include_annotations: options.includeAnnotations ?? true,
+          version_notes: options.versionNotes,
+          target_sections: options.targetSections,
+          focus_on_annotated_areas: options.focusOnAnnotatedAreas ?? true,
+          regeneration_mode: options.regenerationMode ?? 'surgical'
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to regenerate survey: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      return {
+        survey_id: result.survey_id,
+        workflow_id: result.workflow_id,
+        version: result.version,
+        message: result.message
+      };
+    } catch (error) {
+      console.error('❌ [API] Failed to regenerate survey:', error);
+      throw error;
+    }
+  }
+
+  async getAnnotationFeedbackPreview(surveyId: string): Promise<any> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/survey/${surveyId}/annotation-feedback-preview`);
+      if (!response.ok) {
+        throw new Error(`Failed to get annotation feedback preview: ${response.statusText}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('❌ [API] Failed to get annotation feedback preview:', error);
+      throw error;
+    }
+  }
+
+  async getSurveyVersions(surveyId: string): Promise<any[]> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/survey/${surveyId}/versions`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch survey versions: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('❌ [API] Failed to fetch survey versions:', error);
+      throw error;
+    }
+  }
+
+  async setCurrentVersion(surveyId: string): Promise<void> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/survey/${surveyId}/set-current`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to set current version: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error('❌ [API] Failed to set current version:', error);
+      throw error;
+    }
+  }
+
 }
 
 export const apiService = new APIService();

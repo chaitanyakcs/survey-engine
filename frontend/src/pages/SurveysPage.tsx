@@ -440,12 +440,12 @@ export const SurveysPage: React.FC = () => {
 
   const handleSelectAll = () => {
     // Filter out reference surveys from selection
-    const selectableSurveys = filteredSurveys.filter(s => s.status !== 'reference');
+    const selectableSurveys = filteredSurveys.filter(({ survey }) => survey.status !== 'reference');
     
     if (selectedSurveys.size === selectableSurveys.length) {
       setSelectedSurveys(new Set());
     } else {
-      setSelectedSurveys(new Set(selectableSurveys.map(s => s.id)));
+      setSelectedSurveys(new Set(selectableSurveys.map(({ survey, currentVersionId }) => currentVersionId || survey.id)));
     }
   };
 
@@ -475,7 +475,59 @@ export const SurveysPage: React.FC = () => {
     window.history.replaceState({}, '', url.toString());
   };
 
-  const filteredSurveys = surveys.filter(survey => {
+  // Group surveys by rfq_id (surveys with the same rfq_id are versions of each other)
+  const groupedSurveys = React.useMemo(() => {
+    const groups = new Map<string, {
+      survey: SurveyListItem;
+      versionCount: number;
+      currentVersionId: string | null;
+    }>();
+
+    // First pass: collect all surveys by their rfq_id
+    const surveysByGroup = new Map<string, SurveyListItem[]>();
+    
+    surveys.forEach(survey => {
+      // Group by rfq_id if available, otherwise fall back to parent_survey_id chain or id
+      // For reference surveys (no rfq_id), use id as group key
+      let groupKey: string;
+      
+      if (survey.rfq_id) {
+        // Group by rfq_id - all surveys for the same RFQ are versions
+        groupKey = survey.rfq_id;
+      } else if (survey.parent_survey_id) {
+        // If no rfq_id but has parent, trace back to find root (for reference surveys)
+        // For now, use parent_survey_id as group key
+        groupKey = survey.parent_survey_id;
+      } else {
+        // No rfq_id and no parent - standalone survey (reference or original)
+        groupKey = survey.id;
+      }
+      
+      if (!surveysByGroup.has(groupKey)) {
+        surveysByGroup.set(groupKey, []);
+      }
+      surveysByGroup.get(groupKey)!.push(survey);
+    });
+
+    // Second pass: for each group, find the current version and create the grouped entry
+    surveysByGroup.forEach((groupSurveys, groupKey) => {
+      // Find the current version for this group, or use the latest one
+      const currentVersion = groupSurveys.find(s => s.is_current) || 
+                            groupSurveys.sort((a, b) => 
+                              new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+                            )[0];
+      
+      groups.set(groupKey, {
+        survey: currentVersion,
+        versionCount: groupSurveys.length,
+        currentVersionId: currentVersion?.id || null
+      });
+    });
+
+    return Array.from(groups.values());
+  }, [surveys]);
+
+  const filteredSurveys = groupedSurveys.filter(({ survey }) => {
     const matchesSearch = survey.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          survey.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'all' || survey.status === statusFilter;
@@ -483,6 +535,7 @@ export const SurveysPage: React.FC = () => {
   });
   
   console.log('🔍 [Render] Surveys count:', surveys.length);
+  console.log('🔍 [Render] Grouped surveys count:', groupedSurveys.length);
   console.log('🔍 [Render] Filtered surveys count:', filteredSurveys.length);
   console.log('🔍 [Render] First filtered survey (if any):', filteredSurveys[0]);
 
@@ -762,15 +815,15 @@ export const SurveysPage: React.FC = () => {
                     </div>
                   )}
                   
-                  {filteredSurveys.map((survey) => (
+                  {filteredSurveys.map(({ survey, versionCount, currentVersionId }) => (
                     <div
                       key={survey.id}
                       className={`bg-white rounded-xl border-2 transition-all duration-200 cursor-pointer ${
-                        selectedSurveys.has(survey.id)
+                        selectedSurveys.has(currentVersionId || survey.id)
                           ? 'border-blue-500 bg-blue-50'
                           : 'border-gray-200 hover:border-gray-300 hover:shadow-md'
                       }`}
-                      onClick={() => handleSurveySelect(survey.id)}
+                      onClick={() => handleSurveySelect(currentVersionId || survey.id)}
                     >
                       <div className="p-6">
                         <div className="flex items-center space-x-4">
@@ -792,11 +845,11 @@ export const SurveysPage: React.FC = () => {
                                 </div>
                               ) : (
                                 <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                                  selectedSurveys.has(survey.id)
+                                  selectedSurveys.has(currentVersionId || survey.id)
                                     ? 'bg-blue-600 border-blue-600'
                                     : 'border-gray-300'
                                 }`}>
-                                  {selectedSurveys.has(survey.id) && (
+                                  {selectedSurveys.has(currentVersionId || survey.id) && (
                                     <CheckIcon className="w-3 h-3 text-white" />
                                   )}
                                 </div>
@@ -833,6 +886,13 @@ export const SurveysPage: React.FC = () => {
                                     }`}>
                                       {survey.status}
                                     </span>
+                                    
+                                    {/* Version Count Badge */}
+                                    {versionCount > 1 && (
+                                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                                        {versionCount} {versionCount === 1 ? 'version' : 'versions'}
+                                      </span>
+                                    )}
                                     
                                     {/* Generation Indicator */}
                                     {(() => {
@@ -872,8 +932,8 @@ export const SurveysPage: React.FC = () => {
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       console.log('🖱️ [Click] View button clicked for survey:', survey);
-                                      console.log('🖱️ [Click] Survey ID:', survey?.id);
-                                      window.location.href = `/surveys/${survey.id}`;
+                                      console.log('🖱️ [Click] Survey ID:', currentVersionId || survey?.id);
+                                      window.location.href = `/surveys/${currentVersionId || survey.id}`;
                                     }}
                                     className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                                     title="View Survey"
@@ -887,8 +947,8 @@ export const SurveysPage: React.FC = () => {
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       console.log('🖱️ [Click] Edit button clicked for survey:', survey);
-                                      console.log('🖱️ [Click] Survey ID:', survey?.id);
-                                      window.location.href = `/surveys/${survey.id}/edit`;
+                                      console.log('🖱️ [Click] Survey ID:', currentVersionId || survey?.id);
+                                      window.location.href = `/surveys/${currentVersionId || survey.id}/edit`;
                                     }}
                                     className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                                     title="Edit Survey"

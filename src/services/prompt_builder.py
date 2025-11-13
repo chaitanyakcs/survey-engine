@@ -2403,6 +2403,20 @@ class PromptBuilder:
         # MODULE 2: Inputs - Background and Context
         inputs_module = InputsModule.build(context, rfq_text, db_session=self.db_session)
         
+        # Check for regeneration mode and add regeneration-specific context
+        regeneration_mode = context.get("regeneration_mode", False)
+        if regeneration_mode:
+            # Add regeneration context to inputs module
+            regeneration_section = self._build_regeneration_context_section(context)
+            if regeneration_section:
+                logger.info(f"🔄 [PromptBuilder] Adding regeneration section to inputs module: {regeneration_section.title}")
+                inputs_module.sections.append(regeneration_section)
+                logger.info(f"🔄 [PromptBuilder] Inputs module now has {len(inputs_module.sections)} sections")
+            else:
+                logger.warning(f"⚠️ [PromptBuilder] Regeneration mode enabled but regeneration section is None")
+        else:
+            logger.info(f"ℹ️ [PromptBuilder] Not in regeneration mode (regeneration_mode={regeneration_mode})")
+        
         # MODULE 3: Instructions - How to Generate (MOST CRITICAL)
         # Get annotation insights if available
         annotation_insights = None
@@ -3174,3 +3188,367 @@ class PromptBuilder:
         except Exception as e:
             logger.warning(f"⚠️ [PromptBuilder] Failed to build annotation insights section: {e}")
             return None
+    
+    def _build_regeneration_context_section(self, context: Dict[str, Any]) -> Optional[PromptSection]:
+        """
+        Build regeneration-specific context section for improved survey generation
+        Optimized for surgical mode to minimize prompt size
+        """
+        try:
+            from src.workflows.state import RegenerationMode
+            
+            previous_survey_encoded = context.get("previous_survey_encoded")
+            annotation_feedback_summary = context.get("annotation_feedback_summary")
+            focus_on_annotated_areas = context.get("focus_on_annotated_areas", True)
+            regeneration_mode_type = context.get("regeneration_mode_type")
+            surgical_analysis = context.get("surgical_analysis")
+            
+            if not previous_survey_encoded and not annotation_feedback_summary:
+                return None
+            
+            # SURGICAL/TARGETED MODE: Optimized prompt with only necessary context
+            if regeneration_mode_type in (RegenerationMode.SURGICAL, RegenerationMode.TARGETED) and surgical_analysis:
+                return self._build_surgical_regeneration_section(
+                    context, surgical_analysis, previous_survey_encoded, annotation_feedback_summary
+                )
+            
+            # FULL MODE: Original comprehensive approach
+            content = [
+                "## 🔄 REGENERATION MODE: IMPROVING PREVIOUS VERSION",
+                "",
+                "You are regenerating an improved version of a previously generated survey.",
+                "Use the feedback and previous structure below to create a better version.",
+                ""
+            ]
+            
+            # Previous Version Context - Show actual questions for sections with feedback
+            if previous_survey_encoded:
+                # Identify which sections have feedback
+                sections_with_feedback = set()
+                if annotation_feedback_summary:
+                    for sf in annotation_feedback_summary.get('section_feedback', {}).get('sections_with_feedback', []):
+                        sections_with_feedback.add(sf.get('section_id'))
+                    for qf in annotation_feedback_summary.get('question_feedback', {}).get('questions_with_feedback', []):
+                        # Try to infer section from question context if available
+                        pass  # Will show all sections for now
+                
+                content.extend([
+                    "### 📋 PREVIOUS VERSION STRUCTURE:",
+                    "",
+                    f"**Summary**: {previous_survey_encoded.get('summary', 'N/A')}",
+                    f"**Total Questions**: {previous_survey_encoded.get('total_questions', 0)}",
+                    f"**Methodology**: {', '.join(previous_survey_encoded.get('methodology_tags', []))}",
+                    "",
+                    "**IMPORTANT**: Review the questions below to understand what exists and what might be missing.",
+                    ""
+                ])
+                
+                # Show full question lists for sections with feedback, summaries for others
+                for section in previous_survey_encoded.get('sections', [])[:10]:
+                    section_id = section.get('id')
+                    section_title = section.get('title', 'Section')
+                    has_feedback = section_id in sections_with_feedback or any(
+                        sf.get('section_id') == section_id 
+                        for sf in annotation_feedback_summary.get('section_feedback', {}).get('sections_with_feedback', [])
+                    ) if annotation_feedback_summary else False
+                    
+                    content.append(f"#### {section_title} ({section.get('question_count', 0)} questions):")
+                    
+                    # If this section has feedback, show ALL questions so LLM can see what's missing
+                    if has_feedback and section.get('key_questions'):
+                        if section.get('has_full_questions'):
+                            content.append("**ALL current questions in this section (review to see what's missing):**")
+                        else:
+                            content.append("**Current questions in this section:**")
+                        for i, q in enumerate(section.get('key_questions', []), 1):
+                            content.append(f"  {i}. {q}")
+                        content.append("")
+                    else:
+                        # Just show summary for sections without feedback
+                        if section.get('key_questions'):
+                            content.append("**Sample questions:**")
+                            for q in section.get('key_questions', [])[:2]:
+                                content.append(f"  - {q}")
+                        content.append("")
+                
+                content.append("")
+            
+            # Improvement Requirements from Annotations
+            if annotation_feedback_summary:
+                content.extend([
+                    "### ⚠️ IMPROVEMENT REQUIREMENTS (PRIORITY):",
+                    "",
+                    "The following feedback was collected from annotations on previous versions.",
+                    "**YOU MUST ADDRESS THESE ISSUES** in your regenerated survey:",
+                    ""
+                ])
+                
+                # Question-level improvements
+                question_feedback = annotation_feedback_summary.get('question_feedback', {})
+                if question_feedback.get('questions_with_feedback'):
+                    content.extend([
+                        "#### Question-Level Improvements:",
+                        ""
+                    ])
+                    for qf in question_feedback.get('questions_with_feedback', [])[:15]:
+                        comments = qf.get('comments', [])
+                        if comments:
+                            latest = max(comments, key=lambda c: c.get('version', 0) or 0)
+                            quality = latest.get('quality', 3)
+                            comment = latest.get('comment', '')
+                            if comment and quality < 4:
+                                priority = "🔴 HIGH PRIORITY" if quality < 3 else "🟡 MEDIUM PRIORITY"
+                                content.append(f"{priority} - Question {qf.get('question_id', '?')}: {comment[:200]}")
+                    content.append("")
+                
+                # Section-level improvements - SHOW ALL, not just quality < 4
+                section_feedback = annotation_feedback_summary.get('section_feedback', {})
+                if section_feedback.get('sections_with_feedback'):
+                    content.extend([
+                        "#### Section-Level Improvements:",
+                        "",
+                        "**CRITICAL**: These are expert comments on specific sections that MUST be addressed:",
+                        ""
+                    ])
+                    for sf in section_feedback.get('sections_with_feedback', [])[:10]:
+                        comments = sf.get('comments', [])
+                        if comments:
+                            latest = max(comments, key=lambda c: c.get('version', 0) or 0)
+                            quality = latest.get('quality', 3)
+                            comment = latest.get('comment', '')
+                            if comment:  # Show ALL comments, not just quality < 4
+                                priority = "🔴 HIGH PRIORITY" if quality < 3 else "🟡 MEDIUM PRIORITY" if quality < 4 else "💡 SUGGESTION"
+                                # Map section ID to section name for clarity
+                                section_name = {
+                                    1: "Sample Plan",
+                                    2: "Screener",
+                                    3: "Brand/Product Awareness",
+                                    4: "Concept Exposure",
+                                    5: "Methodology",
+                                    6: "Additional Questions",
+                                    7: "Programmer Instructions"
+                                }.get(sf.get('section_id'), f"Section {sf.get('section_id')}")
+                                
+                                content.append(f"{priority} - {section_name} (Section {sf.get('section_id')}): {comment}")
+                    content.append("")
+                
+                # Survey-level improvements
+                survey_feedback = annotation_feedback_summary.get('survey_feedback', {})
+                if survey_feedback.get('overall_comments'):
+                    content.extend([
+                        "#### Survey-Level Improvements:",
+                        ""
+                    ])
+                    for sf in survey_feedback.get('overall_comments', [])[:5]:
+                        comment = sf.get('comment', '')
+                        version = sf.get('version', '?')
+                        if comment:
+                            content.append(f"Overall feedback (v{version}): {comment[:300]}")
+                    content.append("")
+            
+            content.extend([
+                "### 🎯 REGENERATION INSTRUCTIONS:",
+                "",
+                "**Follow these general principles when addressing feedback:**",
+                "",
+                "1. **Interpret Feedback Literally**: Read the feedback comment carefully and implement exactly what it requests",
+                "   - If feedback says 'add question on X', add a question about X",
+                "   - If feedback says 'should have Y', ensure Y is included",
+                "   - If feedback mentions a specific topic (ethnicity, demographics, etc.), add appropriate questions on that topic",
+                "",
+                "2. **Compare with Previous Version**: Review the 'Previous Version Structure' above to see what currently exists",
+                "   - If a section has feedback but you don't see the requested content in the current questions, ADD it",
+                "   - Use the existing question style and format as a reference",
+                "",
+                "3. **Maintain Quality Standards**:",
+                "   - Fix or improve questions/sections with low quality ratings (quality < 3)",
+                "   - Keep questions/sections with high quality ratings (quality >= 4) unchanged",
+                "   - Apply the same research methodology and goals as the previous version",
+                "",
+                "4. **Context Matters**:",
+                "   - Demographic questions (age, gender, ethnicity, income) belong in appropriate sections",
+                "   - Screening questions (eligibility, participation) are different from demographic questions",
+                "   - Match the question type to the feedback intent",
+                ""
+            ])
+            
+            if focus_on_annotated_areas:
+                content.append("6. **Focus on Annotated Areas**: Prioritize improvements in sections/questions that received annotations")
+            
+            return PromptSection(
+                title="2.5 Regeneration Context and Improvement Requirements",
+                content=content,
+                order=2.5,  # Section 2.5 in Inputs Module
+                required=False
+            )
+            
+        except Exception as e:
+            logger.warning(f"⚠️ [PromptBuilder] Failed to build regeneration context section: {e}")
+            return None
+    
+    def _build_surgical_regeneration_section(
+        self, 
+        context: Dict[str, Any],
+        surgical_analysis: Dict[str, Any],
+        previous_survey_encoded: Optional[Dict[str, Any]],
+        annotation_feedback_summary: Optional[Dict[str, Any]]
+    ) -> PromptSection:
+        """
+        Build optimized regeneration section for surgical mode
+        Only includes context for sections being regenerated to minimize prompt size
+        """
+        # Determine mode name for display
+        mode_name = "SURGICAL" if context.get("regeneration_mode_type") == RegenerationMode.SURGICAL else "TARGETED"
+        mode_emoji = "🔬" if context.get("regeneration_mode_type") == RegenerationMode.SURGICAL else "🎯"
+        
+        content = [
+            f"## {mode_emoji} {mode_name} REGENERATION MODE",
+            "",
+            f"You are regenerating {len(surgical_analysis['sections_to_regenerate'])} specific sections that need improvement.",
+            f"The other {len(surgical_analysis['sections_to_preserve'])} sections are high quality and will be PRESERVED (not changed).",
+            "",
+            f"**Regeneration scope**: {surgical_analysis['regeneration_percentage']:.0f}% of survey",
+            ""
+        ]
+        
+        # Section mapping for readable names
+        section_mapping = {
+            1: "Sample Plan",
+            2: "Screener",
+            3: "Brand/Product Awareness",
+            4: "Concept Exposure",
+            5: "Methodology",
+            6: "Additional Questions",
+            7: "Programmer Instructions"
+        }
+        
+        # Show rationale for each section being regenerated
+        content.extend([
+            "### 📋 Sections to Regenerate:",
+            ""
+        ])
+        
+        for section_id in surgical_analysis['sections_to_regenerate']:
+            section_name = section_mapping.get(section_id, f"Section {section_id}")
+            rationale = surgical_analysis['regeneration_rationale'].get(section_id, [])
+            
+            content.append(f"**{section_name} (Section {section_id})**:")
+            if rationale:
+                for reason in rationale[:3]:  # Limit to 3 reasons per section
+                    content.append(f"  - {reason}")
+            else:
+                content.append("  - Needs improvement based on feedback")
+            content.append("")
+        
+        # Show which sections to preserve (brief list)
+        content.extend([
+            "### ✅ Sections to Preserve (high quality, do not regenerate):",
+            ""
+        ])
+        
+        preserved_names = [
+            section_mapping.get(sid, f"Section {sid}") 
+            for sid in surgical_analysis['sections_to_preserve']
+        ]
+        content.append(", ".join(preserved_names))
+        content.append("")
+        
+        # Only show TARGETED sections' questions from previous survey
+        if previous_survey_encoded:
+            content.extend([
+                "### 📄 Previous Version (sections being regenerated only):",
+                "",
+                "**Review these to understand what exists and what's missing:**",
+                ""
+            ])
+            
+            for section in previous_survey_encoded.get('sections', []):
+                section_id = section.get('id')
+                
+                # Only show sections being regenerated
+                if section_id in surgical_analysis['sections_to_regenerate']:
+                    section_title = section.get('title', f'Section {section_id}')
+                    content.append(f"**{section_title}** ({section.get('question_count', 0)} questions):")
+                    
+                    # Show questions
+                    key_questions = section.get('key_questions', [])
+                    if key_questions:
+                        for i, q in enumerate(key_questions, 1):
+                            content.append(f"  {i}. {q}")
+                    else:
+                        content.append("  (No questions in previous version)")
+                    content.append("")
+        
+        # Show specific feedback for sections being regenerated
+        if annotation_feedback_summary:
+            content.extend([
+                "### ⚠️ SPECIFIC IMPROVEMENTS REQUIRED:",
+                "",
+                "**Address these issues in the regenerated sections:**",
+                ""
+            ])
+            
+            # Section-level feedback (only for sections being regenerated)
+            section_feedback = annotation_feedback_summary.get('section_feedback', {})
+            sections_with_feedback = section_feedback.get('sections_with_feedback', [])
+            
+            regenerating_section_ids = set(surgical_analysis['sections_to_regenerate'])
+            
+            for sf in sections_with_feedback:
+                section_id = sf.get('section_id')
+                
+                # Only show feedback for sections being regenerated
+                if section_id in regenerating_section_ids:
+                    section_name = section_mapping.get(section_id, f"Section {section_id}")
+                    comments = sf.get('comments', [])
+                    
+                    if comments:
+                        latest = max(comments, key=lambda c: c.get('version', 0) or 0)
+                        comment = latest.get('comment', '')
+                        quality = latest.get('quality', 3)
+                        
+                        if comment:
+                            priority = "🔴 HIGH PRIORITY" if quality < 3 else "🟡 MEDIUM PRIORITY" if quality < 4 else "💡 SUGGESTION"
+                            content.append(f"{priority} - **{section_name}**: {comment}")
+            
+            # Question-level feedback (only for questions in sections being regenerated)
+            question_feedback = annotation_feedback_summary.get('question_feedback', {})
+            questions_with_feedback = question_feedback.get('questions_with_feedback', [])
+            
+            for qf in questions_with_feedback[:10]:  # Limit to 10 questions
+                question_id = qf.get('question_id')
+                comments = qf.get('comments', [])
+                
+                if comments:
+                    latest = max(comments, key=lambda c: c.get('version', 0) or 0)
+                    comment = latest.get('comment', '')
+                    quality = latest.get('quality', 3)
+                    
+                    if comment and quality < 4:
+                        priority = "🔴 HIGH PRIORITY" if quality < 3 else "🟡 MEDIUM PRIORITY"
+                        content.append(f"{priority} - Question {question_id}: {comment[:150]}")
+            
+            content.append("")
+        
+        # Regeneration instructions
+        content.extend([
+            f"### 🎯 {mode_name} REGENERATION INSTRUCTIONS:",
+            "",
+            "1. **ONLY regenerate the sections listed above** - the other sections will be preserved as-is",
+            "2. **Address all feedback** listed in the improvement requirements",
+            "3. **Match the style and quality** of the preserved sections",
+            "4. **Use the same question numbering format** (q1, q2, q3, etc.) for consistency",
+            "5. **If feedback says 'add X', make sure X is included** in your regenerated sections",
+            "",
+            "**CRITICAL**: Your output should ONLY contain the sections being regenerated. The preserved sections will be merged in automatically.",
+            ""
+        ])
+        
+        logger.info(f"🔬 [PromptBuilder] Built {mode_name.lower()} regeneration section: {len(surgical_analysis['sections_to_regenerate'])} sections to regenerate")
+        
+        return PromptSection(
+            title="2.5 Regeneration Context and Improvement Requirements",
+            content=content,
+            order=2.5,
+            required=False
+        )

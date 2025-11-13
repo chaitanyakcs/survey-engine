@@ -1,6 +1,14 @@
 from typing import Dict, List, Any, Optional
 from pydantic import BaseModel
 from uuid import UUID
+from enum import Enum
+
+
+class RegenerationMode(str, Enum):
+    """Enum for different regeneration modes"""
+    FULL = "full"  # Regenerate entire survey
+    SURGICAL = "surgical"  # Only regenerate sections with feedback
+    TARGETED = "targeted"  # Specific sections user requests
 
 
 class SurveyGenerationState(BaseModel):
@@ -68,6 +76,18 @@ class SurveyGenerationState(BaseModel):
     review_id: Optional[int] = None
 
     error_message: Optional[str] = None
+    
+    # Regeneration mode fields
+    parent_survey_id: Optional[UUID] = None
+    regeneration_mode: bool = False
+    regeneration_type: Optional[str] = None  # "full" or "sections" (deprecated, use regeneration_mode_type)
+    regeneration_mode_type: Optional[RegenerationMode] = None  # Enum for regeneration mode (FULL, SURGICAL, TARGETED)
+    target_sections: Optional[List[str]] = None  # For section-specific regeneration
+    previous_survey_encoded: Optional[Dict[str, Any]] = None  # Encoded/compressed previous survey
+    preserve_sections: Optional[List[str]] = None  # Sections to preserve in section-specific mode
+    annotation_feedback_summary: Optional[Dict[str, Any]] = None  # Structured feedback from all previous versions
+    focus_on_annotated_areas: bool = True  # Whether to prioritize annotated areas
+    surgical_analysis: Optional[Dict[str, Any]] = None  # Analysis of which sections need regeneration (surgical mode)
     
     class Config:
         arbitrary_types_allowed = True

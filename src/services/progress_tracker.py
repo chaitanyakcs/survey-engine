@@ -17,6 +17,12 @@ class ProgressTracker:
     
     # Define progress ranges for each workflow step
     PROGRESS_RANGES = {
+        # Regeneration prep steps (happen before workflow starts)
+        "preparing_regeneration": (0, 5),
+        "collecting_feedback": (5, 10),
+        "analyzing_feedback": (10, 15),  # Only for surgical mode
+        "encoding_previous_survey": (15, 20),
+        
         # Main survey generation workflow
         "initializing_workflow": (0, 10),
         "building_context": (10, 25),
@@ -142,6 +148,12 @@ class ProgressTracker:
     def get_progress_message(self, step: str, substep: Optional[str] = None) -> str:
         """Get appropriate message for the current step."""
         messages = {
+            # Regeneration prep steps
+            "preparing_regeneration": "Preparing regeneration...",
+            "collecting_feedback": "Collecting annotation feedback...",
+            "analyzing_feedback": "Analyzing feedback for surgical regeneration...",
+            "encoding_previous_survey": "Encoding previous survey structure...",
+            
             # Main survey generation workflow
             "initializing_workflow": "Starting survey generation workflow...",
             "building_context": "Analyzing requirements and gathering templates",

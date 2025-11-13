@@ -53,6 +53,11 @@ class SurveyListItem(BaseModel):
     question_count: int
     instruction_count: int
     annotation: Optional[Dict[str, Any]] = None
+    version: Optional[int] = None
+    parent_survey_id: Optional[str] = None
+    is_current: Optional[bool] = None
+    version_notes: Optional[str] = None
+    rfq_id: Optional[str] = None  # Add rfq_id for grouping versions
 
 
 class ValidationRequest(BaseModel):
@@ -62,6 +67,31 @@ class ValidationRequest(BaseModel):
 
 class QuestionReorderRequest(BaseModel):
     question_order: List[str]
+
+
+class RegenerateSurveyRequest(BaseModel):
+    include_annotations: bool = True
+    version_notes: Optional[str] = None
+    target_sections: Optional[List[str]] = None
+    focus_on_annotated_areas: bool = True
+    regeneration_mode: str = "surgical"  # "surgical" | "full" | "targeted"
+
+
+class RegenerateSurveyResponse(BaseModel):
+    survey_id: str
+    workflow_id: str
+    version: int
+    message: str
+
+
+class SurveyVersionResponse(BaseModel):
+    id: str
+    version: int
+    is_current: bool
+    status: str
+    created_at: str
+    version_notes: Optional[str] = None
+    parent_survey_id: Optional[str] = None
 
 
 @router.get("/list", response_model=list[SurveyListItem])
@@ -139,7 +169,12 @@ async def list_surveys(
                 estimated_time=metadata.get('estimated_time'),
                 question_count=question_count,
                 instruction_count=instruction_count,
-                annotation=None  # Survey model doesn't have annotation field
+                annotation=None,  # Survey model doesn't have annotation field
+                version=getattr(survey, 'version', None),
+                parent_survey_id=str(survey.parent_survey_id) if getattr(survey, 'parent_survey_id', None) else None,
+                is_current=getattr(survey, 'is_current', None),
+                version_notes=getattr(survey, 'version_notes', None),
+                rfq_id=str(survey.rfq_id) if survey.rfq_id else None
             ))
         
         return survey_list
@@ -228,6 +263,172 @@ async def get_survey(
     except Exception as e:
         logger.error(f"❌ [Survey API] Unexpected error retrieving survey {survey_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.post("/{survey_id}/regenerate", response_model=RegenerateSurveyResponse)
+async def regenerate_survey(
+    survey_id: UUID,
+    request: RegenerateSurveyRequest,
+    db: Session = Depends(get_db)
+) -> RegenerateSurveyResponse:
+    """
+    Regenerate a survey with annotation feedback from all previous versions
+    """
+    try:
+        from src.services.workflow_service import WorkflowService
+        from src.main import manager
+        
+        # Initialize workflow service
+        workflow_service = WorkflowService(db, connection_manager=manager)
+        
+        # Regenerate survey
+        result = await workflow_service.regenerate_survey(
+            parent_survey_id=str(survey_id),
+            include_annotations=request.include_annotations,
+            version_notes=request.version_notes,
+            target_sections=request.target_sections,
+            focus_on_annotated_areas=request.focus_on_annotated_areas,
+            regeneration_mode=request.regeneration_mode
+        )
+        
+        # Get the new survey to get version number
+        from src.services.version_service import VersionService
+        version_service = VersionService(db)
+        new_survey = db.query(Survey).filter(Survey.id == UUID(result.survey_id)).first()
+        version = new_survey.version if new_survey else 1
+        
+        # Workflow ID follows the pattern: survey-regenerate-{survey_id}
+        workflow_id = f"survey-regenerate-{result.survey_id}"
+        
+        return RegenerateSurveyResponse(
+            survey_id=result.survey_id,
+            workflow_id=workflow_id,
+            version=version,
+            message=f"Survey regeneration started. New version {version} is being generated."
+        )
+        
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"❌ [Survey API] Failed to regenerate survey {survey_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to regenerate survey: {str(e)}")
+
+
+@router.get("/{survey_id}/versions", response_model=List[SurveyVersionResponse])
+async def get_survey_versions(
+    survey_id: UUID,
+    db: Session = Depends(get_db)
+) -> List[SurveyVersionResponse]:
+    """
+    Get all versions for a survey (version history)
+    """
+    try:
+        from src.services.version_service import VersionService
+        
+        version_service = VersionService(db)
+        versions = version_service.get_version_history(survey_id)
+        
+        version_list = []
+        for survey in versions:
+            version_list.append(SurveyVersionResponse(
+                id=str(survey.id),
+                version=survey.version,
+                is_current=survey.is_current,
+                status=survey.status,
+                created_at=survey.created_at.isoformat() if survey.created_at else '',
+                version_notes=survey.version_notes,
+                parent_survey_id=str(survey.parent_survey_id) if survey.parent_survey_id else None
+            ))
+        
+        return version_list
+        
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"❌ [Survey API] Failed to get versions for survey {survey_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get survey versions: {str(e)}")
+
+
+@router.get("/{survey_id}/annotation-feedback-preview")
+async def get_annotation_feedback_preview(
+    survey_id: UUID,
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Debug endpoint to preview annotation feedback that would be collected for regeneration
+    Also returns the regeneration prompt section that will be added to the prompt
+    """
+    try:
+        from src.services.annotation_feedback_service import AnnotationFeedbackService
+        from src.services.survey_encoder_service import SurveyEncoderService
+        from src.services.prompt_builder import PromptBuilder
+        
+        # Get the survey's RFQ
+        survey = db.query(Survey).filter(Survey.id == survey_id).first()
+        if not survey:
+            raise HTTPException(status_code=404, detail="Survey not found")
+        
+        annotation_service = AnnotationFeedbackService(db)
+        feedback_digest = await annotation_service.build_feedback_digest(
+            rfq_id=survey.rfq_id,
+            section_ids=None,
+            prioritize_annotated=True
+        )
+        
+        # Build the regeneration prompt section text
+        prompt_text = None
+        try:
+            # Encode the parent survey structure (use current survey as parent for preview)
+            previous_survey_encoded = None
+            if survey.final_output:
+                encoder_service = SurveyEncoderService()
+                
+                # Identify sections with feedback to include full questions
+                sections_with_feedback = []
+                if feedback_digest:
+                    for sf in feedback_digest.get('section_feedback', {}).get('sections_with_feedback', []):
+                        section_id = sf.get('section_id')
+                        if section_id is not None:
+                            try:
+                                sections_with_feedback.append(int(section_id))
+                            except (ValueError, TypeError):
+                                sections_with_feedback.append(section_id)
+                
+                previous_survey_encoded = encoder_service.encode_survey_structure(
+                    survey.final_output,
+                    include_full_questions_for_sections=sections_with_feedback if sections_with_feedback else None
+                )
+            
+            # Build the regeneration context section using PromptBuilder
+            if previous_survey_encoded or feedback_digest:
+                prompt_builder = PromptBuilder(db_session=db)
+                context = {
+                    "previous_survey_encoded": previous_survey_encoded,
+                    "annotation_feedback_summary": feedback_digest,
+                    "focus_on_annotated_areas": True,
+                    "regeneration_mode": True
+                }
+                
+                regeneration_section = prompt_builder._build_regeneration_context_section(context)
+                if regeneration_section:
+                    # Format the section content into prompt text
+                    prompt_text = "\n".join(regeneration_section.content)
+                    logger.info(f"✅ [Survey API] Generated regeneration prompt section: {len(prompt_text)} chars")
+        except Exception as e:
+            logger.warning(f"⚠️ [Survey API] Failed to generate regeneration prompt section: {str(e)}")
+            # Continue without prompt text - feedback preview will still work
+        
+        return {
+            "survey_id": str(survey_id),
+            "rfq_id": str(survey.rfq_id),
+            "feedback_collected": feedback_digest,
+            "prompt_text": prompt_text,
+            "message": "This is the feedback and prompt section that would be used for regeneration"
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ [Survey API] Failed to preview annotation feedback: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to preview annotation feedback: {str(e)}")
 
 
 @router.put("/{survey_id}/edit")

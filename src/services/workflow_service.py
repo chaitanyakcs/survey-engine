@@ -7,7 +7,7 @@ from src.services.websocket_client import WebSocketNotificationService
 from src.services.workflow_state_service import WorkflowStateService
 from src.services.progress_tracker import get_progress_tracker, cleanup_progress_tracker
 from src.config import settings
-from typing import Optional
+from typing import Optional, List
 from uuid import uuid4
 from pydantic import BaseModel
 import logging
@@ -434,7 +434,8 @@ class WorkflowService:
         research_goal: Optional[str],
         workflow_id: str,
         survey_id: Optional[str],
-        custom_prompt: Optional[str] = None
+        custom_prompt: Optional[str] = None,
+        initial_state: Optional[SurveyGenerationState] = None
     ) -> WorkflowResult:
         """Execute workflow with circuit breaker protection"""
 
@@ -459,28 +460,37 @@ class WorkflowService:
             raise Exception(f"Database error while finding survey: {str(e)}")
         
         # Initialize workflow state
-        logger.info("🔄 [WorkflowService] Initializing workflow state")
-        # Use provided workflow_id or generate one if not provided
-        if workflow_id is None:
-            workflow_id = f"survey-gen-{survey.id}"
-            logger.info(f"📋 [WorkflowService] Generated workflow_id: {workflow_id}")
+        if initial_state:
+            # Use provided initial_state (e.g., from regeneration)
+            logger.info("🔄 [WorkflowService] Using provided initial_state (regeneration mode)")
+            # Update override fields to ensure consistency
+            initial_state.workflow_id = workflow_id
+            initial_state.survey_id = str(survey.id)
+            logger.info(f"📋 [WorkflowService] Regeneration state: regeneration_mode={initial_state.regeneration_mode}, parent_survey_id={initial_state.parent_survey_id}")
         else:
-            logger.info(f"📋 [WorkflowService] Using provided workflow_id: {workflow_id}")
+            # Create new state for normal generation
+            logger.info("🔄 [WorkflowService] Initializing workflow state")
+            # Use provided workflow_id or generate one if not provided
+            if workflow_id is None:
+                workflow_id = f"survey-gen-{survey.id}"
+                logger.info(f"📋 [WorkflowService] Generated workflow_id: {workflow_id}")
+            else:
+                logger.info(f"📋 [WorkflowService] Using provided workflow_id: {workflow_id}")
+                
+            import time
             
-        import time
-        
-        initial_state = SurveyGenerationState(
-            rfq_id=rfq.id,  # type: ignore
-            rfq_text=description,
-            rfq_title=title,
-            product_category=product_category,
-            target_segment=target_segment,
-            research_goal=research_goal,
-            workflow_id=workflow_id,
-            survey_id=str(survey.id),
-            system_prompt=custom_prompt,  # Custom prompt for survey generation
-            workflow_start_time=time.time()  # Set start time for loop prevention
-        )
+            initial_state = SurveyGenerationState(
+                rfq_id=rfq.id,  # type: ignore
+                rfq_text=description,
+                rfq_title=title,
+                product_category=product_category,
+                target_segment=target_segment,
+                research_goal=research_goal,
+                workflow_id=workflow_id,
+                survey_id=str(survey.id),
+                system_prompt=custom_prompt,  # Custom prompt for survey generation
+                workflow_start_time=time.time()  # Set start time for loop prevention
+            )
         
         if custom_prompt:
             logger.info(f"🎨 [WorkflowService] Using custom prompt for basic RFQ ({len(custom_prompt)} chars)")
@@ -743,6 +753,254 @@ class WorkflowService:
             await self.ws_client.notify_workflow_error(initial_state.workflow_id, str(e))
             
             raise
+    
+    async def regenerate_survey(
+        self,
+        parent_survey_id: str,
+        include_annotations: bool = True,
+        version_notes: Optional[str] = None,
+        target_sections: Optional[List[str]] = None,
+        focus_on_annotated_areas: bool = True,
+        regeneration_mode: str = "surgical"
+    ) -> WorkflowResult:
+        """
+        Regenerate a survey with annotation feedback from all previous versions
+        
+        Args:
+            parent_survey_id: The survey ID to regenerate from
+            include_annotations: Whether to include annotation feedback
+            version_notes: Optional notes about this version
+            target_sections: Optional list of section IDs to regenerate (for section-specific regeneration)
+            focus_on_annotated_areas: Whether to prioritize annotated areas
+            
+        Returns:
+            WorkflowResult with new survey_id and workflow_id
+        """
+        from uuid import UUID
+        from src.services.version_service import VersionService
+        from src.services.annotation_feedback_service import AnnotationFeedbackService
+        from src.services.survey_encoder_service import SurveyEncoderService
+        
+        logger.info(f"🔄 [WorkflowService] Starting survey regeneration for parent_survey_id={parent_survey_id}")
+        
+        # Load parent survey
+        parent_survey = self.db.query(Survey).filter(Survey.id == UUID(parent_survey_id)).first()
+        if not parent_survey:
+            raise ValueError(f"Parent survey not found: {parent_survey_id}")
+        
+        # Get RFQ
+        rfq = self.db.query(RFQ).filter(RFQ.id == parent_survey.rfq_id).first()
+        if not rfq:
+            raise ValueError(f"RFQ not found for survey: {parent_survey_id}")
+        
+        # Get version service
+        version_service = VersionService(self.db)
+        
+        # Get next version number
+        next_version = version_service.increment_version(rfq.id)
+        
+        # Mark previous current version as not current
+        current_version = version_service.get_current_version(rfq.id)
+        if current_version:
+            current_version.is_current = False
+            self.db.commit()
+        
+        # Create new survey record
+        new_survey = Survey(
+            rfq_id=rfq.id,
+            status="draft",
+            version=next_version,
+            parent_survey_id=UUID(str(parent_survey.id)),
+            is_current=True,
+            version_notes=version_notes
+        )
+        self.db.add(new_survey)
+        self.db.commit()
+        self.db.refresh(new_survey)
+        
+        logger.info(f"✅ [WorkflowService] Created new survey version {next_version}: {new_survey.id}")
+        
+        # Generate workflow_id (final) - now we can send progress updates
+        workflow_id = f"survey-regenerate-{new_survey.id}"
+        
+        # Initialize progress tracker and WebSocket client for regeneration prep updates
+        from src.services.progress_tracker import get_progress_tracker
+        from src.services.websocket_client import WebSocketNotificationService
+        
+        progress_tracker = get_progress_tracker(workflow_id)
+        ws_client = None
+        if self.connection_manager:
+            ws_client = WebSocketNotificationService(self.connection_manager)
+        
+        # Send initial progress update: Preparing regeneration
+        try:
+            if ws_client:
+                progress_data = progress_tracker.get_progress_data("preparing_regeneration")
+                logger.info(f"📡 [WorkflowService] Sending progress update: preparing_regeneration for workflow_id={workflow_id}")
+                await ws_client.send_progress_update(workflow_id, progress_data)
+                logger.info(f"✅ [WorkflowService] Progress update sent: preparing_regeneration")
+        except Exception as e:
+            logger.warning(f"⚠️ [WorkflowService] Failed to send preparing_regeneration progress update: {str(e)}")
+        
+        # Send progress update: Collecting feedback
+        try:
+            if ws_client:
+                progress_data = progress_tracker.get_progress_data("collecting_feedback")
+                logger.info(f"📡 [WorkflowService] Sending progress update: collecting_feedback")
+                await ws_client.send_progress_update(workflow_id, progress_data)
+                logger.info(f"✅ [WorkflowService] Progress update sent: collecting_feedback")
+        except Exception as e:
+            logger.warning(f"⚠️ [WorkflowService] Failed to send collecting_feedback progress update: {str(e)}")
+        
+        # Collect annotation feedback if requested
+        annotation_feedback = None
+        if include_annotations:
+            annotation_service = AnnotationFeedbackService(self.db)
+            annotation_feedback = await annotation_service.build_feedback_digest(
+                rfq_id=rfq.id,
+                section_ids=target_sections,
+                prioritize_annotated=focus_on_annotated_areas
+            )
+            logger.info(f"📝 [WorkflowService] Collected annotation feedback: {annotation_feedback.get('question_feedback', {}).get('total_count', 0)} questions, {annotation_feedback.get('section_feedback', {}).get('total_count', 0)} sections")
+            
+            # Log detailed feedback for debugging
+            if annotation_feedback.get('section_feedback', {}).get('sections_with_feedback'):
+                logger.info(f"📝 [WorkflowService] Section feedback details:")
+                for sf in annotation_feedback['section_feedback']['sections_with_feedback'][:5]:
+                    logger.info(f"  - Section {sf.get('section_id')}: {len(sf.get('comments', []))} comments")
+                    for comment in sf.get('comments', [])[:2]:
+                        logger.info(f"    - v{comment.get('version')}: {comment.get('comment', '')[:100]}")
+            
+            logger.info(f"📝 [WorkflowService] Combined digest preview: {annotation_feedback.get('combined_digest', '')[:500]}")
+        
+        # Analyze feedback for surgical mode (determine which sections need regeneration)
+        from src.workflows.state import RegenerationMode
+        
+        regeneration_mode_enum = RegenerationMode.SURGICAL if regeneration_mode == "surgical" else (
+            RegenerationMode.TARGETED if regeneration_mode == "targeted" else RegenerationMode.FULL
+        )
+        
+        surgical_analysis = None
+        if regeneration_mode_enum == RegenerationMode.SURGICAL and annotation_feedback and parent_survey.final_output:
+            # Send progress update: Analyzing feedback (surgical mode only)
+            try:
+                if ws_client:
+                    progress_data = progress_tracker.get_progress_data("analyzing_feedback")
+                    logger.info(f"📡 [WorkflowService] Sending progress update: analyzing_feedback")
+                    await ws_client.send_progress_update(workflow_id, progress_data)
+                    logger.info(f"✅ [WorkflowService] Progress update sent: analyzing_feedback")
+            except Exception as e:
+                logger.warning(f"⚠️ [WorkflowService] Failed to send analyzing_feedback progress update: {str(e)}")
+            
+            from src.services.feedback_analyzer_service import FeedbackAnalyzerService
+            
+            analyzer = FeedbackAnalyzerService()
+            surgical_analysis = analyzer.analyze_feedback_for_surgical_regeneration(
+                annotation_feedback=annotation_feedback,
+                previous_survey=parent_survey.final_output
+            )
+            
+            logger.info(f"🔬 [WorkflowService] Surgical analysis complete:")
+            logger.info(f"  - Total sections: {surgical_analysis['total_sections']}")
+            logger.info(f"  - Sections to regenerate: {surgical_analysis['sections_to_regenerate']} ({surgical_analysis['regeneration_percentage']:.1f}%)")
+            logger.info(f"  - Sections to preserve: {surgical_analysis['sections_to_preserve']} ({100-surgical_analysis['regeneration_percentage']:.1f}%)")
+            
+            # Update target_sections to only include sections that need regeneration
+            if not target_sections:  # Only override if user didn't specify target sections
+                target_sections = [str(sid) for sid in surgical_analysis['sections_to_regenerate']]
+                logger.info(f"  - Updated target_sections for surgical mode: {target_sections}")
+        
+        elif regeneration_mode_enum == RegenerationMode.TARGETED and target_sections and parent_survey.final_output:
+            # For targeted mode, create surgical_analysis from user-selected sections
+            all_sections = parent_survey.final_output.get('sections', [])
+            all_section_ids = {s.get('id') for s in all_sections if s.get('id') is not None}
+            target_section_ids = [int(sid) if sid.isdigit() else sid for sid in target_sections]
+            preserve_section_ids = sorted([sid for sid in all_section_ids if sid not in target_section_ids])
+            
+            surgical_analysis = {
+                "sections_to_regenerate": sorted(target_section_ids),
+                "sections_to_preserve": preserve_section_ids,
+                "regeneration_rationale": {sid: ["User selected for regeneration"] for sid in target_section_ids},
+                "total_sections": len(all_section_ids),
+                "regeneration_percentage": (len(target_section_ids) / len(all_section_ids) * 100) if all_section_ids else 0
+            }
+            
+            logger.info(f"🎯 [WorkflowService] Targeted mode: User selected {len(target_section_ids)} sections to regenerate")
+            logger.info(f"  - Sections to regenerate: {surgical_analysis['sections_to_regenerate']}")
+            logger.info(f"  - Sections to preserve: {surgical_analysis['sections_to_preserve']}")
+        
+        # Send progress update: Encoding previous survey
+        try:
+            if ws_client:
+                progress_data = progress_tracker.get_progress_data("encoding_previous_survey")
+                logger.info(f"📡 [WorkflowService] Sending progress update: encoding_previous_survey")
+                await ws_client.send_progress_update(workflow_id, progress_data)
+                logger.info(f"✅ [WorkflowService] Progress update sent: encoding_previous_survey")
+        except Exception as e:
+            logger.warning(f"⚠️ [WorkflowService] Failed to send encoding_previous_survey progress update: {str(e)}")
+        
+        # Encode previous survey structure
+        # Include full questions for sections that have feedback
+        previous_survey_encoded = None
+        if parent_survey.final_output:
+            encoder_service = SurveyEncoderService()
+            
+            # Identify sections with feedback to include full questions
+            sections_with_feedback = []
+            if annotation_feedback:
+                for sf in annotation_feedback.get('section_feedback', {}).get('sections_with_feedback', []):
+                    section_id = sf.get('section_id')
+                    if section_id is not None:
+                        # Convert to int if it's a number, keep as-is otherwise
+                        try:
+                            sections_with_feedback.append(int(section_id))
+                        except (ValueError, TypeError):
+                            sections_with_feedback.append(section_id)
+            
+            previous_survey_encoded = encoder_service.encode_survey_structure(
+                parent_survey.final_output,
+                include_full_questions_for_sections=sections_with_feedback if sections_with_feedback else None
+            )
+            logger.info(f"📦 [WorkflowService] Encoded previous survey structure: {len(str(previous_survey_encoded))} chars, full questions for {len(sections_with_feedback)} sections")
+        
+        # Initialize workflow state with regeneration mode
+        import time
+        initial_state = SurveyGenerationState(
+            rfq_id=rfq.id,
+            rfq_text=rfq.description or "",
+            rfq_title=rfq.title,
+            product_category=rfq.product_category,
+            target_segment=rfq.target_segment,
+            research_goal=rfq.research_goal,
+            workflow_id=workflow_id,
+            survey_id=str(new_survey.id),
+            workflow_start_time=time.time(),
+            # Regeneration mode fields
+            parent_survey_id=UUID(parent_survey_id),
+            regeneration_mode=True,
+            regeneration_type="sections" if target_sections else "full",  # Deprecated, use regeneration_mode_type
+            regeneration_mode_type=regeneration_mode_enum,  # New enum-based mode
+            target_sections=target_sections,
+            previous_survey_encoded=previous_survey_encoded,
+            annotation_feedback_summary=annotation_feedback,
+            focus_on_annotated_areas=focus_on_annotated_areas,
+            surgical_analysis=surgical_analysis  # Analysis of which sections to regenerate
+        )
+        
+        logger.info(f"🔄 [WorkflowService] Initialized regeneration state: workflow_id={workflow_id}, version={next_version}")
+        
+        # Execute workflow (reuse existing method) - pass initial_state to preserve regeneration fields
+        return await self._execute_workflow_with_circuit_breaker(
+            title=rfq.title,
+            description=rfq.description or "",
+            product_category=rfq.product_category,
+            target_segment=rfq.target_segment,
+            research_goal=rfq.research_goal,
+            workflow_id=workflow_id,
+            survey_id=str(new_survey.id),
+            custom_prompt=None,
+            initial_state=initial_state  # Pass the regeneration state we created
+        )
     
     async def execute_workflow_from_generation(self, initial_state: SurveyGenerationState, workflow_id: str, survey_id: str, ws_client: WebSocketNotificationService):
         """Execute workflow starting from generation step using the same service instances for consistency"""

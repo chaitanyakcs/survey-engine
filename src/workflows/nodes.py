@@ -148,17 +148,74 @@ class GoldenRetrieverNode:
                     )
                     logger.info(f"✅ [GoldenRetriever] Retrieved {len(golden_questions)} golden questions by similarity")
                     
-                    # Retrieve feedback digest from all questions with comments
-                    try:
-                        feedback_digest = await fresh_retrieval_service.get_feedback_digest(
-                            methodology_tags=None,
-                            industry=industry,  # Use industry extracted above
-                            limit=50
-                        )
-                        logger.info(f"✅ [GoldenRetriever] Generated feedback digest from {feedback_digest.get('total_feedback_count', 0)} questions with comments")
-                    except Exception as e:
-                        logger.warning(f"⚠️ [GoldenRetriever] Failed to generate feedback digest: {str(e)}")
-                        feedback_digest = None
+                    # Retrieve feedback digest - different logic for regeneration mode
+                    feedback_digest = None
+                    if state.regeneration_mode and state.rfq_id:
+                        # Regeneration mode: Collect feedback from all previous versions
+                        try:
+                            from src.services.annotation_feedback_service import AnnotationFeedbackService
+                            annotation_service = AnnotationFeedbackService(fresh_db)
+                            
+                            # Build feedback digest from all previous versions
+                            annotation_feedback = await annotation_service.build_feedback_digest(
+                                rfq_id=state.rfq_id,
+                                section_ids=state.target_sections,
+                                prioritize_annotated=state.focus_on_annotated_areas
+                            )
+                            
+                            # Also get general feedback digest from golden questions
+                            general_feedback = await fresh_retrieval_service.get_feedback_digest(
+                                methodology_tags=None,
+                                industry=industry,
+                                limit=50
+                            )
+                            
+                            # Merge annotation feedback with general feedback
+                            if general_feedback:
+                                # Combine the digests
+                                combined_digest = f"{annotation_feedback.get('combined_digest', '')}\n\nGeneral Feedback:\n{general_feedback.get('feedback_digest', '')}"
+                                
+                                feedback_digest = {
+                                    'feedback_digest': combined_digest,
+                                    'questions_with_feedback': annotation_feedback.get('question_feedback', {}).get('questions_with_feedback', []),
+                                    'total_feedback_count': annotation_feedback.get('question_feedback', {}).get('total_count', 0),
+                                    'annotation_feedback': annotation_feedback,  # Store full annotation feedback
+                                    'general_feedback': general_feedback  # Store general feedback for reference
+                                }
+                            else:
+                                # Use only annotation feedback if no general feedback
+                                feedback_digest = {
+                                    'feedback_digest': annotation_feedback.get('combined_digest', ''),
+                                    'questions_with_feedback': annotation_feedback.get('question_feedback', {}).get('questions_with_feedback', []),
+                                    'total_feedback_count': annotation_feedback.get('question_feedback', {}).get('total_count', 0),
+                                    'annotation_feedback': annotation_feedback
+                                }
+                            
+                            logger.info(f"✅ [GoldenRetriever] Generated regeneration feedback digest from {annotation_feedback.get('question_feedback', {}).get('total_count', 0)} questions with comments from all previous versions")
+                        except Exception as e:
+                            logger.warning(f"⚠️ [GoldenRetriever] Failed to generate regeneration feedback digest: {str(e)}")
+                            # Fallback to general feedback digest
+                            try:
+                                feedback_digest = await fresh_retrieval_service.get_feedback_digest(
+                                    methodology_tags=None,
+                                    industry=industry,
+                                    limit=50
+                                )
+                            except Exception as fallback_error:
+                                logger.warning(f"⚠️ [GoldenRetriever] Failed to generate fallback feedback digest: {str(fallback_error)}")
+                                feedback_digest = None
+                    else:
+                        # Regular generation: Use general feedback digest from golden questions
+                        try:
+                            feedback_digest = await fresh_retrieval_service.get_feedback_digest(
+                                methodology_tags=None,
+                                industry=industry,  # Use industry extracted above
+                                limit=50
+                            )
+                            logger.info(f"✅ [GoldenRetriever] Generated feedback digest from {feedback_digest.get('total_feedback_count', 0)} questions with comments")
+                        except Exception as e:
+                            logger.warning(f"⚠️ [GoldenRetriever] Failed to generate feedback digest: {str(e)}")
+                            feedback_digest = None
                 
                 # Tier 2: Methodology blocks
                 methodology_blocks = []
@@ -299,7 +356,12 @@ class ContextBuilderNode:
                 # Generation configuration for prompt optimization
                 "generation_config": generation_config,
                 # Concept files for inclusion in Section 4 (Concept Exposure)
-                "concept_files": concept_files
+                "concept_files": concept_files,
+                # Regeneration mode context
+                "regeneration_mode": state.regeneration_mode,
+                "previous_survey_encoded": state.previous_survey_encoded,
+                "annotation_feedback_summary": state.annotation_feedback_summary,
+                "focus_on_annotated_areas": state.focus_on_annotated_areas
             }
             
             logger.info(f"🔍 [ContextBuilderNode] Final context audit_survey_id: {context.get('audit_survey_id')}")
@@ -1212,4 +1274,105 @@ class ValidatorAgent:
                 "retry_count": state.retry_count,
                 "workflow_should_continue": True,
                 "evaluation_mode": "basic"
+            }
+
+
+class SurgicalMergerNode:
+    """Merges regenerated sections with preserved sections from previous survey"""
+    
+    def __init__(self, db: Session):
+        self.db = db
+        import logging
+        self.logger = logging.getLogger(__name__)
+    
+    async def __call__(self, state: SurveyGenerationState) -> Dict[str, Any]:
+        """
+        Merge regenerated sections with preserved sections in surgical mode
+        For non-surgical modes, return generated survey as-is
+        """
+        try:
+            from src.workflows.state import RegenerationMode
+            
+            # Check if we're in surgical or targeted mode
+            if state.regeneration_mode_type not in (RegenerationMode.SURGICAL, RegenerationMode.TARGETED):
+                self.logger.info("🔬 [SurgicalMerger] Not in surgical/targeted mode, skipping merge")
+                return {"generated_survey": state.generated_survey}
+            
+            if not state.surgical_analysis:
+                self.logger.warning("⚠️ [SurgicalMerger] Surgical mode but no analysis available, skipping merge")
+                return {"generated_survey": state.generated_survey}
+            
+            self.logger.info("🔬 [SurgicalMerger] Starting surgical merge...")
+            self.logger.info(f"  - Sections to regenerate: {state.surgical_analysis['sections_to_regenerate']}")
+            self.logger.info(f"  - Sections to preserve: {state.surgical_analysis['sections_to_preserve']}")
+            
+            # Get previous survey
+            from src.database.models import Survey
+            from uuid import UUID
+            
+            parent_survey = self.db.query(Survey).filter(
+                Survey.id == state.parent_survey_id
+            ).first()
+            
+            if not parent_survey or not parent_survey.final_output:
+                self.logger.error("❌ [SurgicalMerger] Parent survey not found or has no final_output")
+                return {
+                    "generated_survey": state.generated_survey,
+                    "error_message": "Parent survey not found for surgical merge"
+                }
+            
+            # Merge regenerated sections with preserved sections
+            from src.services.survey_merger_service import SurveyMergerService
+            
+            merger = SurveyMergerService()
+            
+            # Extract only regenerated sections from the generated survey
+            regenerated_sections = []
+            if state.generated_survey and 'sections' in state.generated_survey:
+                for section in state.generated_survey['sections']:
+                    section_id = section.get('id')
+                    if section_id in state.surgical_analysis['sections_to_regenerate']:
+                        regenerated_sections.append(section)
+                        self.logger.info(f"  - Including regenerated section {section_id}: {section.get('title')}")
+            
+            if not regenerated_sections:
+                self.logger.warning("⚠️ [SurgicalMerger] No regenerated sections found in generated survey")
+                # If no sections were regenerated, use all sections from generated survey
+                regenerated_sections = state.generated_survey.get('sections', [])
+            
+            # Perform merge
+            merged_survey = merger.merge_surveys(
+                previous_survey=parent_survey.final_output,
+                regenerated_sections=regenerated_sections,
+                preserve_section_ids=state.surgical_analysis['sections_to_preserve']
+            )
+            
+            # Validate merged survey
+            validation_result = merger.validate_merged_survey(merged_survey)
+            
+            if not validation_result['valid']:
+                self.logger.error(f"❌ [SurgicalMerger] Merged survey validation failed: {validation_result['errors']}")
+                return {
+                    "generated_survey": state.generated_survey,  # Return unmerged survey
+                    "error_message": f"Surgical merge validation failed: {', '.join(validation_result['errors'])}"
+                }
+            
+            if validation_result['warnings']:
+                self.logger.warning(f"⚠️ [SurgicalMerger] Merge warnings: {validation_result['warnings']}")
+            
+            self.logger.info("✅ [SurgicalMerger] Surgical merge completed successfully")
+            self.logger.info(f"  - Total sections in merged survey: {len(merged_survey.get('sections', []))}")
+            self.logger.info(f"  - Total questions: {merged_survey.get('metadata', {}).get('total_questions', 0)}")
+            
+            return {
+                "generated_survey": merged_survey,
+                "error_message": None
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ [SurgicalMerger] Surgical merge failed: {str(e)}", exc_info=True)
+            # On error, return the generated survey without merge
+            return {
+                "generated_survey": state.generated_survey,
+                "error_message": f"Surgical merge failed: {str(e)}"
             }

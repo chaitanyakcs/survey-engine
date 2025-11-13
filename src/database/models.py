@@ -155,7 +155,7 @@ class Survey(Base):
     rfq_id = Column(UUID(as_uuid=True), ForeignKey("rfqs.id"))
     status = Column(
         Text,
-        CheckConstraint("status IN ('draft','validated','edited','final','reference')"),
+        CheckConstraint("status IN ('draft','validated','edited','final','reference','failed')"),
         nullable=False
     )
     raw_output = Column(JSONB)
@@ -168,11 +168,16 @@ class Survey(Base):
     model_version = Column(Text)
     pillar_scores = Column(JSONB)  # Store 5-pillar evaluation scores
     feedback_digest = Column(JSONB)  # Store feedback digest used during generation
+    version = Column(Integer, default=1, nullable=False)
+    parent_survey_id = Column(UUID(as_uuid=True), ForeignKey("surveys.id"), nullable=True)
+    is_current = Column(Boolean, default=True, nullable=False)
+    version_notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=func.now())
 
     rfq = relationship("RFQ", back_populates="surveys")
     edits = relationship("Edit", back_populates="survey")
     rule_validations = relationship("RuleValidation", back_populates="survey")
+    parent_survey = relationship("Survey", remote_side=[id], backref="child_versions")
 
 
 class Edit(Base):

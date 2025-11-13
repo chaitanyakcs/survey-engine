@@ -1155,6 +1155,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
   saveAnnotations: async (annotations: SurveyAnnotations) => {
     try {
       // Transform frontend format to backend format
+      // Log the incoming annotations to debug
+      console.log('💬 [saveAnnotations] Incoming annotations.overallComment:', annotations.overallComment);
+      console.log('💬 [saveAnnotations] Incoming annotations object:', {
+        surveyId: annotations.surveyId,
+        overallComment: annotations.overallComment,
+        hasSurveyLevelAnnotation: !!annotations.surveyLevelAnnotation,
+        surveyLevelAnnotationOverallComment: annotations.surveyLevelAnnotation?.overallComment
+      });
+      
       const transformedRequest = {
         survey_id: annotations.surveyId,
         question_annotations: annotations.questionAnnotations.map(qa => {
@@ -1197,13 +1206,26 @@ export const useAppStore = create<AppStore>((set, get) => ({
           mandatory_elements: sa.mandatory_elements,
           compliance_score: sa.compliance_score
         })),
-        overall_comment: annotations.overallComment,
+        overall_comment: annotations.overallComment || '',
         annotator_id: annotations.annotatorId || "current-user",
         // Advanced labeling fields for survey-level
         detected_labels: annotations.detected_labels,
         compliance_report: annotations.compliance_report,
         advanced_metadata: annotations.advanced_metadata
       };
+      
+      console.log('💬 [saveAnnotations] Transformed request overall_comment:', transformedRequest.overall_comment);
+      console.log('💬 [saveAnnotations] Transformed request advanced_metadata:', transformedRequest.advanced_metadata);
+      if (transformedRequest.advanced_metadata) {
+        console.log('💬 [saveAnnotations] Advanced metadata contains:', {
+          overallQuality: transformedRequest.advanced_metadata.overallQuality,
+          surveyRelevance: transformedRequest.advanced_metadata.surveyRelevance,
+          methodologyScore: transformedRequest.advanced_metadata.methodologyScore,
+          surveyType: transformedRequest.advanced_metadata.surveyType,
+          researchMethodology: transformedRequest.advanced_metadata.researchMethodology,
+          labels: transformedRequest.advanced_metadata.labels
+        });
+      }
 
       const response = await fetch(`/api/v1/annotations/survey/${annotations.surveyId}/bulk`, {
         method: 'POST',
@@ -1416,10 +1438,38 @@ export const useAppStore = create<AppStore>((set, get) => ({
         // Advanced labeling fields
         detected_labels: backendAnnotations.detected_labels,
         compliance_report: backendAnnotations.compliance_report,
-        advanced_metadata: backendAnnotations.advanced_metadata
+        advanced_metadata: backendAnnotations.advanced_metadata,
+        // Construct surveyLevelAnnotation from advanced_metadata and overall_comment
+        surveyLevelAnnotation: (() => {
+          const metadata = backendAnnotations.advanced_metadata || {};
+          return {
+            surveyId: surveyId,
+            overallComment: backendAnnotations.overall_comment || '',
+            labels: metadata.labels || [],
+            annotatorId: backendAnnotations.annotator_id || 'current-user',
+            timestamp: backendAnnotations.updated_at || backendAnnotations.created_at,
+            // Extract all survey-level fields from advanced_metadata
+            overallQuality: metadata.overallQuality,
+            surveyRelevance: metadata.surveyRelevance,
+            methodologyScore: metadata.methodologyScore,
+            respondentExperienceScore: metadata.respondentExperienceScore,
+            businessValueScore: metadata.businessValueScore,
+            surveyType: metadata.surveyType,
+            industryCategory: metadata.industryCategory,
+            researchMethodology: metadata.researchMethodology || [],
+            targetAudience: metadata.targetAudience,
+            surveyComplexity: metadata.surveyComplexity || 'moderate',
+            estimatedDuration: metadata.estimatedDuration || 0,
+            complianceStatus: metadata.complianceStatus || 'needs-review',
+            detectedLabels: backendAnnotations.detected_labels,
+            complianceReport: backendAnnotations.compliance_report,
+            advancedMetadata: backendAnnotations.advanced_metadata
+          };
+        })()
       };
       
       console.log('🔍 [Store] Setting currentAnnotations:', frontendAnnotations);
+      console.log('🔍 [Store] SurveyLevelAnnotation:', frontendAnnotations.surveyLevelAnnotation);
       set({ currentAnnotations: frontendAnnotations });
       
     } catch (error) {
@@ -1722,6 +1772,98 @@ export const useAppStore = create<AppStore>((set, get) => ({
         message: 'Failed to resume review. Please try again.',
         duration: 5000
       });
+    }
+  },
+
+  regenerateSurvey: async (
+    surveyId: string,
+    options: {
+      includeAnnotations?: boolean;
+      versionNotes?: string;
+      targetSections?: string[];
+      focusOnAnnotatedAreas?: boolean;
+      regenerationMode?: string;
+    } = {}
+  ) => {
+    try {
+      const result = await apiService.regenerateSurvey(surveyId, options);
+      
+      // Set workflow state for regeneration
+      set({
+        workflow: {
+          workflow_id: result.workflow_id,
+          survey_id: result.survey_id,
+          status: 'in_progress',
+          current_step: 'regenerating',
+          progress: 0
+        }
+      });
+      
+      // Connect WebSocket for progress updates
+      get().connectWebSocket(result.workflow_id);
+      
+      get().addToast({
+        type: 'success',
+        title: 'Regeneration Started',
+        message: result.message,
+        duration: 5000
+      });
+      
+      return result;
+    } catch (error) {
+      console.error('❌ [Store] Failed to regenerate survey:', error);
+      get().addToast({
+        type: 'error',
+        title: 'Regeneration Failed',
+        message: error instanceof Error ? error.message : 'Failed to regenerate survey',
+        duration: 5000
+      });
+      throw error;
+    }
+  },
+
+  getSurveyVersions: async (surveyId: string) => {
+    try {
+      const versions = await apiService.getSurveyVersions(surveyId);
+      return versions;
+    } catch (error) {
+      console.error('❌ [Store] Failed to get survey versions:', error);
+      throw error;
+    }
+  },
+
+  getAnnotationFeedbackPreview: async (surveyId: string) => {
+    try {
+      const preview = await apiService.getAnnotationFeedbackPreview(surveyId);
+      return preview;
+    } catch (error) {
+      console.error('❌ [Store] Failed to get annotation feedback preview:', error);
+      throw error;
+    }
+  },
+
+  setCurrentVersion: async (surveyId: string) => {
+    try {
+      await apiService.setCurrentVersion(surveyId);
+      
+      // Refresh survey list to update current version indicators
+      // This will be handled by the component that calls this method
+      
+      get().addToast({
+        type: 'success',
+        title: 'Version Updated',
+        message: 'Current version has been updated',
+        duration: 3000
+      });
+    } catch (error) {
+      console.error('❌ [Store] Failed to set current version:', error);
+      get().addToast({
+        type: 'error',
+        title: 'Update Failed',
+        message: error instanceof Error ? error.message : 'Failed to set current version',
+        duration: 5000
+      });
+      throw error;
     }
   },
 

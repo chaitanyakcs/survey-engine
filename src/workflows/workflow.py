@@ -11,6 +11,7 @@ from .nodes import (
     GoldenRetrieverNode,
     ContextBuilderNode,
     GeneratorAgent,
+    SurgicalMergerNode,
     GoldenValidatorNode,
     ValidatorAgent,
     HumanPromptReviewNode,
@@ -34,6 +35,7 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     context_builder = ContextBuilderNode(db)
     prompt_reviewer = HumanPromptReviewNode(db)
     generator = GeneratorAgent(db, connection_manager=connection_manager)
+    surgical_merger = SurgicalMergerNode(db)
     label_detector = LabelDetectionNode(db, connection_manager=connection_manager)
     golden_validator = GoldenValidatorNode(db)
     validator = ValidatorAgent(db, connection_manager=connection_manager)
@@ -295,6 +297,41 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
         
         return result
     
+    async def surgical_merge_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
+        """Merge regenerated sections with preserved sections in surgical/targeted mode"""
+        from src.workflows.state import RegenerationMode
+        
+        # Only run surgical merge in surgical or targeted mode
+        if state.regeneration_mode_type not in (RegenerationMode.SURGICAL, RegenerationMode.TARGETED):
+            logger.info("🔬 [Workflow] Not in surgical/targeted mode, skipping merge")
+            return {"generated_survey": state.generated_survey}
+        
+        progress_tracker = get_progress_tracker(state.workflow_id)
+        
+        try:
+            logger.info(f"📡 [Workflow] Sending progress update: surgical_merge for workflow_id={state.workflow_id}")
+            progress_data = progress_tracker.get_progress_data("surgical_merge")
+            progress_data["message"] = "Merging regenerated sections with preserved sections..."
+            await ws_client.send_progress_update(state.workflow_id, progress_data)
+            logger.info(f"✅ [Workflow] Progress update sent successfully: surgical_merge")
+        except Exception as e:
+            logger.error(f"❌ [Workflow] Failed to send progress update: {str(e)}")
+        
+        # Run surgical merge
+        result = await surgical_merger(state)
+        
+        # Send completion progress update
+        try:
+            logger.info(f"📡 [Workflow] Sending progress update: merge_complete for workflow_id={state.workflow_id}")
+            progress_data = progress_tracker.get_progress_data("merge_complete")
+            progress_data["message"] = "Surgical merge completed successfully!"
+            await ws_client.send_progress_update(state.workflow_id, progress_data)
+            logger.info(f"✅ [Workflow] Progress update sent successfully: merge_complete")
+        except Exception as e:
+            logger.error(f"❌ [Workflow] Failed to send merge completion progress update: {str(e)}")
+        
+        return result
+    
     async def detect_labels_with_progress(state: SurveyGenerationState) -> Dict[str, Any]:
         """Detect and assign labels to questions with progress update"""
         progress_tracker = get_progress_tracker(state.workflow_id)
@@ -402,6 +439,7 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
     workflow.add_node("build_context", build_context_with_progress)
     workflow.add_node("prompt_review", prompt_review_with_progress)
     workflow.add_node("generate", generate_with_progress)
+    workflow.add_node("surgical_merge", surgical_merge_with_progress)
     workflow.add_node("detect_labels", detect_labels_with_progress)
     workflow.add_node("golden_validation", golden_validation_with_progress)
     workflow.add_node("validate", validate_with_progress)
@@ -432,7 +470,30 @@ def create_workflow(db: Session, connection_manager=None) -> Any:
             "prompt_review": "prompt_review"
         }
     )
-    workflow.add_edge("generate", "detect_labels")  # Always run label detection after generation
+    
+    # Conditional edge after generate: surgical_merge for surgical/targeted mode, direct to detect_labels otherwise
+    def should_run_surgical_merge(state: SurveyGenerationState) -> str:
+        """Determine if surgical merge is needed after generation"""
+        from src.workflows.state import RegenerationMode
+        
+        if state.regeneration_mode_type in (RegenerationMode.SURGICAL, RegenerationMode.TARGETED):
+            mode_name = "Surgical" if state.regeneration_mode_type == RegenerationMode.SURGICAL else "Targeted"
+            logger.info(f"🔬 [Workflow] {mode_name} mode detected - routing to surgical_merge")
+            return "surgical_merge"
+        else:
+            logger.info("📊 [Workflow] Not in surgical/targeted mode - routing to detect_labels")
+            return "detect_labels"
+    
+    workflow.add_conditional_edges(
+        "generate",
+        should_run_surgical_merge,
+        {
+            "surgical_merge": "surgical_merge",
+            "detect_labels": "detect_labels"
+        }
+    )
+    
+    workflow.add_edge("surgical_merge", "detect_labels")  # After surgical merge, continue to detect_labels
     workflow.add_edge("detect_labels", "golden_validation")  # Always run golden validation
     workflow.add_edge("golden_validation", "completion_handler")  # Skip AI evaluation, go directly to completion
     

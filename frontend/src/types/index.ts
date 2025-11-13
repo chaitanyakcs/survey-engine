@@ -404,6 +404,11 @@ export interface Survey {
     comment_categories: string[];
     extraction_timestamp: string;
   };
+  // Version tracking fields
+  version?: number;
+  parentSurveyId?: string;
+  isCurrent?: boolean;
+  versionNotes?: string;
   pillar_scores?: {
     overall_grade: string;
     weighted_score: number;
@@ -440,6 +445,21 @@ export interface SurveyListItem {
   question_count: number;
   instruction_count: number;
   annotation?: Record<string, any>;
+  version?: number;
+  parent_survey_id?: string;
+  is_current?: boolean;
+  version_notes?: string;
+  rfq_id?: string;  // Add rfq_id for grouping versions
+}
+
+export interface SurveyVersion {
+  id: string;
+  version: number;
+  isCurrent: boolean;
+  status: string;
+  createdAt: string;
+  versionNotes?: string;
+  parentSurveyId?: string;
 }
 
 export interface Question {
@@ -1235,6 +1255,22 @@ export interface AppStore {
   fetchReviewByWorkflow: (workflowId: string) => Promise<PendingReview | null>;
   submitReviewDecision: (reviewId: number, decision: ReviewDecision) => Promise<void>;
   resumeReview: (reviewId: number) => Promise<void>;
+  
+  // Version Management Actions
+  regenerateSurvey: (
+    surveyId: string,
+    options?: {
+      includeAnnotations?: boolean;
+      versionNotes?: string;
+      targetSections?: string[];
+      focusOnAnnotatedAreas?: boolean;
+      regenerationMode?: string;
+    }
+  ) => Promise<{ survey_id: string; workflow_id: string; version: number; message: string }>;
+  getSurveyVersions: (surveyId: string) => Promise<any[]>;
+  getAnnotationFeedbackPreview: (surveyId: string) => Promise<any>;
+  setCurrentVersion: (surveyId: string) => Promise<void>;
+  
   persistWorkflowState: (workflowId: string, state: any) => void;
   recoverWorkflowState: () => Promise<void>;
   resetWorkflow: () => void;
