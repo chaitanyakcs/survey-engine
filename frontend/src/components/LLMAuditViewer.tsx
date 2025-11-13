@@ -7,8 +7,11 @@ import {
   ClipboardDocumentIcon, 
   CheckIcon,
   EyeIcon,
-  XCircleIcon
+  XCircleIcon,
+  ArrowPathIcon
 } from '@heroicons/react/24/outline';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { CreateGoldenPairModal } from './CreateGoldenPairModal';
 import { LLMAuditRecord } from '../types';
 import { Sidebar } from './Sidebar';
@@ -151,6 +154,22 @@ export const LLMAuditViewer: React.FC<LLMAuditViewerProps> = ({
     return displayName;
   };
 
+  const isRegenerationMode = (record: LLMAuditRecord): boolean => {
+    // Check interaction_metadata for regeneration_mode
+    if (record.interaction_metadata?.regeneration_mode === true) {
+      return true;
+    }
+    // Check tags for regeneration indicator
+    if (record.tags?.some(tag => tag.toLowerCase().includes('regeneration') || tag.toLowerCase().includes('regenerate'))) {
+      return true;
+    }
+    // Check if input_prompt contains regeneration indicators
+    if (record.input_prompt?.includes('REGENERATION MODE') || record.input_prompt?.includes('regeneration_mode')) {
+      return true;
+    }
+    return false;
+  };
+
   const copyToClipboard = async (text: string, tabName: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -193,6 +212,12 @@ export const LLMAuditViewer: React.FC<LLMAuditViewerProps> = ({
       }, null, 2)
     };
 
+    // Render markdown for prompt tab, plain text for others
+    const isMarkdownTab = activeTab === 'prompt';
+    const displayContent = typeof content[activeTab] === 'string' 
+      ? content[activeTab] 
+      : JSON.stringify(content[activeTab], null, 2);
+
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -210,12 +235,46 @@ export const LLMAuditViewer: React.FC<LLMAuditViewerProps> = ({
         </div>
         
         <div className="bg-gray-50 rounded-lg p-4 max-h-96 overflow-y-auto">
-          <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono">
-            {typeof content[activeTab] === 'string' 
-              ? content[activeTab] 
-              : JSON.stringify(content[activeTab], null, 2)
-            }
-          </pre>
+          {isMarkdownTab ? (
+            <div className="prose prose-sm max-w-none text-gray-800">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  // Custom styling for markdown elements
+                  h1: ({node, children, ...props}: any) => <h1 className="text-2xl font-bold mb-4 text-gray-900" {...props}>{children}</h1>,
+                  h2: ({node, children, ...props}: any) => <h2 className="text-xl font-semibold mb-3 text-gray-900" {...props}>{children}</h2>,
+                  h3: ({node, children, ...props}: any) => <h3 className="text-lg font-medium mb-2 text-gray-900" {...props}>{children}</h3>,
+                  p: ({node, children, ...props}: any) => <p className="mb-3 text-gray-800" {...props}>{children}</p>,
+                  ul: ({node, children, ...props}: any) => <ul className="list-disc list-inside mb-3 space-y-1 text-gray-800" {...props}>{children}</ul>,
+                  ol: ({node, children, ...props}: any) => <ol className="list-decimal list-inside mb-3 space-y-1 text-gray-800" {...props}>{children}</ol>,
+                  li: ({node, children, ...props}: any) => <li className="text-gray-800" {...props}>{children}</li>,
+                  code: ({node, inline, children, ...props}: any) => 
+                    inline ? (
+                      <code className="bg-gray-200 px-1 py-0.5 rounded text-sm font-mono text-gray-900" {...props}>{children}</code>
+                    ) : (
+                      <code className="block bg-gray-200 p-2 rounded text-sm font-mono text-gray-900 overflow-x-auto" {...props}>{children}</code>
+                    ),
+                  pre: ({node, children, ...props}: any) => <pre className="bg-gray-200 p-3 rounded text-sm font-mono text-gray-900 overflow-x-auto mb-3" {...props}>{children}</pre>,
+                  blockquote: ({node, children, ...props}: any) => <blockquote className="border-l-4 border-gray-400 pl-4 italic text-gray-700 mb-3" {...props}>{children}</blockquote>,
+                  strong: ({node, children, ...props}: any) => <strong className="font-semibold text-gray-900" {...props}>{children}</strong>,
+                  em: ({node, children, ...props}: any) => <em className="italic text-gray-800" {...props}>{children}</em>,
+                  a: ({node, children, ...props}: any) => <a className="text-blue-600 hover:text-blue-800 underline" {...props}>{children}</a>,
+                  table: ({node, children, ...props}: any) => <table className="min-w-full border-collapse border border-gray-300 mb-3" {...props}>{children}</table>,
+                  thead: ({node, children, ...props}: any) => <thead className="bg-gray-200" {...props}>{children}</thead>,
+                  tbody: ({node, children, ...props}: any) => <tbody {...props}>{children}</tbody>,
+                  tr: ({node, children, ...props}: any) => <tr className="border-b border-gray-300" {...props}>{children}</tr>,
+                  th: ({node, children, ...props}: any) => <th className="border border-gray-300 px-4 py-2 text-left font-semibold text-gray-900" {...props}>{children}</th>,
+                  td: ({node, children, ...props}: any) => <td className="border border-gray-300 px-4 py-2 text-gray-800" {...props}>{children}</td>,
+                }}
+              >
+                {displayContent}
+              </ReactMarkdown>
+            </div>
+          ) : (
+            <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono">
+              {displayContent}
+            </pre>
+          )}
         </div>
       </div>
     );
@@ -481,6 +540,12 @@ export const LLMAuditViewer: React.FC<LLMAuditViewerProps> = ({
                             <span className="text-sm font-medium text-gray-900">
                               {getPurposeDisplayName(record.purpose, record.sub_purpose)}
                             </span>
+                            {isRegenerationMode(record) && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-purple-100 text-purple-800 border border-purple-300">
+                                <ArrowPathIcon className="w-3 h-3 mr-1" />
+                                REGENERATION
+                              </span>
+                            )}
                             <div className="flex items-center">
                               {record.success ? (
                                 <CheckCircleIcon className="w-4 h-4 text-green-500" />
@@ -528,11 +593,33 @@ export const LLMAuditViewer: React.FC<LLMAuditViewerProps> = ({
                   <div className="space-y-6">
                     {/* Record Header */}
                     <div className="border-b border-gray-200 pb-4">
+                      {isRegenerationMode(selectedRecord) && (
+                        <div className="mb-4 p-4 bg-gradient-to-r from-purple-50 to-indigo-50 border-2 border-purple-300 rounded-lg shadow-sm">
+                          <div className="flex items-center space-x-3">
+                            <ArrowPathIcon className="w-6 h-6 text-purple-600" />
+                            <div className="flex-1">
+                              <h4 className="text-lg font-bold text-purple-900 mb-1">
+                                🔄 REGENERATION MODE
+                              </h4>
+                              <p className="text-sm text-purple-700">
+                                This survey was regenerated with annotation feedback from previous versions. 
+                                The prompt includes previous survey structure and improvement requirements.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       <div className="flex items-center justify-between mb-2">
                         <h3 className="text-lg font-semibold text-gray-900">
                           {getPurposeDisplayName(selectedRecord.purpose, selectedRecord.sub_purpose)}
                         </h3>
                         <div className="flex items-center space-x-2">
+                          {isRegenerationMode(selectedRecord) && (
+                            <span className="inline-flex items-center px-3 py-1 rounded-md text-sm font-semibold bg-purple-100 text-purple-800 border border-purple-300">
+                              <ArrowPathIcon className="w-4 h-4 mr-1" />
+                              REGENERATION
+                            </span>
+                          )}
                           {selectedRecord.success ? (
                             <CheckCircleIcon className="w-5 h-5 text-green-500" />
                           ) : (

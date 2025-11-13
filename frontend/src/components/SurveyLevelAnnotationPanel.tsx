@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   XMarkIcon, 
-  CheckIcon, 
   TagIcon,
   ChartBarIcon,
   UserGroupIcon,
@@ -56,16 +55,88 @@ const SurveyLevelAnnotationPanel: React.FC<SurveyLevelAnnotationPanelProps> = ({
     complianceStatus: 'needs-review'
   });
 
+  // Initialize from annotation prop only on mount or when surveyId changes
   useEffect(() => {
-    // Only update if the annotation has actually changed and we're not currently editing
-    if (annotation && annotation.timestamp !== formData.timestamp) {
-      setFormData({
-        ...annotation,
-        surveyId,
-        timestamp: new Date().toISOString()
+    // Only update from annotation prop if:
+    // 1. Annotation exists
+    // 2. We're not currently editing (user isn't typing)
+    // 3. We haven't initialized from this survey yet (lastAnnotationIdRef is undefined or different surveyId)
+    // This prevents the form from resetting after we save (which updates the annotation prop)
+    const currentSurveyId = surveyId;
+    const lastSurveyId = lastAnnotationIdRef.current?.split('|')[0]; // Store as "surveyId|timestamp"
+    
+    const isNewSurvey = lastSurveyId !== currentSurveyId;
+    const shouldUpdate = annotation && 
+                         !isEditingRef.current && 
+                         (lastAnnotationIdRef.current === undefined || isNewSurvey);
+    
+    if (shouldUpdate) {
+      console.log('🔄 [SurveyLevelAnnotationPanel] Initializing formData from annotation prop', {
+        isNewSurvey,
+        isEditing: isEditingRef.current,
+        currentSurveyId,
+        lastSurveyId,
+        annotationTimestamp: annotation.timestamp,
+        annotationFields: {
+          overallComment: annotation.overallComment,
+          overallQuality: annotation.overallQuality,
+          surveyRelevance: annotation.surveyRelevance,
+          methodologyScore: annotation.methodologyScore,
+          surveyType: annotation.surveyType,
+          researchMethodology: annotation.researchMethodology,
+          labels: annotation.labels
+        }
       });
+      // Initialize with all fields from annotation, using defaults for missing fields
+      const initializedFormData: SurveyLevelAnnotation = {
+        surveyId,
+        overallComment: annotation.overallComment || '',
+        labels: annotation.labels || [],
+        annotatorId: annotation.annotatorId || 'current-user',
+        timestamp: annotation.timestamp || new Date().toISOString(),
+        overallQuality: annotation.overallQuality ?? 3,
+        surveyRelevance: annotation.surveyRelevance ?? 3,
+        methodologyScore: annotation.methodologyScore ?? 3,
+        respondentExperienceScore: annotation.respondentExperienceScore ?? 3,
+        businessValueScore: annotation.businessValueScore ?? 3,
+        surveyType: annotation.surveyType || '',
+        industryCategory: annotation.industryCategory || '',
+        researchMethodology: annotation.researchMethodology || [],
+        targetAudience: annotation.targetAudience || '',
+        surveyComplexity: annotation.surveyComplexity || 'moderate',
+        estimatedDuration: annotation.estimatedDuration ?? 0,
+        complianceStatus: annotation.complianceStatus || 'needs-review',
+        detectedLabels: annotation.detectedLabels,
+        complianceReport: annotation.complianceReport,
+        advancedMetadata: annotation.advancedMetadata
+      };
+      setFormData(initializedFormData);
+      // Store surveyId|timestamp to track both
+      lastAnnotationIdRef.current = `${currentSurveyId}|${annotation.timestamp || 'new'}`;
+      // Also update the ref
+      formDataRef.current = initializedFormData;
     }
-  }, [annotation, surveyId, formData.timestamp]);
+  }, [annotation, surveyId]);
+
+  // Use ref to track debounce timeout
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const formDataRef = useRef<SurveyLevelAnnotation>(formData);
+  const isEditingRef = useRef<boolean>(false); // Track if user is actively editing
+  const lastAnnotationIdRef = useRef<string | undefined>(undefined); // Track last annotation ID we initialized from
+  
+  // Update ref when form data changes
+  useEffect(() => {
+    formDataRef.current = formData;
+  }, [formData]);
+  
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleInputChange = (field: keyof SurveyLevelAnnotation, value: any) => {
     const newFormData = {
@@ -75,33 +146,46 @@ const SurveyLevelAnnotationPanel: React.FC<SurveyLevelAnnotationPanelProps> = ({
     };
     setFormData(newFormData);
     
-    // Auto-save on ALL field changes in annotation mode
-    console.log('🔄 [SurveyLevelAnnotationPanel] Field changed, saving immediately...', { field, value });
+    // Mark that user is actively editing
+    isEditingRef.current = true;
     
-    const annotationToSave: SurveyLevelAnnotation = {
-      ...newFormData,
-      surveyId,
-      timestamp: new Date().toISOString()
-    };
+    // Update ref immediately so debounced save uses latest data
+    formDataRef.current = { ...newFormData, surveyId };
     
-    console.log('🔄 [SurveyLevelAnnotationPanel] Saving annotation:', annotationToSave);
-    
-    try {
-      onSave(annotationToSave);
-      console.log('✅ [SurveyLevelAnnotationPanel] Annotation saved successfully');
-    } catch (error) {
-      console.error('❌ [SurveyLevelAnnotationPanel] Failed to save annotation:', error);
+    // Clear existing timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
     }
+    
+    // Auto-save with debouncing to avoid too many API calls
+    // Use longer delay for comments to ensure user finishes typing
+    const debounceDelay = field === 'overallComment' ? 500 : 200;
+    
+    console.log('🔄 [SurveyLevelAnnotationPanel] Field changed, scheduling save...', { field, value, debounceDelay });
+    
+    saveTimeoutRef.current = setTimeout(() => {
+      const annotationToSave: SurveyLevelAnnotation = {
+        ...formDataRef.current,
+        surveyId,
+        timestamp: new Date().toISOString()
+      };
+      
+      console.log('🔄 [SurveyLevelAnnotationPanel] Saving annotation:', annotationToSave);
+      console.log('💬 [SurveyLevelAnnotationPanel] Overall comment being saved:', annotationToSave.overallComment);
+      
+      try {
+        onSave(annotationToSave);
+        console.log('✅ [SurveyLevelAnnotationPanel] Annotation saved successfully');
+        // Mark editing as complete after save
+        isEditingRef.current = false;
+      } catch (error) {
+        console.error('❌ [SurveyLevelAnnotationPanel] Failed to save annotation:', error);
+        isEditingRef.current = false;
+      }
+    }, debounceDelay);
   };
 
-  const handleSave = () => {
-    const annotationToSave: SurveyLevelAnnotation = {
-      ...formData,
-      surveyId,
-      timestamp: new Date().toISOString()
-    };
-    onSave(annotationToSave);
-  };
+  // Note: Manual save is no longer needed - auto-save handles all changes via handleInputChange
 
   const renderLikertScale = (
     label: string,
@@ -414,22 +498,17 @@ const SurveyLevelAnnotationPanel: React.FC<SurveyLevelAnnotationPanelProps> = ({
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-          <button
-            onClick={onCancel}
-            className="btn-secondary-sm"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            className="btn-primary-sm"
-          >
-            <CheckIcon className="w-4 h-4" />
-            Override
-          </button>
-        </div>
+        {/* Action Buttons - Only show Cancel in modal mode (to close modal) */}
+        {isModal && (
+          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+            <button
+              onClick={onCancel}
+              className="btn-secondary-sm"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
       </div>
     </div>
     </div>

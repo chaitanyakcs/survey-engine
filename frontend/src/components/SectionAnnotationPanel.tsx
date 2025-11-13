@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   SectionAnnotation,
   SurveySection,
@@ -73,27 +73,59 @@ const SectionAnnotationPanel: React.FC<SectionAnnotationPanelProps> = ({
     }
   }, [section.id, annotation, formData.timestamp]);
 
+  // Use ref to track debounce timeout
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const formDataRef = useRef<SectionAnnotation>(formData);
+  
+  // Update ref when form data changes
+  useEffect(() => {
+    formDataRef.current = formData;
+  }, [formData]);
+  
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const updateField = (field: keyof SectionAnnotation, value: any) => {
     const newFormData = { ...formData, [field]: value };
     setFormData(newFormData);
     
-    // Auto-save on ALL field changes in annotation mode
-    console.log('🔄 [SectionAnnotationPanel] Field changed, saving immediately...', { field, value });
+    // Update ref immediately so debounced save uses latest data
+    formDataRef.current = { ...newFormData, sectionId: String(section.id) };
     
-    const annotationToSave: SectionAnnotation = {
-      ...newFormData,
-      sectionId: String(section.id),
-      timestamp: new Date().toISOString()
-    };
-    
-    console.log('🔄 [SectionAnnotationPanel] Saving annotation:', annotationToSave);
-    
-    try {
-      onSave(annotationToSave);
-      console.log('✅ [SectionAnnotationPanel] Annotation saved successfully');
-    } catch (error) {
-      console.error('❌ [SectionAnnotationPanel] Failed to save annotation:', error);
+    // Clear existing timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
     }
+    
+    // Auto-save with debouncing to avoid too many API calls
+    // Use longer delay for comments to ensure user finishes typing
+    const debounceDelay = field === 'comment' ? 500 : 200;
+    
+    console.log('🔄 [SectionAnnotationPanel] Field changed, scheduling save...', { field, value, debounceDelay });
+    
+    saveTimeoutRef.current = setTimeout(() => {
+      const annotationToSave: SectionAnnotation = {
+        ...formDataRef.current,
+        sectionId: String(section.id),
+        timestamp: new Date().toISOString()
+      };
+      
+      console.log('🔄 [SectionAnnotationPanel] Saving annotation:', annotationToSave);
+      console.log('💬 [SectionAnnotationPanel] Comment being saved:', annotationToSave.comment);
+      
+      try {
+        onSave(annotationToSave);
+        console.log('✅ [SectionAnnotationPanel] Annotation saved successfully');
+      } catch (error) {
+        console.error('❌ [SectionAnnotationPanel] Failed to save annotation:', error);
+      }
+    }, debounceDelay);
   };
 
   const getComplianceScoreColor = (score: number) => {

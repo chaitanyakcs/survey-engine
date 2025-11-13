@@ -24,6 +24,42 @@ interface MainWorkflowStep {
 
 const MAIN_WORKFLOW_STEPS: MainWorkflowStep[] = [
   {
+    key: 'regeneration_prep',
+    label: 'Regeneration Preparation',
+    description: 'Preparing survey regeneration with feedback analysis',
+    icon: '🔄',
+    color: 'purple',
+    percentRange: [0, 20],
+    rightPanelType: 'substeps',
+    conditional: true, // Only show during regeneration
+    subSteps: [
+      {
+        key: 'preparing_regeneration',
+        label: 'Preparing regeneration',
+        backendStep: 'preparing_regeneration',
+        message: 'Preparing regeneration...'
+      },
+      {
+        key: 'collecting_feedback',
+        label: 'Collecting annotation feedback',
+        backendStep: 'collecting_feedback',
+        message: 'Collecting annotation feedback...'
+      },
+      {
+        key: 'analyzing_feedback',
+        label: 'Analyzing feedback for surgical regeneration',
+        backendStep: 'analyzing_feedback',
+        message: 'Analyzing feedback for surgical regeneration...'
+      },
+      {
+        key: 'encoding_previous_survey',
+        label: 'Encoding previous survey structure',
+        backendStep: 'encoding_previous_survey',
+        message: 'Encoding previous survey structure...'
+      }
+    ]
+  },
+  {
     key: 'building_context',
     label: 'Building Context',
     description: 'Analyzing requirements and gathering templates (5-10 minutes)',
@@ -298,6 +334,16 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
             workflow.current_step === 'human_review' ||
             workflow.workflow_paused ||
             activeReview
+          );
+
+        case 'regeneration_prep':
+          // Include regeneration prep step if:
+          // 1. Current step is 'regenerating', OR
+          // 2. Progress is in regeneration prep range (0-20%) and workflow_id indicates regeneration
+          return Boolean(
+            workflow.current_step === 'regenerating' ||
+            (workflow.progress !== undefined && workflow.progress >= 0 && workflow.progress < 20 && 
+             workflow.workflow_id?.includes('regenerate'))
           );
 
         // Future conditional steps can be added here

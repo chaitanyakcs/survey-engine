@@ -5,6 +5,7 @@ import AnnotationMode from './AnnotationMode';
 import AnnotationSidePane from './AnnotationSidePane';
 import SurveyTextBlock from './SurveyTextBlock';
 import QuestionCard from './QuestionCard';
+import { SurveyVersions } from './SurveyVersions';
 import { useSurveyEdit } from '../hooks/useSurveyEdit';
 import { PencilIcon, ChevronDownIcon, ChevronRightIcon, TagIcon, TrashIcon, ChevronUpIcon, PlusIcon, TagIcon as LabelIcon, PhotoIcon, DocumentIcon } from '@heroicons/react/24/outline';
 
@@ -692,6 +693,34 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
     target: null as any
   });
 
+  // Right pane section collapse state (all collapsed by default)
+  // Load versions state from localStorage, default to collapsed
+  const [collapsedSections, setCollapsedSections] = useState(() => {
+    const savedVersionsState = localStorage.getItem('surveyPreview_versionsOpen');
+    const versionsOpen = savedVersionsState === 'true';
+    return {
+      actions: true,
+      export: true,
+      versions: !versionsOpen // If saved state says open, then collapsed should be false
+    };
+  });
+
+  const toggleSection = (section: 'actions' | 'export' | 'versions') => {
+    setCollapsedSections(prev => {
+      const newState = {
+        ...prev,
+        [section]: !prev[section]
+      };
+      
+      // Persist versions state to localStorage
+      if (section === 'versions') {
+        localStorage.setItem('surveyPreview_versionsOpen', String(!newState.versions));
+      }
+      
+      return newState;
+    });
+  };
+
 
 
 
@@ -702,20 +731,58 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
     }
 
     try {
+      console.log('💬 [SurveyPreview] handleSurveyLevelAnnotation called with:', annotation);
+      console.log('💬 [SurveyPreview] annotation.overallComment:', annotation.overallComment);
+      
       // Update the current annotations with the survey-level annotation
+      // IMPORTANT: Use annotation fields (the new values) not currentAnnotations fields (the old values)
+      // Store all survey-level annotation fields in advanced_metadata so they persist
+      const advanced_metadata = {
+        ...(currentAnnotations?.advanced_metadata || {}),
+        // Store all survey-level annotation fields
+        overallQuality: annotation.overallQuality,
+        surveyRelevance: annotation.surveyRelevance,
+        methodologyScore: annotation.methodologyScore,
+        respondentExperienceScore: annotation.respondentExperienceScore,
+        businessValueScore: annotation.businessValueScore,
+        surveyType: annotation.surveyType,
+        industryCategory: annotation.industryCategory,
+        researchMethodology: annotation.researchMethodology,
+        targetAudience: annotation.targetAudience,
+        surveyComplexity: annotation.surveyComplexity,
+        estimatedDuration: annotation.estimatedDuration,
+        complianceStatus: annotation.complianceStatus,
+        labels: annotation.labels,
+        // Preserve any existing advanced_metadata fields
+        ...(annotation.advancedMetadata || {})
+      };
+      
       const updatedAnnotations: SurveyAnnotations = {
         surveyId: survey.survey_id,
         questionAnnotations: currentAnnotations?.questionAnnotations || [],
         sectionAnnotations: currentAnnotations?.sectionAnnotations || [],
-        overallComment: currentAnnotations?.overallComment,
-        annotatorId: currentAnnotations?.annotatorId,
+        overallComment: annotation.overallComment || '', // Use the annotation's overallComment, not the old one
+        annotatorId: annotation.annotatorId || currentAnnotations?.annotatorId || 'current-user',
         createdAt: currentAnnotations?.createdAt,
-        updatedAt: currentAnnotations?.updatedAt,
-        detected_labels: currentAnnotations?.detected_labels,
-        compliance_report: currentAnnotations?.compliance_report,
-        advanced_metadata: currentAnnotations?.advanced_metadata,
+        updatedAt: new Date().toISOString(),
+        detected_labels: annotation.detectedLabels || currentAnnotations?.detected_labels,
+        compliance_report: annotation.complianceReport || currentAnnotations?.compliance_report,
+        advanced_metadata: advanced_metadata, // Store all survey-level fields here
         surveyLevelAnnotation: annotation
       };
+      
+      console.log('💬 [SurveyPreview] Saving all survey-level fields:', {
+        overallComment: annotation.overallComment,
+        overallQuality: annotation.overallQuality,
+        surveyRelevance: annotation.surveyRelevance,
+        methodologyScore: annotation.methodologyScore,
+        surveyType: annotation.surveyType,
+        researchMethodology: annotation.researchMethodology,
+        labels: annotation.labels,
+        advanced_metadata: advanced_metadata
+      });
+      
+      console.log('💬 [SurveyPreview] Saving annotations with overallComment:', updatedAnnotations.overallComment);
       
       await saveAnnotations(updatedAnnotations);
       console.log('Survey-level annotation saved successfully');
@@ -1749,13 +1816,23 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
 
       {/* Right Panel - Actions and AI Evaluation (25%) - conditionally rendered */}
       {!hideRightPanel && (
-        <div className="w-[25%] bg-gray-50 border-l border-gray-200 flex flex-col">
+        <div className="w-[25%] bg-gray-50 border-l border-gray-200 flex flex-col overflow-y-auto">
         {/* Actions Section */}
-        <div className="p-4 border-b border-gray-200">
-          <h3 className="text-base font-semibold text-gray-900 mb-3">Actions</h3>
-          <div className="space-y-2">
-            <button
-              onClick={async () => {
+        <div className="bg-white border-b border-gray-200">
+          <button
+            onClick={() => toggleSection('actions')}
+            className="w-full p-5 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-all duration-200 group"
+          >
+            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide transition-colors group-hover:text-gray-700">Actions</h3>
+            <div className="transition-transform duration-300 ease-in-out" style={{ transform: collapsedSections.actions ? 'rotate(0deg)' : 'rotate(90deg)' }}>
+              <ChevronRightIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-700 transition-colors" />
+            </div>
+          </button>
+          {!collapsedSections.actions && (
+            <div className="px-5 pb-5 pt-0">
+              <div className="space-y-3">
+                <button
+                  onClick={async () => {
                 console.log('🔍 [SurveyPreview] Entering annotation mode for survey:', surveyToDisplay?.survey_id);
                 if (surveyToDisplay?.survey_id) {
                   await loadAnnotations(surveyToDisplay.survey_id);
@@ -1763,94 +1840,169 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
                 }
                 setAnnotationMode(true);
                 openAnnotationPane('survey', surveyToDisplay);
-              }}
-              className="w-full flex items-center gap-2 px-3 py-2 bg-white hover:bg-gray-50 text-purple-600 hover:text-purple-700 border border-purple-200 rounded-lg transition-colors text-sm"
-            >
-              <LabelIcon className="w-4 h-4" />
-              Annotate Survey
-            </button>
-            <button
-              onClick={handleEditSurvey}
-              className="w-full flex items-center gap-2 px-3 py-2 bg-white hover:bg-gray-50 text-blue-600 hover:text-blue-700 border border-blue-200 rounded-lg transition-colors text-sm"
-            >
-              <PencilIcon className="w-4 h-4" />
-              Edit Survey
-            </button>
-            <button
-              onClick={handleSaveAsReference}
-              className="w-full flex items-center gap-2 px-3 py-2 bg-white hover:bg-gray-50 text-orange-600 hover:text-orange-700 border border-orange-200 rounded-lg transition-colors text-sm"
-            >
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-              </svg>
-              Save as Reference
-            </button>
-            <button
-              onClick={() => {
-                if (!survey?.survey_id) {
-                  alert('No survey ID available');
-                  return;
-                }
-                window.location.href = `/surveys/${survey.survey_id}/insights`;
-              }}
-              className="w-full flex items-center gap-2 px-3 py-2 bg-white hover:bg-gray-50 text-indigo-600 hover:text-indigo-700 border border-indigo-200 rounded-lg transition-colors text-sm"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              View Survey Insights
-            </button>
-          </div>
+                  }}
+                  className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-white hover:bg-purple-50 text-purple-700 hover:text-purple-800 border border-purple-200 hover:border-purple-300 rounded-lg transition-all duration-200 text-sm font-medium shadow-sm hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transform"
+                >
+                  <div className="flex items-center gap-3">
+                    <LabelIcon className="w-5 h-5" />
+                    <span>Annotate Survey</span>
+                  </div>
+                </button>
+                <button
+                  onClick={handleEditSurvey}
+                  className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-white hover:bg-blue-50 text-blue-700 hover:text-blue-800 border border-blue-200 hover:border-blue-300 rounded-lg transition-all duration-200 text-sm font-medium shadow-sm hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transform"
+                >
+                  <div className="flex items-center gap-3">
+                    <PencilIcon className="w-5 h-5" />
+                    <span>Edit Survey</span>
+                  </div>
+                </button>
+                <button
+                  onClick={handleSaveAsReference}
+                  className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-white hover:bg-orange-50 text-orange-700 hover:text-orange-800 border border-orange-200 hover:border-orange-300 rounded-lg transition-all duration-200 text-sm font-medium shadow-sm hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transform"
+                >
+                  <div className="flex items-center gap-3">
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                    </svg>
+                    <span>Save as Reference</span>
+                  </div>
+                </button>
+                <button
+                  onClick={() => {
+                    if (!survey?.survey_id) {
+                      alert('No survey ID available');
+                      return;
+                    }
+                    window.location.href = `/surveys/${survey.survey_id}/insights`;
+                  }}
+                  className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-white hover:bg-indigo-50 text-indigo-700 hover:text-indigo-800 border border-indigo-200 hover:border-indigo-300 rounded-lg transition-all duration-200 text-sm font-medium shadow-sm hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transform"
+                >
+                  <div className="flex items-center gap-3">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span>View Survey Insights</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Export Section */}
-        <div className="p-4 border-b border-gray-200">
-          <h3 className="text-base font-semibold text-gray-900 mb-3">EXPORT</h3>
-          <div className="space-y-2">
-            <button
-              onClick={handleExportJSON}
-              className="w-full text-left text-blue-600 hover:text-blue-800 font-medium text-sm"
-            >
-              JSON Download JSON
-            </button>
-            <button
-              onClick={handleExportPDF}
-              className="w-full text-left text-red-600 hover:text-red-800 font-medium text-sm"
-            >
-              PDF Download PDF
-            </button>
-            <button
-              onClick={handleExportDOCX}
-              className="w-full text-left text-green-600 hover:text-green-800 font-medium text-sm"
-            >
-              DOCX Download DOCX
-            </button>
-          </div>
+        <div className="bg-white border-b border-gray-200">
+          <button
+            onClick={() => toggleSection('export')}
+            className="w-full p-5 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-all duration-200 group"
+          >
+            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide transition-colors group-hover:text-gray-700">Export</h3>
+            <div className="transition-transform duration-300 ease-in-out" style={{ transform: collapsedSections.export ? 'rotate(0deg)' : 'rotate(90deg)' }}>
+              <ChevronRightIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-700 transition-colors" />
+            </div>
+          </button>
+          {!collapsedSections.export && (
+            <div className="px-5 pb-5 pt-0">
+              <div className="space-y-2.5">
+                <button
+                  onClick={handleExportJSON}
+                  className="w-full flex items-center justify-between gap-3 px-4 py-2.5 bg-white hover:bg-blue-50 text-blue-700 hover:text-blue-800 border border-blue-200 hover:border-blue-300 rounded-lg transition-all duration-200 text-sm font-medium shadow-sm hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transform"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                    <span>JSON</span>
+                  </div>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                </button>
+                <button
+                  onClick={handleExportPDF}
+                  className="w-full flex items-center justify-between gap-3 px-4 py-2.5 bg-white hover:bg-red-50 text-red-700 hover:text-red-800 border border-red-200 hover:border-red-300 rounded-lg transition-all duration-200 text-sm font-medium shadow-sm hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transform"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                    <span>PDF</span>
+                  </div>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                </button>
+                <button
+                  onClick={handleExportDOCX}
+                  className="w-full flex items-center justify-between gap-3 px-4 py-2.5 bg-white hover:bg-green-50 text-green-700 hover:text-green-800 border border-green-200 hover:border-green-300 rounded-lg transition-all duration-200 text-sm font-medium shadow-sm hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transform"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                    <span>DOCX</span>
+                  </div>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Evaluation Analysis Section */}
-        {surveyToDisplay?.pillar_scores && Object.keys(surveyToDisplay.pillar_scores).length > 0 && (
-          <div className="p-4">
-            <div className="bg-white rounded-lg border border-gray-200 p-4">
+        {/* Version Management Section */}
+        {surveyToDisplay?.survey_id && (
+          <div className="bg-white border-b border-gray-200">
+            <button
+              onClick={() => toggleSection('versions')}
+              className="w-full p-5 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-all duration-200 group"
+            >
+              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide transition-colors group-hover:text-gray-700">Survey Versions</h3>
+              <div className="transition-transform duration-300 ease-in-out" style={{ transform: collapsedSections.versions ? 'rotate(0deg)' : 'rotate(90deg)' }}>
+                <ChevronRightIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-700 transition-colors" />
+              </div>
+            </button>
+            {!collapsedSections.versions && (
+              <div className="px-5 pb-5 pt-0">
+                <SurveyVersions surveyId={surveyToDisplay.survey_id} hideHeader={true} />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Evaluation Analysis Section - Always visible */}
+        {surveyToDisplay?.survey_id && (
+          <div className="bg-white border-b border-gray-200">
+            <div className="p-5">
+              <div className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
               {(() => {
                 // Determine evaluation type based on data
                 const pillarScores = surveyToDisplay.pillar_scores;
-                const hasValidScores = pillarScores.weighted_score !== undefined && pillarScores.weighted_score > 0;
-                const isAIAnalysis = pillarScores.summary && (
+                const hasPillarScores = pillarScores && Object.keys(pillarScores).length > 0;
+                const hasValidScores = hasPillarScores && pillarScores?.weighted_score !== undefined && (pillarScores.weighted_score || 0) > 0;
+                const isAIAnalysis = pillarScores?.summary && (
                   pillarScores.summary.includes('Single-Call') || 
                   pillarScores.summary.includes('Multiple-Call') ||
                   pillarScores.summary.includes('Chain-of-Thought') ||
                   pillarScores.summary.includes('AI')
                 );
-                const isBasicAnalysis = pillarScores.summary && pillarScores.summary.includes('Basic');
-                const isSkipped = pillarScores.summary && pillarScores.summary.includes('skipped');
+                const isBasicAnalysis = pillarScores?.summary && pillarScores.summary.includes('Basic');
+                const isSkipped = pillarScores?.summary && pillarScores.summary.includes('skipped');
+                const surveyId = surveyToDisplay?.survey_id;
+                const isEvaluating = surveyId ? evaluationInProgress[surveyId] : false;
                 
                 let evaluationType = 'Evaluation Analysis';
                 let evaluationIcon = '🔍';
                 let evaluationColor = 'blue';
                 let evaluationDescription = 'Survey quality assessment';
                 
-                if (isSkipped || !hasValidScores) {
+                if (!hasPillarScores) {
+                  evaluationType = 'AI Evaluation Analysis';
+                  evaluationIcon = '🤖';
+                  evaluationColor = 'blue';
+                  evaluationDescription = 'Generate AI-powered quality assessment';
+                } else if (isSkipped || !hasValidScores) {
                   evaluationType = 'Evaluation Disabled';
                   evaluationIcon = '⏭️';
                   evaluationColor = 'gray';
@@ -1873,26 +2025,58 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
 
                 return (
                   <>
-                    <div className="flex items-center gap-2 mb-4">
-                      <div className={`w-6 h-6 ${iconColorClass} rounded-full flex items-center justify-center`}>
-                        <span className="text-sm">{evaluationIcon}</span>
+                    <div className="flex items-center justify-between gap-3 mb-5">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 ${iconColorClass} rounded-full flex items-center justify-center flex-shrink-0`}>
+                          <span className="text-base">{evaluationIcon}</span>
+                        </div>
+                        <div>
+                          <h3 className="text-base font-semibold text-gray-900 mb-0.5">{evaluationType}</h3>
+                          <p className="text-xs text-gray-500">{evaluationDescription}</p>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="text-base font-semibold text-gray-900">{evaluationType}</h3>
-                        <p className="text-xs text-gray-500">{evaluationDescription}</p>
-                      </div>
+                      {!hasPillarScores && surveyId && (
+                        <button
+                          onClick={() => triggerEvaluationAsync(surveyId)}
+                          disabled={isEvaluating}
+                          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-md hover:shadow-lg hover:scale-105 active:scale-95 transform"
+                        >
+                          {isEvaluating ? (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                              <span>Generating...</span>
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                              </svg>
+                              <span>Generate AI Insights</span>
+                            </>
+                          )}
+                        </button>
+                      )}
                     </div>
 
+                    {/* Show message when no evaluation data */}
+                    {!hasPillarScores && (
+                      <div className="mb-5 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                        <p className="text-sm text-gray-700 leading-relaxed mb-3">
+                          No evaluation data available. Click "Generate AI Insights" to get an AI-powered quality assessment of this survey.
+                        </p>
+                      </div>
+                    )}
+
                     {/* Overall Assessment - only show if we have valid scores */}
-                    {hasValidScores && (
-                      <div className="mb-4">
+                    {hasValidScores && pillarScores && (
+                      <div className="mb-5 pb-5 border-b border-gray-200">
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-xs font-medium text-gray-700">Overall Assessment</span>
                           <span className={`px-2 py-1 text-xs font-medium rounded-full ${(() => {
                             // Calculate grade if missing
                             let grade = pillarScores.overall_grade;
                             if (!grade || grade === 'N/A') {
-                              const score = pillarScores.weighted_score || 0;
+                              const score = (pillarScores.weighted_score || 0);
                               if (score >= 0.9) grade = 'A';
                               else if (score >= 0.8) grade = 'B';
                               else if (score >= 0.7) grade = 'C';
@@ -1929,7 +2113,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
                             if (pillarScores.overall_grade && pillarScores.overall_grade !== 'N/A') {
                               return pillarScores.overall_grade;
                             }
-                            const score = pillarScores.weighted_score || 0;
+                            const score = (pillarScores.weighted_score || 0);
                             if (score >= 0.9) return 'A';
                             if (score >= 0.8) return 'B';
                             if (score >= 0.7) return 'C';
@@ -1938,7 +2122,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
                           })()})
                         </p>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs font-medium text-blue-600">Score: {Math.round((pillarScores.weighted_score || 0) * 100)}%</span>
+                          <span className="text-xs font-medium text-blue-600">Score: {Math.round((pillarScores?.weighted_score || 0) * 100)}%</span>
                           {isAIAnalysis && (
                             <>
                               <span className="text-xs text-gray-500">•</span>
@@ -1955,10 +2139,10 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
                       </div>
                     )}
 
-                    {/* Show message when evaluation is disabled */}
-                    {!hasValidScores && (
-                      <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-                        <p className="text-sm text-gray-600">
+                    {/* Show message when evaluation is disabled (only if we have pillar scores but no valid scores) */}
+                    {hasPillarScores && !hasValidScores && (
+                      <div className="mb-5 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <p className="text-sm text-gray-600 leading-relaxed">
                           {isSkipped ? 'AI evaluation was disabled for this survey generation.' : 'No evaluation data available for this survey.'}
                         </p>
                       </div>
@@ -1969,8 +2153,11 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
 
               {/* Pillar Analysis - show if we have pillar breakdown data */}
               {(() => {
-                const pillarScores = surveyToDisplay.pillar_scores;
-                const hasValidScores = pillarScores.weighted_score !== undefined && pillarScores.weighted_score > 0;
+                const pillarScores = surveyToDisplay?.pillar_scores;
+                const hasPillarScores = pillarScores && Object.keys(pillarScores).length > 0;
+                if (!hasPillarScores || !pillarScores) return null;
+                
+                const hasValidScores = pillarScores.weighted_score !== undefined && (pillarScores.weighted_score || 0) > 0;
                 const hasPillarBreakdown = pillarScores.pillar_breakdown && Array.isArray(pillarScores.pillar_breakdown) && pillarScores.pillar_breakdown.length > 0;
                 
                 // Debug logging
@@ -1986,9 +2173,9 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
                   const isEvaluating = surveyId ? evaluationInProgress[surveyId] : false;
                   
                   return (
-                    <div className="space-y-3 mb-4">
-                      <h4 className="text-xs font-medium text-gray-900">Pillar Analysis</h4>
-                      <div className="p-3 bg-gray-50 rounded-lg">
+                    <div className="space-y-3 mb-5">
+                      <h4 className="text-sm font-semibold text-gray-900 mb-3">Pillar Analysis</h4>
+                      <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
                         {isEvaluating ? (
                           <div className="flex items-center gap-2">
                             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
@@ -2016,9 +2203,9 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
                 }
                 
                 return (
-                  <div className="space-y-3 mb-4">
-                    <h4 className="text-xs font-medium text-gray-900">Pillar Analysis</h4>
-                    {pillarScores.pillar_breakdown.slice(0, 3).map((pillar, index) => {
+                  <div className="space-y-4 mb-5 pb-5 border-b border-gray-200">
+                    <h4 className="text-sm font-semibold text-gray-900 mb-3">Pillar Analysis</h4>
+                    {pillarScores.pillar_breakdown?.slice(0, 3).map((pillar: any, index: number) => {
                   const score = pillar.score || 0;
                   const percentage = Math.round(score * 100);
                   const grade = percentage >= 90 ? 'A' : percentage >= 80 ? 'B' : percentage >= 70 ? 'C' : percentage >= 60 ? 'D' : 'F';
@@ -2026,25 +2213,25 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
                   const progressColor = score >= 0.9 ? 'bg-green-500' : score >= 0.8 ? 'bg-blue-500' : score >= 0.7 ? 'bg-yellow-500' : 'bg-red-500';
                   
                   return (
-                    <div key={index} className="space-y-1">
+                    <div key={index} className="space-y-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-gray-700">
-                          {pillar.display_name || pillar.pillar_name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        <span className="text-sm font-medium text-gray-900">
+                          {pillar.display_name || pillar.pillar_name.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
                         </span>
-                        <div className="flex items-center gap-1">
-                          <span className={`text-xs font-medium ${gradeColor}`}>{grade}</span>
-                          <span className="text-xs text-gray-500">{percentage}%</span>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-sm font-semibold ${gradeColor}`}>{grade}</span>
+                          <span className="text-sm text-gray-600 font-medium">{percentage}%</span>
                         </div>
                       </div>
-                      <div className="w-full bg-gray-200 rounded-full h-1.5">
+                      <div className="w-full bg-gray-200 rounded-full h-2">
                         <div 
-                          className={`h-1.5 rounded-full transition-all duration-300 ${progressColor}`}
+                          className={`h-2 rounded-full transition-all duration-300 ${progressColor}`}
                           style={{ width: `${percentage}%` }}
                         />
                       </div>
-                      <div className="flex items-center justify-between text-xs text-gray-500">
+                      <div className="flex items-center justify-between text-xs text-gray-600 pt-1">
                         <span>{pillar.criteria_met || 0}/{pillar.total_criteria || 0} criteria met</span>
-                        <span>Weight: {Math.round((pillar.weight || 0) * 100)}%</span>
+                        <span className="font-medium">Weight: {Math.round((pillar.weight || 0) * 100)}%</span>
                       </div>
                     </div>
                   );
@@ -2055,15 +2242,16 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
 
               {/* Recommendations - show section with helpful message if no recommendations */}
               {(() => {
-                const pillarScores = surveyToDisplay.pillar_scores;
-                const hasValidScores = pillarScores.weighted_score !== undefined && pillarScores.weighted_score > 0;
-                const hasRecommendations = pillarScores.recommendations && pillarScores.recommendations.length > 0;
+                const pillarScores = surveyToDisplay?.pillar_scores;
+                if (!pillarScores) return null;
+                const hasValidScores = pillarScores.weighted_score !== undefined && (pillarScores.weighted_score || 0) > 0;
+                const hasRecommendations = pillarScores.recommendations && Array.isArray(pillarScores.recommendations) && pillarScores.recommendations.length > 0;
                 
                 return (
                   <div className="space-y-3">
-                    <h4 className="text-xs font-medium text-gray-900">Recommendations</h4>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-3">Recommendations</h4>
                     {hasRecommendations ? (
-                      <div className="space-y-2">
+                      <div className="space-y-2.5">
                         {pillarScores.recommendations.slice(0, 4).map((recommendation, index) => {
                           const colors = ['blue', 'yellow', 'green', 'purple'] as const;
                           const color = colors[index % colors.length];
@@ -2075,22 +2263,22 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
                           };
                           
                           return (
-                            <div key={index} className={`p-2 ${colorClasses[color]} border rounded-lg`}>
-                              <div className="flex items-start gap-2">
-                                <div className={`w-4 h-4 bg-${color}-500 rounded-full flex items-center justify-center mt-0.5 flex-shrink-0`}>
-                                  <svg className="w-2 h-2 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <div key={index} className={`p-3 ${colorClasses[color]} border rounded-lg shadow-sm`}>
+                              <div className="flex items-start gap-2.5">
+                                <div className={`w-5 h-5 bg-${color}-500 rounded-full flex items-center justify-center mt-0.5 flex-shrink-0`}>
+                                  <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
                                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                                   </svg>
                                 </div>
-                                <p className={`text-xs ${colorClasses[color].split(' ')[2]}`}>{recommendation}</p>
+                                <p className={`text-sm leading-relaxed ${colorClasses[color].split(' ')[2]}`}>{recommendation}</p>
                               </div>
                             </div>
                           );
                         })}
                       </div>
                     ) : (
-                      <div className="p-3 bg-gray-50 rounded-lg">
-                        <p className="text-sm text-gray-600">
+                      <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <p className="text-sm text-gray-600 leading-relaxed">
                           {hasValidScores ? 'No specific recommendations available for this evaluation.' : 'No evaluation data available.'}
                         </p>
                       </div>
@@ -2098,6 +2286,7 @@ export const SurveyPreview: React.FC<SurveyPreviewProps> = ({
                   </div>
                 );
               })()}
+              </div>
             </div>
           </div>
         )}

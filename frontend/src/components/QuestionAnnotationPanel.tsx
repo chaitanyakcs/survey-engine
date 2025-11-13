@@ -105,6 +105,9 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
   // Use ref to track current form data for saving
   const formDataRef = useRef<QuestionAnnotation>(formData);
   
+  // Use ref to track debounce timeout
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
   // Update ref when form data changes
   useEffect(() => {
     formDataRef.current = formData;
@@ -119,6 +122,7 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
     };
     
     console.log('🔄 [QuestionAnnotationPanel] Saving annotation:', annotationToSave);
+    console.log('💬 [QuestionAnnotationPanel] Comment being saved:', annotationToSave.comment);
     
     try {
       onSave(annotationToSave);
@@ -134,6 +138,9 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
     
     setFormData(prev => {
       const newFormData = { ...prev, [field]: value };
+      
+      // Update ref immediately with new value so debounced save uses latest data
+      formDataRef.current = { ...newFormData, questionId: question.id };
       
       // If labels field is updated, recalculate merged labels
       if (field === 'labels') {
@@ -151,6 +158,7 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
         addedBack.forEach((label: string) => newRemovedLabels.delete(label));
         
         newFormData.removedLabels = Array.from(newRemovedLabels);
+        formDataRef.current.removedLabels = Array.from(newRemovedLabels);
         
         console.log('🔍 [QuestionAnnotationPanel] Label change tracking:', {
           questionId: question.id,
@@ -165,13 +173,29 @@ const QuestionAnnotationPanel: React.FC<QuestionAnnotationPanelProps> = ({
       return newFormData;
     });
     
+    // Clear existing timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    
     // Save after a short delay to debounce rapid changes
-    setTimeout(() => {
+    // Use longer delay for comments to ensure user finishes typing
+    const debounceDelay = field === 'comment' ? 500 : 100;
+    saveTimeoutRef.current = setTimeout(() => {
       if (initializedForQuestion === question.id) {
         handleSave();
       }
-    }, 100);
+    }, debounceDelay);
   }, [question.id, handleSave, initializedForQuestion]);
+  
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Get current merged labels for display
   const currentMergedLabels = getCurrentMergedLabels();
