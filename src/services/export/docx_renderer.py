@@ -1013,6 +1013,176 @@ class DocxSurveyRenderer(SurveyExportRenderer):
 
         doc.add_paragraph("")
 
+    def _render_rating(self, question: Dict[str, Any]) -> None:
+        """Render rating question (similar to scale but with star/rating format)."""
+        self._add_question_header(question)
+        self._add_required_indicator(question)
+
+        doc = self._get_document()
+        paragraph = doc.add_paragraph()
+        paragraph.add_run("Rate on the following scale:").italic = True
+
+        options = question.get("options", [])
+        if not options:
+            # Default 5-point rating scale
+            options = ["1", "2", "3", "4", "5"]
+
+        scale_paragraph = doc.add_paragraph()
+        scale_text = " | ".join([f"★ {opt}" for opt in options])
+        scale_paragraph.add_run(scale_text)
+
+        doc.add_paragraph("")
+
+    def _render_file_upload(self, question: Dict[str, Any]) -> None:
+        """Render file upload question."""
+        self._add_question_header(question)
+        self._add_required_indicator(question)
+
+        doc = self._get_document()
+        paragraph = doc.add_paragraph()
+        paragraph.add_run("Upload file: [File upload button will appear here]").italic = True
+
+        # Add file type restrictions if specified
+        accepted_types = question.get("accepted_types", [])
+        if accepted_types:
+            types_paragraph = doc.add_paragraph()
+            types_paragraph.add_run(f"Accepted file types: {', '.join(accepted_types)}").font.size = Pt(9)
+
+        doc.add_paragraph("")
+
+    def _render_van_westendorp(self, question: Dict[str, Any]) -> None:
+        """Render Van Westendorp price sensitivity question."""
+        self._add_question_header(question)
+        self._add_required_indicator(question)
+
+        doc = self._get_document()
+        
+        # Add instruction text
+        instruction_paragraph = doc.add_paragraph()
+        instruction_paragraph.add_run("Van Westendorp Price Sensitivity Analysis").bold = True
+
+        guidance_paragraph = doc.add_paragraph()
+        guidance_paragraph.add_run("Please indicate the price points where you would have the following reactions:").italic = True
+
+        # Extract price context from question text
+        text = question.get("text", "")
+        currency_match = re.search(r'[£$€¥₹]', text)
+        currency = currency_match.group(0) if currency_match else "$"
+
+        # Create table for the four price points
+        table = doc.add_table(rows=5, cols=2)
+        table.style = 'Table Grid'
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+
+        # Header row
+        table.cell(0, 0).text = "Price Point Type"
+        table.cell(0, 1).text = "Price"
+
+        # Four Van Westendorp price points
+        price_points = [
+            "Too Cheap (unrealistically low)",
+            "Cheap (good value)",
+            "Expensive (but acceptable)",
+            "Too Expensive (unrealistic)"
+        ]
+
+        for i, price_point in enumerate(price_points):
+            table.cell(i + 1, 0).text = price_point
+            table.cell(i + 1, 1).text = f"{currency}_________"
+
+        doc.add_paragraph("")
+
+    def _render_conjoint(self, question: Dict[str, Any]) -> None:
+        """Render conjoint analysis question."""
+        self._add_question_header(question)
+        self._add_required_indicator(question)
+
+        doc = self._get_document()
+        
+        # Add instruction text
+        instruction_paragraph = doc.add_paragraph()
+        instruction_paragraph.add_run("Conjoint Analysis Question").bold = True
+
+        guidance_paragraph = doc.add_paragraph()
+        guidance_paragraph.add_run("Please evaluate the following product profiles and indicate your preference:").italic = True
+
+        # Extract attributes and levels from question
+        attributes = question.get("attributes", [])
+        options = question.get("options", [])
+
+        if attributes:
+            # Create table showing product profiles
+            num_profiles = len(options) if options else 3
+            table = doc.add_table(rows=num_profiles + 1, cols=len(attributes) + 1)
+            table.style = 'Table Grid'
+
+            # Header row
+            table.cell(0, 0).text = "Profile"
+            for j, attr in enumerate(attributes):
+                table.cell(0, j + 1).text = str(attr)
+
+            # Profile rows
+            for i in range(num_profiles):
+                table.cell(i + 1, 0).text = f"Profile {i + 1}"
+                for j in range(len(attributes)):
+                    table.cell(i + 1, j + 1).text = "____"
+
+            # Add preference rating
+            rating_paragraph = doc.add_paragraph()
+            rating_paragraph.add_run("Preference Rating (1-10): _________").italic = True
+        else:
+            # Generic conjoint format
+            doc.add_paragraph("Please evaluate the product profiles shown and indicate your preference.")
+            doc.add_paragraph("Preference: _________")
+
+        doc.add_paragraph("")
+
+    def _render_maxdiff(self, question: Dict[str, Any]) -> None:
+        """Render MaxDiff (Maximum Difference Scaling) question."""
+        self._add_question_header(question)
+        self._add_required_indicator(question)
+
+        doc = self._get_document()
+        
+        # Add instruction text
+        instruction_paragraph = doc.add_paragraph()
+        instruction_paragraph.add_run("MaxDiff Question").bold = True
+
+        guidance_paragraph = doc.add_paragraph()
+        guidance_paragraph.add_run("Please select the MOST and LEAST preferred options from each set:").italic = True
+
+        # Extract features/options
+        features = question.get("features", [])
+        options = question.get("options", [])
+
+        items = features if features else options
+
+        if not items:
+            doc.add_paragraph("MaxDiff: No features or options provided.")
+            doc.add_paragraph("")
+            return
+
+        # Create table for MaxDiff selection
+        table = doc.add_table(rows=len(items) + 1, cols=3)
+        table.style = 'Table Grid'
+
+        # Header row
+        table.cell(0, 0).text = "Option"
+        table.cell(0, 1).text = "Most Preferred"
+        table.cell(0, 2).text = "Least Preferred"
+
+        # Option rows
+        for i, item in enumerate(items):
+            table.cell(i + 1, 0).text = str(item)
+            table.cell(i + 1, 1).text = "☐"
+            table.cell(i + 1, 2).text = "☐"
+
+        doc.add_paragraph("")
+
+    def _render_unknown(self, question: Dict[str, Any]) -> None:
+        """Render unknown question type using unsupported renderer."""
+        self._render_unsupported_question_type(question)
+
 
 # Register the DOCX renderer
 export_registry.register_renderer("docx", DocxSurveyRenderer)

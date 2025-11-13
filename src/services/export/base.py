@@ -263,6 +263,34 @@ class SurveyExportRenderer(ABC):
     def _render_gabor_granger(self, question: Dict[str, Any]) -> None:
         pass
 
+    @abstractmethod
+    def _render_rating(self, question: Dict[str, Any]) -> None:
+        pass
+
+    @abstractmethod
+    def _render_file_upload(self, question: Dict[str, Any]) -> None:
+        pass
+
+    @abstractmethod
+    def _render_van_westendorp(self, question: Dict[str, Any]) -> None:
+        pass
+
+    @abstractmethod
+    def _render_conjoint(self, question: Dict[str, Any]) -> None:
+        pass
+
+    @abstractmethod
+    def _render_maxdiff(self, question: Dict[str, Any]) -> None:
+        pass
+
+    @abstractmethod
+    def _render_unknown(self, question: Dict[str, Any]) -> None:
+        pass
+
+    @abstractmethod
+    def _render_yes_no(self, question: Dict[str, Any]) -> None:
+        pass
+
 
 class ExportRegistry:
     """Registry for managing available export formats."""
