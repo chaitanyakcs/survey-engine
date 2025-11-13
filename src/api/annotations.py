@@ -248,10 +248,18 @@ def get_survey_annotations(
         and_(*question_conditions)
     ).all()
     
+    # Log comments being retrieved for debugging
+    for qa in question_annotations:
+        logger.debug(f"💬 [API] Retrieving comment for question_id={qa.question_id}: '{qa.comment}' (type: {type(qa.comment).__name__}, is None: {qa.comment is None}, length: {len(qa.comment) if qa.comment else 0})")
+    
     # Get section annotations
     section_annotations = db.query(SectionAnnotation).filter(
         and_(*section_conditions)
     ).all()
+    
+    # Log section comments being retrieved
+    for sa in section_annotations:
+        logger.debug(f"💬 [API] Retrieving comment for section_id={sa.section_id}: '{sa.comment}' (type: {type(sa.comment).__name__}, is None: {sa.comment is None}, length: {len(sa.comment) if sa.comment else 0})")
     
     # Get survey-level annotation
     survey_annotation = db.query(SurveyAnnotation).filter(
@@ -260,6 +268,9 @@ def get_survey_annotations(
             SurveyAnnotation.annotator_id == annotator_id
         )
     ).first()
+    
+    if survey_annotation:
+        logger.debug(f"💬 [API] Retrieving overall_comment for survey_id={survey_id}: '{survey_annotation.overall_comment}' (type: {type(survey_annotation.overall_comment).__name__}, is None: {survey_annotation.overall_comment is None}, length: {len(survey_annotation.overall_comment) if survey_annotation.overall_comment else 0})")
     
     # Return empty response instead of 404 when no annotations exist
     if not question_annotations and not section_annotations and not survey_annotation:
@@ -282,7 +293,8 @@ def get_survey_annotations(
         created_at = datetime.now()
         updated_at = datetime.now()
     
-    return SurveyAnnotationsResponse(
+    # Build response with explicit comment handling to preserve empty strings
+    response = SurveyAnnotationsResponse(
         survey_id=survey_id,
         question_annotations=[
             QuestionAnnotationResponse(
@@ -297,7 +309,8 @@ def get_survey_annotations(
                 respondent_experience=qa.respondent_experience,
                 analytical_value=qa.analytical_value,
                 business_impact=qa.business_impact,
-                comment=qa.comment,
+                # Preserve empty strings - don't convert to None
+                comment=qa.comment if qa.comment is not None else None,
                 labels=qa.labels,
                 removed_labels=qa.removed_labels,
                 annotator_id=qa.annotator_id,
@@ -328,7 +341,8 @@ def get_survey_annotations(
                 respondent_experience=sa.respondent_experience,
                 analytical_value=sa.analytical_value,
                 business_impact=sa.business_impact,
-                comment=sa.comment,
+                # Preserve empty strings - don't convert to None
+                comment=sa.comment if sa.comment is not None else None,
                 labels=sa.labels,
                 annotator_id=sa.annotator_id,
                 created_at=sa.created_at,
@@ -350,6 +364,7 @@ def get_survey_annotations(
                 original_ai_comment=getattr(sa, 'original_ai_comment', None)
             ) for sa in section_annotations
         ],
+        # Preserve empty strings for overall_comment - don't convert to None
         overall_comment=survey_annotation.overall_comment if survey_annotation else None,
         annotator_id=annotator_id,
         created_at=created_at,
@@ -359,6 +374,16 @@ def get_survey_annotations(
         compliance_report=survey_annotation.compliance_report if survey_annotation else None,
         advanced_metadata=survey_annotation.advanced_metadata if survey_annotation else None
     )
+    
+    # Log what we're returning for debugging
+    for qa_resp in response.question_annotations:
+        logger.debug(f"💬 [API] Returning comment for question_id={qa_resp.question_id}: '{qa_resp.comment}' (type: {type(qa_resp.comment).__name__}, is None: {qa_resp.comment is None})")
+    for sa_resp in response.section_annotations:
+        logger.debug(f"💬 [API] Returning comment for section_id={sa_resp.section_id}: '{sa_resp.comment}' (type: {type(sa_resp.comment).__name__}, is None: {sa_resp.comment is None})")
+    if response.overall_comment is not None:
+        logger.debug(f"💬 [API] Returning overall_comment: '{response.overall_comment}' (type: {type(response.overall_comment).__name__}, is None: {response.overall_comment is None})")
+    
+    return response
 
 @router.post("/annotations/survey/{survey_id}/bulk")
 async def save_bulk_annotations(
@@ -370,6 +395,14 @@ async def save_bulk_annotations(
     
     logger.info(f"🔍 [API] Starting bulk annotation save for survey_id={survey_id}")
     logger.info(f"📊 [API] Processing {len(annotations.question_annotations)} question annotations and {len(annotations.section_annotations)} section annotations")
+    
+    # Log incoming comments to verify they're in the request
+    for qa_req in annotations.question_annotations:
+        logger.info(f"💬 [API] INCOMING question annotation comment for question_id={qa_req.question_id}: '{qa_req.comment}' (type: {type(qa_req.comment).__name__}, is None: {qa_req.comment is None}, length: {len(qa_req.comment) if qa_req.comment else 0})")
+    for sa_req in annotations.section_annotations:
+        logger.info(f"💬 [API] INCOMING section annotation comment for section_id={sa_req.section_id}: '{sa_req.comment}' (type: {type(sa_req.comment).__name__}, is None: {sa_req.comment is None}, length: {len(sa_req.comment) if sa_req.comment else 0})")
+    if annotations.overall_comment:
+        logger.info(f"💬 [API] INCOMING overall_comment: '{annotations.overall_comment}' (type: {type(annotations.overall_comment).__name__}, length: {len(annotations.overall_comment) if annotations.overall_comment else 0})")
     
     try:
         # Process question annotations
@@ -415,7 +448,10 @@ async def save_bulk_annotations(
                 existing_qa.respondent_experience = qa_req.respondent_experience
                 existing_qa.analytical_value = qa_req.analytical_value
                 existing_qa.business_impact = qa_req.business_impact
-                existing_qa.comment = qa_req.comment
+                # Save comment (including empty strings - don't convert to None)
+                existing_qa.comment = qa_req.comment if qa_req.comment is not None else None
+                logger.info(f"💬 [API] SAVING comment for question_id={qa_req.question_id}: '{qa_req.comment}' (type: {type(qa_req.comment).__name__}, length: {len(qa_req.comment) if qa_req.comment else 0})")
+                logger.info(f"💬 [API] Database comment value after assignment: '{existing_qa.comment}' (type: {type(existing_qa.comment).__name__}, is None: {existing_qa.comment is None})")
                 existing_qa.labels = qa_req.labels
                 existing_qa.removed_labels = qa_req.removed_labels
                 existing_qa.updated_at = datetime.now()
@@ -426,6 +462,9 @@ async def save_bulk_annotations(
                 is_ai_generated = qa_req.annotator_id == "ai_system"
                 
                 # Create new annotation
+                # Save comment (including empty strings - don't convert to None)
+                comment_value = qa_req.comment if qa_req.comment is not None else None
+                logger.info(f"💬 [API] CREATING annotation with comment for question_id={qa_req.question_id}: '{comment_value}' (type: {type(comment_value).__name__}, length: {len(comment_value) if comment_value else 0})")
                 new_qa = QuestionAnnotation(
                     question_id=qa_req.question_id,
                     survey_id=survey_id,
@@ -437,7 +476,7 @@ async def save_bulk_annotations(
                     respondent_experience=qa_req.respondent_experience,
                     analytical_value=qa_req.analytical_value,
                     business_impact=qa_req.business_impact,
-                    comment=qa_req.comment,
+                    comment=comment_value,
                     labels=qa_req.labels,
                     removed_labels=qa_req.removed_labels,
                     annotator_id=qa_req.annotator_id,
@@ -495,7 +534,10 @@ async def save_bulk_annotations(
                 existing_sa.respondent_experience = sa_req.respondent_experience
                 existing_sa.analytical_value = sa_req.analytical_value
                 existing_sa.business_impact = sa_req.business_impact
-                existing_sa.comment = sa_req.comment
+                # Save comment (including empty strings - don't convert to None)
+                existing_sa.comment = sa_req.comment if sa_req.comment is not None else None
+                logger.info(f"💬 [API] SAVING comment for section_id={sa_req.section_id}: '{sa_req.comment}' (type: {type(sa_req.comment).__name__}, length: {len(sa_req.comment) if sa_req.comment else 0})")
+                logger.info(f"💬 [API] Database comment value after assignment: '{existing_sa.comment}' (type: {type(existing_sa.comment).__name__}, is None: {existing_sa.comment is None})")
                 existing_sa.labels = sa_req.labels
                 existing_sa.updated_at = datetime.now()
                 # Update advanced labeling fields
@@ -505,6 +547,9 @@ async def save_bulk_annotations(
             else:
                 logger.debug(f"➕ [API] Creating new section annotation for section_id={sa_req.section_id}")
                 # Create new annotation
+                # Save comment (including empty strings - don't convert to None)
+                comment_value = sa_req.comment if sa_req.comment is not None else None
+                logger.info(f"💬 [API] CREATING annotation with comment for section_id={sa_req.section_id}: '{comment_value}' (type: {type(comment_value).__name__}, length: {len(comment_value) if comment_value else 0})")
                 new_sa = SectionAnnotation(
                     section_id=sa_req.section_id,
                     survey_id=survey_id,
@@ -515,7 +560,7 @@ async def save_bulk_annotations(
                     respondent_experience=sa_req.respondent_experience,
                     analytical_value=sa_req.analytical_value,
                     business_impact=sa_req.business_impact,
-                    comment=sa_req.comment,
+                    comment=comment_value,
                     labels=sa_req.labels,
                     annotator_id=sa_req.annotator_id,
                     # Advanced labeling fields
@@ -528,7 +573,21 @@ async def save_bulk_annotations(
         logger.info("✅ [API] Completed processing section annotations")
         
         # Process survey-level annotation
-        if annotations.overall_comment or annotations.detected_labels or annotations.compliance_report or annotations.advanced_metadata:
+        # Always process survey-level annotation if any field is provided (including empty strings for comments)
+        # Check if overall_comment is explicitly provided (not None) or if other fields are provided
+        should_process_survey = (
+            annotations.overall_comment is not None or  # Explicitly check for None, not truthiness
+            annotations.detected_labels is not None or
+            annotations.compliance_report is not None or
+            annotations.advanced_metadata is not None
+        )
+        
+        # Log what we received for survey-level annotation
+        if annotations.advanced_metadata:
+            logger.info(f"💬 [API] Received advanced_metadata with fields: {list(annotations.advanced_metadata.keys())}")
+            logger.info(f"💬 [API] Advanced metadata content: overallQuality={annotations.advanced_metadata.get('overallQuality')}, surveyRelevance={annotations.advanced_metadata.get('surveyRelevance')}, surveyType={annotations.advanced_metadata.get('surveyType')}, researchMethodology={annotations.advanced_metadata.get('researchMethodology')}")
+        
+        if should_process_survey:
             logger.info("📝 [API] Processing survey-level annotation...")
             existing_survey_ann = db.query(SurveyAnnotation).filter(
                 and_(
@@ -539,17 +598,25 @@ async def save_bulk_annotations(
 
             if existing_survey_ann:
                 logger.debug(f"🔄 [API] Updating existing survey annotation for survey_id={survey_id}")
-                existing_survey_ann.overall_comment = annotations.overall_comment
+                # Always update overall_comment if it's provided (even if empty string)
+                if annotations.overall_comment is not None:
+                    existing_survey_ann.overall_comment = annotations.overall_comment
+                    logger.info(f"💬 [API] SAVING overall_comment for survey_id={survey_id}: '{annotations.overall_comment}' (type: {type(annotations.overall_comment).__name__}, length: {len(annotations.overall_comment) if annotations.overall_comment else 0})")
+                    logger.info(f"💬 [API] Database overall_comment value after assignment: '{existing_survey_ann.overall_comment}' (type: {type(existing_survey_ann.overall_comment).__name__}, is None: {existing_survey_ann.overall_comment is None})")
                 existing_survey_ann.updated_at = datetime.now()
                 # Update advanced labeling fields
-                existing_survey_ann.detected_labels = annotations.detected_labels
-                existing_survey_ann.compliance_report = annotations.compliance_report
-                existing_survey_ann.advanced_metadata = annotations.advanced_metadata
+                if annotations.detected_labels is not None:
+                    existing_survey_ann.detected_labels = annotations.detected_labels
+                if annotations.compliance_report is not None:
+                    existing_survey_ann.compliance_report = annotations.compliance_report
+                if annotations.advanced_metadata is not None:
+                    existing_survey_ann.advanced_metadata = annotations.advanced_metadata
+                    logger.info(f"💬 [API] Saved advanced_metadata with {len(annotations.advanced_metadata)} fields: {list(annotations.advanced_metadata.keys())}")
             else:
                 logger.debug(f"➕ [API] Creating new survey annotation for survey_id={survey_id}")
                 new_survey_ann = SurveyAnnotation(
                     survey_id=survey_id,
-                    overall_comment=annotations.overall_comment,
+                    overall_comment=annotations.overall_comment if annotations.overall_comment is not None else None,
                     annotator_id=annotations.annotator_id,
                     # Advanced labeling fields
                     detected_labels=annotations.detected_labels,
@@ -563,6 +630,21 @@ async def save_bulk_annotations(
         logger.info("💾 [API] Committing all changes to database...")
         db.commit()
         logger.info("✅ [API] Successfully committed all changes")
+        
+        # Verify comments were saved by querying back from database
+        logger.info("🔍 [API] Verifying comments were saved...")
+        for qa_req in annotations.question_annotations:
+            saved_qa = db.query(QuestionAnnotation).filter(
+                and_(
+                    QuestionAnnotation.question_id == qa_req.question_id,
+                    QuestionAnnotation.annotator_id == qa_req.annotator_id,
+                    QuestionAnnotation.survey_id == survey_id
+                )
+            ).first()
+            if saved_qa:
+                logger.info(f"💬 [API] VERIFIED saved comment for question_id={qa_req.question_id}: '{saved_qa.comment}' (type: {type(saved_qa.comment).__name__}, is None: {saved_qa.comment is None}, length: {len(saved_qa.comment) if saved_qa.comment else 0})")
+            else:
+                logger.warning(f"⚠️ [API] Could not find saved annotation for question_id={qa_req.question_id}")
         
         # Sync annotations to RAG tables (real-time hook)
         logger.info("🔗 [API] Syncing annotations to RAG tables...")
