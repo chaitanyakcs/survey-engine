@@ -16,7 +16,10 @@ const AnnotationPage: React.FC = () => {
   const hasLoaded = useRef(false);
 
   // Extract survey ID from URL
-  const surveyId = window.location.pathname.split('/')[2];
+  // Path format: /annotations/{surveyId}
+  const pathParts = window.location.pathname.split('/').filter(p => p); // Filter out empty strings
+  const surveyId = pathParts[1]; // ['annotations', '{surveyId}'] -> index 1
+  console.log('🔍 [AnnotationPage] URL path:', window.location.pathname, 'pathParts:', pathParts, 'surveyId:', surveyId);
 
   useEffect(() => {
     const loadSurveyData = async () => {
@@ -188,13 +191,41 @@ const AnnotationPage: React.FC = () => {
         console.log('✅ Annotations saved successfully before exit');
       }
       
-      // Navigate back to the survey preview or generator
-      window.history.back();
+      // Get survey ID from URL or current survey
+      const targetSurveyId = surveyId || currentSurvey?.survey_id;
+      console.log('🔙 [AnnotationPage] Navigating back. surveyId from URL:', surveyId, 'currentSurvey?.survey_id:', currentSurvey?.survey_id, 'targetSurveyId:', targetSurveyId);
+      
+      // Navigate back to the survey view page (not survey listing)
+      // Use replace to avoid adding to history stack
+      if (targetSurveyId) {
+        console.log('🔙 [AnnotationPage] Navigating to:', `/surveys/${targetSurveyId}`);
+        window.location.replace(`/surveys/${targetSurveyId}`);
+      } else {
+        console.warn('⚠️ [AnnotationPage] No survey ID available, using browser history');
+        // Fallback to browser history if no survey ID
+        window.history.back();
+      }
     } catch (error) {
       console.error('Error saving annotations before exit:', error);
       // Still navigate back even if save fails, but show error
-      alert('Failed to save annotations before exit. Please try again.');
-      window.history.back();
+      addToast({
+        type: 'error',
+        title: 'Save Error',
+        message: 'Failed to save annotations before exit. Please try again.',
+        duration: 5000
+      });
+      
+      // Get survey ID from URL or current survey
+      const targetSurveyId = surveyId || currentSurvey?.survey_id;
+      
+      // Navigate to survey view even if save fails
+      if (targetSurveyId) {
+        console.log('🔙 [AnnotationPage] Navigating to (after error):', `/surveys/${targetSurveyId}`);
+        window.location.replace(`/surveys/${targetSurveyId}`);
+      } else {
+        console.warn('⚠️ [AnnotationPage] No survey ID available after error, using browser history');
+        window.history.back();
+      }
     }
   };
 
