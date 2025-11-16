@@ -172,6 +172,8 @@ class Survey(Base):
     parent_survey_id = Column(UUID(as_uuid=True), ForeignKey("surveys.id"), nullable=True)
     is_current = Column(Boolean, default=True, nullable=False)
     version_notes = Column(Text, nullable=True)
+    used_annotation_comment_ids = Column(JSONB, nullable=True)  # Stores annotation IDs used in regeneration
+    comments_addressed = Column(JSONB, nullable=True)  # Stores LLM self-reported addressed comment IDs
     created_at = Column(DateTime, default=func.now())
 
     rfq = relationship("RFQ", back_populates="surveys")

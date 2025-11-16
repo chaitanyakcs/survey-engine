@@ -431,6 +431,13 @@ export interface Survey {
   used_golden_examples?: string[];  // NEW
   used_golden_questions?: string[];  // NEW
   used_golden_sections?: string[];  // NEW
+  used_annotation_comment_ids?: {
+    question_annotations?: number[];
+    section_annotations?: number[];
+    survey_annotations?: number[];
+  };  // Comment tracking - which annotation IDs were used
+  comments_addressed?: string[];  // LLM self-reported comment IDs that were addressed
+  parent_survey_id?: string;  // Version tracking - parent survey ID if regenerated
 }
 
 export interface SurveyListItem {
@@ -460,6 +467,114 @@ export interface SurveyVersion {
   createdAt: string;
   versionNotes?: string;
   parentSurveyId?: string;
+}
+
+export interface CommentActionStatus {
+  comment_id: string;
+  status: 'addressed' | 'unaddressed' | 'unknown';
+  confidence?: 'high' | 'medium' | 'low';
+  source?: 'llm_self_report' | 'diff_validation';
+  validation?: 'confirmed' | 'unconfirmed';
+  warning?: string;
+  comment_text?: string;  // Actual comment text
+  question_id?: string;  // Question ID if this is a question comment
+  section_id?: number;  // Section ID if this is a section comment
+  annotation_type?: 'question' | 'section' | 'survey';  // Type of annotation
+  linked_question?: {
+    id: string;
+    text: string;
+    type: string;
+    options: string[];
+    required: boolean;
+    category: string;
+    status: 'added' | 'modified';
+  };  // The question that resulted from this comment (for question-level comments)
+}
+
+export interface CommentActionAnalysis {
+  total_comments: number;
+  addressed_comments: CommentActionStatus[];
+  unaddressed_comments: CommentActionStatus[];
+  action_status: Record<string, CommentActionStatus>;
+  summary: {
+    addressed_count: number;
+    high_confidence: number;
+    medium_confidence: number;
+    low_confidence: number;
+  };
+}
+
+export interface SurveyDiff {
+  comparison_type: 'version' | 'reference' | 'arbitrary';
+  summary: {
+    questions_added: number;
+    questions_modified: number;
+    questions_removed: number;
+    questions_preserved: number;
+    total_questions_1: number;
+    total_questions_2: number;
+    sections_changed: number;
+    sections_preserved: number;
+    sections_regenerated?: number[];
+    sections_preserved_list?: number[];
+  };
+  comment_action_status?: CommentActionAnalysis;
+  sections: Array<{
+    id: number;
+    status: 'added' | 'modified' | 'removed' | 'preserved';
+    name: string;
+    questions_count_1: number;
+    questions_count_2: number;
+    questions_changed: number;
+  }>;
+  questions: Array<{
+    id: string;
+    status: 'added' | 'modified' | 'removed' | 'preserved';
+    similarity?: number | null;
+    section_id?: number | null;
+    changes: string[];
+    question1: Question | null;
+    question2: Question | null;
+    match_index_1?: number | null;
+    match_index_2?: number | null;
+  }>;
+  quality_scores?: {
+    survey1?: any;
+    survey2?: any;
+    delta?: Record<string, number>;
+  };
+  regeneration_metadata?: {
+    sections_regenerated: number[];
+    sections_preserved: number[];
+    is_surgical: boolean;
+  };
+  reference_context?: {
+    is_reference: boolean;
+    reference_id?: string;
+  };
+  survey1_info: {
+    id: string;
+    version: number;
+    title: string;
+    used_annotation_comment_ids?: {
+      question_annotations?: number[];
+      section_annotations?: number[];
+      survey_annotations?: number[];
+    };
+    comments_addressed?: string[];
+  };
+  survey2_info: {
+    id: string;
+    version: number;
+    title: string;
+    used_annotation_comment_ids?: {
+      question_annotations?: number[];
+      section_annotations?: number[];
+      survey_annotations?: number[];
+    };
+    comments_addressed?: string[];
+  };
+  error?: string;
 }
 
 export interface Question {
@@ -1269,6 +1384,7 @@ export interface AppStore {
   ) => Promise<{ survey_id: string; workflow_id: string; version: number; message: string }>;
   getSurveyVersions: (surveyId: string) => Promise<any[]>;
   getAnnotationFeedbackPreview: (surveyId: string) => Promise<any>;
+  getSurveyDiff: (surveyId: string, compareWithSurveyId?: string) => Promise<SurveyDiff>;
   setCurrentVersion: (surveyId: string) => Promise<void>;
   
   persistWorkflowState: (workflowId: string, state: any) => void;

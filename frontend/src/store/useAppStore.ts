@@ -206,6 +206,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const currentProgress = currentState.workflow.progress || 0;
     const newProgress = workflowState.progress;
     
+    console.log('🔧 [Store] setWorkflowState called:', {
+      incomingState: workflowState,
+      currentState: {
+        status: currentState.workflow.status,
+        current_step: currentState.workflow.current_step,
+        progress: currentState.workflow.progress,
+        workflow_id: currentState.workflow.workflow_id
+      }
+    });
 
     // Apply smooth progress transition to prevent jarring jumps
     let smoothedProgress = newProgress;
@@ -252,6 +261,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     // Persist workflow state for recovery
     const updatedWorkflow = get().workflow;
+    console.log('🔧 [Store] setWorkflowState completed. Updated workflow state:', {
+      status: updatedWorkflow.status,
+      current_step: updatedWorkflow.current_step,
+      current_substep: updatedWorkflow.current_substep,
+      progress: updatedWorkflow.progress,
+      workflow_id: updatedWorkflow.workflow_id,
+      message: updatedWorkflow.message
+    });
     if (updatedWorkflow.workflow_id && (updatedWorkflow.status === 'started' || updatedWorkflow.status === 'in_progress' || updatedWorkflow.status === 'paused' || updatedWorkflow.status === 'completed')) {
       get().persistWorkflowState(updatedWorkflow.workflow_id, updatedWorkflow);
       console.log('💾 [Store] Workflow state persisted after setWorkflowState');
@@ -599,6 +616,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   connectWebSocket: (workflowId: string) => {
+    console.log('🔌 [Store] connectWebSocket called with workflowId:', workflowId);
+    console.log('🔌 [Store] Current workflow state before WebSocket connection:', {
+      status: get().workflow.status,
+      workflow_id: get().workflow.workflow_id,
+      current_step: get().workflow.current_step,
+      progress: get().workflow.progress
+    });
+    
     // Connect to backend WebSocket server (port 8000)
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const backendHost = process.env.NODE_ENV === 'production' 
@@ -606,17 +631,20 @@ export const useAppStore = create<AppStore>((set, get) => ({
       : 'localhost:8000';
     const wsUrl = `${protocol}//${backendHost}/ws/survey/${workflowId}`;
     
+    console.log('🔌 [Store] WebSocket URL:', wsUrl);
+    
     let retryCount = 0;
     const maxRetries = 10; // Increased retries for workflow timeouts
     const retryDelay = 2000; // Reduced delay for faster reconnection
     let keepAliveInterval: NodeJS.Timeout | null = null;
     
     const connect = () => {
-      console.log(`Connecting to WebSocket (attempt ${retryCount + 1}/${maxRetries + 1}):`, wsUrl);
+      console.log(`🔌 [Store] Connecting to WebSocket (attempt ${retryCount + 1}/${maxRetries + 1}):`, wsUrl);
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
-        console.log('WebSocket connected successfully');
+        console.log('✅ [Store] WebSocket connected successfully for workflowId:', workflowId);
+        console.log('✅ [Store] WebSocket connection established, ready to receive progress updates');
         retryCount = 0; // Reset retry count on successful connection
         
         // Set up keep-alive ping every 30 seconds
@@ -688,16 +716,53 @@ export const useAppStore = create<AppStore>((set, get) => ({
           } else {
           // Normal progress update
           console.log('🔍 [Frontend] Updating workflow state with step:', message.step, 'substep:', message.substep, 'progress:', message.percent);
+          
+          // Ensure status is set to 'in_progress' if workflow is active but status isn't set
+          // This ensures the ProgressStepper is shown when workflow moves to active steps
+          const currentWorkflow = get().workflow;
+          console.log('🔍 [Frontend] Current workflow state BEFORE update:', {
+            status: currentWorkflow.status,
+            current_step: currentWorkflow.current_step,
+            current_substep: currentWorkflow.current_substep,
+            progress: currentWorkflow.progress,
+            workflow_id: currentWorkflow.workflow_id
+          });
+          
+          const shouldSetInProgress = currentWorkflow.status !== 'started' && 
+                                      currentWorkflow.status !== 'in_progress' && 
+                                      currentWorkflow.status !== 'paused' &&
+                                      currentWorkflow.status !== 'completed' &&
+                                      currentWorkflow.status !== 'failed';
+          
+          console.log('🔍 [Frontend] Status update decision:', {
+            currentStatus: currentWorkflow.status,
+            shouldSetInProgress,
+            reason: shouldSetInProgress ? 'Status not in active state, will set to in_progress' : `Status already ${currentWorkflow.status}, keeping it`
+          });
+          
           const newWorkflowState = {
             current_step: message.step,
             current_substep: message.substep,
             progress: message.percent,
-            message: message.message
+            message: message.message,
+            ...(shouldSetInProgress && { status: 'in_progress' as const })
           };
+          
+          console.log('🔍 [Frontend] New workflow state to be set:', newWorkflowState);
           
           // Use setWorkflowState to get progress smoothing
           get().setWorkflowState(newWorkflowState);
-          console.log('✅ [Frontend] Workflow state updated with step:', message.step, 'substep:', message.substep, 'progress:', message.percent);
+          
+          // Verify the state was actually updated
+          const updatedWorkflow = get().workflow;
+          console.log('✅ [Frontend] Workflow state AFTER update:', {
+            status: updatedWorkflow.status,
+            current_step: updatedWorkflow.current_step,
+            current_substep: updatedWorkflow.current_substep,
+            progress: updatedWorkflow.progress,
+            workflow_id: updatedWorkflow.workflow_id
+          });
+          console.log('✅ [Frontend] Workflow state updated with step:', message.step, 'substep:', message.substep, 'progress:', message.percent, shouldSetInProgress ? '(status set to in_progress)' : '');
           }
 
           console.log('✅ [Frontend] Progress state updated');
@@ -1786,25 +1851,43 @@ export const useAppStore = create<AppStore>((set, get) => ({
     } = {}
   ) => {
     try {
+      console.log('🔄 [Store] Starting SYNCHRONOUS regeneration for survey:', surveyId);
+      
+      // Set workflow state to in_progress (no WebSocket needed)
+      set({
+        workflow: {
+          workflow_id: `regenerate-${surveyId}`,
+          survey_id: surveyId,
+          status: 'in_progress',
+          current_step: 'regenerating',
+          progress: 50
+        }
+      });
+      
+      // Make the API call - this will WAIT for completion
+      console.log('⏳ [Store] Waiting for regeneration to complete...');
       const result = await apiService.regenerateSurvey(surveyId, options);
       
-      // Set workflow state for regeneration
+      console.log('✅ [Store] Regeneration completed:', {
+        survey_id: result.survey_id,
+        version: result.version,
+        message: result.message
+      });
+      
+      // Mark workflow as completed
       set({
         workflow: {
           workflow_id: result.workflow_id,
           survey_id: result.survey_id,
-          status: 'in_progress',
-          current_step: 'regenerating',
-          progress: 0
+          status: 'completed',
+          current_step: 'completed',
+          progress: 100
         }
       });
       
-      // Connect WebSocket for progress updates
-      get().connectWebSocket(result.workflow_id);
-      
       get().addToast({
         type: 'success',
-        title: 'Regeneration Started',
+        title: 'Regeneration Complete',
         message: result.message,
         duration: 5000
       });
@@ -1812,6 +1895,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
       return result;
     } catch (error) {
       console.error('❌ [Store] Failed to regenerate survey:', error);
+      
+      // Reset workflow state on error
+      set({
+        workflow: {
+          workflow_id: '',
+          survey_id: '',
+          status: 'idle',
+          current_step: '',
+          progress: 0
+        }
+      });
+      
       get().addToast({
         type: 'error',
         title: 'Regeneration Failed',
@@ -1838,6 +1933,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
       return preview;
     } catch (error) {
       console.error('❌ [Store] Failed to get annotation feedback preview:', error);
+      throw error;
+    }
+  },
+
+  getSurveyDiff: async (surveyId: string, compareWithSurveyId?: string) => {
+    try {
+      const diff = await apiService.getSurveyDiff(surveyId, compareWithSurveyId);
+      return diff;
+    } catch (error) {
+      console.error('❌ [Store] Failed to get survey diff:', error);
+      get().addToast({
+        type: 'error',
+        title: 'Diff Failed',
+        message: error instanceof Error ? error.message : 'Failed to load survey diff',
+        duration: 5000
+      });
       throw error;
     }
   },
@@ -2473,6 +2584,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
       }
 
       // Update workflow state with response
+      console.log('🔍 [Store] Setting workflow state after submitEnhancedRFQ response:', {
+        workflow_id: responseData.workflow_id,
+        survey_id: responseData.survey_id,
+        rfq_id: responseData.rfq_id
+      });
+      
       set((state) => ({
         workflow: {
           ...state.workflow,
@@ -2485,6 +2602,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
           message: 'Starting enhanced survey generation workflow...'
         }
       }));
+
+      // Verify the state was set correctly
+      const updatedState = get().workflow;
+      console.log('✅ [Store] Workflow state after submitEnhancedRFQ:', {
+        status: updatedState.status,
+        workflow_id: updatedState.workflow_id,
+        survey_id: updatedState.survey_id,
+        current_step: updatedState.current_step,
+        progress: updatedState.progress
+      });
 
       // Persist workflow state immediately for recovery
       const currentState = get().workflow;
@@ -2500,7 +2627,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
       });
 
       // Connect to WebSocket for progress updates
+      console.log('🔌 [Store] About to connect WebSocket for workflowId:', responseData.workflow_id);
       get().connectWebSocket(responseData.workflow_id);
+      console.log('🔌 [Store] connectWebSocket call completed');
 
       // Store enhanced RFQ data for future reference and analytics
       localStorage.setItem('enhanced_rfq_data', JSON.stringify({

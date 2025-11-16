@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy.orm import Session
 from src.database import get_db, Survey
 from src.database.models import LLMAudit
@@ -32,6 +32,9 @@ class SurveyResponse(BaseModel):
     used_golden_examples: List[str] = []  # NEW
     used_golden_questions: List[str] = []  # NEW
     used_golden_sections: List[str] = []  # NEW
+    used_annotation_comment_ids: Optional[Dict[str, List[int]]] = None  # Comment tracking
+    comments_addressed: Optional[List[str]] = None  # LLM self-report
+    parent_survey_id: Optional[str] = None  # Version tracking
 
 
 class EditRequest(BaseModel):
@@ -247,7 +250,10 @@ async def get_survey(
             rfq_data=rfq.enhanced_rfq_data if rfq else None,
             used_golden_examples=[str(example_id) for example_id in survey.used_golden_examples] if survey.used_golden_examples else [],  # NEW
             used_golden_questions=[str(question_id) for question_id in survey.used_golden_questions] if survey.used_golden_questions else [],  # NEW
-            used_golden_sections=[str(section_id) for section_id in survey.used_golden_sections] if survey.used_golden_sections else []  # NEW
+            used_golden_sections=[str(section_id) for section_id in survey.used_golden_sections] if survey.used_golden_sections else [],  # NEW
+            used_annotation_comment_ids=getattr(survey, 'used_annotation_comment_ids', None),  # Comment tracking
+            comments_addressed=getattr(survey, 'comments_addressed', None),  # LLM self-report
+            parent_survey_id=str(survey.parent_survey_id) if getattr(survey, 'parent_survey_id', None) else None  # Version tracking
         )
         
         logger.info(f"🎉 [Survey API] Returning survey response: status={response.status}")
@@ -272,16 +278,20 @@ async def regenerate_survey(
     db: Session = Depends(get_db)
 ) -> RegenerateSurveyResponse:
     """
-    Regenerate a survey with annotation feedback from all previous versions
+    Regenerate a survey with annotation feedback from all previous versions.
+    This is a SYNCHRONOUS operation - waits for completion before returning.
+    No WebSocket required - simple wait for result.
     """
     try:
         from src.services.workflow_service import WorkflowService
-        from src.main import manager
         
-        # Initialize workflow service
-        workflow_service = WorkflowService(db, connection_manager=manager)
+        logger.info(f"🔄 [Survey API] Starting synchronous regeneration for survey {survey_id}")
+        logger.info(f"📋 [Survey API] Request: include_annotations={request.include_annotations}, mode={request.regeneration_mode}")
         
-        # Regenerate survey
+        # Initialize workflow service WITHOUT connection_manager (no WebSocket)
+        workflow_service = WorkflowService(db, connection_manager=None)
+        
+        # Regenerate survey - this will WAIT for completion
         result = await workflow_service.regenerate_survey(
             parent_survey_id=str(survey_id),
             include_annotations=request.include_annotations,
@@ -300,14 +310,17 @@ async def regenerate_survey(
         # Workflow ID follows the pattern: survey-regenerate-{survey_id}
         workflow_id = f"survey-regenerate-{result.survey_id}"
         
+        logger.info(f"✅ [Survey API] Regeneration completed successfully: survey_id={result.survey_id}, version={version}")
+        
         return RegenerateSurveyResponse(
             survey_id=result.survey_id,
             workflow_id=workflow_id,
             version=version,
-            message=f"Survey regeneration started. New version {version} is being generated."
+            message=f"Survey regeneration completed. New version {version} has been generated."
         )
         
     except ValueError as e:
+        logger.error(f"❌ [Survey API] Validation error during regeneration: {str(e)}")
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"❌ [Survey API] Failed to regenerate survey {survey_id}: {str(e)}", exc_info=True)
@@ -404,6 +417,7 @@ async def get_annotation_feedback_preview(
                 prompt_builder = PromptBuilder(db_session=db)
                 context = {
                     "previous_survey_encoded": previous_survey_encoded,
+                    "previous_survey_json": survey.final_output,  # Original survey JSON for question text extraction
                     "annotation_feedback_summary": feedback_digest,
                     "focus_on_annotated_areas": True,
                     "regeneration_mode": True
@@ -429,6 +443,243 @@ async def get_annotation_feedback_preview(
     except Exception as e:
         logger.error(f"❌ [Survey API] Failed to preview annotation feedback: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to preview annotation feedback: {str(e)}")
+
+
+@router.get("/{survey_id}/diff")
+async def get_survey_diff(
+    survey_id: UUID,
+    compare_with: Optional[UUID] = Query(None, description="Survey ID to compare with. If not provided, compares with parent version."),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Get detailed diff between two surveys.
+    
+    Supports:
+    - Version comparison (same RFQ): If compare_with not provided, uses parent version
+    - Reference comparison (cross-survey): Compare with reference examples
+    - Arbitrary comparison: Compare any two surveys
+    
+    Args:
+        survey_id: The survey to compare (current/newer version)
+        compare_with: Optional survey ID to compare with. If not provided, uses parent version.
+    
+    Returns:
+        Detailed diff analysis including questions, sections, and quality scores
+    """
+    try:
+        from src.services.survey_diff_service import SurveyDiffService
+        
+        # Get survey1 (current)
+        survey1 = db.query(Survey).filter(Survey.id == survey_id).first()
+        if not survey1:
+            raise HTTPException(status_code=404, detail=f"Survey not found: {survey_id}")
+        
+        # Get survey2 (compare target)
+        if compare_with:
+            survey2 = db.query(Survey).filter(Survey.id == compare_with).first()
+            if not survey2:
+                raise HTTPException(status_code=404, detail=f"Comparison survey not found: {compare_with}")
+        else:
+            # Use parent version if available
+            if survey1.parent_survey_id:
+                survey2 = db.query(Survey).filter(Survey.id == survey1.parent_survey_id).first()
+                if not survey2:
+                    raise HTTPException(status_code=404, detail=f"Parent survey not found: {survey1.parent_survey_id}")
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No comparison target specified. Provide 'compare_with' parameter or ensure survey has a parent version."
+                )
+        
+        # Prepare metadata for comparison type detection
+        # Use getattr to handle cases where migration hasn't been run yet
+        survey1_metadata = {
+            "id": survey1.id,
+            "rfq_id": survey1.rfq_id,
+            "used_annotation_comment_ids": getattr(survey1, 'used_annotation_comment_ids', None),
+            "comments_addressed": getattr(survey1, 'comments_addressed', None),
+            "parent_survey_id": survey1.parent_survey_id,
+            "status": survey1.status
+        }
+        
+        survey2_metadata = {
+            "id": survey2.id,
+            "rfq_id": survey2.rfq_id,
+            "used_annotation_comment_ids": getattr(survey2, 'used_annotation_comment_ids', None),
+            "comments_addressed": getattr(survey2, 'comments_addressed', None),
+            "parent_survey_id": survey2.parent_survey_id,
+            "status": survey2.status
+        }
+        
+        # Compute diff
+        diff_service = SurveyDiffService()
+        diff_result = diff_service.compute_diff(
+            survey1=survey1,
+            survey2=survey2,
+            survey1_metadata=survey1_metadata,
+            survey2_metadata=survey2_metadata
+        )
+        
+        # Enhance comment_action_status with actual comment text, context, and linked questions
+        # Use getattr to handle old surveys that don't have these columns
+        # survey1 is the newer version (should have comment tracking)
+        used_annotation_ids = getattr(survey1, 'used_annotation_comment_ids', None)
+        if diff_result.get("comment_action_status") and used_annotation_ids:
+            from src.database.models import QuestionAnnotation, SectionAnnotation, SurveyAnnotation
+            from uuid import UUID
+            
+            comment_action_status = diff_result["comment_action_status"]
+            # used_annotation_ids already set above
+            
+            # Build a map of question_id -> question from the diff for quick lookup
+            question_map = {}
+            for q_diff in diff_result.get("questions", []):
+                # For question annotations, the question_id in the annotation refers to the OLD question
+                # We need to find the NEW question that resulted from the comment
+                # Check if this question was added or modified (likely due to the comment)
+                if q_diff.get("status") in ["added", "modified"]:
+                    new_question = q_diff.get("question1")
+                    if new_question:
+                        # Store by the question's ID in the new survey
+                        question_map[new_question.get("id")] = new_question
+                        # Also store by old question ID if this was modified
+                        old_question = q_diff.get("question2")
+                        if old_question:
+                            question_map[old_question.get("id")] = new_question
+            
+            # Fetch comment details for question annotations
+            if used_annotation_ids.get("question_annotations"):
+                question_annotations = db.query(QuestionAnnotation).filter(
+                    QuestionAnnotation.id.in_(used_annotation_ids["question_annotations"])
+                ).all()
+                
+                # Build mapping from comment_id to comment text and linked question
+                for annotation in question_annotations:
+                    # Find matching comment in addressed_comments
+                    question_id = annotation.question_id  # This is the OLD question ID from the annotation
+                    comment_text = annotation.comment or ""
+                    
+                    # Find comment_id pattern: COMMENT-Q{question_id}-V{version}
+                    # We need to match this with comments_addressed
+                    for comment in comment_action_status.get("addressed_comments", []):
+                        comment_id = comment.get("comment_id", "")
+                        if f"Q{question_id}" in comment_id or str(question_id) in comment_id:
+                            comment["comment_text"] = comment_text
+                            comment["question_id"] = question_id
+                            comment["annotation_type"] = "question"
+                            
+                            # Find the new question that resulted from this comment
+                            # Look for questions that were added or modified
+                            linked_question = None
+                            question_status = None
+                            for q_diff in diff_result.get("questions", []):
+                                if q_diff.get("status") in ["added", "modified"]:
+                                    new_q = q_diff.get("question1")
+                                    old_q = q_diff.get("question2")
+                                    # Check if this question matches the annotation's question_id
+                                    # (either the old question was modified, or a new question was added)
+                                    if old_q and old_q.get("id") == question_id:
+                                        linked_question = new_q
+                                        question_status = q_diff.get("status")
+                                        break
+                                    # Also check if this is a new question added due to the comment
+                                    # (we'll match by section or other heuristics if needed)
+                            
+                            if linked_question:
+                                comment["linked_question"] = {
+                                    "id": linked_question.get("id"),
+                                    "text": linked_question.get("text"),
+                                    "type": linked_question.get("type"),
+                                    "options": linked_question.get("options", []),
+                                    "required": linked_question.get("required", False),
+                                    "category": linked_question.get("category", ""),
+                                    "status": question_status or "modified"
+                                }
+                            break
+                    
+                    # Also check unaddressed comments
+                    for comment in comment_action_status.get("unaddressed_comments", []):
+                        comment_id = comment.get("comment_id", "")
+                        if f"Q{question_id}" in comment_id or str(question_id) in comment_id:
+                            comment["comment_text"] = comment_text
+                            comment["question_id"] = question_id
+                            comment["annotation_type"] = "question"
+                            break
+            
+            # Fetch comment details for section annotations
+            if used_annotation_ids.get("section_annotations"):
+                section_annotations = db.query(SectionAnnotation).filter(
+                    SectionAnnotation.id.in_(used_annotation_ids["section_annotations"])
+                ).all()
+                
+                for annotation in section_annotations:
+                    section_id = annotation.section_id
+                    comment_text = annotation.comment or ""
+                    
+                    for comment in comment_action_status.get("addressed_comments", []):
+                        comment_id = comment.get("comment_id", "")
+                        if f"S{section_id}" in comment_id or str(section_id) in comment_id:
+                            comment["comment_text"] = comment_text
+                            comment["section_id"] = section_id
+                            comment["annotation_type"] = "section"
+                            break
+                    
+                    for comment in comment_action_status.get("unaddressed_comments", []):
+                        comment_id = comment.get("comment_id", "")
+                        if f"S{section_id}" in comment_id or str(section_id) in comment_id:
+                            comment["comment_text"] = comment_text
+                            comment["section_id"] = section_id
+                            comment["annotation_type"] = "section"
+                            break
+            
+            # Fetch survey-level comment
+            if used_annotation_ids.get("survey_annotations"):
+                survey_annotations = db.query(SurveyAnnotation).filter(
+                    SurveyAnnotation.survey_id == str(survey2.id)
+                ).all()
+                
+                for annotation in survey_annotations:
+                    comment_text = annotation.overall_comment or ""
+                    
+                    for comment in comment_action_status.get("addressed_comments", []):
+                        comment_id = comment.get("comment_id", "")
+                        if "SURVEY" in comment_id:
+                            comment["comment_text"] = comment_text
+                            comment["annotation_type"] = "survey"
+                            break
+                    
+                    for comment in comment_action_status.get("unaddressed_comments", []):
+                        comment_id = comment.get("comment_id", "")
+                        if "SURVEY" in comment_id:
+                            comment["comment_text"] = comment_text
+                            comment["annotation_type"] = "survey"
+                            break
+        
+        # Add survey metadata for frontend
+        # survey1 is the newer version (should have comment tracking)
+        # survey2 is the older/parent version
+        diff_result["survey1_info"] = {
+            "id": str(survey1.id),
+            "version": survey1.version,
+            "title": survey1.final_output.get("title", "Untitled Survey") if survey1.final_output and isinstance(survey1.final_output, dict) else "Untitled Survey",
+            "used_annotation_comment_ids": getattr(survey1, 'used_annotation_comment_ids', None),
+            "comments_addressed": getattr(survey1, 'comments_addressed', None)
+        }
+        
+        diff_result["survey2_info"] = {
+            "id": str(survey2.id),
+            "version": survey2.version,
+            "title": survey2.final_output.get("title", "Untitled Survey") if survey2.final_output and isinstance(survey2.final_output, dict) else "Untitled Survey"
+        }
+        
+        logger.info(f"✅ [Survey API] Diff computed: {survey_id} vs {compare_with or survey1.parent_survey_id}")
+        return diff_result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [Survey API] Failed to compute diff: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to compute diff: {str(e)}")
 
 
 @router.put("/{survey_id}/edit")

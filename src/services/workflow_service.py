@@ -614,8 +614,12 @@ class WorkflowService:
                     logger.info(f"✅ [WorkflowService] Tracking {len(feedback_question_ids)} feedback questions in addition to {len(used_questions)} similarity-matched questions")
 
                 # Check if this is a failed survey (minimal fallback due to LLM failure)
-                generated_survey = final_state.get("generated_survey", {})
-                is_failed_survey = generated_survey.get('metadata', {}).get('generation_failed', False)
+                generated_survey = final_state.get("generated_survey")
+                # Handle None case - if generated_survey is None, generation failed
+                if generated_survey is None:
+                    is_failed_survey = True
+                else:
+                    is_failed_survey = generated_survey.get('metadata', {}).get('generation_failed', False) if isinstance(generated_survey, dict) else False
 
                 if is_failed_survey:
                     logger.warning(f"⚠️ [WorkflowService] Survey {survey.id} marked as draft due to generation failure")
@@ -630,6 +634,80 @@ class WorkflowService:
                 if feedback_digest:
                     survey.feedback_digest = feedback_digest
                     logger.info(f"✅ [WorkflowService] Stored feedback digest for survey {survey.id}")
+                
+                # Store used annotation comment IDs (from regeneration)
+                used_annotation_ids = final_state.get("used_annotation_comment_ids")
+                if used_annotation_ids:
+                    survey.used_annotation_comment_ids = used_annotation_ids
+                    logger.info(f"✅ [WorkflowService] Stored used annotation comment IDs for survey {survey.id}")
+                
+                # Extract and store comments_addressed from LLM response
+                # Check multiple locations: top-level, metadata.comments_addressed, and raw_output.metadata.comments_addressed
+                generated_survey = final_state.get("generated_survey")
+                comments_addressed = None
+                
+                if generated_survey and isinstance(generated_survey, dict):
+                    # Check top-level first
+                    comments_addressed = generated_survey.get("comments_addressed")
+                    # Check metadata.comments_addressed if not found at top level
+                    if not comments_addressed and generated_survey.get("metadata"):
+                        comments_addressed = generated_survey.get("metadata", {}).get("comments_addressed")
+                
+                # Also check raw_output.metadata.comments_addressed (LLM may put it in raw response metadata)
+                if not comments_addressed:
+                    raw_response = final_state.get("generation_metadata", {}).get("raw_response")
+                    if not raw_response and survey.raw_output:
+                        # Fallback: check saved raw_output in database
+                        raw_response = survey.raw_output
+                    
+                    if raw_response:
+                        try:
+                            import json
+                            if isinstance(raw_response, str):
+                                raw_data = json.loads(raw_response)
+                            else:
+                                raw_data = raw_response
+                            
+                            if isinstance(raw_data, dict):
+                                # Check raw_output.metadata.comments_addressed
+                                if raw_data.get("metadata", {}).get("comments_addressed"):
+                                    comments_addressed = raw_data["metadata"]["comments_addressed"]
+                                # Also check top-level in raw response
+                                elif raw_data.get("comments_addressed"):
+                                    comments_addressed = raw_data["comments_addressed"]
+                        except (json.JSONDecodeError, TypeError, KeyError) as e:
+                            logger.debug(f"⚠️ [WorkflowService] Could not parse raw_response for comments_addressed: {e}")
+                
+                if comments_addressed:
+                    survey.comments_addressed = comments_addressed
+                    logger.info(f"✅ [WorkflowService] Stored comments_addressed: {len(comments_addressed)} comment IDs for survey {survey.id}")
+                elif used_annotation_ids:
+                    # Fallback: If LLM didn't provide comments_addressed but we have used_annotation_comment_ids,
+                    # construct comments_addressed from annotation IDs so frontend checkbox is enabled
+                    constructed_comments = []
+                    
+                    # Question annotations
+                    if used_annotation_ids.get("question_annotations"):
+                        for q_id in used_annotation_ids["question_annotations"]:
+                            # Use version from parent survey if available
+                            parent_version = survey.version - 1 if survey.version > 1 else 1
+                            constructed_comments.append(f"COMMENT-Q{q_id}-V{parent_version}")
+                    
+                    # Section annotations
+                    if used_annotation_ids.get("section_annotations"):
+                        for s_id in used_annotation_ids["section_annotations"]:
+                            parent_version = survey.version - 1 if survey.version > 1 else 1
+                            constructed_comments.append(f"COMMENT-S{s_id}-V{parent_version}")
+                    
+                    # Survey annotations
+                    if used_annotation_ids.get("survey_annotations"):
+                        for _ in used_annotation_ids["survey_annotations"]:
+                            parent_version = survey.version - 1 if survey.version > 1 else 1
+                            constructed_comments.append(f"COMMENT-SURVEY-V{parent_version}")
+                    
+                    if constructed_comments:
+                        survey.comments_addressed = constructed_comments
+                        logger.info(f"✅ [WorkflowService] Constructed comments_addressed from annotation IDs: {len(constructed_comments)} comment IDs for survey {survey.id}")
 
                 self.db.commit()
                 logger.info(f"✅ [WorkflowService] Survey record updated: status={survey.status}, golden_examples_used={len(survey.used_golden_examples)}")
@@ -682,8 +760,12 @@ class WorkflowService:
                             survey.used_golden_questions = all_question_ids
 
                         # Check if this is a failed survey (minimal fallback due to LLM failure)
-                        generated_survey = final_state.get("generated_survey", {})
-                        is_failed_survey = generated_survey.get('metadata', {}).get('generation_failed', False)
+                        generated_survey = final_state.get("generated_survey")
+                        # Handle None case - if generated_survey is None, generation failed
+                        if generated_survey is None:
+                            is_failed_survey = True
+                        else:
+                            is_failed_survey = generated_survey.get('metadata', {}).get('generation_failed', False) if isinstance(generated_survey, dict) else False
 
                         if is_failed_survey:
                             logger.warning(f"⚠️ [WorkflowService] Survey {survey.id} marked as failed due to generation failure (retry path)")
@@ -854,6 +936,12 @@ class WorkflowService:
         
         # Collect annotation feedback if requested
         annotation_feedback = None
+        used_annotation_ids = {
+            "question_annotations": [],
+            "section_annotations": [],
+            "survey_annotations": []
+        }
+        
         if include_annotations:
             annotation_service = AnnotationFeedbackService(self.db)
             annotation_feedback = await annotation_service.build_feedback_digest(
@@ -862,6 +950,26 @@ class WorkflowService:
                 prioritize_annotated=focus_on_annotated_areas
             )
             logger.info(f"📝 [WorkflowService] Collected annotation feedback: {annotation_feedback.get('question_feedback', {}).get('total_count', 0)} questions, {annotation_feedback.get('section_feedback', {}).get('total_count', 0)} sections")
+            
+            # Collect annotation IDs for tracking
+            # Question annotations
+            for qf in annotation_feedback.get('question_feedback', {}).get('questions_with_feedback', []):
+                for comment in qf.get('comments', []):
+                    if comment.get('annotation_id'):
+                        used_annotation_ids['question_annotations'].append(comment['annotation_id'])
+            
+            # Section annotations
+            for sf in annotation_feedback.get('section_feedback', {}).get('sections_with_feedback', []):
+                for comment in sf.get('comments', []):
+                    if comment.get('annotation_id'):
+                        used_annotation_ids['section_annotations'].append(comment['annotation_id'])
+            
+            # Survey annotations
+            for survey_fb in annotation_feedback.get('survey_feedback', {}).get('overall_comments', []):
+                if survey_fb.get('annotation_id'):
+                    used_annotation_ids['survey_annotations'].append(survey_fb['annotation_id'])
+            
+            logger.info(f"📝 [WorkflowService] Collected annotation IDs: {len(used_annotation_ids['question_annotations'])} questions, {len(used_annotation_ids['section_annotations'])} sections, {len(used_annotation_ids['survey_annotations'])} survey-level")
             
             # Log detailed feedback for debugging
             if annotation_feedback.get('section_feedback', {}).get('sections_with_feedback'):
@@ -963,11 +1071,30 @@ class WorkflowService:
             )
             logger.info(f"📦 [WorkflowService] Encoded previous survey structure: {len(str(previous_survey_encoded))} chars, full questions for {len(sections_with_feedback)} sections")
         
+        # Store original survey JSON for question text extraction in prompt builder
+        previous_survey_json = parent_survey.final_output if parent_survey.final_output else None
+        
+        # Generate RFQ embedding once for reuse (optimization for regeneration)
+        # Send progress update: Generating RFQ embedding
+        try:
+            if ws_client:
+                progress_data = progress_tracker.get_progress_data("generating_embedding")
+                logger.info(f"📡 [WorkflowService] Sending progress update: generating_embedding")
+                await ws_client.send_progress_update(workflow_id, progress_data)
+        except Exception as e:
+            logger.warning(f"⚠️ [WorkflowService] Failed to send generating_embedding progress update: {str(e)}")
+        
+        from src.services.embedding_service import EmbeddingService
+        embedding_service = EmbeddingService()
+        rfq_embedding = await embedding_service.get_embedding(rfq.description or "")
+        logger.info(f"✅ [WorkflowService] Generated RFQ embedding for reuse (optimization)")
+        
         # Initialize workflow state with regeneration mode
         import time
         initial_state = SurveyGenerationState(
             rfq_id=rfq.id,
             rfq_text=rfq.description or "",
+            rfq_embedding=rfq_embedding,  # Pre-generated embedding for reuse
             rfq_title=rfq.title,
             product_category=rfq.product_category,
             target_segment=rfq.target_segment,
@@ -982,9 +1109,11 @@ class WorkflowService:
             regeneration_mode_type=regeneration_mode_enum,  # New enum-based mode
             target_sections=target_sections,
             previous_survey_encoded=previous_survey_encoded,
+            previous_survey_json=previous_survey_json,  # Original survey JSON for question text extraction
             annotation_feedback_summary=annotation_feedback,
             focus_on_annotated_areas=focus_on_annotated_areas,
-            surgical_analysis=surgical_analysis  # Analysis of which sections to regenerate
+            surgical_analysis=surgical_analysis,  # Analysis of which sections to regenerate
+            used_annotation_comment_ids=used_annotation_ids if any(used_annotation_ids.values()) else None  # Store annotation IDs for tracking
         )
         
         logger.info(f"🔄 [WorkflowService] Initialized regeneration state: workflow_id={workflow_id}, version={next_version}")

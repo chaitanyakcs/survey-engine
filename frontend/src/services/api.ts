@@ -370,6 +370,23 @@ class APIService {
     }
   }
 
+  async getSurveyDiff(surveyId: string, compareWithSurveyId?: string): Promise<any> {
+    try {
+      const url = compareWithSurveyId
+        ? `${API_BASE_URL}/v1/survey/${surveyId}/diff?compare_with=${compareWithSurveyId}`
+        : `${API_BASE_URL}/v1/survey/${surveyId}/diff`;
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to get survey diff: ${response.statusText}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('❌ [API] Failed to get survey diff:', error);
+      throw error;
+    }
+  }
+
   async getSurveyVersions(surveyId: string): Promise<any[]> {
     try {
       const response = await fetch(`${API_BASE_URL}/v1/survey/${surveyId}/versions`);
