@@ -84,10 +84,12 @@ class SurveyGenerationState(BaseModel):
     regeneration_mode_type: Optional[RegenerationMode] = None  # Enum for regeneration mode (FULL, SURGICAL, TARGETED)
     target_sections: Optional[List[str]] = None  # For section-specific regeneration
     previous_survey_encoded: Optional[Dict[str, Any]] = None  # Encoded/compressed previous survey
+    previous_survey_json: Optional[Dict[str, Any]] = None  # Original survey JSON for question text extraction
     preserve_sections: Optional[List[str]] = None  # Sections to preserve in section-specific mode
     annotation_feedback_summary: Optional[Dict[str, Any]] = None  # Structured feedback from all previous versions
     focus_on_annotated_areas: bool = True  # Whether to prioritize annotated areas
     surgical_analysis: Optional[Dict[str, Any]] = None  # Analysis of which sections need regeneration (surgical mode)
+    used_annotation_comment_ids: Optional[Dict[str, List[int]]] = None  # Annotation IDs used in regeneration (question/section/survey)
     
     class Config:
         arbitrary_types_allowed = True

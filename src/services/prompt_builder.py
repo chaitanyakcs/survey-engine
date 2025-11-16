@@ -3189,6 +3189,72 @@ class PromptBuilder:
             logger.warning(f"⚠️ [PromptBuilder] Failed to build annotation insights section: {e}")
             return None
     
+    def _extract_question_text_by_id(
+        self, 
+        question_id: str, 
+        previous_survey_encoded: Optional[Dict[str, Any]],
+        previous_survey_json: Optional[Dict[str, Any]] = None
+    ) -> Optional[str]:
+        """
+        Extract question text by question_id from encoded survey or original survey JSON
+        
+        Args:
+            question_id: The question ID to find (e.g., 'q5', 'q26')
+            previous_survey_encoded: Encoded survey structure
+            previous_survey_json: Original survey JSON (if available)
+            
+        Returns:
+            Question text if found, None otherwise
+        """
+        # First try to find in original survey JSON if available
+        if previous_survey_json:
+            # Search in sections format
+            sections = previous_survey_json.get('sections', [])
+            for section in sections:
+                questions = section.get('questions', [])
+                for q in questions:
+                    if q.get('id') == question_id or q.get('question_id') == question_id:
+                        return q.get('text', '')
+            
+            # Search in flat questions format (legacy)
+            questions = previous_survey_json.get('questions', [])
+            for q in questions:
+                if q.get('id') == question_id or q.get('question_id') == question_id:
+                    return q.get('text', '')
+        
+        # Fallback: try to find in encoded structure
+        # Note: encoded structure only has key_questions, not all questions
+        if previous_survey_encoded:
+            sections = previous_survey_encoded.get('sections', [])
+            for section in sections:
+                key_questions = section.get('key_questions', [])
+                # Try to match by position/index if question_id is numeric
+                try:
+                    # Extract number from question_id (e.g., 'q5' -> 5, 'q26' -> 26)
+                    q_num = int(question_id.replace('q', '').replace('Q', ''))
+                    # If we have full questions for this section, try to find by index
+                    if section.get('has_full_questions') and q_num <= len(key_questions):
+                        # This is approximate - we can't guarantee the order matches
+                        # But it's better than nothing
+                        return key_questions[q_num - 1] if q_num > 0 else None
+                except (ValueError, IndexError):
+                    pass
+        
+        return None
+    
+    def _get_section_name(self, section_id: int) -> str:
+        """Get section name by ID - centralized mapping"""
+        section_mapping = {
+            1: "Sample Plan",
+            2: "Screener",
+            3: "Brand/Product Awareness",
+            4: "Concept Exposure",
+            5: "Methodology",
+            6: "Additional Questions",
+            7: "Programmer Instructions"
+        }
+        return section_mapping.get(section_id, f"Section {section_id}")
+    
     def _build_regeneration_context_section(self, context: Dict[str, Any]) -> Optional[PromptSection]:
         """
         Build regeneration-specific context section for improved survey generation
@@ -3202,6 +3268,7 @@ class PromptBuilder:
             focus_on_annotated_areas = context.get("focus_on_annotated_areas", True)
             regeneration_mode_type = context.get("regeneration_mode_type")
             surgical_analysis = context.get("surgical_analysis")
+            previous_survey_json = context.get("previous_survey_json")  # Original survey JSON if available
             
             if not previous_survey_encoded and not annotation_feedback_summary:
                 return None
@@ -3209,7 +3276,7 @@ class PromptBuilder:
             # SURGICAL/TARGETED MODE: Optimized prompt with only necessary context
             if regeneration_mode_type in (RegenerationMode.SURGICAL, RegenerationMode.TARGETED) and surgical_analysis:
                 return self._build_surgical_regeneration_section(
-                    context, surgical_analysis, previous_survey_encoded, annotation_feedback_summary
+                    context, surgical_analysis, previous_survey_encoded, annotation_feedback_summary, previous_survey_json
                 )
             
             # FULL MODE: Original comprehensive approach
@@ -3217,20 +3284,22 @@ class PromptBuilder:
                 "## 🔄 REGENERATION MODE: IMPROVING PREVIOUS VERSION",
                 "",
                 "You are regenerating an improved version of a previously generated survey.",
-                "Use the feedback and previous structure below to create a better version.",
+                "Use the feedback below to create a better version.",
                 ""
             ]
             
-            # Previous Version Context - Show actual questions for sections with feedback
+            # Identify questions with feedback to avoid duplication
+            questions_with_feedback_ids = set()
+            if annotation_feedback_summary:
+                for qf in annotation_feedback_summary.get('question_feedback', {}).get('questions_with_feedback', []):
+                    questions_with_feedback_ids.add(qf.get('question_id'))
+            
+            # Previous Version Context - Only show summary and sections with feedback (questions shown in improvements section)
             if previous_survey_encoded:
-                # Identify which sections have feedback
                 sections_with_feedback = set()
                 if annotation_feedback_summary:
                     for sf in annotation_feedback_summary.get('section_feedback', {}).get('sections_with_feedback', []):
                         sections_with_feedback.add(sf.get('section_id'))
-                    for qf in annotation_feedback_summary.get('question_feedback', {}).get('questions_with_feedback', []):
-                        # Try to infer section from question context if available
-                        pass  # Will show all sections for now
                 
                 content.extend([
                     "### 📋 PREVIOUS VERSION STRUCTURE:",
@@ -3238,40 +3307,21 @@ class PromptBuilder:
                     f"**Summary**: {previous_survey_encoded.get('summary', 'N/A')}",
                     f"**Total Questions**: {previous_survey_encoded.get('total_questions', 0)}",
                     f"**Methodology**: {', '.join(previous_survey_encoded.get('methodology_tags', []))}",
-                    "",
-                    "**IMPORTANT**: Review the questions below to understand what exists and what might be missing.",
                     ""
                 ])
                 
-                # Show full question lists for sections with feedback, summaries for others
-                for section in previous_survey_encoded.get('sections', [])[:10]:
-                    section_id = section.get('id')
-                    section_title = section.get('title', 'Section')
-                    has_feedback = section_id in sections_with_feedback or any(
-                        sf.get('section_id') == section_id 
-                        for sf in annotation_feedback_summary.get('section_feedback', {}).get('sections_with_feedback', [])
-                    ) if annotation_feedback_summary else False
-                    
-                    content.append(f"#### {section_title} ({section.get('question_count', 0)} questions):")
-                    
-                    # If this section has feedback, show ALL questions so LLM can see what's missing
-                    if has_feedback and section.get('key_questions'):
-                        if section.get('has_full_questions'):
-                            content.append("**ALL current questions in this section (review to see what's missing):**")
-                        else:
-                            content.append("**Current questions in this section:**")
-                        for i, q in enumerate(section.get('key_questions', []), 1):
-                            content.append(f"  {i}. {q}")
-                        content.append("")
-                    else:
-                        # Just show summary for sections without feedback
-                        if section.get('key_questions'):
-                            content.append("**Sample questions:**")
-                            for q in section.get('key_questions', [])[:2]:
-                                content.append(f"  - {q}")
-                        content.append("")
-                
-                content.append("")
+                # Only show sections with feedback (questions are shown in improvements section to avoid duplication)
+                if sections_with_feedback:
+                    content.append("**Sections with feedback (see improvements below for specific questions):**")
+                    for section in previous_survey_encoded.get('sections', []):
+                        section_id = section.get('id')
+                        if section_id in sections_with_feedback:
+                            section_title = section.get('title', 'Section')
+                            content.append(f"  - {section_title} ({section.get('question_count', 0)} questions)")
+                    content.append("")
+                else:
+                    content.append("**Note**: Review the improvement requirements below for specific changes needed.")
+                    content.append("")
             
             # Improvement Requirements from Annotations
             if annotation_feedback_summary:
@@ -3280,6 +3330,12 @@ class PromptBuilder:
                     "",
                     "The following feedback was collected from annotations on previous versions.",
                     "**YOU MUST ADDRESS THESE ISSUES** in your regenerated survey:",
+                    "",
+                    "**CRITICAL - COMMENT TRACKING**:",
+                    "Each comment below is tagged with a unique ID like [COMMENT-Q123-V2].",
+                    "When you address a comment, you MUST include its ID in the 'comments_addressed' array in your JSON response.",
+                    "Only include comment IDs where you made actual changes to address the feedback.",
+                    "Example: If you address [COMMENT-Q5-V2], include \"COMMENT-Q5-V2\" in comments_addressed.",
                     ""
                 ])
                 
@@ -3298,7 +3354,26 @@ class PromptBuilder:
                             comment = latest.get('comment', '')
                             if comment and quality < 4:
                                 priority = "🔴 HIGH PRIORITY" if quality < 3 else "🟡 MEDIUM PRIORITY"
-                                content.append(f"{priority} - Question {qf.get('question_id', '?')}: {comment[:200]}")
+                                question_id = qf.get('question_id', '?')
+                                
+                                # Try to get question text for context
+                                question_text = self._extract_question_text_by_id(
+                                    question_id, 
+                                    previous_survey_encoded,
+                                    previous_survey_json
+                                )
+                                
+                                # Get comment ID for tracking
+                                comment_id = latest.get('comment_id', f"COMMENT-Q{question_id}-V{latest.get('version', '?')}")
+                                
+                                if question_text:
+                                    # Include question text for context
+                                    question_text_truncated = question_text[:150] + ('...' if len(question_text) > 150 else '')
+                                    content.append(f"{priority} - [{comment_id}] Question {question_id}: {question_text_truncated}")
+                                    content.append(f"  Feedback: {comment[:200]}")
+                                else:
+                                    # Fallback: just question ID and comment
+                                    content.append(f"{priority} - [{comment_id}] Question {question_id}: {comment[:200]}")
                     content.append("")
                 
                 # Section-level improvements - SHOW ALL, not just quality < 4
@@ -3318,18 +3393,10 @@ class PromptBuilder:
                             comment = latest.get('comment', '')
                             if comment:  # Show ALL comments, not just quality < 4
                                 priority = "🔴 HIGH PRIORITY" if quality < 3 else "🟡 MEDIUM PRIORITY" if quality < 4 else "💡 SUGGESTION"
-                                # Map section ID to section name for clarity
-                                section_name = {
-                                    1: "Sample Plan",
-                                    2: "Screener",
-                                    3: "Brand/Product Awareness",
-                                    4: "Concept Exposure",
-                                    5: "Methodology",
-                                    6: "Additional Questions",
-                                    7: "Programmer Instructions"
-                                }.get(sf.get('section_id'), f"Section {sf.get('section_id')}")
-                                
-                                content.append(f"{priority} - {section_name} (Section {sf.get('section_id')}): {comment}")
+                                section_name = self._get_section_name(sf.get('section_id'))
+                                # Get comment ID for tracking
+                                comment_id = latest.get('comment_id', f"COMMENT-S{sf.get('section_id')}-V{latest.get('version', '?')}")
+                                content.append(f"{priority} - [{comment_id}] {section_name} (Section {sf.get('section_id')}): {comment}")
                     content.append("")
                 
                 # Survey-level improvements
@@ -3343,37 +3410,28 @@ class PromptBuilder:
                         comment = sf.get('comment', '')
                         version = sf.get('version', '?')
                         if comment:
-                            content.append(f"Overall feedback (v{version}): {comment[:300]}")
+                            # Get comment ID for tracking
+                            comment_id = sf.get('comment_id', f"COMMENT-SURVEY-V{version}")
+                            content.append(f"[{comment_id}] Overall feedback (v{version}): {comment[:300]}")
                     content.append("")
             
             content.extend([
                 "### 🎯 REGENERATION INSTRUCTIONS:",
                 "",
-                "**Follow these general principles when addressing feedback:**",
+                "**Address all feedback above and follow these principles:**",
                 "",
-                "1. **Interpret Feedback Literally**: Read the feedback comment carefully and implement exactly what it requests",
-                "   - If feedback says 'add question on X', add a question about X",
-                "   - If feedback says 'should have Y', ensure Y is included",
-                "   - If feedback mentions a specific topic (ethnicity, demographics, etc.), add appropriate questions on that topic",
+                "1. **Interpret feedback literally** - implement exactly what each comment requests",
+                "2. **Add missing content** - if feedback says 'add X' and X isn't in the questions above, include it",
+                "3. **Maintain quality** - fix low-quality items (quality < 3), preserve high-quality items (quality >= 4)",
+                "4. **Match existing style** - use the same question format and structure as the previous version",
                 "",
-                "2. **Compare with Previous Version**: Review the 'Previous Version Structure' above to see what currently exists",
-                "   - If a section has feedback but you don't see the requested content in the current questions, ADD it",
-                "   - Use the existing question style and format as a reference",
-                "",
-                "3. **Maintain Quality Standards**:",
-                "   - Fix or improve questions/sections with low quality ratings (quality < 3)",
-                "   - Keep questions/sections with high quality ratings (quality >= 4) unchanged",
-                "   - Apply the same research methodology and goals as the previous version",
-                "",
-                "4. **Context Matters**:",
-                "   - Demographic questions (age, gender, ethnicity, income) belong in appropriate sections",
-                "   - Screening questions (eligibility, participation) are different from demographic questions",
-                "   - Match the question type to the feedback intent",
+                "**COMMENT ADDRESSING REQUIREMENT**:",
+                "In your JSON response, include a 'comments_addressed' field (array of strings) listing all comment IDs you addressed.",
+                "Format: [\"COMMENT-Q123-V2\", \"COMMENT-S3-V1\", \"COMMENT-SURVEY-V2\", ...]",
+                "Only include comment IDs where you made actual changes to address the feedback.",
+                "If you did not address a comment, do NOT include its ID in the array.",
                 ""
             ])
-            
-            if focus_on_annotated_areas:
-                content.append("6. **Focus on Annotated Areas**: Prioritize improvements in sections/questions that received annotations")
             
             return PromptSection(
                 title="2.5 Regeneration Context and Improvement Requirements",
@@ -3391,7 +3449,8 @@ class PromptBuilder:
         context: Dict[str, Any],
         surgical_analysis: Dict[str, Any],
         previous_survey_encoded: Optional[Dict[str, Any]],
-        annotation_feedback_summary: Optional[Dict[str, Any]]
+        annotation_feedback_summary: Optional[Dict[str, Any]],
+        previous_survey_json: Optional[Dict[str, Any]] = None
     ) -> PromptSection:
         """
         Build optimized regeneration section for surgical mode
@@ -3411,17 +3470,6 @@ class PromptBuilder:
             ""
         ]
         
-        # Section mapping for readable names
-        section_mapping = {
-            1: "Sample Plan",
-            2: "Screener",
-            3: "Brand/Product Awareness",
-            4: "Concept Exposure",
-            5: "Methodology",
-            6: "Additional Questions",
-            7: "Programmer Instructions"
-        }
-        
         # Show rationale for each section being regenerated
         content.extend([
             "### 📋 Sections to Regenerate:",
@@ -3429,36 +3477,38 @@ class PromptBuilder:
         ])
         
         for section_id in surgical_analysis['sections_to_regenerate']:
-            section_name = section_mapping.get(section_id, f"Section {section_id}")
+            section_name = self._get_section_name(section_id)
             rationale = surgical_analysis['regeneration_rationale'].get(section_id, [])
             
             content.append(f"**{section_name} (Section {section_id})**:")
             if rationale:
-                for reason in rationale[:3]:  # Limit to 3 reasons per section
+                for reason in rationale[:2]:  # Limit to 2 reasons per section
                     content.append(f"  - {reason}")
             else:
                 content.append("  - Needs improvement based on feedback")
             content.append("")
         
         # Show which sections to preserve (brief list)
+        preserved_names = [
+            self._get_section_name(sid) 
+            for sid in surgical_analysis['sections_to_preserve']
+        ]
         content.extend([
-            "### ✅ Sections to Preserve (high quality, do not regenerate):",
+            "### ✅ Sections to Preserve:",
+            ", ".join(preserved_names),
             ""
         ])
         
-        preserved_names = [
-            section_mapping.get(sid, f"Section {sid}") 
-            for sid in surgical_analysis['sections_to_preserve']
-        ]
-        content.append(", ".join(preserved_names))
-        content.append("")
+        # Identify questions with feedback to avoid duplication
+        questions_with_feedback_ids = set()
+        if annotation_feedback_summary:
+            for qf in annotation_feedback_summary.get('question_feedback', {}).get('questions_with_feedback', []):
+                questions_with_feedback_ids.add(qf.get('question_id'))
         
-        # Only show TARGETED sections' questions from previous survey
+        # Only show TARGETED sections' questions from previous survey (excluding those with feedback shown below)
         if previous_survey_encoded:
             content.extend([
-                "### 📄 Previous Version (sections being regenerated only):",
-                "",
-                "**Review these to understand what exists and what's missing:**",
+                "### 📄 Previous Version (sections being regenerated):",
                 ""
             ])
             
@@ -3470,11 +3520,18 @@ class PromptBuilder:
                     section_title = section.get('title', f'Section {section_id}')
                     content.append(f"**{section_title}** ({section.get('question_count', 0)} questions):")
                     
-                    # Show questions
+                    # Show questions, but skip those that will be shown in improvements section
                     key_questions = section.get('key_questions', [])
                     if key_questions:
+                        shown_count = 0
                         for i, q in enumerate(key_questions, 1):
-                            content.append(f"  {i}. {q}")
+                            # Try to match question to question_id (approximate - by position)
+                            # This is a heuristic to avoid duplication
+                            if shown_count < 3:  # Show first 3 questions as context
+                                content.append(f"  {i}. {q[:100]}{'...' if len(q) > 100 else ''}")
+                                shown_count += 1
+                        if len(key_questions) > shown_count:
+                            content.append(f"  ... and {len(key_questions) - shown_count} more questions")
                     else:
                         content.append("  (No questions in previous version)")
                     content.append("")
@@ -3485,6 +3542,11 @@ class PromptBuilder:
                 "### ⚠️ SPECIFIC IMPROVEMENTS REQUIRED:",
                 "",
                 "**Address these issues in the regenerated sections:**",
+                "",
+                "**CRITICAL - COMMENT TRACKING**:",
+                "Each comment below is tagged with a unique ID like [COMMENT-Q123-V2].",
+                "When you address a comment, you MUST include its ID in the 'comments_addressed' array in your JSON response.",
+                "Only include comment IDs where you made actual changes to address the feedback.",
                 ""
             ])
             
@@ -3499,7 +3561,7 @@ class PromptBuilder:
                 
                 # Only show feedback for sections being regenerated
                 if section_id in regenerating_section_ids:
-                    section_name = section_mapping.get(section_id, f"Section {section_id}")
+                    section_name = self._get_section_name(section_id)
                     comments = sf.get('comments', [])
                     
                     if comments:
@@ -3509,7 +3571,9 @@ class PromptBuilder:
                         
                         if comment:
                             priority = "🔴 HIGH PRIORITY" if quality < 3 else "🟡 MEDIUM PRIORITY" if quality < 4 else "💡 SUGGESTION"
-                            content.append(f"{priority} - **{section_name}**: {comment}")
+                            # Get comment ID for tracking
+                            comment_id = latest.get('comment_id', f"COMMENT-S{section_id}-V{latest.get('version', '?')}")
+                            content.append(f"{priority} - [{comment_id}] **{section_name}**: {comment}")
             
             # Question-level feedback (only for questions in sections being regenerated)
             question_feedback = annotation_feedback_summary.get('question_feedback', {})
@@ -3526,7 +3590,25 @@ class PromptBuilder:
                     
                     if comment and quality < 4:
                         priority = "🔴 HIGH PRIORITY" if quality < 3 else "🟡 MEDIUM PRIORITY"
-                        content.append(f"{priority} - Question {question_id}: {comment[:150]}")
+                        
+                        # Try to get question text for context
+                        question_text = self._extract_question_text_by_id(
+                            question_id, 
+                            previous_survey_encoded,
+                            previous_survey_json
+                        )
+                        
+                        # Get comment ID for tracking
+                        comment_id = latest.get('comment_id', f"COMMENT-Q{question_id}-V{latest.get('version', '?')}")
+                        
+                        if question_text:
+                            # Include question text for context
+                            question_text_truncated = question_text[:150] + ('...' if len(question_text) > 150 else '')
+                            content.append(f"{priority} - [{comment_id}] Question {question_id}: {question_text_truncated}")
+                            content.append(f"  Feedback: {comment[:150]}")
+                        else:
+                            # Fallback: just question ID and comment
+                            content.append(f"{priority} - [{comment_id}] Question {question_id}: {comment[:150]}")
             
             content.append("")
         
@@ -3534,13 +3616,17 @@ class PromptBuilder:
         content.extend([
             f"### 🎯 {mode_name} REGENERATION INSTRUCTIONS:",
             "",
-            "1. **ONLY regenerate the sections listed above** - the other sections will be preserved as-is",
-            "2. **Address all feedback** listed in the improvement requirements",
-            "3. **Match the style and quality** of the preserved sections",
-            "4. **Use the same question numbering format** (q1, q2, q3, etc.) for consistency",
-            "5. **If feedback says 'add X', make sure X is included** in your regenerated sections",
+            "1. **ONLY regenerate the sections listed above** - other sections will be preserved",
+            "2. **Address all feedback** in the improvements section above",
+            "3. **Match style and format** of preserved sections",
+            "4. **Add missing content** - if feedback says 'add X', include X",
             "",
-            "**CRITICAL**: Your output should ONLY contain the sections being regenerated. The preserved sections will be merged in automatically.",
+            "**COMMENT ADDRESSING REQUIREMENT**:",
+            "In your JSON response, include a 'comments_addressed' field (array of strings) listing all comment IDs you addressed.",
+            "Format: [\"COMMENT-Q123-V2\", \"COMMENT-S3-V1\", \"COMMENT-SURVEY-V2\", ...]",
+            "Only include comment IDs where you made actual changes to address the feedback.",
+            "",
+            "**CRITICAL**: Output ONLY the regenerated sections. Preserved sections will be merged automatically.",
             ""
         ])
         

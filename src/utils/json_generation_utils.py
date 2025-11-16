@@ -127,6 +127,11 @@ Your response will be parsed as JSON. Make sure it's valid and matches the schem
                         "methodology_tags": {"type": "array", "items": {"type": "string"}},
                         "target_responses": {"type": "integer"}
                     }
+                },
+                "comments_addressed": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Array of comment IDs that were addressed during regeneration (e.g., [\"COMMENT-Q123-V2\", \"COMMENT-S3-V1\"])"
                 }
             }
         }

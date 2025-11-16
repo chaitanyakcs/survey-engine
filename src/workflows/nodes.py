@@ -37,10 +37,15 @@ class RFQNode:
             import logging
             logger = logging.getLogger(__name__)
             
-            # Generate embedding for the RFQ text
-            logger.info("🔄 [RFQNode] Starting embedding generation...")
-            embedding = await self.embedding_service.get_embedding(state.rfq_text)
-            logger.info("✅ [RFQNode] Embedding generation completed")
+            # Skip embedding generation during regeneration (RFQ hasn't changed)
+            if state.regeneration_mode and state.rfq_embedding:
+                logger.info("⚡ [RFQNode] Regeneration mode - reusing existing embedding (skipping generation)")
+                embedding = state.rfq_embedding
+            else:
+                # Generate embedding for the RFQ text
+                logger.info("🔄 [RFQNode] Starting embedding generation...")
+                embedding = await self.embedding_service.get_embedding(state.rfq_text)
+                logger.info("✅ [RFQNode] Embedding generation completed")
             
             # Load enhanced RFQ data from database if RFQ ID is available
             enhanced_rfq_data = None
@@ -360,6 +365,7 @@ class ContextBuilderNode:
                 # Regeneration mode context
                 "regeneration_mode": state.regeneration_mode,
                 "previous_survey_encoded": state.previous_survey_encoded,
+                "previous_survey_json": state.previous_survey_json,  # Original survey JSON for question text extraction
                 "annotation_feedback_summary": state.annotation_feedback_summary,
                 "focus_on_annotated_areas": state.focus_on_annotated_areas
             }
@@ -960,6 +966,8 @@ class LabelDetectionNode:
         """
         Automatically detect and assign labels to generated questions.
         Creates question annotations in the database instead of writing to question.labels.
+        
+        During surgical regeneration, only detects labels for regenerated sections.
         """
         try:
             self.logger.info("🏷️ [LabelDetectionNode] Starting automatic label detection...")
@@ -978,15 +986,30 @@ class LabelDetectionNode:
                     "error_message": "No survey_id available for annotation creation"
                 }
             
-            # Detect labels for each section
-            detected_labels = self.detector.detect_labels_in_survey(state.generated_survey)
+            # Determine which sections to process
+            sections_to_process = state.generated_survey.get('sections', [])
+            
+            # SURGICAL/TARGETED MODE: Only detect labels for regenerated sections
+            from src.workflows.state import RegenerationMode
+            if state.regeneration_mode and state.regeneration_mode_type in (RegenerationMode.SURGICAL, RegenerationMode.TARGETED):
+                if state.surgical_analysis and 'sections_to_regenerate' in state.surgical_analysis:
+                    regenerated_section_ids = state.surgical_analysis['sections_to_regenerate']
+                    sections_to_process = [s for s in sections_to_process if s.get('id') in regenerated_section_ids]
+                    self.logger.info(f"⚡ [LabelDetectionNode] Surgical mode - only processing {len(sections_to_process)} regenerated sections (skipping {len(state.generated_survey.get('sections', [])) - len(sections_to_process)} preserved sections)")
+                else:
+                    self.logger.info("🏷️ [LabelDetectionNode] Surgical mode but no surgical_analysis - processing all sections")
+            else:
+                self.logger.info(f"🏷️ [LabelDetectionNode] Full mode - processing all {len(sections_to_process)} sections")
+            
+            # Detect labels for the sections we're processing
+            detected_labels = self.detector.detect_labels_in_survey({'sections': sections_to_process})
             self.logger.info(f"🏷️ [LabelDetectionNode] Detected labels: {detected_labels}")
             
             # Create annotations in database
             annotations_created = 0
             labels_assigned = 0
             
-            for section in state.generated_survey.get('sections', []):
+            for section in sections_to_process:
                 section_id = section.get('id')
                 section_labels = detected_labels.get(section_id, set())
                 
@@ -1337,8 +1360,15 @@ class SurgicalMergerNode:
             
             if not regenerated_sections:
                 self.logger.warning("⚠️ [SurgicalMerger] No regenerated sections found in generated survey")
-                # If no sections were regenerated, use all sections from generated survey
-                regenerated_sections = state.generated_survey.get('sections', [])
+                # If no sections were regenerated, use all sections from generated survey (if available)
+                if state.generated_survey:
+                    regenerated_sections = state.generated_survey.get('sections', [])
+                else:
+                    self.logger.error("❌ [SurgicalMerger] No generated survey available - generation must have failed")
+                    return {
+                        "generated_survey": None,
+                        "error_message": "Survey generation failed - no survey data available for merging"
+                    }
             
             # Perform merge
             merged_survey = merger.merge_surveys(
