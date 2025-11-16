@@ -9,6 +9,7 @@ import time
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
 import replicate
+import httpx
 from openai import AsyncOpenAI
 from src.config.settings import settings
 
@@ -49,8 +50,23 @@ class ReplicateProvider(LLMProvider):
         self.api_token = api_token or settings.replicate_api_token
         if not self.api_token:
             raise ValueError("Replicate API token is required")
-        self.client = replicate.Client(api_token=self.api_token)
-        logger.info("✅ [ReplicateProvider] Initialized")
+        
+        # Initialize Replicate client with extended timeout
+        # Replicate API calls can take a long time, especially for large prompts
+        # Set timeout to 30 minutes (1800 seconds) to handle long-running generations
+        # The timeout parameter accepts httpx.Timeout object for fine-grained control
+        timeout_config = httpx.Timeout(
+            connect=60.0,  # 60 seconds to establish connection
+            read=1800.0,    # 30 minutes to read response (for long LLM generations)
+            write=60.0,     # 60 seconds to write request
+            pool=60.0       # 60 seconds to get connection from pool
+        )
+        
+        self.client = replicate.Client(
+            api_token=self.api_token,
+            timeout=timeout_config
+        )
+        logger.info("✅ [ReplicateProvider] Initialized with extended timeouts (30min read timeout)")
     
     def get_provider_name(self) -> str:
         return "replicate"
@@ -81,7 +97,7 @@ class ReplicateProvider(LLMProvider):
                         "system_prompt": system_prompt
                     }
                 ),
-                timeout=900.0  # 15 minute timeout
+                timeout=1800.0  # 30 minute timeout
             )
             
             # Convert output to string for unified parsing
@@ -120,7 +136,7 @@ class ReplicateProvider(LLMProvider):
             }
             
         except asyncio.TimeoutError:
-            raise Exception("Replicate API call timed out after 15 minutes")
+            raise Exception("Replicate API call timed out after 30 minutes")
         except Exception as e:
             logger.error(f"❌ [ReplicateProvider] Generation failed: {e}")
             raise
