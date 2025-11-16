@@ -180,16 +180,27 @@ export const SurveyGeneratorPage: React.FC = () => {
             )}
 
             {/* Generation Progress Phase */}
-            {(workflow.status === 'started' || workflow.status === 'in_progress') && (
-              <div className="px-6">
-                <ProgressStepper 
-                  onCancelGeneration={() => {
-                    console.log('🔄 [SurveyGeneratorPage] Canceling generation');
-                    resetWorkflow();
-                  }}
-                />
-              </div>
-            )}
+            {(() => {
+              const shouldShowProgress = workflow.status === 'started' || workflow.status === 'in_progress';
+              console.log('🔍 [SurveyGeneratorPage] Checking if ProgressStepper should render:', {
+                workflowStatus: workflow.status,
+                shouldShowProgress,
+                current_step: workflow.current_step,
+                current_substep: workflow.current_substep,
+                progress: workflow.progress,
+                workflow_id: workflow.workflow_id
+              });
+              return shouldShowProgress ? (
+                <div className="px-6">
+                  <ProgressStepper 
+                    onCancelGeneration={() => {
+                      console.log('🔄 [SurveyGeneratorPage] Canceling generation');
+                      resetWorkflow();
+                    }}
+                  />
+                </div>
+              ) : null;
+            })()}
 
             {/* Human Review Phase */}
             {workflow.status === 'paused' && (

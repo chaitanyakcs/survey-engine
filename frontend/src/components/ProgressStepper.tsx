@@ -222,11 +222,13 @@ const MAIN_WORKFLOW_STEPS: MainWorkflowStep[] = [
 interface ProgressStepperProps {
   onShowSurvey?: () => void;
   onCancelGeneration?: () => void;
+  isModal?: boolean;
 }
 
 export const ProgressStepper: React.FC<ProgressStepperProps> = ({
   onShowSurvey,
-  onCancelGeneration
+  onCancelGeneration,
+  isModal = false
 }) => {
   const { workflow, currentSurvey, activeReview } = useAppStore();
   const workflowStatus = workflow.status;
@@ -237,6 +239,19 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
   // Get settings to determine if human review step should be shown
   const [showHumanReview, setShowHumanReview] = useState<boolean | null>(null); // null = loading, true/false = loaded
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  
+  // Debug log when ProgressStepper renders
+  useEffect(() => {
+    console.log('🎯 [ProgressStepper] Component rendered/updated:', {
+      workflowStatus,
+      current_step: workflow.current_step,
+      current_substep: workflow.current_substep,
+      progress: workflow.progress,
+      workflow_id: workflow.workflow_id,
+      survey_id: workflow.survey_id,
+      hasCurrentSurvey: !!currentSurvey
+    });
+  }, [workflowStatus, workflow.current_step, workflow.current_substep, workflow.progress, workflow.workflow_id, workflow.survey_id, currentSurvey]);
 
   // Debug survey structure when it changes
   useEffect(() => {
@@ -338,10 +353,13 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
 
         case 'regeneration_prep':
           // Include regeneration prep step if:
-          // 1. Current step is 'regenerating', OR
-          // 2. Progress is in regeneration prep range (0-20%) and workflow_id indicates regeneration
+          // 1. Current step is 'regenerating' or 'regeneration_prep', OR
+          // 2. Progress is in regeneration prep range (0-20%) and workflow_id indicates regeneration, OR
+          // 3. Workflow_id indicates regeneration (show immediately when modal opens)
           return Boolean(
             workflow.current_step === 'regenerating' ||
+            workflow.current_step === 'regeneration_prep' ||
+            workflow.workflow_id?.includes('regenerate') ||
             (workflow.progress !== undefined && workflow.progress >= 0 && workflow.progress < 20 && 
              workflow.workflow_id?.includes('regenerate'))
           );
@@ -619,7 +637,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
   // Show loading state while settings are being fetched
   if (!settingsLoaded) {
     return (
-      <div className="h-screen flex flex-col bg-white">
+      <div className={`${isModal ? 'min-h-[400px]' : 'h-screen'} flex flex-col bg-white`}>
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500 mx-auto mb-4"></div>
@@ -631,7 +649,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
   }
 
   return (
-    <div className="h-screen flex flex-col bg-white">
+    <div className={`${isModal ? 'min-h-[400px]' : 'h-screen'} flex flex-col bg-white`}>
       {/* Header */}
       <div className="flex-shrink-0 px-8 py-6 bg-white/80 backdrop-blur-sm border-b border-gray-200/50">
         <div className="flex items-center justify-between">
@@ -675,7 +693,31 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                 {/* Connecting Line */}
                 <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-gradient-to-b from-primary-200 via-primary-300 to-primary-200"></div>
                 
-                {enabledSteps.map((step, index) => {
+                {enabledSteps.length === 0 && workflow.workflow_id?.includes('regenerate') ? (
+                  <div className="relative mb-8">
+                    <div className="flex items-start">
+                      <div className="relative z-10 flex-shrink-0">
+                        <div className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-r from-primary-100 to-primary-200 text-primary-600">
+                          <div className="relative">
+                            <div className="w-4 h-4 bg-primary-500 rounded-full animate-pulse"></div>
+                            <div className="absolute inset-0 w-4 h-4 border-2 border-primary-500 rounded-full animate-spin border-t-transparent"></div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="ml-6 flex-1 min-w-0">
+                        <div className="pb-8">
+                          <h3 className="heading-4 mb-1 text-primary-900">Starting Regeneration</h3>
+                          <p className="text-sm mb-3 text-primary-700">Initializing regeneration workflow...</p>
+                          <div className="flex items-center space-x-2">
+                            <ClockIcon className="w-4 h-4 text-primary-600 animate-pulse" />
+                            <span className="text-sm font-medium text-primary-700">Initializing</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  enabledSteps.map((step, index) => {
                   const status = getStepStatus(index);
                   const colors = getColorClasses(step.color);
                   const isCurrent = status === 'current';
@@ -715,14 +757,14 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                         </div>
                         
                         {/* Step Content */}
-                        <div className="ml-6 flex-1">
+                        <div className="ml-6 flex-1 min-w-0">
                           <div className="pb-8">
-                            <h3 className={`heading-4 mb-1 transition-colors duration-300 ${
+                            <h3 className={`heading-4 mb-1 transition-colors duration-300 break-words ${
                               isCurrent ? 'text-primary-900' : isCompleted ? 'text-primary-800' : 'text-primary-600'
                             }`}>
                               {step.label}
                             </h3>
-                            <p className={`text-sm mb-3 transition-colors duration-300 ${
+                            <p className={`text-sm mb-3 transition-colors duration-300 break-words ${
                               isCurrent ? 'text-primary-700' : isCompleted ? 'text-primary-600' : 'text-primary-500'
                             }`}>
                               {step.description}
@@ -754,7 +796,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                       </div>
                     </div>
                   );
-                })}
+                }))}
               </div>
             </div>
           </div>
@@ -778,8 +820,8 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                       <div className={`p-2 rounded-lg ${getColorClasses(currentMainStep?.color || 'blue').light}`}>
                         <span className="text-2xl">{currentMainStep?.icon}</span>
                       </div>
-                      <div>
-                        <h2 className="text-2xl font-bold text-amber-900">{currentMainStep.label}</h2>
+                      <div className="min-w-0 flex-1">
+                        <h2 className="text-2xl font-bold text-amber-900 break-words">{currentMainStep.label}</h2>
                         <p className="text-amber-700">Step {currentStepIndex + 1} of {enabledSteps.length}</p>
                       </div>
                     </div>
@@ -871,12 +913,12 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                                 {isCompleted ? '✓' : index + 1}
                               </div>
                               <div className="flex-1 min-w-0">
-                                <h4 className={`text-sm font-medium ${
+                                <h4 className={`text-sm font-medium break-words ${
                                   isActive ? 'text-blue-900' : isCompleted ? 'text-green-900' : 'text-gray-700'
                                 }`}>
                                   {subStep.label}
                                 </h4>
-                                <p className={`text-xs ${
+                                <p className={`text-xs break-words ${
                                   isActive ? 'text-blue-700' : isCompleted ? 'text-green-700' : 'text-gray-500'
                                 }`}>
                                   {isActive ? workflow.message || subStep.message : subStep.message}

@@ -4,6 +4,8 @@ import { Survey } from '../types';
 import { PreGenerationPreview } from '../components/PreGenerationPreview';
 import { LLMAuditViewer } from '../components/LLMAuditViewer';
 import SurveyInsights from '../components/SurveyInsights';
+import { SurveyDiffViewer } from '../components/SurveyDiffViewer';
+import { SurveyDiff } from '../types';
 import { apiService } from '../services/api';
 import { 
   DocumentTextIcon,
@@ -12,7 +14,8 @@ import {
   ChartBarIcon,
   TagIcon,
   ChartBarSquareIcon,
-  InformationCircleIcon
+  InformationCircleIcon,
+  EyeIcon
 } from '@heroicons/react/24/outline';
 
 interface GoldenPair {
@@ -81,7 +84,7 @@ const InlineTooltip: React.FC<{ description: string; position?: 'top' | 'bottom'
 };
 
 export const SurveyInsightsPage: React.FC = () => {
-  const { addToast } = useAppStore();
+  const { addToast, getSurveyDiff } = useAppStore();
   const [survey, setSurvey] = useState<Survey | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +97,41 @@ export const SurveyInsightsPage: React.FC = () => {
   const [goldenSections, setGoldenSections] = useState<GoldenSection[]>([]);
   const [referenceExamplesData, setReferenceExamplesData] = useState<any>(null);
   const [loadingReferenceExamples, setLoadingReferenceExamples] = useState(false);
+  const [showDiffModal, setShowDiffModal] = useState(false);
+  const [diffData, setDiffData] = useState<SurveyDiff | null>(null);
+  const [loadingDiff, setLoadingDiff] = useState(false);
+  const [comparingReferenceId, setComparingReferenceId] = useState<string | null>(null);
+
+  const handleCompareWithReference = async (referenceSurveyId: string) => {
+    if (!survey?.survey_id) {
+      addToast({
+        type: 'error',
+        title: 'Error',
+        message: 'Survey not loaded',
+        duration: 3000
+      });
+      return;
+    }
+
+    try {
+      setLoadingDiff(true);
+      setComparingReferenceId(referenceSurveyId);
+      const diff = await getSurveyDiff(survey.survey_id, referenceSurveyId);
+      setDiffData(diff);
+      setShowDiffModal(true);
+    } catch (error) {
+      console.error('Failed to load diff:', error);
+      addToast({
+        type: 'error',
+        title: 'Comparison Failed',
+        message: error instanceof Error ? error.message : 'Failed to compare with reference',
+        duration: 5000
+      });
+    } finally {
+      setLoadingDiff(false);
+      setComparingReferenceId(null);
+    }
+  };
 
   useEffect(() => {
     const loadSurveyInsights = async () => {
@@ -635,6 +673,17 @@ export const SurveyInsightsPage: React.FC = () => {
                                       Used {example.usage_count} time{example.usage_count !== 1 ? 's' : ''}
                                     </span>
                                   )}
+                                  {survey?.survey_id && (
+                                    <button
+                                      onClick={() => handleCompareWithReference(example.id)}
+                                      disabled={loadingDiff && comparingReferenceId === example.id}
+                                      className="px-3 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded border border-indigo-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                                      title="Compare generated survey with this reference example"
+                                    >
+                                      <EyeIcon className="w-4 h-4" />
+                                      {loadingDiff && comparingReferenceId === example.id ? 'Loading...' : 'Compare'}
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -908,6 +957,19 @@ export const SurveyInsightsPage: React.FC = () => {
       <div className="flex-1 overflow-y-auto bg-gray-50">
         {renderTabContent()}
       </div>
+
+      {/* Diff Modal */}
+      {showDiffModal && diffData && (
+        <SurveyDiffViewer
+          diff={diffData}
+          onClose={() => {
+            setShowDiffModal(false);
+            setDiffData(null);
+            setComparingReferenceId(null);
+          }}
+          isModal={true}
+        />
+      )}
     </div>
   );
 };
