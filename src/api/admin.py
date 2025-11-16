@@ -279,7 +279,8 @@ async def migrate_all(db: Session = Depends(get_db)):
                 "050_add_failed_status_to_surveys.sql",
                 "051_fix_annotation_unique_constraints.sql",
                 "052_add_feedback_digest_to_surveys.sql",
-                "053_add_survey_versioning.sql"
+                "053_add_survey_versioning.sql",
+                "054_add_regeneration_comment_tracking.sql"
             ]
             
             for migration_file in incremental_migrations:

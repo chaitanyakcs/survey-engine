@@ -90,7 +90,11 @@ class AnnotationFeedbackService:
                 }
             
             feedback_by_question[question_id]['versions'].append(version)
+            # Generate structured comment ID: COMMENT-Q{question_id}-V{version}
+            comment_id = f"COMMENT-Q{question_id}-V{version or '?'}"
             feedback_by_question[question_id]['comments'].append({
+                'annotation_id': annotation.id,  # Database primary key
+                'comment_id': comment_id,  # Structured ID for prompt tracking
                 'version': version,
                 'comment': annotation.comment,
                 'quality': annotation.quality,
@@ -185,7 +189,11 @@ class AnnotationFeedbackService:
                 }
             
             feedback_by_section[section_id]['versions'].append(version)
+            # Generate structured comment ID: COMMENT-S{section_id}-V{version}
+            comment_id = f"COMMENT-S{section_id}-V{version or '?'}"
             feedback_by_section[section_id]['comments'].append({
+                'annotation_id': annotation.id,  # Database primary key
+                'comment_id': comment_id,  # Structured ID for prompt tracking
                 'version': version,
                 'comment': annotation.comment,
                 'quality': annotation.quality,
@@ -249,7 +257,11 @@ class AnnotationFeedbackService:
             survey = self.db.query(Survey).filter(Survey.id == UUID(survey_id)).first()
             version = survey.version if survey else None
             
+            # Generate structured comment ID: COMMENT-SURVEY-V{version}
+            comment_id = f"COMMENT-SURVEY-V{version or '?'}"
             result.append({
+                'annotation_id': annotation.id,  # Database primary key
+                'comment_id': comment_id,  # Structured ID for prompt tracking
                 'version': version,
                 'comment': annotation.overall_comment,
                 'compliance_report': annotation.compliance_report,
