@@ -60,7 +60,12 @@ This is a full-stack AI-powered survey generation engine that transforms RFQs in
 
 ### Database
 - Use SQL migrations in `migrations/` directory for database schema changes
-- Execute migrations via admin API endpoints in `admin.py`
+- **CRITICAL**: Execute migrations ONLY via admin API endpoints in `admin.py` - NEVER run migrations directly
+- **REQUIRED**: All new migrations MUST be registered in `src/api/admin.py` in the `incremental_migrations` list within the `migrate_all` endpoint
+- Migration registration pattern:
+  1. Create SQL file in `migrations/` directory (e.g., `054_add_feature.sql`)
+  2. Add filename to `incremental_migrations` list in `admin.py` (around line 271-283)
+  3. Migrations are executed in order from this list when `/api/v1/admin/migrate-all` is called
 - Follow naming conventions: snake_case for tables and columns
 - Use proper foreign key relationships
 - Include proper indexes for performance
@@ -77,6 +82,11 @@ This is a full-stack AI-powered survey generation engine that transforms RFQs in
 - Use JSON-optimized hyperparameters for structured output
 - Implement LLM audit tracking for all AI calls using `@audit_llm_call` decorator
 - Note: OpenAI references in error messages are generic fallback text only
+- **Timeouts (2024-11-16)**: Extended to 30 minutes to prevent ReadTimeout errors
+  - httpx read timeout: 1800s (30 min)
+  - asyncio wait_for: 1800s (30 min)
+  - connect/write/pool: 60s each
+  - Rationale: Long-running LLM generations (especially regeneration) need extended timeouts
 
 ### Embeddings & Vector Search
 - Use sentence-transformers (all-MiniLM-L6-v2) for vector embeddings
@@ -115,6 +125,14 @@ This is a full-stack AI-powered survey generation engine that transforms RFQs in
 - Handle connection lifecycle and reconnection logic
 - Update UI in real-time based on progress messages
 - Display progress with ProgressStepper component
+
+### Regeneration Pattern (2024-11-16)
+- **Survey regeneration uses SYNCHRONOUS pattern (no WebSocket)**
+- WorkflowService initialized with `connection_manager=None` for regeneration
+- API endpoint waits for completion before returning
+- Frontend shows simple loading state, then redirects to new survey
+- Rationale: Simpler code, eliminates ReadTimeout issues, better UX
+- See `REGENERATION_SIMPLIFICATION.md` for full details
 
 ## LangGraph Workflow Patterns
 
