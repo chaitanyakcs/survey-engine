@@ -1687,18 +1687,9 @@ async def get_concept_files(
         
         logger.info(f"🔍 [Concept API] Found {len(concept_files)} concept files in database for rfq_id={rfq_uuid}")
         
-        # Diagnostic: Check if there are files for other RFQs
+        # Diagnostic: Check if there are files for other RFQs (debug level only)
         if len(concept_files) == 0 and total_files > 0:
-            sample_files = db.query(ConceptFile).limit(10).all()
-            logger.info(f"🔍 [Concept API] Sample of other concept files in DB (first 10):")
-            for sf in sample_files:
-                logger.info(f"  📄 Other file: rfq_id={sf.rfq_id}, filename='{sf.filename}', created_at={sf.created_at}")
-            
-            # Also check if there are any recent files that might be for this RFQ
-            recent_files = db.query(ConceptFile).order_by(ConceptFile.created_at.desc()).limit(5).all()
-            logger.info(f"🔍 [Concept API] Most recent concept files (last 5):")
-            for rf in recent_files:
-                logger.info(f"  📄 Recent file: rfq_id={rf.rfq_id}, filename='{rf.filename}', created_at={rf.created_at}")
+            logger.debug(f"🔍 [Concept API] No files found for this RFQ, but {total_files} total files exist in database")
             
             # Check for orphaned files: files uploaded around the same time as this RFQ was created
             from datetime import timedelta
