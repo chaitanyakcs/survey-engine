@@ -98,31 +98,57 @@ class SurveyMergerService:
 
     def _renumber_questions(self, survey: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Renumber all questions globally (q1, q2, q3, ...) across all sections
+        Renumber questions using proper section-based format (SQ01, CQ01, etc.)
+        
+        Section codes:
+        - SP = Section 1 (Screener/Profile)
+        - SQ = Section 2 (Screener Questions)
+        - BQ = Section 3 (Brand Questions)
+        - CQ = Section 4 (Concept Questions)
+        - MQ = Section 5 (Methodology Questions)
+        - AQ = Section 6 (Attribute Questions)
+        - PQ = Section 7 (Purchase Questions)
         
         Args:
             survey: Survey JSON structure
             
         Returns:
-            Survey with renumbered question IDs
+            Survey with properly numbered question IDs
         """
-        logger.info("🔢 [SurveyMerger] Renumbering questions globally")
+        logger.info("🔢 [SurveyMerger] Renumbering questions with section-based format")
         
-        question_counter = 1
+        # Section code mapping
+        section_code_mapping = {
+            1: "SP",
+            2: "SQ",
+            3: "BQ",
+            4: "CQ",
+            5: "MQ",
+            6: "AQ",
+            7: "PQ"
+        }
+        
         sections = survey.get('sections', [])
         
         for section in sections:
+            section_id = section.get('id')
+            section_code = section_code_mapping.get(section_id, f"S{section_id}")
             questions = section.get('questions', [])
             
+            # Renumber questions within this section starting from 01
+            question_number = 1
             for question in questions:
                 old_id = question.get('id')
-                new_id = f"q{question_counter}"
+                # Format: <SectionCode>Q<NN> (e.g., SQ01, CQ02)
+                new_id = f"{section_code}Q{question_number:02d}"
                 question['id'] = new_id
                 
                 if old_id != new_id:
-                    logger.debug(f"  - Renumbered: {old_id} → {new_id}")
+                    logger.debug(f"  - Section {section_id} ({section_code}): Renumbered {old_id} → {new_id}")
                 
-                question_counter += 1
+                question_number += 1
+            
+            logger.info(f"  - Section {section_id} ({section_code}): Renumbered {question_number - 1} questions")
         
         # Also update flat questions array if it exists
         if 'questions' in survey and isinstance(survey['questions'], list):
@@ -132,7 +158,8 @@ class SurveyMergerService:
                 all_questions.extend(section.get('questions', []))
             survey['questions'] = all_questions
         
-        logger.info(f"🔢 [SurveyMerger] Renumbered {question_counter - 1} questions")
+        total_questions = sum(len(s.get('questions', [])) for s in sections)
+        logger.info(f"🔢 [SurveyMerger] Renumbered {total_questions} questions total using section-based format")
         
         return survey
 
@@ -181,10 +208,12 @@ class SurveyMergerService:
         if len(all_question_ids) != len(set(all_question_ids)):
             errors.append(f"Duplicate question IDs found")
         
-        # Check question ID sequence
-        expected_ids = [f"q{i}" for i in range(1, len(all_question_ids) + 1)]
-        if all_question_ids != expected_ids:
-            warnings.append(f"Question IDs not sequential: expected {len(expected_ids)} sequential IDs")
+        # Check question ID format (should be section-based: SQ01, CQ01, etc.)
+        import re
+        id_pattern = re.compile(r'^(SP|SQ|BQ|CQ|MQ|AQ|PQ)Q(\d{2,})$')
+        invalid_format_ids = [q_id for q_id in all_question_ids if not id_pattern.match(q_id)]
+        if invalid_format_ids:
+            warnings.append(f"Question IDs not in proper format (should be <SectionCode>Q<NN>): {invalid_format_ids[:5]}")
         
         valid = len(errors) == 0
         
