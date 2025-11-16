@@ -356,6 +356,10 @@ const AnnotationMode: React.FC<AnnotationModeProps> = ({
                                       // Show only AI indicator in list view (labels shown in expanded detail view)
                                       return (
                                         <div className="flex items-center space-x-1 flex-shrink-0 ml-2">
+                                          {/* Show green dot if question has a comment */}
+                                          {annotation.comment && annotation.comment.trim() && (
+                                            <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0" title="Has comment"></div>
+                                          )}
                                           {/* Show AI indicator if AI generated */}
                                           {annotation.aiGenerated && (
                                             <>
